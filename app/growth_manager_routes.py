@@ -21,7 +21,10 @@ async def evaluate_experiment(experiment_id: UUID) -> GrowthDecisionView:
     try:
         return growth_manager_service.evaluate(experiment_id)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Experiment, product or play not found") from exc
+        raise HTTPException(
+            status_code=404,
+            detail="Experiment, product or play not found",
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
