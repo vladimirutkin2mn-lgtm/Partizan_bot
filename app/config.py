@@ -12,6 +12,13 @@ class Settings(BaseSettings):
     search_provider: str = "mock"
     search_model: str = "gpt-5.6-terra"
     openai_api_key: str | None = None
+    execution_provider: str = "mock"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_starttls: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
