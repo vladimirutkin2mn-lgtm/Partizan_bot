@@ -28,12 +28,19 @@ class InMemoryGrowthManagerService:
     def evaluate(self, experiment_id: UUID) -> GrowthDecisionView:
         experiment = execution_service.get_experiment(experiment_id)
         if experiment.status not in {"RUNNING", "FINISHED"}:
-            raise ValueError("Growth Manager requires a RUNNING or FINISHED experiment")
+            raise ValueError(
+                "Growth Manager requires a RUNNING or FINISHED experiment"
+            )
 
         product = product_intake_service.get_product(experiment.product_id)
-        play = find_growth_play(experiment.product_id, experiment.growth_play_id)
+        play = find_growth_play(
+            experiment.product_id,
+            experiment.growth_play_id,
+        )
         analytics = analytics_service.experiment_analytics(experiment_id)
-        product_analytics = analytics_service.product_analytics(experiment.product_id)
+        product_analytics = analytics_service.product_analytics(
+            experiment.product_id
+        )
         fingerprint = self._fingerprint(
             analytics.model_dump(mode="json"),
             product_analytics.model_dump(mode="json"),
@@ -42,7 +49,9 @@ class InMemoryGrowthManagerService:
         )
         if self._latest_fingerprint.get(experiment_id) == fingerprint:
             decision_id = self._latest_decision[experiment_id]
-            return self._decisions[decision_id].model_copy(update={"duplicate": True})
+            return self._decisions[decision_id].model_copy(
+                update={"duplicate": True}
+            )
 
         policy = GrowthPolicy().evaluate(
             product=product,
@@ -81,9 +90,12 @@ class InMemoryGrowthManagerService:
                 paid_users=analytics.metrics.paid_users,
                 revenue=analytics.metrics.revenue,
                 summary=(
-                    f"{play.template_id} on {play.source_type}: action={decision.action}; "
-                    f"spend={analytics.metrics.spend:.2f}; paid={analytics.metrics.paid_users}; "
-                    f"CAC={analytics.metrics.cac}; revenue={analytics.metrics.revenue:.2f}."
+                    f"{play.template_id} on {play.source_type}: "
+                    f"action={decision.action}; "
+                    f"spend={analytics.metrics.spend:.2f}; "
+                    f"paid={analytics.metrics.paid_users}; "
+                    f"CAC={analytics.metrics.cac}; "
+                    f"revenue={analytics.metrics.revenue:.2f}."
                 ),
                 created_at=now,
             )
@@ -114,7 +126,12 @@ class InMemoryGrowthManagerService:
         )
 
     def _fingerprint(self, *parts) -> str:
-        payload = json.dumps(parts, sort_keys=True, separators=(",", ":"), default=str)
+        payload = json.dumps(
+            parts,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
         return sha1(payload.encode()).hexdigest()
 
     def reset(self) -> None:
