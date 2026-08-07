@@ -25,6 +25,8 @@ class InMemoryExecutionService:
         self._packages: dict[UUID, ExecutionPackageView] = {}
         self._experiments: dict[UUID, ExperimentView] = {}
         self._package_by_play: dict[UUID, UUID] = {}
+        self._package_by_referral: dict[str, UUID] = {}
+        self._experiment_by_play: dict[UUID, UUID] = {}
 
     async def prepare(
         self,
@@ -95,6 +97,8 @@ class InMemoryExecutionService:
         self._packages[package_id] = package
         self._experiments[experiment_id] = experiment
         self._package_by_play[play.id] = package_id
+        self._package_by_referral[referral_token] = package_id
+        self._experiment_by_play[play.id] = experiment_id
         return package
 
     def edit(self, package_id: UUID, subject: str, body: str) -> ExecutionPackageView:
@@ -165,6 +169,30 @@ class InMemoryExecutionService:
     def get_experiment(self, experiment_id: UUID) -> ExperimentView:
         return self._experiments[experiment_id]
 
+    def list_experiments(self, product_id: UUID) -> list[ExperimentView]:
+        return [
+            experiment
+            for experiment in self._experiments.values()
+            if experiment.product_id == product_id
+        ]
+
+    def resolve_experiment(
+        self,
+        experiment_id: UUID | None = None,
+        referral_token: str | None = None,
+        growth_play_id: UUID | None = None,
+    ) -> tuple[ExperimentView, str]:
+        if experiment_id is not None:
+            return self._experiments[experiment_id], "experiment_id"
+        if referral_token:
+            package_id = self._package_by_referral[referral_token]
+            package = self._packages[package_id]
+            return self._experiments[package.experiment_id], "referral_token"
+        if growth_play_id is not None:
+            resolved_id = self._experiment_by_play[growth_play_id]
+            return self._experiments[resolved_id], "utm_content"
+        raise ValueError("At least one attribution identifier is required")
+
     def _resolve_destination(
         self,
         product: ProductProfileView,
@@ -182,6 +210,8 @@ class InMemoryExecutionService:
         self._packages.clear()
         self._experiments.clear()
         self._package_by_play.clear()
+        self._package_by_referral.clear()
+        self._experiment_by_play.clear()
 
 
 def find_growth_play(product_id: UUID, play_id: UUID) -> GrowthPlayView:
