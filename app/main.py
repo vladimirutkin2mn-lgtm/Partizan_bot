@@ -2,6 +2,7 @@ from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, status
 
+from app.analytics_routes import router as analytics_router
 from app.channel_service import channel_service
 from app.execution_service import execution_service, find_growth_play
 from app.growth_play_service import growth_play_service
@@ -33,9 +34,10 @@ configure_logging()
 
 app = FastAPI(
     title="Partizan Bot API",
-    version="0.6.0",
-    description="Discovery, experiment design and human-approved execution API for Partizan Bot.",
+    version="0.7.0",
+    description="Discovery, execution and closed-loop analytics API for Partizan Bot.",
 )
+app.include_router(analytics_router)
 
 
 @app.get("/health", tags=["system"])
