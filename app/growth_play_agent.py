@@ -366,7 +366,10 @@ class GrowthPlayGenerator:
                         f"Review {channel.url} and confirm placement/participation rules.",
                         f"Prepare a message and creative tailored to {icp_title}.",
                         "Create a tracked CTA/UTM or referral link and launch only after approval.",
-                        "Measure visits, signups, paid users and observed CAC versus the guardrail.",
+                        (
+                            "Measure visits, signups, paid users and observed CAC "
+                            "versus the guardrail."
+                        ),
                     ],
                     success_metric=product.goal or "paid users and CAC",
                     expected_result=(
