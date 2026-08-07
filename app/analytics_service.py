@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -63,7 +63,7 @@ class InMemoryAnalyticsService:
             event_type=payload.event_type,
             actor_id=payload.actor_id,
             revenue=payload.revenue,
-            occurred_at=payload.occurred_at or datetime.now(timezone.utc),
+            occurred_at=payload.occurred_at or datetime.now(UTC),
             properties=payload.properties,
             attributed_by=attributed_by,
         )
@@ -93,7 +93,7 @@ class InMemoryAnalyticsService:
             spend_id=payload.spend_id,
             experiment_id=experiment_id,
             amount=payload.amount,
-            occurred_at=payload.occurred_at or datetime.now(timezone.utc),
+            occurred_at=payload.occurred_at or datetime.now(UTC),
             properties=payload.properties,
         )
         self._spend[entry.spend_id] = entry
