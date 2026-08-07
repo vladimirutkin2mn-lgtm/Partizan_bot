@@ -42,7 +42,10 @@ class GrowthPolicy:
                 play=play,
             )
         else:
-            action, rationale = self._without_cac_target(metrics=metrics, play=play)
+            action, rationale = self._without_cac_target(
+                metrics=metrics,
+                play=play,
+            )
 
         increment = self._recommended_increment(
             action=action,
@@ -75,37 +78,76 @@ class GrowthPolicy:
             ratio = metrics.cac / target_cac if target_cac else float("inf")
             if ratio <= 0.8:
                 return "SCALE", [
-                    f"Observed CAC {metrics.cac:.2f} is at least 20% below target {target_cac:.2f}.",
-                    f"Signal has {metrics.paid_users} paid users, meeting the scale threshold.",
+                    (
+                        f"Observed CAC {metrics.cac:.2f} is at least 20% below "
+                        f"target {target_cac:.2f}."
+                    ),
+                    (
+                        f"Signal has {metrics.paid_users} paid users, "
+                        "meeting the scale threshold."
+                    ),
                 ]
             if ratio <= 1.1:
                 return "CONTINUE", [
-                    f"Observed CAC {metrics.cac:.2f} is close to target {target_cac:.2f}.",
+                    (
+                        f"Observed CAC {metrics.cac:.2f} is close to "
+                        f"target {target_cac:.2f}."
+                    ),
                     "Keep collecting signal before increasing spend.",
                 ]
             if ratio <= 1.5:
                 return "MODIFY", [
-                    f"Observed CAC {metrics.cac:.2f} is above target {target_cac:.2f} but not catastrophic.",
-                    "The experiment has conversions, so optimize the play before abandoning the ICP/channel.",
+                    (
+                        f"Observed CAC {metrics.cac:.2f} is above target "
+                        f"{target_cac:.2f} but not catastrophic."
+                    ),
+                    (
+                        "The experiment has conversions, so optimize the play "
+                        "before abandoning the ICP/channel."
+                    ),
                 ]
             return "STOP", [
-                f"Observed CAC {metrics.cac:.2f} is more than 50% above target {target_cac:.2f}.",
-                f"Signal already includes {metrics.paid_users} paid users, so the poor unit economics are meaningful.",
+                (
+                    f"Observed CAC {metrics.cac:.2f} is more than 50% above "
+                    f"target {target_cac:.2f}."
+                ),
+                (
+                    f"Signal already includes {metrics.paid_users} paid users, "
+                    "so the poor unit economics are meaningful."
+                ),
             ]
 
         if metrics.paid_users > 0 and metrics.cac is not None:
             if metrics.cac <= target_cac:
                 return "CONTINUE", [
-                    f"Early CAC {metrics.cac:.2f} is within target {target_cac:.2f}.",
-                    f"Only {metrics.paid_users} paid users observed; collect more signal before scaling.",
+                    (
+                        f"Early CAC {metrics.cac:.2f} is within target "
+                        f"{target_cac:.2f}."
+                    ),
+                    (
+                        f"Only {metrics.paid_users} paid users observed; "
+                        "collect more signal before scaling."
+                    ),
                 ]
-            if metrics.cac > target_cac * 1.5 and metrics.spend >= max(25, target_cac * 2):
+            if (
+                metrics.cac > target_cac * 1.5
+                and metrics.spend >= max(25, target_cac * 2)
+            ):
                 return "STOP", [
-                    f"Early CAC {metrics.cac:.2f} materially exceeds target {target_cac:.2f}.",
-                    f"Spend {metrics.spend:.2f} is already large enough to enforce the loss guardrail.",
+                    (
+                        f"Early CAC {metrics.cac:.2f} materially exceeds target "
+                        f"{target_cac:.2f}."
+                    ),
+                    (
+                        f"Spend {metrics.spend:.2f} is already large enough "
+                        "to enforce the loss guardrail."
+                    ),
                 ]
             return "MODIFY", [
-                f"The experiment converts, but CAC {metrics.cac:.2f} is above target {target_cac:.2f}.",
+                (
+                    f"The experiment converts, but CAC {metrics.cac:.2f} is above "
+                    f"target {target_cac:.2f}."
+                ),
                 "Improve cost, offer or conversion before collecting a larger sample.",
             ]
 
@@ -142,12 +184,18 @@ class GrowthPolicy:
         ):
             return "SCALE", [
                 f"ROAS is {metrics.roas:.3f} with {metrics.paid_users} paid users.",
-                "No CAC target is configured, so positive observed return is used as the scale guardrail.",
+                (
+                    "No CAC target is configured, so positive observed return "
+                    "is used as the scale guardrail."
+                ),
             ]
         if metrics.paid_users > 0:
             return "CONTINUE", [
                 f"The experiment has {metrics.paid_users} paid users.",
-                "No CAC target is configured; collect more signal before changing allocation.",
+                (
+                    "No CAC target is configured; collect more signal before "
+                    "changing allocation."
+                ),
             ]
         stop_threshold = max(play.estimated_cost_max, 100)
         if metrics.spend >= stop_threshold:
@@ -172,7 +220,10 @@ class GrowthPolicy:
     ) -> float | None:
         if product.budget is None:
             return None
-        return round(max(0.0, product.budget - product_analytics.total_spend), 2)
+        return round(
+            max(0.0, product.budget - product_analytics.total_spend),
+            2,
+        )
 
     def _recommended_increment(
         self,
@@ -201,14 +252,15 @@ class GrowthPolicy:
     ) -> NextHypothesisView:
         metrics = analytics.metrics
         if action == "SCALE":
-            target_text = (
-                f"while CAC stays ≤ {target_cac:.2f}" if target_cac is not None else "while economics remain positive"
-            )
+            if target_cac is not None:
+                target_text = f"while CAC stays ≤ {target_cac:.2f}"
+            else:
+                target_text = "while economics remain positive"
             return NextHypothesisView(
                 title="Scale the winning play",
                 change=(
-                    f"Repeat `{play.template_id}` on the same source type with an additional "
-                    f"budget cap of {recommended_increment:.2f}."
+                    f"Repeat `{play.template_id}` on the same source type with "
+                    f"an additional budget cap of {recommended_increment:.2f}."
                 ),
                 success_condition=target_text,
             )
@@ -216,8 +268,9 @@ class GrowthPolicy:
             return NextHypothesisView(
                 title="Collect a stronger signal",
                 change=(
-                    f"Keep the current play unchanged until at least {MIN_SCALE_PAID_USERS} paid users "
-                    "or the current test guardrail is reached."
+                    f"Keep the current play unchanged until at least "
+                    f"{MIN_SCALE_PAID_USERS} paid users or the current test "
+                    "guardrail is reached."
                 ),
                 success_condition=(
                     f"Reach {MIN_SCALE_PAID_USERS} paid users with stable CAC/quality."
@@ -225,29 +278,53 @@ class GrowthPolicy:
             )
         if action == "MODIFY":
             if metrics.visits >= 20 and metrics.signups == 0:
-                change = "Test a new hook/CTA or landing message while keeping the ICP and channel fixed."
+                change = (
+                    "Test a new hook/CTA or landing message while keeping the "
+                    "ICP and channel fixed."
+                )
             elif metrics.signups >= 5 and metrics.paid_users == 0:
-                change = "Test a stronger offer, activation path or paywall while keeping acquisition traffic fixed."
-            elif target_cac is not None and metrics.cac is not None and metrics.cac > target_cac:
-                change = "Keep the ICP but test a lower-cost offer or partnership structure on the same source type."
+                change = (
+                    "Test a stronger offer, activation path or paywall while "
+                    "keeping acquisition traffic fixed."
+                )
+            elif (
+                target_cac is not None
+                and metrics.cac is not None
+                and metrics.cac > target_cac
+            ):
+                change = (
+                    "Keep the ICP but test a lower-cost offer or partnership "
+                    "structure on the same source type."
+                )
             else:
-                change = "Change one major variable (hook or offer) while keeping the ICP/channel constant."
+                change = (
+                    "Change one major variable (hook or offer) while keeping "
+                    "the ICP/channel constant."
+                )
             return NextHypothesisView(
                 title="Modify one bottleneck",
                 change=change,
-                success_condition="Improve the bottleneck metric without degrading downstream paid conversion.",
+                success_condition=(
+                    "Improve the bottleneck metric without degrading downstream "
+                    "paid conversion."
+                ),
             )
         return NextHypothesisView(
             title="Replace the losing channel/tactic",
             change=(
-                f"Retire `{play.template_id}` for this opportunity and test the same ICP through a different source type."
+                f"Retire `{play.template_id}` for this opportunity and test the "
+                "same ICP through a different source type."
             ),
-            success_condition="Produce a lower CAC or a measurable conversion signal within the next test guardrail.",
+            success_condition=(
+                "Produce a lower CAC or a measurable conversion signal within "
+                "the next test guardrail."
+            ),
         )
 
     def _metric_summary(self, metrics, target_cac: float | None) -> str:
         target = f", target CAC={target_cac:.2f}" if target_cac is not None else ""
         return (
-            f"Observed: spend={metrics.spend:.2f}, visits={metrics.visits}, signups={metrics.signups}, "
-            f"paid={metrics.paid_users}, CAC={metrics.cac}{target}."
+            f"Observed: spend={metrics.spend:.2f}, visits={metrics.visits}, "
+            f"signups={metrics.signups}, paid={metrics.paid_users}, "
+            f"CAC={metrics.cac}{target}."
         )
