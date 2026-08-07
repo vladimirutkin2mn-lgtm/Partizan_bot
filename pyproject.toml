@@ -1,6 +1,6 @@
 [project]
 name = "partizan-bot"
-version = "0.6.0"
+version = "0.7.0"
 description = "Autonomous AI Growth Operator for internet-native products"
 readme = "README.md"
 requires-python = ">=3.12"
