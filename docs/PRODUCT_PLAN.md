@@ -2,15 +2,17 @@
 
 ## 1. Идея
 
-**Partizan Bot** — автономный AI Growth Operator для интернет-продуктов.
+**Partizan Bot** — автономный AI Growth Operator для internet-native продуктов.
 
-Пользователь не просит систему «придумать пост» или «настроить рекламу». Он задаёт бизнес-цель:
+Пользователь не просит систему «придумать пост» или «настроить рекламу». Он описывает продукт своими словами и задаёт бизнес-цель:
 
-> Вот мой продукт. Цена — $9.99. Бюджет — $1,000. Найди первые 200 платящих пользователей с CAC не выше $5.
+> У меня AI relationship oracle. Он помогает пользователю разбирать отношения и получать персонализированные интерактивные readings. Подписка — $9.99. Бюджет — $1,000. Найди первые 200 платящих пользователей с CAC не выше $5.
 
-После этого Partizan Bot должен сам пройти полный цикл:
+Если описания недостаточно, Partizan Bot сам задаёт несколько уточняющих вопросов, формирует структурированный `ProductProfile`, показывает пользователю своё понимание продукта и после этого запускает growth loop.
 
-1. понять продукт и его ценность;
+Дальше система должна сама пройти полный цикл:
+
+1. зафиксировать продукт, его ценность и ограничения;
 2. выделить и приоритизировать целевые аудитории;
 3. найти конкретные места, где эти аудитории уже находятся;
 4. придумать набор acquisition-гипотез;
@@ -70,10 +72,10 @@
 
 У них обычно есть:
 
-- один понятный URL или bot deep link;
+- понятный digital product;
 - простая регистрация;
 - измеримая конверсия;
-- понятная цена;
+- понятная цена или monetization model;
 - короткий путь до покупки;
 - возможность быстро получить обратную связь по эксперименту.
 
@@ -83,24 +85,51 @@
 
 ## 4. Что пользователь передаёт системе
 
-Минимальный onboarding:
+### Принцип onboarding
 
-- URL / Telegram bot / App Store link;
-- краткое описание продукта;
-- география;
+**На MVP Partizan Bot не должен пытаться понять продукт по URL.**
+
+Источник истины о самом продукте — его создатель. Пользователь описывает продукт своими словами, а система превращает это описание в структурированный `ProductProfile`.
+
+Если каких-то данных не хватает или система видит противоречие, она задаёт уточняющие вопросы.
+
+URL, bot link, App Store link или сайт могут быть сохранены как **опциональные reference links**, но не являются обязательным источником для понимания продукта в MVP.
+
+### Минимальный product brief
+
+Пользователь сообщает:
+
+- название / тип продукта;
+- что делает продукт;
+- какую проблему или желание пользователя он закрывает;
+- ключевые use cases;
+- УТП / почему пользователь должен выбрать именно его;
+- цену и модель монетизации;
+- географию;
 - язык;
-- цена / ARPU;
+- бизнес-цель;
 - бюджет;
-- целевой результат;
-- максимальный CAC / CPA;
+- максимальный CAC / CPA, если он известен;
 - доступные каналы и аккаунты;
 - ограничения на действия.
 
-Пример:
+Опционально:
+
+- предполагаемая текущая аудитория;
+- известные конкуренты;
+- прошлые маркетинговые эксперименты;
+- existing traction;
+- reference links.
+
+### Пример initial brief
 
 ```text
 Product: AI relationship oracle
+Description: интерактивный AI-провидец для вопросов об отношениях и будущем отношений
+Value proposition: персонализированные readings, которые учитывают историю пользователя
+USP: не статический гороскоп, а продолжающаяся персональная история
 Market: US
+Language: English
 Price: $9.99/month
 Budget: $500
 Goal: 100 paid users
@@ -108,23 +137,61 @@ Max CAC: $5
 Allowed: creator outreach, partnerships, content, communities, SEO
 ```
 
+### Уточняющий диалог
+
+Partizan Bot не должен заставлять пользователя заполнять огромную анкету заранее.
+
+Flow:
+
+```text
+Свободное описание продукта
+        ↓
+Draft ProductProfile
+        ↓
+Gap / contradiction detection
+        ↓
+1–3 самых важных уточняющих вопроса
+        ↓
+Updated ProductProfile
+        ↓
+Если информации достаточно → подтверждение понимания
+        ↓
+ICP discovery
+```
+
+Примеры полезных вопросов:
+
+- «За что конкретно пользователь платит $9.99: подписку на неограниченные readings или пакет?»
+- «Какой основной повод заставляет человека открыть продукт впервые?»
+- «Что пользователь получает у вас такого, чего нет в обычном ChatGPT?»
+- «Есть ли аудитории, которым продукт точно не предназначен?»
+
+Важно: система спрашивает **только то, что существенно изменит marketing strategy**.
+
 ---
 
 ## 5. Основной продуктовый pipeline
 
-### Stage 1 — Understand Product
+### Stage 1 — Product Intake & Clarification
 
-Система анализирует:
+Product Analyst получает свободное описание от пользователя и:
 
-- лендинг;
-- onboarding;
-- pricing;
-- ключевые use cases;
-- обещание продукта;
-- конкурентов;
-- отзывы и обсуждения конкурентов.
+- выделяет value proposition;
+- формулирует основные use cases;
+- выделяет user pain / desire;
+- фиксирует USP / differentiation;
+- нормализует pricing / monetization;
+- фиксирует market / language;
+- фиксирует бизнес-цель, budget и CAC guardrail;
+- отмечает assumptions;
+- обнаруживает пробелы и противоречия;
+- задаёт минимально необходимое число уточняющих вопросов.
 
-Результат: структурированный `ProductProfile`.
+Результат: подтверждённый пользователем структурированный `ProductProfile`.
+
+**В MVP здесь нет crawling лендинга и автоматического извлечения product facts из URL.**
+
+После формирования `ProductProfile` Partizan Bot уже может использовать web/search для внешнего исследования рынка, конкурентов, аудитории и каналов.
 
 ### Stage 2 — Generate ICPs
 
@@ -133,7 +200,7 @@ Allowed: creator outreach, partnerships, content, communities, SEO
 Для каждого сегмента фиксируются:
 
 - кто это;
-- какая у него проблема;
+- какая у него проблема / желание;
 - какой trigger заставляет искать решение;
 - насколько проблема срочная;
 - willingness to pay;
@@ -184,7 +251,7 @@ Partizan Bot ищет не абстрактные каналы вроде «TikT
 
 #### Micro Creator Seeding
 
-Найти 500 creators → оценить engagement и соответствие ICP → выбрать 50 → подготовить персонализированный outreach → выдать referral links → сравнить CAC.
+Найти creators → оценить engagement и соответствие ICP → выбрать лучших → подготовить персонализированный outreach → выдать referral links → сравнить CAC.
 
 #### Affiliate Hunting
 
@@ -269,7 +336,7 @@ Growth Manager Agent принимает одно из решений:
 
 ### 1. Product Analyst Agent
 
-Понимает продукт, value proposition, pricing и конкурентов.
+Ведёт guided intake: превращает свободное пользовательское описание в `ProductProfile`, обнаруживает gaps / contradictions и задаёт уточняющие вопросы.
 
 ### 2. ICP Agent
 
@@ -371,22 +438,24 @@ Partizan Bot должен искать дешёвые, недооценённы�
 
 Доказать следующий цикл:
 
-> **Product → ICP → concrete channels → Growth Plays → experiment → metrics → decision.**
+> **Product Brief → ProductProfile → ICP → concrete channels → Growth Plays → experiment → metrics → decision.**
 
 Не нужно сразу автоматически запускать 20 рекламных кабинетов.
 
 ### MVP v0 — Research Engine
 
-Пользователь отдаёт URL и цель.
+Пользователь описывает продукт и задаёт growth goal.
 
-Система автоматически создаёт:
+Partizan Bot:
 
-1. ProductProfile;
-2. 10–20 ICP;
-3. scoring ICP;
-4. список конкретных каналов;
-5. 20–50 Growth Plays;
-6. приоритизацию экспериментов.
+1. формирует draft `ProductProfile`;
+2. при необходимости задаёт уточняющие вопросы;
+3. получает подтверждённый `ProductProfile`;
+4. создаёт 10–20 ICP;
+5. выполняет scoring ICP;
+6. находит список конкретных каналов;
+7. генерирует 20–50 Growth Plays;
+8. приоритизирует эксперименты.
 
 ### MVP v1 — Assisted Execution
 
@@ -429,6 +498,8 @@ Partizan Bot должен искать дешёвые, недооценённы�
 
 Чтобы не утонуть в интеграциях, на старте не делаем:
 
+- автоматический разбор продукта по URL;
+- crawling лендинга для извлечения product facts;
 - универсальную CRM;
 - полный Meta Ads manager;
 - полный Google Ads manager;
@@ -455,7 +526,7 @@ Frontend / Telegram UI
         v
 Growth Orchestrator
         |
-        +--> Product Analyst
+        +--> Product Analyst / Clarification
         +--> ICP Agent
         +--> Channel Hunter
         +--> Growth Hacker
@@ -479,7 +550,7 @@ PostgreSQL
 Отдельно:
 
 - background jobs / queue;
-- browser/search connectors;
+- browser/search connectors для внешнего market/channel research;
 - LLM provider abstraction;
 - integrations layer;
 - analytics/event ingestion.
@@ -493,13 +564,43 @@ PostgreSQL
 ### Product
 
 - id
-- url
+- name
+- category
 - description
-- market
+- problem_or_desire
+- value_proposition
+- usp
+- use_cases
+- pricing_model
 - price
+- target_geographies
+- languages
+- known_audience
+- known_competitors
+- assumptions
+- reference_links
 - goal
 - budget
 - max_cac
+- allowed_channels
+- restrictions
+- profile_status
+
+`profile_status` на старте:
+
+- `DRAFT`;
+- `NEEDS_CLARIFICATION`;
+- `CONFIRMED`.
+
+### ClarificationQuestion
+
+- id
+- product_id
+- question
+- reason
+- priority
+- answer
+- status
 
 ### ICP
 
@@ -560,6 +661,13 @@ PostgreSQL
 
 **Количество экспериментальных циклов, которые Partizan Bot может провести от гипотезы до измеримого результата.**
 
+## Качество Product Intake
+
+- % product briefs, после которых достаточно ≤3 уточняющих вопросов;
+- median number of clarification questions;
+- доля ProductProfile, подтверждённых пользователем без существенных правок;
+- time from first description to confirmed ProductProfile.
+
 ## Качество discovery
 
 - % найденных каналов, признанных релевантными;
@@ -598,26 +706,29 @@ PostgreSQL
 - [ ] определить стек;
 - [ ] создать application skeleton;
 - [ ] PostgreSQL + migrations;
-- [ ] модели Product / ICP / Channel / GrowthPlay / Experiment;
+- [ ] модели Product / ClarificationQuestion / ICP / Channel / GrowthPlay / Experiment;
 - [ ] базовая LLM abstraction;
 - [ ] job queue;
 - [ ] structured logging;
 - [ ] минимальные тесты и CI.
 
-**Definition of Done:** можно создать Product и запустить mock growth workflow.
+**Definition of Done:** можно создать Product, пройти mock clarification flow и запустить mock growth workflow.
 
 ---
 
-## Milestone 1 — Product Intelligence
+## Milestone 1 — Product Brief & Clarification
 
-- [ ] intake по URL / текстовому описанию;
-- [ ] извлечение landing content;
-- [ ] ProductProfile schema;
-- [ ] competitor discovery;
-- [ ] Product Analyst Agent;
-- [ ] сохранение evidence/source links.
+- [ ] free-text product intake;
+- [ ] `ProductProfile` schema;
+- [ ] extraction of structured product facts from user input;
+- [ ] completeness rules;
+- [ ] contradiction / ambiguity detection;
+- [ ] clarification question generator;
+- [ ] answer ingestion;
+- [ ] profile confirmation state;
+- [ ] assumption tracking.
 
-**DoD:** по URL продукта формируется структурированный ProductProfile с evidence.
+**DoD:** по свободному описанию пользователя система формирует `ProductProfile`, задаёт только необходимые уточняющие вопросы и доводит профиль до состояния `CONFIRMED` без чтения сайта продукта.
 
 ---
 
@@ -654,7 +765,7 @@ PostgreSQL
 - [ ] relevance scoring;
 - [ ] evidence storage.
 
-**DoD:** для top ICP система находит минимум 30 конкретных ChannelOpportunity с URL и rationale.
+**DoD:** для top ICP система находит минимум 30 конкретных `ChannelOpportunity` с URL и rationale.
 
 ---
 
@@ -721,14 +832,16 @@ PostgreSQL
 
 Для каждого тестового продукта:
 
-1. поставить конкретную acquisition goal;
-2. ограничить бюджет;
-3. запустить discovery;
-4. выбрать top Growth Plays;
-5. провести реальные эксперименты;
-6. записать CAC и conversion;
-7. сравнить прогноз с фактом;
-8. улучшить scoring.
+1. пользователь описывает продукт и цель;
+2. Partizan Bot формирует и уточняет `ProductProfile`;
+3. ставится конкретная acquisition goal;
+4. ограничивается бюджет;
+5. запускается discovery;
+6. выбираются top Growth Plays;
+7. проводятся реальные эксперименты;
+8. записываются CAC и conversion;
+9. прогноз сравнивается с фактом;
+10. scoring улучшается на фактических данных.
 
 **DoD:** минимум один продукт получает первых реальных пользователей через pipeline Partizan Bot.
 
@@ -739,9 +852,15 @@ PostgreSQL
 Первый сценарий должен быть максимально узким:
 
 ```text
-URL продукта
+Свободное описание продукта + УТП + цель
     ↓
 Product Analyst
+    ↓
+Draft ProductProfile
+    ↓
+Уточняющие вопросы, только если нужны
+    ↓
+Confirmed ProductProfile
     ↓
 10 ICP
     ↓
@@ -776,34 +895,38 @@ Scale / Modify / Stop
 
 # 16. Ключевые принципы разработки
 
-1. **Execution over reports.** Каждая рекомендация должна стремиться стать действием.
-2. **Evidence over hallucination.** ICP и каналы должны ссылаться на реальные источники, когда это возможно.
-3. **Concrete channels over generic advice.** Не «используйте Reddit», а конкретное сообщество / creator / newsletter.
-4. **Experiments over strategy decks.** Каждая идея превращается в измеримый тест.
-5. **Economics over vanity metrics.** Главные результаты — paid users, revenue, CAC.
-6. **Closed loop.** Результат эксперимента обязан влиять на следующую итерацию.
-7. **Human approval first, autonomy later.** Сначала безопасно доказываем качество решений.
-8. **Dogfood aggressively.** Наши собственные боты и приложения — основной тестовый полигон.
+1. **User is the source of truth for product facts.** На MVP не пытаемся угадывать продукт по сайту.
+2. **Ask only high-value questions.** Уточняющий вопрос должен существенно менять маркетинговое решение.
+3. **Execution over reports.** Каждая рекомендация должна стремиться стать действием.
+4. **Evidence over hallucination.** Рыночные выводы, аудитории и каналы должны ссылаться на реальные внешние источники, когда это возможно.
+5. **Concrete channels over generic advice.** Не «используйте Reddit», а конкретное сообщество / creator / newsletter.
+6. **Experiments over strategy decks.** Каждая идея превращается в измеримый тест.
+7. **Economics over vanity metrics.** Главные результаты — paid users, revenue, CAC.
+8. **Closed loop.** Результат эксперимента обязан влиять на следующую итерацию.
+9. **Human approval first, autonomy later.** Сначала доказываем качество решений, потом увеличиваем автономность.
+10. **Dogfood aggressively.** Наши собственные боты и приложения — основной тестовый полигон.
 
 ---
 
 # 17. Ближайший порядок действий
 
-Начинаем не с интерфейса и не с рекламных интеграций.
+Начинаем не с интерфейса, scraping продукта и не с рекламных интеграций.
 
 ### Следующие шаги
 
 1. создать технический skeleton;
-2. зафиксировать Pydantic / DB schemas основных сущностей;
-3. реализовать Product Analyst;
-4. реализовать ICP Agent + scoring;
-5. выбрать три первых класса источников для Channel Hunter;
-6. довести discovery до реальных URL и evidence;
-7. реализовать GrowthPlay generation;
-8. собрать простой experiment runner;
-9. подключить event tracking;
-10. проверить полный цикл на одном из наших существующих ботов.
+2. зафиксировать Pydantic / DB schemas `Product`, `ClarificationQuestion` и остальных основных сущностей;
+3. реализовать guided Product Analyst;
+4. реализовать completeness / contradiction detection;
+5. реализовать clarification loop;
+6. реализовать ICP Agent + scoring;
+7. выбрать три первых класса источников для Channel Hunter;
+8. довести discovery до реальных URL и evidence;
+9. реализовать GrowthPlay generation;
+10. собрать простой experiment runner;
+11. подключить event tracking;
+12. проверить полный цикл на одном из наших существующих ботов.
 
 Первый большой критерий успеха проекта:
 
-> **Partizan Bot получает URL нового digital-продукта и без заранее заданной аудитории самостоятельно находит минимум 3 правдоподобных ICP, 30 конкретных точек дистрибуции и 10 измеримых Growth Plays, из которых хотя бы один реально запускается и получает измеримый результат.**
+> **Partizan Bot получает свободное описание нового digital-продукта, при необходимости задаёт несколько точных уточняющих вопросов и без заранее заданной аудитории самостоятельно находит минимум 3 правдоподобных ICP, 30 конкретных точек дистрибуции и 10 измеримых Growth Plays, из которых хотя бы один реально запускается и получает измеримый результат.**
