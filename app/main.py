@@ -2,11 +2,13 @@ from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, status
 
+from app.channel_service import channel_service
 from app.icp_service import icp_service
 from app.logging import configure_logging
 from app.models import ProductProfileStatus
 from app.product_intake import product_intake_service
 from app.schemas import (
+    ChannelDiscoveryResponse,
     ClarificationAnswerRequest,
     ICPGenerationResponse,
     MockWorkflowResponse,
@@ -21,8 +23,8 @@ configure_logging()
 
 app = FastAPI(
     title="Partizan Bot API",
-    version="0.3.0",
-    description="Product intake, ICP discovery and growth-engine API for Partizan Bot.",
+    version="0.4.0",
+    description="Product intake, audience and channel discovery API for Partizan Bot.",
 )
 
 
@@ -109,6 +111,45 @@ async def get_icps(product_id: UUID) -> ICPGenerationResponse:
         return icp_service.get(product_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="ICP generation not found") from exc
+
+
+@app.post(
+    "/v1/products/{product_id}/channels/discover",
+    response_model=ChannelDiscoveryResponse,
+    tags=["channels"],
+)
+async def discover_channels(product_id: UUID) -> ChannelDiscoveryResponse:
+    try:
+        product = product_intake_service.get_product(product_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Product not found") from exc
+
+    try:
+        icp_result = icp_service.get(product_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Generate ICPs before channel discovery",
+        ) from exc
+
+    try:
+        return await channel_service.discover(product, icp_result)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get(
+    "/v1/products/{product_id}/channels",
+    response_model=ChannelDiscoveryResponse,
+    tags=["channels"],
+)
+async def get_channels(product_id: UUID) -> ChannelDiscoveryResponse:
+    try:
+        return channel_service.get(product_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Channel discovery not found") from exc
 
 
 @app.post(
