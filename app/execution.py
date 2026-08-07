@@ -134,7 +134,8 @@ class OutreachComposer:
                 subject=f"Partnership idea: {product.name}",
                 body=(
                     f"{greeting}\n\n"
-                    f"I’m reaching out about {product.name}. {product.value_proposition or product.description}\n\n"
+                    f"I’m reaching out about {product.name}. "
+                    f"{product.value_proposition or product.description}\n\n"
                     f"I think it could be relevant to the audience around {channel.title}. "
                     f"The test idea is: {play.offer}.\n\n"
                     f"If useful, here is a tracked link for the test: {tracking_url}\n\n"
