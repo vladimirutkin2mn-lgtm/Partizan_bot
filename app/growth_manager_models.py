@@ -24,8 +24,14 @@ class DecisionContextRecord(Base):
     policy_version: Mapped[str] = mapped_column(String(80))
     rationale: Mapped[list[str]] = mapped_column(JSONB, default=list)
     metrics_snapshot: Mapped[dict] = mapped_column(JSONB, default=dict)
-    budget_remaining: Mapped[float | None] = mapped_column(Numeric(18, 2), nullable=True)
-    recommended_budget_increment: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
+    budget_remaining: Mapped[float | None] = mapped_column(
+        Numeric(18, 2),
+        nullable=True,
+    )
+    recommended_budget_increment: Mapped[float] = mapped_column(
+        Numeric(18, 2),
+        default=0,
+    )
     next_hypothesis: Mapped[dict] = mapped_column(JSONB, default=dict)
     fingerprint: Mapped[str] = mapped_column(String(40), index=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -55,7 +61,10 @@ class GrowthLearningMemoryRecord(Base):
     source_type: Mapped[str] = mapped_column(String(80))
     template_id: Mapped[str] = mapped_column(String(120))
     action: Mapped[str] = mapped_column(String(20))
-    observed_cac: Mapped[float | None] = mapped_column(Numeric(18, 2), nullable=True)
+    observed_cac: Mapped[float | None] = mapped_column(
+        Numeric(18, 2),
+        nullable=True,
+    )
     paid_users: Mapped[int] = mapped_column(default=0)
     revenue: Mapped[float] = mapped_column(Numeric(18, 2), default=0)
     summary: Mapped[str] = mapped_column(Text)
