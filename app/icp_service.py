@@ -47,8 +47,7 @@ class InMemoryICPService:
         ]
         response = ICPGenerationResponse(
             product_id=product.id,
-            generated_count=len(result.ranked)
-            + sum(len(items) for items in result.duplicate_clusters.values()),
+            generated_count=result.generated_count,
             ranked_count=len(icps),
             icps=icps,
             duplicate_clusters=[
