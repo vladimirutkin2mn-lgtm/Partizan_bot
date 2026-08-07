@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, Float, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -39,9 +39,12 @@ class Product(Base):
     __tablename__ = "products"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    input_brief: Mapped[str | None] = mapped_column(Text, nullable=True)
     name: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text)
+    problem_or_desire: Mapped[str | None] = mapped_column(Text, nullable=True)
     value_proposition: Mapped[str | None] = mapped_column(Text, nullable=True)
+    usp: Mapped[str | None] = mapped_column(Text, nullable=True)
     use_cases: Mapped[list[str]] = mapped_column(JSONB, default=list)
     market: Mapped[str | None] = mapped_column(String(120), nullable=True)
     language: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -52,8 +55,11 @@ class Product(Base):
     max_cac: Mapped[float | None] = mapped_column(Float, nullable=True)
     allowed_channels: Mapped[list[str]] = mapped_column(JSONB, default=list)
     constraints: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    known_audience: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    known_competitors: Mapped[list[str]] = mapped_column(JSONB, default=list)
     reference_links: Mapped[list[str]] = mapped_column(JSONB, default=list)
     assumptions: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    contradictions: Mapped[list[str]] = mapped_column(JSONB, default=list)
     status: Mapped[ProductProfileStatus] = mapped_column(
         Enum(ProductProfileStatus, name="product_profile_status"),
         default=ProductProfileStatus.DRAFT,
@@ -81,6 +87,7 @@ class ClarificationQuestion(Base):
     field_name: Mapped[str] = mapped_column(String(100))
     question: Mapped[str] = mapped_column(Text)
     rationale: Mapped[str] = mapped_column(Text)
+    priority: Mapped[int] = mapped_column(Integer, default=3)
     status: Mapped[ClarificationStatus] = mapped_column(
         Enum(ClarificationStatus, name="clarification_status"),
         default=ClarificationStatus.OPEN,
