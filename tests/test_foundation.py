@@ -14,91 +14,24 @@ def test_health() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_product_intake_asks_for_missing_high_value_fields() -> None:
+def test_mock_workflow_exposes_growth_loop_after_confirmation() -> None:
     response = client.post(
         "/v1/products",
         json={
-            "name": "Oracle",
-            "description": (
-                "AI entertainment product that gives personalized relationship readings."
-            ),
-            "price": 9.99,
-            "pricing_model": "subscription",
-        },
-    )
-    assert response.status_code == 201
-    body = response.json()
-    assert body["product"]["status"] == "NEEDS_CLARIFICATION"
-    assert [item["field_name"] for item in body["clarifications"]] == [
-        "value_proposition",
-        "market",
-        "goal",
-    ]
-
-
-def test_product_intake_confirms_complete_profile() -> None:
-    response = client.post(
-        "/v1/products",
-        json={
-            "name": "Oracle",
-            "description": (
-                "AI entertainment product that gives personalized relationship readings."
-            ),
-            "value_proposition": "Instant personalized readings available at any time.",
-            "market": "US",
-            "goal": "Acquire 100 paid users",
-            "budget": 500,
-            "max_cac": 5,
-        },
-    )
-    assert response.status_code == 201
-    assert response.json()["product"]["status"] == "CONFIRMED"
-    assert response.json()["clarifications"] == []
-
-
-def test_clarification_flow_reaches_confirmed() -> None:
-    response = client.post(
-        "/v1/products",
-        json={
-            "name": "Oracle",
-            "description": (
-                "AI entertainment product that gives personalized relationship readings."
-            ),
-            "market": "US",
-            "goal": "Acquire 100 paid users",
-        },
-    )
-    body = response.json()
-    product_id = body["product"]["id"]
-    question = body["clarifications"][0]
-
-    answer = client.post(
-        f"/v1/products/{product_id}/clarifications",
-        json={
-            "question_id": question["id"],
-            "answer": "Personalized readings that remember the user's story.",
-        },
-    )
-    assert answer.status_code == 200
-    assert answer.json()["product"]["status"] == "CONFIRMED"
-
-
-def test_mock_workflow_exposes_growth_loop() -> None:
-    response = client.post(
-        "/v1/products",
-        json={
-            "name": "Oracle",
-            "description": (
-                "AI entertainment product that gives personalized relationship readings."
-            ),
-            "value_proposition": "Instant personalized readings available at any time.",
-            "market": "US",
-            "goal": "Acquire 100 paid users",
+            "brief": (
+                "Product: Oracle\n"
+                "Description: AI entertainment product with personalized relationship readings.\n"
+                "Value proposition: Personalized readings that remember the user's story.\n"
+                "Market: US\n"
+                "Goal: Acquire 100 paid users"
+            )
         },
     )
     product_id = response.json()["product"]["id"]
-    workflow = client.post(f"/v1/products/{product_id}/mock-workflow")
+    confirmed = client.post(f"/v1/products/{product_id}/confirm")
+    assert confirmed.status_code == 200
 
+    workflow = client.post(f"/v1/products/{product_id}/mock-workflow")
     assert workflow.status_code == 200
     assert [stage["name"] for stage in workflow.json()["stages"]] == [
         "product_profile",
