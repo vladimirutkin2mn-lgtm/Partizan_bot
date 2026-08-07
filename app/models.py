@@ -26,6 +26,14 @@ class GrowthPlayStatus(StrEnum):
     REJECTED = "REJECTED"
 
 
+class ExecutionPackageStatus(StrEnum):
+    PREPARED = "PREPARED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    SENT = "SENT"
+    FAILED = "FAILED"
+
+
 class ExperimentStatus(StrEnum):
     DRAFT = "DRAFT"
     APPROVED = "APPROVED"
@@ -176,18 +184,50 @@ class GrowthPlay(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class ExecutionPackage(Base):
+    __tablename__ = "execution_packages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id"))
+    growth_play_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("growth_plays.id")
+    )
+    contact: Mapped[dict] = mapped_column(JSONB, default=dict)
+    subject: Mapped[str] = mapped_column(String(160))
+    body: Mapped[str] = mapped_column(Text)
+    tracking_url: Mapped[str] = mapped_column(Text)
+    referral_token: Mapped[str] = mapped_column(String(64))
+    status: Mapped[ExecutionPackageStatus] = mapped_column(
+        Enum(ExecutionPackageStatus, name="execution_package_status"),
+        default=ExecutionPackageStatus.PREPARED,
+    )
+    delivery_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Experiment(Base):
     __tablename__ = "experiments"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id"), nullable=True
+    )
     growth_play_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("growth_plays.id")
+    )
+    execution_package_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("execution_packages.id"), nullable=True
     )
     status: Mapped[ExperimentStatus] = mapped_column(
         Enum(ExperimentStatus, name="experiment_status"),
         default=ExperimentStatus.DRAFT,
     )
     budget: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tracking_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivery_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     metrics: Mapped[dict] = mapped_column(JSONB, default=dict)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
