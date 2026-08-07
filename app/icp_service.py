@@ -62,5 +62,8 @@ class InMemoryICPService:
     def get(self, product_id: UUID) -> ICPGenerationResponse:
         return self._results[product_id]
 
+    def reset(self) -> None:
+        self._results.clear()
+
 
 icp_service = InMemoryICPService()
