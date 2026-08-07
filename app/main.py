@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException, status
 
 from app.channel_service import channel_service
+from app.growth_play_service import growth_play_service
 from app.icp_service import icp_service
 from app.logging import configure_logging
 from app.models import ProductProfileStatus
@@ -10,6 +11,9 @@ from app.product_intake import product_intake_service
 from app.schemas import (
     ChannelDiscoveryResponse,
     ClarificationAnswerRequest,
+    GrowthPlayApprovalRequest,
+    GrowthPlayGenerationResponse,
+    GrowthPlayView,
     ICPGenerationResponse,
     MockWorkflowResponse,
     ProductCreateRequest,
@@ -23,8 +27,8 @@ configure_logging()
 
 app = FastAPI(
     title="Partizan Bot API",
-    version="0.4.0",
-    description="Product intake, audience and channel discovery API for Partizan Bot.",
+    version="0.5.0",
+    description="Discovery and acquisition-experiment API for Partizan Bot.",
 )
 
 
@@ -150,6 +154,60 @@ async def get_channels(product_id: UUID) -> ChannelDiscoveryResponse:
         return channel_service.get(product_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Channel discovery not found") from exc
+
+
+@app.post(
+    "/v1/products/{product_id}/growth-plays/generate",
+    response_model=GrowthPlayGenerationResponse,
+    tags=["growth-plays"],
+)
+async def generate_growth_plays(product_id: UUID) -> GrowthPlayGenerationResponse:
+    try:
+        product = product_intake_service.get_product(product_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Product not found") from exc
+
+    try:
+        icp_result = icp_service.get(product_id)
+        channel_result = channel_service.get(product_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Generate ICPs and discover channels before Growth Plays",
+        ) from exc
+
+    try:
+        return await growth_play_service.generate(product, icp_result, channel_result)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.get(
+    "/v1/products/{product_id}/growth-plays",
+    response_model=GrowthPlayGenerationResponse,
+    tags=["growth-plays"],
+)
+async def get_growth_plays(product_id: UUID) -> GrowthPlayGenerationResponse:
+    try:
+        return growth_play_service.get(product_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Growth Play generation not found") from exc
+
+
+@app.post(
+    "/v1/products/{product_id}/growth-plays/{play_id}/approval",
+    response_model=GrowthPlayView,
+    tags=["growth-plays"],
+)
+async def set_growth_play_approval(
+    product_id: UUID,
+    play_id: UUID,
+    payload: GrowthPlayApprovalRequest,
+) -> GrowthPlayView:
+    try:
+        return growth_play_service.set_status(product_id, play_id, payload.status)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Growth Play not found") from exc
 
 
 @app.post(
