@@ -168,6 +168,54 @@ class GrowthPlayApprovalRequest(BaseModel):
     status: Literal["APPROVED", "REJECTED"]
 
 
+class ExecutionPrepareRequest(BaseModel):
+    destination_url: HttpUrl | None = None
+    contact_email: str | None = None
+    contact_name: str | None = Field(default=None, max_length=200)
+
+
+class ExecutionEditRequest(BaseModel):
+    subject: str = Field(min_length=3, max_length=160)
+    body: str = Field(min_length=20, max_length=4000)
+
+
+class ExecutionContactView(BaseModel):
+    method: Literal["email", "platform"]
+    address: str | None
+    name: str | None
+    contact_url: str
+    source: Literal["user_override", "public_evidence", "channel_url"]
+
+
+class ExecutionPackageView(BaseModel):
+    id: UUID
+    product_id: UUID
+    play_id: UUID
+    experiment_id: UUID
+    contact: ExecutionContactView
+    subject: str
+    body: str
+    tracking_url: str
+    referral_token: str
+    status: Literal["PREPARED", "APPROVED", "REJECTED", "SENT", "FAILED"]
+    delivery_id: str | None = None
+
+
+class ExperimentView(BaseModel):
+    id: UUID
+    product_id: UUID
+    growth_play_id: UUID
+    execution_package_id: UUID
+    status: Literal["DRAFT", "APPROVED", "RUNNING", "FINISHED", "CANCELLED"]
+    tracking_url: str
+    delivery_id: str | None = None
+
+
+class ExecutionRunResponse(BaseModel):
+    package: ExecutionPackageView
+    experiment: ExperimentView
+
+
 class WorkflowStageView(BaseModel):
     name: str
     status: str
