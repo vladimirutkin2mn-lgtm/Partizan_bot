@@ -44,6 +44,7 @@ class RankedICPCandidate:
 
 @dataclass(frozen=True, slots=True)
 class ICPRankingResult:
+    generated_count: int
     ranked: list[RankedICPCandidate]
     duplicate_clusters: dict[str, list[str]]
 
@@ -137,7 +138,11 @@ class ICPEngine:
             unique.extend(duplicates[: 10 - len(unique)])
 
         unique.sort(key=lambda item: (-item.total_score, item.candidate.title.lower()))
-        return ICPRankingResult(ranked=unique, duplicate_clusters=clusters)
+        return ICPRankingResult(
+            generated_count=len(candidates),
+            ranked=unique,
+            duplicate_clusters=clusters,
+        )
 
     def calculate_score(self, dimensions: ICPDimensionScores) -> float:
         values = dimensions.model_dump()
