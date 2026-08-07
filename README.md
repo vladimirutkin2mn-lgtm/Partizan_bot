@@ -41,3 +41,33 @@ Product
 **Execution over recommendations.**
 
 Partizan Bot should evolve from “here is what you could do” to **“here is what I found, what I launched, what worked and what I am doing next.”**
+
+## Local development
+
+Milestone 0 uses Python 3.12, FastAPI, PostgreSQL, SQLAlchemy/Alembic and pytest.
+
+```bash
+cp .env.example .env
+make install
+make infra-up
+make migrate
+make dev
+```
+
+Useful commands:
+
+```bash
+make test
+make lint
+```
+
+Initial API contracts:
+
+- `GET /health`
+- `POST /v1/products`
+- `POST /v1/products/{product_id}/clarifications`
+- `POST /v1/products/{product_id}/mock-workflow`
+
+The product-intake service is intentionally in-memory in Milestone 0. Its purpose is to prove the
+`DRAFT / NEEDS_CLARIFICATION / CONFIRMED` contracts and the mock end-to-end workflow before
+Milestone 1 adds LLM-assisted extraction, clarification quality and persistent application services.
