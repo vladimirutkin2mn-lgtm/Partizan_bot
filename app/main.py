@@ -2,11 +2,13 @@ from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, status
 
+from app.icp_service import icp_service
 from app.logging import configure_logging
 from app.models import ProductProfileStatus
 from app.product_intake import product_intake_service
 from app.schemas import (
     ClarificationAnswerRequest,
+    ICPGenerationResponse,
     MockWorkflowResponse,
     ProductCreateRequest,
     ProductIntakeResponse,
@@ -19,8 +21,8 @@ configure_logging()
 
 app = FastAPI(
     title="Partizan Bot API",
-    version="0.2.0",
-    description="Product intake and growth-engine API for Partizan Bot.",
+    version="0.3.0",
+    description="Product intake, ICP discovery and growth-engine API for Partizan Bot.",
 )
 
 
@@ -78,6 +80,35 @@ async def confirm_product(product_id: UUID) -> ProductIntakeResponse:
         raise HTTPException(status_code=404, detail="Product not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post(
+    "/v1/products/{product_id}/icps/generate",
+    response_model=ICPGenerationResponse,
+    tags=["icp"],
+)
+async def generate_icps(product_id: UUID) -> ICPGenerationResponse:
+    try:
+        product = product_intake_service.get_product(product_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Product not found") from exc
+
+    try:
+        return await icp_service.generate(product)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get(
+    "/v1/products/{product_id}/icps",
+    response_model=ICPGenerationResponse,
+    tags=["icp"],
+)
+async def get_icps(product_id: UUID) -> ICPGenerationResponse:
+    try:
+        return icp_service.get(product_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="ICP generation not found") from exc
 
 
 @app.post(
