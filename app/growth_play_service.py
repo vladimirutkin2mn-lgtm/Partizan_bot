@@ -4,6 +4,7 @@ from app.growth_play_agent import GrowthPlayGenerator
 from app.llm import get_llm_provider
 from app.schemas import (
     ChannelDiscoveryResponse,
+    ChannelOpportunityView,
     GrowthPlayGenerationResponse,
     GrowthPlayView,
     ICPGenerationResponse,
@@ -24,7 +25,8 @@ class InMemoryGrowthPlayService:
         channel_result: ChannelDiscoveryResponse,
     ) -> GrowthPlayGenerationResponse:
         generator = GrowthPlayGenerator(get_llm_provider())
-        ranked = await generator.generate(product, icp_result, channel_result)
+        diversified_channels = self._diversify_channels(channel_result)
+        ranked = await generator.generate(product, icp_result, diversified_channels)
         if len(ranked) < 20:
             raise RuntimeError(
                 f"Growth Play generation produced only {len(ranked)} plays; at least 20 required"
@@ -93,6 +95,32 @@ class InMemoryGrowthPlayService:
             raise KeyError(play_id)
         self._results[product_id] = result.model_copy(update={"plays": updated_plays})
         return updated_play
+
+    def _diversify_channels(
+        self,
+        channel_result: ChannelDiscoveryResponse,
+    ) -> ChannelDiscoveryResponse:
+        source_order = ("community", "creator", "newsletter_site")
+        buckets: dict[str, list[ChannelOpportunityView]] = {
+            source: [] for source in source_order
+        }
+        remainder: list[ChannelOpportunityView] = []
+        for channel in channel_result.opportunities:
+            bucket = buckets.get(channel.source_type)
+            if bucket is None:
+                remainder.append(channel)
+            else:
+                bucket.append(channel)
+
+        diversified: list[ChannelOpportunityView] = []
+        position = 0
+        while any(position < len(buckets[source]) for source in source_order):
+            for source in source_order:
+                if position < len(buckets[source]):
+                    diversified.append(buckets[source][position])
+            position += 1
+        diversified.extend(remainder)
+        return channel_result.model_copy(update={"opportunities": diversified})
 
     def reset(self) -> None:
         self._results.clear()
