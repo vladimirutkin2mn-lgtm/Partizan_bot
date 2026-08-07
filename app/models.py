@@ -20,6 +20,12 @@ class ClarificationStatus(StrEnum):
     ANSWERED = "ANSWERED"
 
 
+class GrowthPlayStatus(StrEnum):
+    PROPOSED = "PROPOSED"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
 class ExperimentStatus(StrEnum):
     DRAFT = "DRAFT"
     APPROVED = "APPROVED"
@@ -145,11 +151,29 @@ class GrowthPlay(Base):
     channel_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("channel_opportunities.id")
     )
+    rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    template_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    status: Mapped[GrowthPlayStatus] = mapped_column(
+        Enum(GrowthPlayStatus, name="growth_play_status"),
+        default=GrowthPlayStatus.PROPOSED,
+    )
     hypothesis: Mapped[str] = mapped_column(Text)
+    offer: Mapped[str | None] = mapped_column(Text, nullable=True)
     execution_plan: Mapped[dict] = mapped_column(JSONB, default=dict)
+    success_metric: Mapped[str | None] = mapped_column(Text, nullable=True)
     expected_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
+    estimated_cost_min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    estimated_cost_max: Mapped[float | None] = mapped_column(Float, nullable=True)
+    effort_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
+    time_to_signal_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     expected_result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kill_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scale_criteria: Mapped[str | None] = mapped_column(Text, nullable=True)
     priority: Mapped[float | None] = mapped_column(Float, nullable=True)
+    score_breakdown: Mapped[dict] = mapped_column(JSONB, default=dict)
+    score_explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rationale: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class Experiment(Base):
