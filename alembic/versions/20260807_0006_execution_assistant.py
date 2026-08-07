@@ -46,7 +46,12 @@ def upgrade() -> None:
             sa.ForeignKey("growth_plays.id"),
             nullable=False,
         ),
-        sa.Column("contact", postgresql.JSONB(), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column(
+            "contact",
+            postgresql.JSONB(),
+            nullable=False,
+            server_default=sa.text("'{}'::jsonb"),
+        ),
         sa.Column("subject", sa.String(length=160), nullable=False),
         sa.Column("body", sa.Text(), nullable=False),
         sa.Column("tracking_url", sa.Text(), nullable=False),
