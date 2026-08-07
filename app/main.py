@@ -124,7 +124,10 @@ async def discover_channels(product_id: UUID) -> ChannelDiscoveryResponse:
         product = product_intake_service.get_product(product_id)
         icp_result = icp_service.get(product_id)
     except KeyError as exc:
-        raise HTTPException(status_code=409, detail="Generate ICPs before channel discovery") from exc
+        raise HTTPException(
+            status_code=409,
+            detail="Generate ICPs before channel discovery",
+        ) from exc
     try:
         return await channel_service.discover(product, icp_result)
     except ValueError as exc:
