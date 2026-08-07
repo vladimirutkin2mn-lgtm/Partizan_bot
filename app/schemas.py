@@ -98,6 +98,32 @@ class ICPGenerationResponse(BaseModel):
     duplicate_clusters: list[DuplicateClusterView] = Field(default_factory=list)
 
 
+class ChannelEvidenceView(BaseModel):
+    query: str
+    title: str
+    url: str
+    snippet: str
+
+
+class ChannelOpportunityView(BaseModel):
+    id: UUID
+    icp_id: UUID
+    source_type: Literal["community", "creator", "newsletter_site"]
+    platform: str
+    title: str
+    url: str
+    relevance_score: float = Field(ge=0, le=100)
+    rationale: str
+    evidence: list[ChannelEvidenceView] = Field(min_length=1)
+
+
+class ChannelDiscoveryResponse(BaseModel):
+    product_id: UUID
+    top_icp_count: int = Field(ge=1)
+    opportunity_count: int = Field(ge=30)
+    opportunities: list[ChannelOpportunityView] = Field(min_length=30)
+
+
 class WorkflowStageView(BaseModel):
     name: str
     status: str
