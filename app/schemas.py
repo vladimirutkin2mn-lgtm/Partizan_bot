@@ -124,6 +124,50 @@ class ChannelDiscoveryResponse(BaseModel):
     opportunities: list[ChannelOpportunityView] = Field(min_length=30)
 
 
+class PlayScoreBreakdownView(BaseModel):
+    expected_impact: int = Field(ge=1, le=10)
+    confidence: int = Field(ge=1, le=10)
+    cost_efficiency: int = Field(ge=1, le=10)
+    speed_to_signal: int = Field(ge=1, le=10)
+
+
+class GrowthPlayView(BaseModel):
+    id: UUID
+    product_id: UUID
+    rank: int = Field(ge=1)
+    icp_id: UUID
+    channel_id: UUID
+    source_type: Literal["community", "creator", "newsletter_site"]
+    channel_url: str
+    template_id: str
+    hypothesis: str
+    offer: str
+    execution_steps: list[str] = Field(min_length=3)
+    success_metric: str
+    expected_result: str
+    kill_criteria: str
+    scale_criteria: str
+    estimated_cost_min: float = Field(ge=0)
+    estimated_cost_max: float = Field(ge=0)
+    effort_hours: float = Field(gt=0)
+    time_to_signal_days: int = Field(ge=1, le=90)
+    priority_score: float = Field(ge=0, le=100)
+    score_breakdown: PlayScoreBreakdownView
+    score_explanation: str
+    rationale: list[str]
+    status: Literal["PROPOSED", "APPROVED", "REJECTED"]
+
+
+class GrowthPlayGenerationResponse(BaseModel):
+    product_id: UUID
+    play_count: int = Field(ge=20)
+    plays: list[GrowthPlayView] = Field(min_length=20)
+
+
+class GrowthPlayApprovalRequest(BaseModel):
+    status: Literal["APPROVED", "REJECTED"]
+
+
 class WorkflowStageView(BaseModel):
     name: str
     status: str
