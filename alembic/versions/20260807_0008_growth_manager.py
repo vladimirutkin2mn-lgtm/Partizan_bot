@@ -62,8 +62,16 @@ def upgrade() -> None:
         sa.Column("fingerprint", sa.String(length=40), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
     )
-    op.create_index("ix_decision_contexts_product_id", "decision_contexts", ["product_id"])
-    op.create_index("ix_decision_contexts_fingerprint", "decision_contexts", ["fingerprint"])
+    op.create_index(
+        "ix_decision_contexts_product_id",
+        "decision_contexts",
+        ["product_id"],
+    )
+    op.create_index(
+        "ix_decision_contexts_fingerprint",
+        "decision_contexts",
+        ["fingerprint"],
+    )
 
     op.create_table(
         "growth_learning_memory",
