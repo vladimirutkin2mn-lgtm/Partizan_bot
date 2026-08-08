@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl
@@ -6,19 +7,7 @@ from app.models import ProductProfileStatus
 
 
 class ProductCreateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
-    description: str = Field(min_length=20)
-    value_proposition: str | None = None
-    use_cases: list[str] = Field(default_factory=list)
-    market: str | None = None
-    language: str | None = None
-    price: float | None = Field(default=None, ge=0)
-    pricing_model: str | None = None
-    goal: str | None = None
-    budget: float | None = Field(default=None, ge=0)
-    max_cac: float | None = Field(default=None, ge=0)
-    allowed_channels: list[str] = Field(default_factory=list)
-    constraints: list[str] = Field(default_factory=list)
+    brief: str = Field(min_length=20)
     reference_links: list[HttpUrl] = Field(default_factory=list)
 
 
@@ -27,13 +16,17 @@ class ClarificationQuestionView(BaseModel):
     field_name: str
     question: str
     rationale: str
+    priority: int = Field(ge=1, le=5)
 
 
 class ProductProfileView(BaseModel):
     id: UUID
+    input_brief: str
     name: str
     description: str
+    problem_or_desire: str | None
     value_proposition: str | None
+    usp: str | None
     use_cases: list[str]
     market: str | None
     language: str | None
@@ -44,14 +37,18 @@ class ProductProfileView(BaseModel):
     max_cac: float | None
     allowed_channels: list[str]
     constraints: list[str]
+    known_audience: list[str]
+    known_competitors: list[str]
     reference_links: list[str]
     assumptions: list[str]
+    contradictions: list[str]
     status: ProductProfileStatus
 
 
 class ProductIntakeResponse(BaseModel):
     product: ProductProfileView
     clarifications: list[ClarificationQuestionView]
+    next_action: Literal["answer_clarifications", "confirm", "start_growth"]
 
 
 class ClarificationAnswerRequest(BaseModel):

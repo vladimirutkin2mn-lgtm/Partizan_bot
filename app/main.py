@@ -3,12 +3,14 @@ from uuid import UUID
 from fastapi import FastAPI, HTTPException, status
 
 from app.logging import configure_logging
+from app.models import ProductProfileStatus
 from app.product_intake import product_intake_service
 from app.schemas import (
     ClarificationAnswerRequest,
     MockWorkflowResponse,
     ProductCreateRequest,
     ProductIntakeResponse,
+    ProductProfileView,
     WorkflowStageView,
 )
 from app.workflow import build_mock_growth_workflow
@@ -17,8 +19,8 @@ configure_logging()
 
 app = FastAPI(
     title="Partizan Bot API",
-    version="0.1.0",
-    description="Foundation API for the Partizan Bot growth engine.",
+    version="0.2.0",
+    description="Product intake and growth-engine API for Partizan Bot.",
 )
 
 
@@ -34,7 +36,19 @@ async def health() -> dict[str, str]:
     tags=["products"],
 )
 async def create_product(payload: ProductCreateRequest) -> ProductIntakeResponse:
-    return product_intake_service.create_draft(payload)
+    return await product_intake_service.create_draft(payload)
+
+
+@app.get(
+    "/v1/products/{product_id}",
+    response_model=ProductProfileView,
+    tags=["products"],
+)
+async def get_product(product_id: UUID) -> ProductProfileView:
+    try:
+        return product_intake_service.get_product(product_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Product not found") from exc
 
 
 @app.post(
@@ -47,9 +61,23 @@ async def answer_clarification(
     payload: ClarificationAnswerRequest,
 ) -> ProductIntakeResponse:
     try:
-        return product_intake_service.apply_answer(product_id, payload)
+        return await product_intake_service.apply_answer(product_id, payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Product or question not found") from exc
+
+
+@app.post(
+    "/v1/products/{product_id}/confirm",
+    response_model=ProductIntakeResponse,
+    tags=["products"],
+)
+async def confirm_product(product_id: UUID) -> ProductIntakeResponse:
+    try:
+        return product_intake_service.confirm(product_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Product not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.post(
@@ -59,9 +87,15 @@ async def answer_clarification(
 )
 async def start_mock_workflow(product_id: UUID) -> MockWorkflowResponse:
     try:
-        product_intake_service.get_product(product_id)
+        product = product_intake_service.get_product(product_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Product not found") from exc
+
+    if product.status != ProductProfileStatus.CONFIRMED:
+        raise HTTPException(
+            status_code=409,
+            detail="ProductProfile must be CONFIRMED before growth workflow starts",
+        )
 
     stages = build_mock_growth_workflow(product_id)
     return MockWorkflowResponse(
