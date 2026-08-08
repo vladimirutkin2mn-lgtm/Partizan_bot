@@ -56,6 +56,48 @@ class ClarificationAnswerRequest(BaseModel):
     answer: str = Field(min_length=1)
 
 
+class ICPScoreBreakdownView(BaseModel):
+    pain_intensity: int = Field(ge=1, le=10)
+    purchase_intent: int = Field(ge=1, le=10)
+    willingness_to_pay: int = Field(ge=1, le=10)
+    ease_of_targeting: int = Field(ge=1, le=10)
+    market_size: int = Field(ge=1, le=10)
+    competitive_headroom: int = Field(ge=1, le=10)
+    speed_of_validation: int = Field(ge=1, le=10)
+
+
+class ICPView(BaseModel):
+    id: UUID
+    product_id: UUID
+    rank: int = Field(ge=1)
+    title: str
+    description: str
+    pain: str
+    desired_outcome: str
+    trigger: str
+    willingness_to_pay: str
+    alternatives: list[str]
+    message_hook: str
+    score: float = Field(ge=0, le=100)
+    score_breakdown: ICPScoreBreakdownView
+    score_explanation: str
+    rationale: list[str]
+    duplicate_of: str | None = None
+
+
+class DuplicateClusterView(BaseModel):
+    canonical: str
+    duplicates: list[str]
+
+
+class ICPGenerationResponse(BaseModel):
+    product_id: UUID
+    generated_count: int = Field(ge=10)
+    ranked_count: int = Field(ge=10)
+    icps: list[ICPView] = Field(min_length=10)
+    duplicate_clusters: list[DuplicateClusterView] = Field(default_factory=list)
+
+
 class WorkflowStageView(BaseModel):
     name: str
     status: str

@@ -103,12 +103,21 @@ class ICP(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id"))
+    rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
     title: Mapped[str] = mapped_column(String(200))
     description: Mapped[str] = mapped_column(Text)
     pain: Mapped[str | None] = mapped_column(Text, nullable=True)
+    desired_outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     trigger: Mapped[str | None] = mapped_column(Text, nullable=True)
     willingness_to_pay: Mapped[str | None] = mapped_column(Text, nullable=True)
+    alternatives: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    message_hook: Mapped[str | None] = mapped_column(Text, nullable=True)
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    score_breakdown: Mapped[dict] = mapped_column(JSONB, default=dict)
+    score_explanation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rationale: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    duplicate_of: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ChannelOpportunity(Base):
