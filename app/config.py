@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://partizan:partizan@localhost:5432/partizan"
     llm_provider: str = "mock"
     llm_model: str = "gpt-5.6"
+    search_provider: str = "mock"
+    search_model: str = "gpt-5.6-terra"
     openai_api_key: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
