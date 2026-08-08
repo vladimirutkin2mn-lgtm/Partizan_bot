@@ -1,0 +1,164 @@
+import uuid
+from datetime import datetime
+from enum import StrEnum
+
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db import Base
+
+
+class ProductProfileStatus(StrEnum):
+    DRAFT = "DRAFT"
+    NEEDS_CLARIFICATION = "NEEDS_CLARIFICATION"
+    CONFIRMED = "CONFIRMED"
+
+
+class ClarificationStatus(StrEnum):
+    OPEN = "OPEN"
+    ANSWERED = "ANSWERED"
+
+
+class ExperimentStatus(StrEnum):
+    DRAFT = "DRAFT"
+    APPROVED = "APPROVED"
+    RUNNING = "RUNNING"
+    FINISHED = "FINISHED"
+    CANCELLED = "CANCELLED"
+
+
+class DecisionAction(StrEnum):
+    SCALE = "SCALE"
+    CONTINUE = "CONTINUE"
+    MODIFY = "MODIFY"
+    STOP = "STOP"
+
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text)
+    value_proposition: Mapped[str | None] = mapped_column(Text, nullable=True)
+    use_cases: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    market: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    language: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pricing_model: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    goal: Mapped[str | None] = mapped_column(Text, nullable=True)
+    budget: Mapped[float | None] = mapped_column(Float, nullable=True)
+    max_cac: Mapped[float | None] = mapped_column(Float, nullable=True)
+    allowed_channels: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    constraints: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    reference_links: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    assumptions: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    status: Mapped[ProductProfileStatus] = mapped_column(
+        Enum(ProductProfileStatus, name="product_profile_status"),
+        default=ProductProfileStatus.DRAFT,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    clarifications = relationship(
+        "ClarificationQuestion",
+        back_populates="product",
+        cascade="all, delete-orphan",
+    )
+
+
+class ClarificationQuestion(Base):
+    __tablename__ = "clarification_questions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        index=True,
+    )
+    field_name: Mapped[str] = mapped_column(String(100))
+    question: Mapped[str] = mapped_column(Text)
+    rationale: Mapped[str] = mapped_column(Text)
+    status: Mapped[ClarificationStatus] = mapped_column(
+        Enum(ClarificationStatus, name="clarification_status"),
+        default=ClarificationStatus.OPEN,
+    )
+    answer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    product = relationship("Product", back_populates="clarifications")
+
+
+class ICP(Base):
+    __tablename__ = "icps"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id"))
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(Text)
+    pain: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trigger: Mapped[str | None] = mapped_column(Text, nullable=True)
+    willingness_to_pay: Mapped[str | None] = mapped_column(Text, nullable=True)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class ChannelOpportunity(Base):
+    __tablename__ = "channel_opportunities"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    icp_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("icps.id"))
+    platform: Mapped[str] = mapped_column(String(100))
+    url: Mapped[str] = mapped_column(Text)
+    type: Mapped[str] = mapped_column(String(100))
+    relevance_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    contact_data: Mapped[dict] = mapped_column(JSONB, default=dict)
+    acquisition_method: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence: Mapped[list[dict]] = mapped_column(JSONB, default=list)
+
+
+class GrowthPlay(Base):
+    __tablename__ = "growth_plays"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    icp_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("icps.id"))
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("channel_opportunities.id")
+    )
+    hypothesis: Mapped[str] = mapped_column(Text)
+    execution_plan: Mapped[dict] = mapped_column(JSONB, default=dict)
+    expected_cost: Mapped[float | None] = mapped_column(Float, nullable=True)
+    expected_result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    priority: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class Experiment(Base):
+    __tablename__ = "experiments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    growth_play_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("growth_plays.id")
+    )
+    status: Mapped[ExperimentStatus] = mapped_column(
+        Enum(ExperimentStatus, name="experiment_status"),
+        default=ExperimentStatus.DRAFT,
+    )
+    budget: Mapped[float | None] = mapped_column(Float, nullable=True)
+    metrics: Mapped[dict] = mapped_column(JSONB, default=dict)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Decision(Base):
+    __tablename__ = "decisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    experiment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("experiments.id")
+    )
+    action: Mapped[DecisionAction] = mapped_column(
+        Enum(DecisionAction, name="decision_action")
+    )
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
