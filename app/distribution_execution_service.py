@@ -20,7 +20,11 @@ from app.distribution_types import (
     DistributionActionStatus,
     DistributionActionType,
 )
+from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ProductProfileView
+
+DISTRIBUTION_ACTION_NAMESPACE = "distribution_action"
+DISTRIBUTION_EXPERIMENT_NAMESPACE = "distribution_experiment"
 
 
 class DistributionTrackingLinkBuilder:
@@ -56,7 +60,8 @@ class DistributionTrackingLinkBuilder:
 
 
 class InMemoryDistributionExecutionService:
-    def __init__(self) -> None:
+    def __init__(self, store: RuntimeStateStore | None = None) -> None:
+        self._store = store or get_runtime_store()
         self._actions: dict[UUID, DistributionActionView] = {}
         self._experiments: dict[UUID, DistributionExperimentView] = {}
         self._tracking_builder = DistributionTrackingLinkBuilder()
@@ -135,6 +140,8 @@ class InMemoryDistributionExecutionService:
         )
         self._actions[action.id] = action
         self._experiments[experiment.id] = experiment
+        self._persist_action(action)
+        self._persist_experiment(experiment)
         return DistributionExecutionPlanView(action=action, experiment=experiment)
 
     def edit(
@@ -142,7 +149,7 @@ class InMemoryDistributionExecutionService:
         action_id: UUID,
         payload: DistributionActionEditRequest,
     ) -> DistributionExecutionPlanView:
-        action = self._actions[action_id]
+        action = self.get_action(action_id)
         if action.status != DistributionActionStatus.PREPARED:
             raise ValueError("Only PREPARED DistributionAction objects can be edited")
 
@@ -161,14 +168,15 @@ class InMemoryDistributionExecutionService:
             }
         )
         self._actions[action_id] = updated
-        experiment = self._experiments[updated.experiment_id]
+        self._persist_action(updated)
+        experiment = self.get_experiment(updated.experiment_id)
         return DistributionExecutionPlanView(action=updated, experiment=experiment)
 
     def approve(self, action_id: UUID) -> DistributionExecutionPlanView:
-        action = self._actions[action_id]
+        action = self.get_action(action_id)
         if action.status != DistributionActionStatus.PREPARED:
             raise ValueError("Only PREPARED DistributionAction objects can be approved")
-        experiment = self._experiments[action.experiment_id]
+        experiment = self.get_experiment(action.experiment_id)
         play_id = UUID(str(action.operational_metadata["distribution_play_id"]))
         play = self._find_play(experiment.product_id, play_id)
         opportunity = audience_intelligence_service.find_opportunity(action.opportunity_id)
@@ -208,25 +216,29 @@ class InMemoryDistributionExecutionService:
         )
         self._actions[action.id] = approved_action
         self._experiments[experiment.id] = approved_experiment
+        self._persist_action(approved_action)
+        self._persist_experiment(approved_experiment)
         return DistributionExecutionPlanView(
             action=approved_action,
             experiment=approved_experiment,
         )
 
     def skip(self, action_id: UUID) -> DistributionExecutionPlanView:
-        action = self._actions[action_id]
+        action = self.get_action(action_id)
         if action.status not in {
             DistributionActionStatus.PREPARED,
             DistributionActionStatus.APPROVED,
         }:
             raise ValueError("Only PREPARED or APPROVED actions can be skipped")
-        experiment = self._experiments[action.experiment_id]
+        experiment = self.get_experiment(action.experiment_id)
         skipped_action = action.model_copy(update={"status": DistributionActionStatus.SKIPPED})
         cancelled_experiment = experiment.model_copy(
             update={"status": DistributionExperimentStatus.CANCELLED}
         )
         self._actions[action.id] = skipped_action
         self._experiments[experiment.id] = cancelled_experiment
+        self._persist_action(skipped_action)
+        self._persist_experiment(cancelled_experiment)
         return DistributionExecutionPlanView(
             action=skipped_action,
             experiment=cancelled_experiment,
@@ -237,10 +249,10 @@ class InMemoryDistributionExecutionService:
         action_id: UUID,
         payload: DistributionActionExecutionRequest,
     ) -> DistributionExecutionPlanView:
-        action = self._actions[action_id]
+        action = self.get_action(action_id)
         if action.status != DistributionActionStatus.APPROVED:
             raise ValueError("Action must be APPROVED before it can be marked executed")
-        experiment = self._experiments[action.experiment_id]
+        experiment = self.get_experiment(action.experiment_id)
         metadata = dict(action.operational_metadata)
         if payload.external_reference is not None:
             metadata["external_reference"] = payload.external_reference
@@ -261,31 +273,53 @@ class InMemoryDistributionExecutionService:
         )
         self._actions[action.id] = executed_action
         self._experiments[experiment.id] = running_experiment
+        self._persist_action(executed_action)
+        self._persist_experiment(running_experiment)
         return DistributionExecutionPlanView(
             action=executed_action,
             experiment=running_experiment,
         )
 
     def finish_experiment(self, experiment_id: UUID) -> DistributionExperimentView:
-        experiment = self._experiments[experiment_id]
+        experiment = self.get_experiment(experiment_id)
         if experiment.status != DistributionExperimentStatus.RUNNING:
             raise ValueError("Only RUNNING DistributionExperiments can be finished")
         finished = experiment.model_copy(
             update={"status": DistributionExperimentStatus.FINISHED}
         )
         self._experiments[experiment_id] = finished
+        self._persist_experiment(finished)
         return finished
 
     def get_action(self, action_id: UUID) -> DistributionActionView:
-        return self._actions[action_id]
+        cached = self._actions.get(action_id)
+        if cached is not None:
+            return cached
+        payload = self._store.get(DISTRIBUTION_ACTION_NAMESPACE, str(action_id))
+        if payload is None:
+            raise KeyError(action_id)
+        action = DistributionActionView.model_validate(payload)
+        self._actions[action_id] = action
+        return action
 
     def get_experiment(self, experiment_id: UUID) -> DistributionExperimentView:
-        return self._experiments[experiment_id]
+        cached = self._experiments.get(experiment_id)
+        if cached is not None:
+            return cached
+        payload = self._store.get(DISTRIBUTION_EXPERIMENT_NAMESPACE, str(experiment_id))
+        if payload is None:
+            raise KeyError(experiment_id)
+        experiment = DistributionExperimentView.model_validate(payload)
+        self._experiments[experiment_id] = experiment
+        return experiment
 
     def list_experiments(
         self,
         product_id: UUID | None = None,
     ) -> list[DistributionExperimentView]:
+        for payload in self._store.list_namespace(DISTRIBUTION_EXPERIMENT_NAMESPACE):
+            experiment = DistributionExperimentView.model_validate(payload)
+            self._experiments[experiment.id] = experiment
         experiments = list(self._experiments.values())
         if product_id is not None:
             experiments = [
@@ -313,7 +347,7 @@ class InMemoryDistributionExecutionService:
         if referral_token:
             matches = [
                 experiment
-                for experiment in self._experiments.values()
+                for experiment in self.list_experiments()
                 if experiment.referral_token == referral_token
             ]
             if len(matches) != 1:
@@ -329,10 +363,10 @@ class InMemoryDistributionExecutionService:
         return resolved[0][0], methods
 
     def get_plan(self, action_id: UUID) -> DistributionExecutionPlanView:
-        action = self._actions[action_id]
+        action = self.get_action(action_id)
         return DistributionExecutionPlanView(
             action=action,
-            experiment=self._experiments[action.experiment_id],
+            experiment=self.get_experiment(action.experiment_id),
         )
 
     def _find_play(self, product_id: UUID, play_id: UUID) -> DistributionPlayView:
@@ -419,9 +453,26 @@ class InMemoryDistributionExecutionService:
             if not str(action.content_text or "").strip():
                 raise ValueError("Organic video requires a script/creative brief before approval")
 
+    def _persist_action(self, action: DistributionActionView) -> None:
+        self._store.put(
+            DISTRIBUTION_ACTION_NAMESPACE,
+            str(action.id),
+            action.model_dump(mode="json"),
+        )
+
+    def _persist_experiment(self, experiment: DistributionExperimentView) -> None:
+        self._store.put(
+            DISTRIBUTION_EXPERIMENT_NAMESPACE,
+            str(experiment.id),
+            experiment.model_dump(mode="json"),
+        )
+
     def reset(self) -> None:
         self._actions.clear()
         self._experiments.clear()
+        if self._store.ephemeral:
+            self._store.clear_namespace(DISTRIBUTION_ACTION_NAMESPACE)
+            self._store.clear_namespace(DISTRIBUTION_EXPERIMENT_NAMESPACE)
 
 
 distribution_execution_service = InMemoryDistributionExecutionService()
