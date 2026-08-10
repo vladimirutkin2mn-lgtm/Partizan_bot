@@ -26,7 +26,8 @@ def _manifest(with_destination: bool = False) -> DogfoodManifest:
         name="oracle-dogfood-test",
         brief=(
             "Product: Oracle\n"
-            "Description: Telegram AI entertainment product with personalized relationship readings.\n"
+            "Description: Telegram AI entertainment product with personalized "
+            "relationship readings.\n"
             "Problem: People want clarity when relationships feel uncertain.\n"
             "Value proposition: Personalized relationship readings available on demand.\n"
             "USP: Personalized to the user's situation instead of a generic horoscope.\n"
