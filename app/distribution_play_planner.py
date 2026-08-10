@@ -214,7 +214,7 @@ class DistributionPlayPlanner:
         identities: list[DistributionIdentityView] | None = None,
         community_policies: list[CommunityPolicyView] | None = None,
         campaign_slots: list[CampaignSlotView] | None = None,
-        max_plays: int = 40,
+        max_plays: int | None = None,
     ) -> list[DistributionPlayView]:
         identities = identities or []
         campaign_slots = campaign_slots or []
@@ -252,6 +252,8 @@ class DistributionPlayPlanner:
                 str(play.opportunity_id),
             )
         )
+        if max_plays is None:
+            return plays
         return plays[:max_plays]
 
     def _templates_for(
