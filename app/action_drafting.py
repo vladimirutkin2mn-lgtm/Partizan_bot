@@ -179,7 +179,8 @@ Non-negotiable rules:
 2. Never invent personal experience, testimonials, results, popularity, urgency, scarcity, or guarantees.
 3. Use the supplied local target context. Do not write a generic mass-spam message.
 4. Do not write cold direct messages. The allowed action type is supplied explicitly.
-5. Community comments/replies should be useful in their own right and should not contain a product link unless explicitly allowed.
+5. Community comments/replies should be useful in their own right.
+   Do not include a product link unless it is explicitly allowed.
 6. If an applied community policy requires disclosure, include a clear short disclosure.
 7. Do not claim a platform rule permits something unless the applied CommunityPolicy explicitly says so.
 8. Keep the draft compatible with an approval-gated assisted/manual execution flow.
