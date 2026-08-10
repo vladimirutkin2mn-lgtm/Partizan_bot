@@ -19,7 +19,7 @@ from app.distribution_schemas import (
 from app.distribution_types import DistributionPlatform
 from app.product_intake import product_intake_service
 
-router = APIRouter(prefix="/v1", tags=["distribution-control-plane"])
+router = APIRouter(tags=["distribution-control-plane"])
 
 
 @router.post(
