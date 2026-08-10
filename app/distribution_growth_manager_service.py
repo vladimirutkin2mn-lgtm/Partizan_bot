@@ -16,12 +16,17 @@ from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_schemas import DistributionPlayStatus, DistributionPlayView
 from app.distribution_play_service import distribution_play_service
 from app.product_intake import product_intake_service
+from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 MIN_SCALE_PAID_USERS = 3
+DISTRIBUTION_DECISION_NAMESPACE = "distribution_growth_decision"
+DISTRIBUTION_DECISION_STATE_NAMESPACE = "distribution_growth_decision_state"
+DISTRIBUTION_LEARNING_NAMESPACE = "distribution_learning_entry"
 
 
 class InMemoryDistributionGrowthManagerService:
-    def __init__(self) -> None:
+    def __init__(self, store: RuntimeStateStore | None = None) -> None:
+        self._store = store or get_runtime_store()
         self._decisions: dict[UUID, DistributionGrowthDecisionView] = {}
         self._latest_fingerprint: dict[UUID, str] = {}
         self._latest_decision: dict[UUID, UUID] = {}
@@ -45,9 +50,11 @@ class InMemoryDistributionGrowthManagerService:
             product.budget,
             product.max_cac,
         )
+        self._hydrate_decision_state(experiment_id)
         if self._latest_fingerprint.get(experiment_id) == fingerprint:
             decision_id = self._latest_decision[experiment_id]
-            return self._decisions[decision_id].model_copy(update={"duplicate": True})
+            decision = self._get_decision(decision_id)
+            return decision.model_copy(update={"duplicate": True})
 
         action, rationale = self._decide(product.max_cac, play, analytics.metrics)
         budget_remaining = self._budget_remaining(
@@ -85,33 +92,39 @@ class InMemoryDistributionGrowthManagerService:
         self._decisions[decision.id] = decision
         self._latest_fingerprint[experiment_id] = fingerprint
         self._latest_decision[experiment_id] = decision.id
-        self._memory.setdefault(product.id, []).append(
-            DistributionLearningEntryView(
-                id=uuid4(),
-                product_id=product.id,
-                experiment_id=experiment.id,
-                platform=play.platform,
-                tactic_id=play.tactic_id,
-                opportunity_id=play.opportunity_id,
-                distribution_identity_id=analytics.action.distribution_identity_id,
-                action=action,
-                observed_cac=analytics.metrics.cac,
-                paid_users=analytics.metrics.paid_users,
-                revenue=analytics.metrics.revenue,
-                summary=(
-                    f"{play.platform.value}/{play.tactic_id}: action={action}; "
-                    f"spend={analytics.metrics.spend:.2f}; "
-                    f"paid={analytics.metrics.paid_users}; "
-                    f"CAC={analytics.metrics.cac}; "
-                    f"revenue={analytics.metrics.revenue:.2f}."
-                ),
-                created_at=now,
-            )
+        learning_entry = DistributionLearningEntryView(
+            id=uuid4(),
+            product_id=product.id,
+            experiment_id=experiment.id,
+            platform=play.platform,
+            tactic_id=play.tactic_id,
+            opportunity_id=play.opportunity_id,
+            distribution_identity_id=analytics.action.distribution_identity_id,
+            action=action,
+            observed_cac=analytics.metrics.cac,
+            paid_users=analytics.metrics.paid_users,
+            revenue=analytics.metrics.revenue,
+            summary=(
+                f"{play.platform.value}/{play.tactic_id}: action={action}; "
+                f"spend={analytics.metrics.spend:.2f}; "
+                f"paid={analytics.metrics.paid_users}; "
+                f"CAC={analytics.metrics.cac}; "
+                f"revenue={analytics.metrics.revenue:.2f}."
+            ),
+            created_at=now,
+        )
+        self._memory.setdefault(product.id, []).append(learning_entry)
+        self._persist_decision(decision, fingerprint)
+        self._store.put(
+            DISTRIBUTION_LEARNING_NAMESPACE,
+            str(learning_entry.id),
+            learning_entry.model_dump(mode="json"),
         )
         return decision
 
     def learning_memory(self, product_id: UUID) -> DistributionLearningMemoryView:
         product_intake_service.get_product(product_id)
+        self._hydrate_learning()
         return DistributionLearningMemoryView(
             product_id=product_id,
             entries=list(self._memory.get(product_id, [])),
@@ -205,6 +218,63 @@ class InMemoryDistributionGrowthManagerService:
             budget_remaining=budget_remaining,
             items=items,
         )
+
+    def _hydrate_decision_state(self, experiment_id: UUID) -> None:
+        if experiment_id in self._latest_fingerprint:
+            return
+        payload = self._store.get(
+            DISTRIBUTION_DECISION_STATE_NAMESPACE,
+            str(experiment_id),
+        )
+        if payload is None:
+            return
+        self._latest_fingerprint[experiment_id] = str(payload["fingerprint"])
+        self._latest_decision[experiment_id] = UUID(str(payload["decision_id"]))
+
+    def _get_decision(self, decision_id: UUID) -> DistributionGrowthDecisionView:
+        cached = self._decisions.get(decision_id)
+        if cached is not None:
+            return cached
+        payload = self._store.get(DISTRIBUTION_DECISION_NAMESPACE, str(decision_id))
+        if payload is None:
+            raise KeyError(decision_id)
+        decision = DistributionGrowthDecisionView.model_validate(payload)
+        self._decisions[decision_id] = decision
+        return decision
+
+    def _persist_decision(
+        self,
+        decision: DistributionGrowthDecisionView,
+        fingerprint: str,
+    ) -> None:
+        self._store.put(
+            DISTRIBUTION_DECISION_NAMESPACE,
+            str(decision.id),
+            decision.model_dump(mode="json"),
+        )
+        self._store.put(
+            DISTRIBUTION_DECISION_STATE_NAMESPACE,
+            str(decision.experiment_id),
+            {
+                "fingerprint": fingerprint,
+                "decision_id": str(decision.id),
+            },
+        )
+
+    def _hydrate_learning(self) -> None:
+        existing_ids = {
+            entry.id
+            for entries in self._memory.values()
+            for entry in entries
+        }
+        for payload in self._store.list_namespace(DISTRIBUTION_LEARNING_NAMESPACE):
+            entry = DistributionLearningEntryView.model_validate(payload)
+            if entry.id in existing_ids:
+                continue
+            self._memory.setdefault(entry.product_id, []).append(entry)
+            existing_ids.add(entry.id)
+        for entries in self._memory.values():
+            entries.sort(key=lambda entry: (entry.created_at, str(entry.id)))
 
     def _learning_adjustment(
         self,
@@ -398,6 +468,10 @@ class InMemoryDistributionGrowthManagerService:
         self._latest_fingerprint.clear()
         self._latest_decision.clear()
         self._memory.clear()
+        if self._store.ephemeral:
+            self._store.clear_namespace(DISTRIBUTION_DECISION_NAMESPACE)
+            self._store.clear_namespace(DISTRIBUTION_DECISION_STATE_NAMESPACE)
+            self._store.clear_namespace(DISTRIBUTION_LEARNING_NAMESPACE)
 
 
 distribution_growth_manager_service = InMemoryDistributionGrowthManagerService()
