@@ -4,6 +4,7 @@ from app.distribution_play_planner import DistributionPlayPlanner
 from app.distribution_play_schemas import (
     DistributionPlayGenerationResponse,
     DistributionPlayStatus,
+    DistributionPlayView,
 )
 from app.distribution_schemas import (
     AudienceDistributionMapView,
@@ -50,6 +51,13 @@ class InMemoryDistributionPlayService:
 
     def get(self, product_id: UUID) -> DistributionPlayGenerationResponse:
         return self._results[product_id]
+
+    def find(self, product_id: UUID, play_id: UUID) -> DistributionPlayView:
+        result = self._results[product_id]
+        play = next((item for item in result.plays if item.id == play_id), None)
+        if play is None:
+            raise KeyError(play_id)
+        return play
 
     def reset(self) -> None:
         self._results.clear()
