@@ -1,3 +1,5 @@
+from uuid import UUID
+
 import pytest
 
 from app.analytics_service import analytics_service
@@ -81,7 +83,8 @@ async def test_dogfood_can_exercise_full_mock_run_with_explicit_flags() -> None:
         ),
     )
     assert report.execution_status == "SENT"
-    experiment = execution_service.get_experiment(report.experiment_id)
+    assert report.experiment_id is not None
+    experiment = execution_service.get_experiment(UUID(report.experiment_id))
     assert experiment.status == "RUNNING"
 
 
