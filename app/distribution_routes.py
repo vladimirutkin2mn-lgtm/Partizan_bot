@@ -8,12 +8,14 @@ from app.distribution_execution_routes import router as execution_router
 from app.distribution_learning_routes import router as learning_router
 from app.distribution_schemas import AudienceDistributionMapView
 from app.icp_service import icp_service
+from app.opportunity_enrichment_routes import router as enrichment_router
 from app.product_intake import product_intake_service
 
 router = APIRouter(prefix="/v1", tags=["distribution"])
 router.include_router(control_plane_router)
 router.include_router(execution_router)
 router.include_router(learning_router)
+router.include_router(enrichment_router)
 
 
 @router.post(
