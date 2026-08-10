@@ -263,10 +263,10 @@ class DistributionActionComposer:
             rationale = "Educational standalone draft with transparent product context."
         elif play.action_type == DistributionActionType.ORGANIC_VIDEO:
             content = (
-                f"Hook: A question worth asking before you act.\n"
+                "Hook: A question worth asking before you act.\n"
                 f"Body: Frame the problem around {opportunity.title}, show two competing "
                 "interpretations, and end with one concrete reflection prompt.\n"
-                f"CTA: Explore the current tool in the profile if it is relevant to you."
+                "CTA: Explore the current tool in the profile if it is relevant to you."
             )
             rationale = "Short-form creative brief for a Partizan-owned thematic identity."
         elif play.action_type == DistributionActionType.PAID_CAMPAIGN:
@@ -315,7 +315,7 @@ class DistributionActionDraftingService:
             target=target,
             policy=policy,
         )
-        plan = distribution_execution_service.prepare(
+        return distribution_execution_service.prepare(
             product,
             play,
             DistributionExecutionPrepareRequest(
@@ -325,22 +325,6 @@ class DistributionActionDraftingService:
                 content_text=draft.content_text,
             ),
         )
-        action = plan.action.model_copy(
-            update={
-                "operational_metadata": {
-                    **plan.action.operational_metadata,
-                    "drafting": {
-                        "target_source": target.source,
-                        "rationale": draft.rationale,
-                        "composer": type(self._composer._provider).__name__
-                        if self._composer._provider is not None
-                        else "deterministic_mock",
-                    },
-                }
-            }
-        )
-        distribution_execution_service.replace_action(action)
-        return DistributionExecutionPlanView(action=action, experiment=plan.experiment)
 
     def _applied_policy(
         self,
