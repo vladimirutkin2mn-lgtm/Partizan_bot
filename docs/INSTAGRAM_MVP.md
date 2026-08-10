@@ -13,6 +13,8 @@ The MVP distinguishes four different account/distribution modes:
 
 A fifth concept — a large Partizan-owned thematic media network whose accumulated followers/reach become a reusable commercial asset — is **Post-MVP**.
 
+Detailed community surfaces/actions/attribution are specified in `docs/INSTAGRAM_COMMUNITY_MVP.md`.
+
 ## Why media-network growth is Post-MVP
 
 There is a real strategic upside to building owned thematic Instagram media assets:
@@ -84,6 +86,8 @@ find relevant external creator/post
 ```
 
 The profile itself is an acquisition asset. It should have coherent positioning, useful profile information and an attributable destination.
+
+For the detailed MVP data model, `DistributionOpportunity` is the external creator/account and the primary `DistributionAction` is a comment under a fresh relevant Reel/Post. See `docs/INSTAGRAM_COMMUNITY_MVP.md`.
 
 ### 2. Partizan Identity Maintenance — limited owned content
 
@@ -215,6 +219,18 @@ Purpose:
 
 Included in MVP, subject to the execution method supported by the platform/integration.
 
+Detailed model:
+
+```text
+DistributionOpportunity = external creator/account
+DistributionAction = comment under a fresh relevant Reel/Post
+DistributionIdentity = Partizan-owned thematic account
+CampaignSlot = one active client campaign per identity for a bounded test window
+Experiment = creator/action batch measured primarily at campaign level
+```
+
+Do not build deep comment/user intent analysis or perfect comment-level attribution in MVP.
+
 ### Engine C — Client-Owned Organic
 
 Account ownership: **client**.
@@ -241,9 +257,14 @@ Purpose:
 |---|---|---|
 | Meta / Instagram Ads | Client ad account | Yes |
 | Relevant creator/account discovery | None | Yes |
-| Community actions around relevant external content | Partizan Distribution Identity | Yes |
+| Creator/account-level opportunity scoring | None | Yes |
+| Fresh relevant Reel/Post selection | None | Yes |
+| Community comments around relevant external content | Partizan Distribution Identity | Yes |
 | Profile funnel | Partizan Distribution Identity | Yes |
+| Campaign Slot / batch-level attribution | Partizan Distribution Identity | Yes |
 | Limited evergreen content to maintain Partizan identities | Partizan Distribution Identity | Yes |
+| Deep comment/user purchase-intent analysis | N/A | No |
+| Perfect comment-level attribution | N/A | No |
 | Grow large Partizan thematic follower bases as core KPI | Partizan Media Asset | No — Post-MVP |
 | Reels/posts on client's own Instagram | Client account | Optional |
 | Require client personal account for community distribution | Client | No |
@@ -269,12 +290,15 @@ or separate entities later if their lifecycle/KPIs diverge materially.
 
 For MVP, only `COMMUNITY_OPERATOR` is required.
 
+Instagram Community additionally needs explicit concepts for `CampaignSlot` and campaign/batch attribution; see `docs/INSTAGRAM_COMMUNITY_MVP.md`.
+
 ## Primary Instagram MVP learning questions
 
-1. Can Partizan identify external Instagram accounts/posts whose audiences are relevant to the client's ICP?
-2. Can Partizan-owned Distribution Identities turn that relevance into attributable product traffic and paid users?
-3. How does this CAC compare with Meta Ads?
-4. Which broad Distribution Identity themes repeatedly perform well?
-5. Do certain verticals show enough repeated demand and organic performance to justify a dedicated Media Network later?
+1. Can Partizan identify external Instagram creators/accounts whose audiences are relevant to the client's ICP?
+2. Can Partizan-owned Distribution Identities turn that relevance into attributable product traffic and paid users through comments/profile funnel?
+3. Which creator/audience clusters repeatedly convert?
+4. How does Instagram Community CAC compare with Meta Ads?
+5. Which broad Distribution Identity themes repeatedly perform well?
+6. Do certain verticals show enough repeated demand and organic performance to justify a dedicated Media Network later?
 
-The fifth question is the decision gate for the Post-MVP media-network investment.
+The sixth question is the decision gate for the Post-MVP media-network investment.
