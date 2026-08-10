@@ -38,4 +38,7 @@ async def get_distribution_plays(product_id: UUID) -> DistributionPlayGeneration
     try:
         return distribution_play_service.get(product_id)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Distribution play generation not found") from exc
+        raise HTTPException(
+            status_code=404,
+            detail="Distribution play generation not found",
+        ) from exc
