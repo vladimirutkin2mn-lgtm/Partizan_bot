@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 from app.llm import get_llm_provider
 from app.models import ProductProfileStatus
 from app.product_agent import ProductAnalysis, ProductIntakeAgent
+from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import (
     ClarificationAnswerRequest,
     ClarificationQuestionView,
@@ -11,6 +12,8 @@ from app.schemas import (
     ProductIntakeResponse,
     ProductProfileView,
 )
+
+PRODUCT_INTAKE_NAMESPACE = "product_intake"
 
 
 @dataclass(slots=True)
@@ -24,8 +27,21 @@ class ProductIntakeState:
 
 
 class InMemoryProductIntakeService:
-    def __init__(self, agent: ProductIntakeAgent) -> None:
+    """Product intake service with a local cache backed by RuntimeStateStore.
+
+    The historic class name is intentionally preserved while the migration is staged.
+    In memory mode this behaves exactly like the previous service. In database mode,
+    cache misses hydrate from durable snapshots so a process restart does not lose the
+    confirmed ProductProfile or clarification context.
+    """
+
+    def __init__(
+        self,
+        agent: ProductIntakeAgent,
+        store: RuntimeStateStore | None = None,
+    ) -> None:
         self._agent = agent
+        self._store = store or get_runtime_store()
         self._states: dict[UUID, ProductIntakeState] = {}
 
     async def create_draft(self, payload: ProductCreateRequest) -> ProductIntakeResponse:
@@ -48,26 +64,28 @@ class InMemoryProductIntakeService:
             analysis=analysis,
             status=status,
         )
-        self._states[product_id] = ProductIntakeState(
+        state = ProductIntakeState(
             product=product,
             brief=payload.brief,
             reference_links=reference_links,
             questions=questions,
         )
-        return self._response(self._states[product_id])
+        self._states[product_id] = state
+        self._persist_state(state)
+        return self._response(state)
 
     def get_product(self, product_id: UUID) -> ProductProfileView:
-        return self._states[product_id].product
+        return self._load_state(product_id).product
 
     def get_state(self, product_id: UUID) -> ProductIntakeState:
-        return self._states[product_id]
+        return self._load_state(product_id)
 
     async def apply_answer(
         self,
         product_id: UUID,
         payload: ClarificationAnswerRequest,
     ) -> ProductIntakeResponse:
-        state = self._states[product_id]
+        state = self._load_state(product_id)
         question = next(
             (item for item in state.questions if item.id == payload.question_id),
             None,
@@ -97,19 +115,58 @@ class InMemoryProductIntakeService:
             analysis=analysis,
             status=status,
         )
+        self._persist_state(state)
         return self._response(state)
 
     def confirm(self, product_id: UUID) -> ProductIntakeResponse:
-        state = self._states[product_id]
+        state = self._load_state(product_id)
         if state.questions:
             raise ValueError("Open clarification questions must be answered first")
         state.product = state.product.model_copy(
             update={"status": ProductProfileStatus.CONFIRMED}
         )
+        self._persist_state(state)
         return self._response(state)
 
     def reset(self) -> None:
         self._states.clear()
+        if self._store.ephemeral:
+            self._store.clear_namespace(PRODUCT_INTAKE_NAMESPACE)
+
+    def _load_state(self, product_id: UUID) -> ProductIntakeState:
+        cached = self._states.get(product_id)
+        if cached is not None:
+            return cached
+        payload = self._store.get(PRODUCT_INTAKE_NAMESPACE, str(product_id))
+        if payload is None:
+            raise KeyError(product_id)
+        state = ProductIntakeState(
+            product=ProductProfileView.model_validate(payload["product"]),
+            brief=str(payload["brief"]),
+            reference_links=list(payload.get("reference_links", [])),
+            questions=[
+                ClarificationQuestionView.model_validate(item)
+                for item in payload.get("questions", [])
+            ],
+            answers=[tuple(item) for item in payload.get("answers", [])],
+            answered_fields=set(payload.get("answered_fields", [])),
+        )
+        self._states[product_id] = state
+        return state
+
+    def _persist_state(self, state: ProductIntakeState) -> None:
+        self._store.put(
+            PRODUCT_INTAKE_NAMESPACE,
+            str(state.product.id),
+            {
+                "product": state.product.model_dump(mode="json"),
+                "brief": state.brief,
+                "reference_links": list(state.reference_links),
+                "questions": [item.model_dump(mode="json") for item in state.questions],
+                "answers": [list(item) for item in state.answers],
+                "answered_fields": sorted(state.answered_fields),
+            },
+        )
 
     def _build_questions(
         self,
