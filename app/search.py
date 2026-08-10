@@ -40,7 +40,16 @@ class MockSearchProvider(SearchProvider):
         digest = hashlib.sha1(discovery_query.query.encode("utf-8")).hexdigest()[:8]
         hits: list[SearchHit] = []
         for index in range(1, limit + 1):
-            if discovery_query.source_class == SourceClass.COMMUNITY:
+            query = discovery_query.query.lower()
+            if "site:t.me" in query:
+                url = f"https://t.me/partizan_{digest}_{index}"
+            elif "site:instagram.com" in query:
+                url = f"https://www.instagram.com/partizan_{digest}_{index}/"
+            elif "site:reddit.com" in query:
+                url = f"https://www.reddit.com/r/partizan_{digest}_{index}"
+            elif "site:tiktok.com" in query:
+                url = f"https://www.tiktok.com/@partizan_{digest}/video/{1000 + index}"
+            elif discovery_query.source_class == SourceClass.COMMUNITY:
                 url = f"https://www.reddit.com/r/partizan_{digest}_{index}"
             elif discovery_query.source_class == SourceClass.CREATOR:
                 url = f"https://www.youtube.com/@partizan_{digest}_{index}"
@@ -48,9 +57,7 @@ class MockSearchProvider(SearchProvider):
                 url = f"https://partizan-{digest}-{index}.example.com/"
             hits.append(
                 SearchHit(
-                    title=(
-                        f"Mock {discovery_query.source_class.value} opportunity {index}"
-                    ),
+                    title=f"Mock {discovery_query.source_class.value} opportunity {index}",
                     url=url,
                     snippet=f"Search evidence for: {discovery_query.query}",
                     query=discovery_query.query,
