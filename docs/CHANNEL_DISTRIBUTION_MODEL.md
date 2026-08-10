@@ -83,19 +83,20 @@ Platform
           → Experiment
 ```
 
-Example:
+Platform-specific opportunity granularity can differ. For example:
 
 ```text
-Platform: Telegram
-Surface: public discussion group
-Opportunity: a specific live discussion/message
-Tactic A: Telegram Ads
-Tactic B: community participation
-Distribution Identity: a Partizan-owned thematic operator account
-Experiment: one bounded, attributable test
+Telegram Community:
+DistributionOpportunity = channel/group
+DistributionAction = comment / standalone post / reply
+
+Instagram Community:
+DistributionOpportunity = external creator/account
+DistributionAction = comment under a fresh relevant Reel/Post
 ```
 
-The same concrete opportunity may support several acquisition tactics.
+The system should prefer the **coarsest useful persistent opportunity unit** that supports learning. It
+should not default to message/user-level intelligence when community/creator-level testing is sufficient.
 
 ### 3. Growth Operator
 
@@ -151,22 +152,26 @@ those assets. Examples include brand Instagram posts, TikTok videos, YouTube Sho
 channels, SEO/content pages and landing pages.
 
 This remains a supported tactic class, but it is **not** the required account model for community
-acquisition. A client should not have to expose a personal Telegram/Reddit account to use Partizan.
+acquisition. A client should not have to expose a personal Telegram/Reddit/Instagram account to use
+Partizan community distribution.
 
 ### D. Community / guerrilla distribution
 
-This is a first-class product capability. It is defined as **high-context distribution into relevant
-conversations**, not as raw spam volume.
+This is a first-class product capability. It is defined as **relevant native participation around
+communities/audiences**, not raw spam volume.
 
-The valuable automation is:
+The MVP should avoid over-engineering perfect message-level intelligence when platform-level,
+community-level or creator-level relevance is sufficient.
+
+Typical flow:
 
 ```text
-find the right conversation
-  → understand context
-  → choose a relevant tactic
-  → choose the right Partizan Distribution Identity
-  → generate a useful native contribution
+find a relevant community / creator / audience surface
+  → select a suitable Partizan Distribution Identity
+  → inspect only enough local context to avoid an irrelevant action
+  → generate a native contribution
   → execute within platform constraints
+  → route interest through an attributable profile/landing layer where appropriate
   → measure downstream conversion
 ```
 
@@ -174,9 +179,9 @@ Partizan may own and operate the accounts used for this layer. Those accounts sh
 operator/brand/community identities rather than disposable personas pretending to be unrelated users.
 
 The product should not make fake-account farms, mass unsolicited spam, undisclosed impersonation or
-technical ban-evasion its core infrastructure. The moat should come from finding unusually relevant
-opportunities, having durable distribution presence, learning which communities convert and measuring
-real acquired users.
+technical ban-evasion its core infrastructure. The moat should come from identifying relevant audience
+surfaces, durable distribution presence, learning which surfaces convert and measuring real acquired
+users.
 
 ## Partizan-owned Distribution Network
 
@@ -208,11 +213,11 @@ geography hints
 public positioning
 profile configuration
 account health / eligibility
-community memberships
+community memberships / creator history
 allowed surfaces/actions
 reputation/history metadata
 recent activity
-current client assignments
+current campaign assignment
 attribution route
 status
 ```
@@ -233,12 +238,13 @@ For a community opportunity, Partizan should choose an identity based on:
 
 - topical fit;
 - language;
-- community membership/eligibility;
+- community/creator eligibility;
 - recent activity and health;
 - profile relevance;
 - previous conversion performance;
 - frequency/anti-spam guardrails;
-- client conflicts / brand safety.
+- client conflicts / brand safety;
+- campaign assignment.
 
 Target flow:
 
@@ -256,33 +262,34 @@ Opportunity
 
 Over time the network itself can become a defensible asset. Partizan learns:
 
-- which communities permit and reward useful participation;
-- which identity themes fit which communities;
+- which communities/creators permit and reward useful participation;
+- which identity themes fit which audience surfaces;
 - what types of contributions produce profile/product interest;
 - which surfaces produce activated and paid users;
-- which communities have poor economics or moderation friction.
+- which communities/creators have poor economics or moderation friction.
 
 This creates a distribution graph and historical learning layer that a generic LLM does not have.
 
 ## Profile funnel and intermediate landing layers
 
-For community distribution, a direct product link inside every message is not the desired default.
+For community distribution, a direct product link inside every message/comment is not the desired
+default.
 
 A useful funnel can be:
 
 ```text
-useful contribution
+native community contribution
   → interest in the Distribution Identity
   → profile view
   → profile bio / pinned destination
-  → landing page or owned routing layer
-  → client product / Telegram bot
+  → routing / landing layer
+  → client product / Telegram bot / app
 ```
 
 The profile is therefore part of acquisition and should be treated as an optimisable conversion asset.
 Partizan may test positioning, bio, pinned destination and routing while preserving transparent identity.
 
-An intermediate landing layer can legitimately provide:
+An intermediate landing/routing layer can legitimately provide:
 
 - explanation before deep-linking into a bot/app;
 - UTM/referral attribution;
@@ -295,16 +302,9 @@ It must be treated as a conversion/measurement layer, not as cloaking designed t
 
 # Telegram MVP — clarified product model
 
-Telegram is the first platform where the account model has been clarified in detail.
+Canonical detailed note: `docs/TELEGRAM_MVP.md`.
 
-## What we learned from manual testing
-
-Directly dropping a Telegram bot/channel link into unrelated comments or groups can quickly trigger
-moderation, anti-spam systems or bans. Whether a specific action is blocked automatically or reported by
-users/admins varies by community, so Partizan should not build its core Telegram strategy around raw
-link dropping.
-
-The desired MVP has two independent acquisition engines:
+Telegram has two independent acquisition engines:
 
 ```text
 Telegram Paid
@@ -312,126 +312,71 @@ Telegram Paid
 Telegram Community
 ```
 
-They should be measured and learned separately.
-
-## Telegram Paid Engine
-
-Included in MVP:
-
-- discover relevant public Telegram channels/audience clusters;
-- determine which are usable for Telegram Ads targeting/inventory;
-- generate compliant ad variants;
-- create bounded tests;
-- route traffic to an attributable Telegram destination/deep link;
-- measure start/activation/paid events;
-- calculate CAC and reallocate budget.
-
-Direct negotiation with channel administrators is **not MVP** because it creates negotiation, payment,
-fraud and measurement complexity before we know whether the channel is economically important.
-
-## Telegram Community Engine
-
-Included in MVP:
-
-- discover relevant public groups;
-- discover linked discussion groups/comments where accessible;
-- find specific live messages/conversations with high product relevance;
-- score each conversation as an acquisition opportunity;
-- choose a suitable Partizan-owned Telegram Distribution Identity;
-- generate a useful contextual reply/contribution;
-- execute only within explicit operational limits;
-- measure downstream product traffic/conversion where possible.
-
-The unit of opportunity is often a **specific live conversation**, not simply a channel/group.
-
-## Telegram Distribution Identities
-
-The MVP should use Partizan-owned Telegram user accounts/operator accounts for community execution.
-They are not ordinary Bot API bots: a BotFather bot is a different product primitive and cannot simply
-behave like a normal user account across arbitrary communities.
-
-The client does **not** need to:
-
-- connect a personal Telegram account;
-- risk a personal account;
-- change personal name/avatar/bio;
-- allow Partizan to post under the client's personal identity.
-
-The operator account should have a coherent thematic profile and durable history. Profile configuration
-becomes part of the community funnel.
-
-## Telegram MVP scope
-
-| Capability | MVP |
-|---|---|
-| Audience/channel discovery | Yes |
-| Group/discussion discovery | Yes |
-| Specific conversation discovery | Yes |
-| Opportunity scoring | Yes |
-| Telegram Ads | Yes |
-| Ad attribution to bot/product | Yes |
-| Partizan-owned operator accounts | Yes |
-| Distribution Identity selection | Yes |
-| AI-generated contextual contributions | Yes |
-| Profile funnel | Yes |
-| Product conversion attribution | Yes |
-| Client personal Telegram account required | No |
-| Client profile modification required | No |
-| Negotiation with channel admins | No |
-| Direct paid placements with admins | Post-MVP |
-| Follower/subscriber boosting | No |
-| Disposable fake-account farm | No |
-| Mass link spam / ban-evasion infrastructure | No |
-
-## What Partizan optimises in Telegram Community
-
-The goal is not "how many messages can we post". The primary optimisation target is acquired users and
-business economics.
-
-Candidate funnel:
+### Telegram Community core model
 
 ```text
-qualified conversation opportunity
-  → contribution published
-  → profile/product interest
-  → bot / landing visit
-  → first meaningful interaction
-  → activation
-  → paid
+DistributionOpportunity = channel/group
+DistributionAction = comment / standalone post / reply
+DistributionIdentity = Partizan-owned operator account
+Experiment = bounded attributable test
 ```
 
-Useful metrics include:
+The MVP is intentionally **community-level, not message-level**. Partizan finds relevant channels with
+comments and public groups, then uses lightweight fresh context for individual actions.
 
-- qualified opportunities found;
-- contribution approval/eligibility rate;
-- removals/restrictions as a negative signal;
-- attributed product visits / bot starts;
-- activation rate;
-- paid users;
-- CAC / cost per activated user;
-- revenue / ROAS where spend exists;
-- performance by community, message type and Distribution Identity.
+It should not build deep NLP over every message or per-user purchase-intent scoring. The primary
+optimisation target is which communities produce starts, activations and paid users.
 
-Partizan should learn whether a specific community/identity/message pattern produces real users rather
-than optimise vanity follower counts.
+# Instagram MVP — clarified product model
 
-## Platform-specific examples to explore next
+Canonical notes:
 
-### Instagram
+- `docs/INSTAGRAM_MVP.md` — account/media strategy;
+- `docs/INSTAGRAM_COMMUNITY_MVP.md` — creator surfaces, actions, campaign slots and attribution.
 
-Still open for design. We must explicitly decide whether community distribution should also use
-Partizan-owned distribution identities, connected brand accounts, creators/ambassadors or a mixture.
-Paid ads and owned publishing are separate tactic classes.
+Instagram separates four modes:
 
-### Reddit
+```text
+Instagram Paid              → client ad account
+Instagram Community         → Partizan-owned Distribution Identities
+Client-Owned Organic        → optional client Professional account
+Partizan Media Network      → Post-MVP
+```
 
-Still open for design. The important opportunity unit is often a specific live thread/comment chain.
-The account model should be evaluated separately rather than copied blindly from Telegram.
+### Instagram Community core model
 
-### Google
+```text
+DistributionOpportunity = external creator/account
+DistributionAction = comment under a fresh relevant Reel/Post
+DistributionIdentity = Partizan-owned thematic Instagram account
+CampaignSlot = one active client campaign on an identity for a bounded test window
+Experiment = creator/action batch measured primarily at campaign level
+```
 
-The opportunity unit is usually a search query / intent cluster rather than a social identity. Likely
-tactics include Search Ads, landing pages, long-tail SEO, comparison pages and tools.
+The persistent opportunity is the **creator/account**, not an individual commenter or individual
+message. A fresh Reel/Post is only an action surface.
+
+The MVP should:
+
+- discover relevant creators/accounts;
+- score them at creator/account level;
+- choose a fresh thematically suitable Reel/Post;
+- inspect only enough context to keep the comment relevant;
+- select a suitable Partizan Distribution Identity;
+- generate/execute a native comment;
+- route interest through the Partizan profile funnel;
+- measure campaign/batch-level downstream conversion.
+
+The MVP should **not** build deep comment/user purchase-intent analysis, cold-DM acquisition, creator
+negotiation, paid creator integrations or perfect comment-level attribution.
+
+### Instagram Identity Maintenance vs Media Network
+
+Partizan may publish limited evergreen/native content on Distribution Identities to keep profiles
+coherent and useful. This is supporting infrastructure, not a follower-growth KPI.
+
+A true Partizan Media Network that intentionally grows large thematic audiences is Post-MVP and should
+only be built after Partizan observes repeated vertical demand and strong Instagram economics.
 
 ## New desired user-facing output
 
@@ -490,9 +435,11 @@ New likely core entities include:
 
 - `PlatformOpportunity` / `AudiencePlatformScore`;
 - `Surface`;
-- richer `ChannelOpportunity` or renamed `DistributionOpportunity`;
+- richer `DistributionOpportunity`;
+- `DistributionAction`;
 - `Tactic`;
 - `DistributionIdentity`;
+- `CampaignSlot` where identity-level attribution requires a bounded active client assignment;
 - `IdentityEligibility` / account health;
 - `ExperimentAttributionRoute`.
 
@@ -509,7 +456,7 @@ For every platform answer the same questions:
 4. **Standard paid tactics** — official ad mechanisms and economics.
 5. **Direct paid tactics** — creator/admin/newsletter/partner access.
 6. **Owned organic tactics** — what owned assets can Partizan operate?
-7. **Community/guerrilla tactics** — what high-context native actions are possible?
+7. **Community/guerrilla tactics** — what native actions are possible?
 8. **Distribution identity model** — client-owned, Partizan-owned, ambassador/creator or none?
 9. **Automation level** — full / approval-gated / assisted/manual.
 10. **Required integration/account** — what infrastructure is required?
