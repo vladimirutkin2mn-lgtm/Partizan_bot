@@ -3,11 +3,13 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from app.audience_intelligence_service import audience_intelligence_service
+from app.distribution_control_plane_routes import router as control_plane_router
 from app.distribution_schemas import AudienceDistributionMapView
 from app.icp_service import icp_service
 from app.product_intake import product_intake_service
 
 router = APIRouter(prefix="/v1", tags=["distribution"])
+router.include_router(control_plane_router)
 
 
 @router.post(
