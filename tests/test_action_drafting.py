@@ -129,7 +129,7 @@ def _auto_prepare(product_id: str, play_id: str):
 
 def test_instagram_comment_selects_enriched_reel_and_creates_prepared_draft() -> None:
     product_id = _product()
-    _replace_opportunity_target(
+    instagram = _replace_opportunity_target(
         product_id,
         "INSTAGRAM",
         "https://www.instagram.com/reel/ABC123/",
@@ -142,6 +142,7 @@ def test_instagram_comment_selects_enriched_reel_and_creates_prepared_draft() ->
         play
         for play in _plays(product_id)
         if play["tactic_id"] == "instagram_creator_comment"
+        and play["opportunity_id"] == instagram["id"]
         and play["status"] == "READY"
     )
 
@@ -236,7 +237,7 @@ def test_tiktok_organic_auto_prepare_requires_no_third_party_target() -> None:
 
 def test_telegram_comment_accepts_concrete_public_post_target() -> None:
     product_id = _product()
-    _replace_opportunity_target(
+    telegram = _replace_opportunity_target(
         product_id,
         "TELEGRAM",
         "https://t.me/relationship_daily/321",
@@ -250,6 +251,7 @@ def test_telegram_comment_accepts_concrete_public_post_target() -> None:
         play
         for play in _plays(product_id)
         if play["tactic_id"] == "telegram_channel_comment"
+        and play["opportunity_id"] == telegram["id"]
         and play["status"] == "READY"
     )
 
