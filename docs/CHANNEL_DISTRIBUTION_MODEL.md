@@ -367,6 +367,11 @@ The MVP should:
 - route interest through the Partizan profile funnel;
 - measure campaign/batch-level downstream conversion.
 
+Because the default external comment does not contain a unique direct product link, the MVP should not
+pretend to have exact comment-level attribution. It should measure the bounded identity/client campaign
+slot, store creator/action timestamps, and use creator-level correlations only as supporting evidence
+unless stronger attribution becomes available.
+
 The MVP should **not** build deep comment/user purchase-intent analysis, cold-DM acquisition, creator
 negotiation, paid creator integrations or perfect comment-level attribution.
 
