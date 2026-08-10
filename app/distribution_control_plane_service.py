@@ -61,7 +61,14 @@ class InMemoryDistributionControlPlaneService:
         identities = list(self._identities.values())
         if platform is not None:
             identities = [identity for identity in identities if identity.platform == platform]
-        return sorted(identities, key=lambda identity: (identity.platform.value, identity.theme, str(identity.id)))
+        return sorted(
+            identities,
+            key=lambda identity: (
+                identity.platform.value,
+                identity.theme,
+                str(identity.id),
+            ),
+        )
 
     def set_identity_status(
         self,
@@ -138,7 +145,10 @@ class InMemoryDistributionControlPlaneService:
     ) -> CampaignSlotView:
         slot = self._slots[slot_id]
         if status == CampaignSlotStatus.ACTIVE and slot.status != CampaignSlotStatus.ACTIVE:
-            self._assert_identity_has_no_active_slot(slot.distribution_identity_id, excluding=slot.id)
+            self._assert_identity_has_no_active_slot(
+                slot.distribution_identity_id,
+                excluding=slot.id,
+            )
         updated = slot.model_copy(update={"status": status})
         self._slots[slot_id] = updated
         return updated
