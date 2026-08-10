@@ -16,6 +16,10 @@ from app.distribution_analytics_schemas import (
 from app.distribution_execution_schemas import DistributionExperimentStatus
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_service import distribution_play_service
+from app.runtime_store import RuntimeStateStore, get_runtime_store
+
+DISTRIBUTION_ANALYTICS_EVENT_NAMESPACE = "distribution_analytics_event"
+DISTRIBUTION_SPEND_NAMESPACE = "distribution_experiment_spend"
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,7 +44,8 @@ class DistributionSpendEntry:
 
 
 class InMemoryDistributionAnalyticsService:
-    def __init__(self) -> None:
+    def __init__(self, store: RuntimeStateStore | None = None) -> None:
+        self._store = store or get_runtime_store()
         self._events: dict[UUID, DistributionAttributedEvent] = {}
         self._spend: dict[UUID, DistributionSpendEntry] = {}
 
@@ -55,7 +60,7 @@ class InMemoryDistributionAnalyticsService:
         )
         self._ensure_measurable(experiment.status)
 
-        existing = self._events.get(payload.event_id)
+        existing = self._get_event(payload.event_id)
         if existing is not None:
             self._assert_same_event(existing, payload, experiment.id)
             return DistributionAnalyticsEventReceipt(
@@ -77,6 +82,7 @@ class InMemoryDistributionAnalyticsService:
             attributed_by=attributed_by,
         )
         self._events[event.event_id] = event
+        self._persist_event(event)
         return DistributionAnalyticsEventReceipt(
             event_id=event.event_id,
             experiment_id=event.experiment_id,
@@ -91,7 +97,7 @@ class InMemoryDistributionAnalyticsService:
     ) -> DistributionSpendReceipt:
         experiment = distribution_execution_service.get_experiment(experiment_id)
         self._ensure_measurable(experiment.status)
-        existing = self._spend.get(payload.spend_id)
+        existing = self._get_spend(payload.spend_id)
         if existing is not None:
             if existing.experiment_id != experiment_id or existing.amount != payload.amount:
                 raise ValueError("spend_id is already used for a different spend record")
@@ -110,6 +116,7 @@ class InMemoryDistributionAnalyticsService:
             properties=payload.properties,
         )
         self._spend[entry.spend_id] = entry
+        self._persist_spend(entry)
         return DistributionSpendReceipt(
             spend_id=entry.spend_id,
             experiment_id=entry.experiment_id,
@@ -126,6 +133,7 @@ class InMemoryDistributionAnalyticsService:
             experiment.product_id,
             experiment.distribution_play_id,
         )
+        self._hydrate_facts()
         events = [
             event for event in self._events.values() if event.experiment_id == experiment_id
         ]
@@ -203,6 +211,86 @@ class InMemoryDistributionAnalyticsService:
             )
         return sorted(rows, key=lambda row: (row.dimension, row.key))
 
+    def _get_event(self, event_id: UUID) -> DistributionAttributedEvent | None:
+        cached = self._events.get(event_id)
+        if cached is not None:
+            return cached
+        payload = self._store.get(DISTRIBUTION_ANALYTICS_EVENT_NAMESPACE, str(event_id))
+        if payload is None:
+            return None
+        event = self._event_from_payload(payload)
+        self._events[event_id] = event
+        return event
+
+    def _get_spend(self, spend_id: UUID) -> DistributionSpendEntry | None:
+        cached = self._spend.get(spend_id)
+        if cached is not None:
+            return cached
+        payload = self._store.get(DISTRIBUTION_SPEND_NAMESPACE, str(spend_id))
+        if payload is None:
+            return None
+        entry = self._spend_from_payload(payload)
+        self._spend[spend_id] = entry
+        return entry
+
+    def _hydrate_facts(self) -> None:
+        for payload in self._store.list_namespace(DISTRIBUTION_ANALYTICS_EVENT_NAMESPACE):
+            event = self._event_from_payload(payload)
+            self._events[event.event_id] = event
+        for payload in self._store.list_namespace(DISTRIBUTION_SPEND_NAMESPACE):
+            entry = self._spend_from_payload(payload)
+            self._spend[entry.spend_id] = entry
+
+    def _persist_event(self, event: DistributionAttributedEvent) -> None:
+        self._store.put(
+            DISTRIBUTION_ANALYTICS_EVENT_NAMESPACE,
+            str(event.event_id),
+            {
+                "event_id": str(event.event_id),
+                "experiment_id": str(event.experiment_id),
+                "event_type": event.event_type,
+                "actor_id": event.actor_id,
+                "revenue": event.revenue,
+                "occurred_at": event.occurred_at.isoformat(),
+                "properties": event.properties,
+                "attributed_by": event.attributed_by,
+            },
+        )
+
+    def _persist_spend(self, entry: DistributionSpendEntry) -> None:
+        self._store.put(
+            DISTRIBUTION_SPEND_NAMESPACE,
+            str(entry.spend_id),
+            {
+                "spend_id": str(entry.spend_id),
+                "experiment_id": str(entry.experiment_id),
+                "amount": entry.amount,
+                "occurred_at": entry.occurred_at.isoformat(),
+                "properties": entry.properties,
+            },
+        )
+
+    def _event_from_payload(self, payload: dict) -> DistributionAttributedEvent:
+        return DistributionAttributedEvent(
+            event_id=UUID(str(payload["event_id"])),
+            experiment_id=UUID(str(payload["experiment_id"])),
+            event_type=str(payload["event_type"]),
+            actor_id=payload.get("actor_id"),
+            revenue=float(payload.get("revenue", 0)),
+            occurred_at=datetime.fromisoformat(str(payload["occurred_at"])),
+            properties=dict(payload.get("properties", {})),
+            attributed_by=str(payload["attributed_by"]),
+        )
+
+    def _spend_from_payload(self, payload: dict) -> DistributionSpendEntry:
+        return DistributionSpendEntry(
+            spend_id=UUID(str(payload["spend_id"])),
+            experiment_id=UUID(str(payload["experiment_id"])),
+            amount=float(payload["amount"]),
+            occurred_at=datetime.fromisoformat(str(payload["occurred_at"])),
+            properties=dict(payload.get("properties", {})),
+        )
+
     def _ensure_measurable(self, status: DistributionExperimentStatus) -> None:
         if status not in {
             DistributionExperimentStatus.RUNNING,
@@ -278,6 +366,9 @@ class InMemoryDistributionAnalyticsService:
     def reset(self) -> None:
         self._events.clear()
         self._spend.clear()
+        if self._store.ephemeral:
+            self._store.clear_namespace(DISTRIBUTION_ANALYTICS_EVENT_NAMESPACE)
+            self._store.clear_namespace(DISTRIBUTION_SPEND_NAMESPACE)
 
 
 distribution_analytics_service = InMemoryDistributionAnalyticsService()
