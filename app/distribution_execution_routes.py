@@ -2,6 +2,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 
+from app.action_drafting import (
+    DistributionAutoPrepareRequest,
+    distribution_action_drafting_service,
+)
 from app.distribution_execution_schemas import (
     DistributionActionEditRequest,
     DistributionActionExecutionRequest,
@@ -33,6 +37,32 @@ async def prepare_distribution_action(
         raise HTTPException(
             status_code=404,
             detail="Product or DistributionPlay not found",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/products/{product_id}/distribution-plays/{play_id}/actions/auto-prepare",
+    response_model=DistributionExecutionPlanView,
+)
+async def auto_prepare_distribution_action(
+    product_id: UUID,
+    play_id: UUID,
+    payload: DistributionAutoPrepareRequest,
+) -> DistributionExecutionPlanView:
+    try:
+        product = product_intake_service.get_product(product_id)
+        play = distribution_play_service.find(product_id, play_id)
+        return await distribution_action_drafting_service.auto_prepare(
+            product=product,
+            play=play,
+            destination_url=payload.destination_url,
+        )
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Product, DistributionPlay or dependency not found",
         ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
