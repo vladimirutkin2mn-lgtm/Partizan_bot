@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     app_env: str = "local"
     app_log_level: str = "INFO"
     database_url: str = "postgresql+asyncpg://partizan:partizan@localhost:5432/partizan"
+    runtime_storage: str = "memory"
     llm_provider: str = "mock"
     llm_model: str = "gpt-5.6"
     search_provider: str = "mock"
