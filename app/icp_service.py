@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 from app.icp_agent import ICPEngine
 from app.llm import get_llm_provider
 from app.models import ProductProfileStatus
+from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import (
     DuplicateClusterView,
     ICPGenerationResponse,
@@ -11,9 +12,12 @@ from app.schemas import (
     ProductProfileView,
 )
 
+ICP_NAMESPACE = "icp_generation"
+
 
 class InMemoryICPService:
-    def __init__(self) -> None:
+    def __init__(self, store: RuntimeStateStore | None = None) -> None:
+        self._store = store or get_runtime_store()
         self._results: dict[UUID, ICPGenerationResponse] = {}
 
     async def generate(self, product: ProductProfileView) -> ICPGenerationResponse:
@@ -56,13 +60,28 @@ class InMemoryICPService:
             ],
         )
         self._results[product.id] = response
+        self._store.put(
+            ICP_NAMESPACE,
+            str(product.id),
+            response.model_dump(mode="json"),
+        )
         return response
 
     def get(self, product_id: UUID) -> ICPGenerationResponse:
-        return self._results[product_id]
+        cached = self._results.get(product_id)
+        if cached is not None:
+            return cached
+        payload = self._store.get(ICP_NAMESPACE, str(product_id))
+        if payload is None:
+            raise KeyError(product_id)
+        result = ICPGenerationResponse.model_validate(payload)
+        self._results[product_id] = result
+        return result
 
     def reset(self) -> None:
         self._results.clear()
+        if self._store.ephemeral:
+            self._store.clear_namespace(ICP_NAMESPACE)
 
 
 icp_service = InMemoryICPService()
