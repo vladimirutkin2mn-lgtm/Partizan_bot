@@ -9,6 +9,24 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: partizan
+          POSTGRES_PASSWORD: partizan
+          POSTGRES_DB: partizan
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U partizan -d partizan"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://partizan:partizan@localhost:5432/partizan
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,5 +37,7 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Lint
         run: ruff check .
+      - name: Migrate database
+        run: alembic upgrade head
       - name: Test
         run: pytest
