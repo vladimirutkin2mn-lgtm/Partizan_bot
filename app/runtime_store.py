@@ -19,6 +19,8 @@ class RuntimeStateStore(Protocol):
 
     def clear_namespace(self, namespace: str) -> None: ...
 
+    def list_namespace(self, namespace: str) -> list[dict]: ...
+
 
 class MemoryRuntimeStateStore:
     ephemeral = True
@@ -40,6 +42,15 @@ class MemoryRuntimeStateStore:
         keys = [key for key in self._payloads if key[0] == namespace]
         for key in keys:
             self._payloads.pop(key, None)
+
+    def list_namespace(self, namespace: str) -> list[dict]:
+        rows = [
+            (entity_key, payload)
+            for (row_namespace, entity_key), payload in self._payloads.items()
+            if row_namespace == namespace
+        ]
+        rows.sort(key=lambda item: item[0])
+        return [dict(payload) for _, payload in rows]
 
 
 class DatabaseRuntimeStateStore:
