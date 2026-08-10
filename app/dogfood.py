@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field, HttpUrl
 from app.channel_service import channel_service
 from app.config import get_settings
 from app.execution_service import execution_service
-from app.growth_manager_service import growth_manager_service
 from app.growth_play_service import growth_play_service
 from app.icp_service import icp_service
 from app.product_intake import product_intake_service
