@@ -266,11 +266,67 @@ class InMemoryDistributionExecutionService:
             experiment=running_experiment,
         )
 
+    def finish_experiment(self, experiment_id: UUID) -> DistributionExperimentView:
+        experiment = self._experiments[experiment_id]
+        if experiment.status != DistributionExperimentStatus.RUNNING:
+            raise ValueError("Only RUNNING DistributionExperiments can be finished")
+        finished = experiment.model_copy(
+            update={"status": DistributionExperimentStatus.FINISHED}
+        )
+        self._experiments[experiment_id] = finished
+        return finished
+
     def get_action(self, action_id: UUID) -> DistributionActionView:
         return self._actions[action_id]
 
     def get_experiment(self, experiment_id: UUID) -> DistributionExperimentView:
         return self._experiments[experiment_id]
+
+    def list_experiments(
+        self,
+        product_id: UUID | None = None,
+    ) -> list[DistributionExperimentView]:
+        experiments = list(self._experiments.values())
+        if product_id is not None:
+            experiments = [
+                experiment
+                for experiment in experiments
+                if experiment.product_id == product_id
+            ]
+        return sorted(experiments, key=lambda experiment: str(experiment.id))
+
+    def resolve_experiment(
+        self,
+        *,
+        experiment_id: UUID | None = None,
+        referral_token: str | None = None,
+        action_id: UUID | None = None,
+    ) -> tuple[DistributionExperimentView, str]:
+        resolved: list[tuple[DistributionExperimentView, str]] = []
+        if experiment_id is not None:
+            resolved.append((self.get_experiment(experiment_id), "experiment_id"))
+        if action_id is not None:
+            action = self.get_action(action_id)
+            if action.experiment_id is None:
+                raise KeyError(action_id)
+            resolved.append((self.get_experiment(action.experiment_id), "action_id"))
+        if referral_token:
+            matches = [
+                experiment
+                for experiment in self._experiments.values()
+                if experiment.referral_token == referral_token
+            ]
+            if len(matches) != 1:
+                raise KeyError(referral_token)
+            resolved.append((matches[0], "referral_token"))
+        if not resolved:
+            raise ValueError("At least one DistributionExperiment attribution identifier is required")
+
+        experiment_ids = {experiment.id for experiment, _ in resolved}
+        if len(experiment_ids) != 1:
+            raise ValueError("Attribution identifiers point to different DistributionExperiments")
+        methods = "+".join(method for _, method in resolved)
+        return resolved[0][0], methods
 
     def get_plan(self, action_id: UUID) -> DistributionExecutionPlanView:
         action = self._actions[action_id]
