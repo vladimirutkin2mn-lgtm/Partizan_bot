@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, status
 
 from app.audience_intelligence_service import audience_intelligence_service
 from app.distribution_control_plane_schemas import (
@@ -38,7 +38,7 @@ async def create_distribution_identity(
     response_model=list[DistributionIdentityView],
 )
 async def list_distribution_identities(
-    platform: DistributionPlatform | None = Query(default=None),
+    platform: DistributionPlatform | None = None,
 ) -> list[DistributionIdentityView]:
     return distribution_control_plane_service.list_identities(platform)
 
@@ -99,7 +99,10 @@ async def create_campaign_slot(
         distribution_control_plane_service.get_identity(payload.distribution_identity_id)
         return distribution_control_plane_service.create_campaign_slot(product_id, payload)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Product or Distribution Identity not found") from exc
+        raise HTTPException(
+            status_code=404,
+            detail="Product or Distribution Identity not found",
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
