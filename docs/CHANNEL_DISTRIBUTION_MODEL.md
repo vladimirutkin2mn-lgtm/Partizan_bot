@@ -93,10 +93,14 @@ DistributionAction = comment / standalone post / reply
 Instagram Community:
 DistributionOpportunity = external creator/account
 DistributionAction = comment under a fresh relevant Reel/Post
+
+Reddit Community:
+DistributionOpportunity = subreddit
+DistributionAction = standalone post / comment / reply
 ```
 
 The system should prefer the **coarsest useful persistent opportunity unit** that supports learning. It
-should not default to message/user-level intelligence when community/creator-level testing is sufficient.
+should not default to message/user-level intelligence when community/creator/subreddit-level testing is sufficient.
 
 ### 3. Growth Operator
 
@@ -383,6 +387,71 @@ coherent and useful. This is supporting infrastructure, not a follower-growth KP
 A true Partizan Media Network that intentionally grows large thematic audiences is Post-MVP and should
 only be built after Partizan observes repeated vertical demand and strong Instagram economics.
 
+# Reddit MVP — clarified product model
+
+Canonical note: `docs/REDDIT_MVP.md`.
+
+Reddit has two independent acquisition engines:
+
+```text
+Reddit Community
+  +
+Reddit Paid
+```
+
+### Reddit Community core model
+
+```text
+DistributionOpportunity = subreddit
+DistributionAction = standalone post / comment / reply
+DistributionIdentity = Partizan-owned thematic Reddit account
+ActionTarget = subreddit OR a fresh relevant thread
+Experiment = bounded subreddit/action batch
+```
+
+The persistent opportunity is the **subreddit**, while an individual fresh thread is usually only an
+action surface.
+
+The MVP should:
+
+- discover relevant subreddits from the ICP;
+- score audience relevance, activity and previous performance at subreddit level;
+- create a mandatory `CommunityPolicy` before commercial execution;
+- gate actions on subreddit rules rather than treating policy fit as a weak score;
+- use standalone posts where permitted;
+- use comments/replies under fresh relevant threads where permitted;
+- inspect only enough local thread context to remain relevant;
+- use Partizan-owned durable Reddit Distribution Identities;
+- measure visits, activations, paid users, removals/restrictions and economics by subreddit/action type.
+
+When a direct product link is allowed, Reddit Community can support action-level or near-action-level
+attribution through experiment-specific routing URLs. Where direct links are not permitted but commercial
+participation is still allowed, attribution should fall back to profile/campaign level without pretending
+to be exact.
+
+`CommunityPolicy` is a first-class Reddit requirement with fields such as promotion allowance, link
+policy, product-mention policy, standalone-post eligibility, comment eligibility, disclosure requirements,
+special promotion windows and evidence/last-checked metadata.
+
+The product should not use profile routing to circumvent a clear no-promotion rule, and should not build
+cold private-message acquisition, vote manipulation, karma farming, disposable account farms or ban-
+evasion infrastructure.
+
+### Reddit Paid
+
+Reddit Ads is first-class MVP functionality. The useful loop is:
+
+```text
+find relevant subreddit/community clusters
+  → test Reddit Community
+  +
+  → test Reddit Ads against the same audience clusters where supported
+  → compare CAC / CPA / ROAS
+```
+
+Current targeting/measurement capabilities and pricing should be refreshed from current official Reddit
+sources at execution time rather than hard-coded as permanent assumptions.
+
 ## New desired user-facing output
 
 Instead of returning only a list of Growth Plays, Partizan should show a channel portfolio.
@@ -444,6 +513,7 @@ New likely core entities include:
 - `DistributionAction`;
 - `Tactic`;
 - `DistributionIdentity`;
+- `CommunityPolicy` for rule-governed community surfaces such as Reddit;
 - `CampaignSlot` where identity-level attribution requires a bounded active client assignment;
 - `IdentityEligibility` / account health;
 - `ExperimentAttributionRoute`.
