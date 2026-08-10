@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, status
 
 from app.analytics_routes import router as analytics_router
 from app.channel_service import channel_service
+from app.distribution_play_routes import router as distribution_play_router
 from app.distribution_routes import router as distribution_router
 from app.execution_service import execution_service, find_growth_play
 from app.growth_manager_routes import router as growth_manager_router
@@ -41,6 +42,7 @@ app = FastAPI(
 )
 app.include_router(analytics_router)
 app.include_router(distribution_router)
+app.include_router(distribution_play_router)
 app.include_router(growth_manager_router)
 
 
