@@ -7,17 +7,16 @@ from app.audience_intelligence_service import audience_intelligence_service
 from app.channel_service import channel_service
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_play_service import distribution_play_service
+from app.distribution_schemas import DistributionOpportunityView
 from app.growth_play_service import growth_play_service
 from app.icp_service import icp_service
 from app.main import app
 from app.opportunity_enrichment import (
-    OpportunityEnrichmentService,
     RedditPolicyProposalBuilder,
     opportunity_enrichment_service,
 )
 from app.product_intake import product_intake_service
-from app.schemas import ProductProfileView
-from app.search import DiscoveryQuery, SearchHit, SearchProvider
+from app.search import DiscoveryQuery, SearchHit, SearchProvider, SourceClass
 
 client = TestClient(app)
 
@@ -132,24 +131,9 @@ class FailingEnrichmentProvider(SearchProvider):
 
 
 def test_reddit_policy_proposal_keeps_ambiguous_fields_unknown() -> None:
-    product = ProductProfileView.model_validate(
-        {
-            "id": "00000000-0000-0000-0000-000000000001",
-            "input_brief": "A sufficiently detailed product brief for schema validation.",
-            "name": "Oracle",
-            "description": "Relationship reflection product",
-            "status": "CONFIRMED",
-        }
-    )
-    del product
-    opportunity_id = "00000000-0000-0000-0000-000000000002"
-    opportunity = audience_intelligence_service.find_opportunity
-    del opportunity
-    from app.distribution_schemas import DistributionOpportunityView
-
     reddit = DistributionOpportunityView.model_validate(
         {
-            "id": opportunity_id,
+            "id": "00000000-0000-0000-0000-000000000002",
             "icp_id": "00000000-0000-0000-0000-000000000003",
             "platform": "REDDIT",
             "kind": "SUBREDDIT",
@@ -168,7 +152,7 @@ def test_reddit_policy_proposal_keeps_ambiguous_fields_unknown() -> None:
             "Disclosure required for affiliated recommendations."
         ),
         query="rules",
-        source_class="COMMUNITY",
+        source_class=SourceClass.COMMUNITY,
     )
 
     proposal = RedditPolicyProposalBuilder().build(
