@@ -35,7 +35,9 @@ class DistributionIdentityCreateRequest(BaseModel):
                 )
         for action in self.allowed_actions:
             if action == DistributionActionType.PAID_CAMPAIGN:
-                raise ValueError("Partizan Distribution Identities are not required for paid campaigns")
+                raise ValueError(
+                    "Partizan Distribution Identities are not required for paid campaigns"
+                )
             if not is_valid_action_type(self.platform, action):
                 raise ValueError(
                     f"Action type {action.value} is not valid for {self.platform.value}"
