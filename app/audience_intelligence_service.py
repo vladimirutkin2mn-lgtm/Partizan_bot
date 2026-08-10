@@ -44,6 +44,13 @@ class InMemoryAudienceIntelligenceService:
     def get(self, product_id: UUID) -> AudienceDistributionMapView:
         return self._results[product_id]
 
+    def find_opportunity(self, opportunity_id: UUID) -> DistributionOpportunityView:
+        for result in self._results.values():
+            for opportunity in result.opportunities:
+                if opportunity.id == opportunity_id:
+                    return opportunity
+        raise KeyError(opportunity_id)
+
     def reset(self) -> None:
         self._results.clear()
 
