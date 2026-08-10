@@ -47,7 +47,7 @@ class AudienceDistributionMapView(BaseModel):
     product_id: UUID
     top_icp_count: int = Field(ge=1)
     opportunity_count: int = Field(ge=1)
-    opportunities: list[DistributionOpportunitySeed] = Field(min_length=1)
+    opportunities: list[DistributionOpportunityView] = Field(min_length=1)
 
 
 class DistributionIdentityView(BaseModel):
