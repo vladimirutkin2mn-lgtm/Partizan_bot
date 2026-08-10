@@ -162,6 +162,20 @@ class InMemoryDistributionControlPlaneService:
             slots = [slot for slot in slots if slot.product_id == product_id]
         return sorted(slots, key=lambda slot: str(slot.id))
 
+    def find_active_slot(
+        self,
+        identity_id: UUID,
+        product_id: UUID,
+    ) -> CampaignSlotView:
+        for slot in self._slots.values():
+            if (
+                slot.distribution_identity_id == identity_id
+                and slot.product_id == product_id
+                and slot.status == CampaignSlotStatus.ACTIVE
+            ):
+                return slot
+        raise KeyError((identity_id, product_id))
+
     def _assert_identity_has_no_active_slot(
         self,
         identity_id: UUID,
