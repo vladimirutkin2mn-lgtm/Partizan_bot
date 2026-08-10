@@ -34,243 +34,169 @@ class DistributionTacticTemplate:
     supported_kinds: frozenset[OpportunityKind]
     tactic_class: DistributionTacticClass
     action_type: DistributionActionType
-    automation_level: AutomationLevel
-    attribution_level: AttributionLevel
-    identity_required: bool
-    community_policy_required: bool
     label: str
-    estimated_cost_min: float
-    estimated_cost_max: float
-    effort_hours: float
-    time_to_signal_days: int
-    quality_score: float
+    automation_level: AutomationLevel = AutomationLevel.ASSISTED
+    attribution_level: AttributionLevel = AttributionLevel.CAMPAIGN
+    identity_required: bool = True
+    community_policy_required: bool = False
+    estimated_cost_min: float = 0
+    estimated_cost_max: float = 20
+    effort_hours: float = 1.5
+    time_to_signal_days: int = 4
+    quality_score: float = 7.0
     has_direct_product_link: bool = False
     has_product_mention: bool = False
 
 
+def _paid(
+    tactic_id: str,
+    platform: DistributionPlatform,
+    kinds: frozenset[OpportunityKind],
+    label: str,
+    *,
+    quality: float = 8.0,
+) -> DistributionTacticTemplate:
+    return DistributionTacticTemplate(
+        tactic_id=tactic_id,
+        platform=platform,
+        supported_kinds=kinds,
+        tactic_class=DistributionTacticClass.PAID_PLATFORM,
+        action_type=DistributionActionType.PAID_CAMPAIGN,
+        label=label,
+        automation_level=AutomationLevel.APPROVAL_GATED,
+        attribution_level=AttributionLevel.PAID,
+        identity_required=False,
+        estimated_cost_min=100,
+        estimated_cost_max=500,
+        effort_hours=2.5,
+        time_to_signal_days=5,
+        quality_score=quality,
+    )
+
+
 TACTIC_CATALOG = (
     DistributionTacticTemplate(
-        tactic_id="telegram_channel_comment",
-        platform=DistributionPlatform.TELEGRAM,
-        supported_kinds=frozenset({OpportunityKind.CHANNEL}),
-        tactic_class=DistributionTacticClass.COMMUNITY,
-        action_type=DistributionActionType.COMMENT,
-        automation_level=AutomationLevel.ASSISTED,
-        attribution_level=AttributionLevel.CAMPAIGN,
-        identity_required=True,
-        community_policy_required=False,
-        label="relevant comment under a fresh channel post",
-        estimated_cost_min=0,
-        estimated_cost_max=20,
-        effort_hours=1.5,
+        "telegram_channel_comment",
+        DistributionPlatform.TELEGRAM,
+        frozenset({OpportunityKind.CHANNEL}),
+        DistributionTacticClass.COMMUNITY,
+        DistributionActionType.COMMENT,
+        "relevant comment under a fresh channel post",
         time_to_signal_days=3,
         quality_score=7.5,
     ),
     DistributionTacticTemplate(
-        tactic_id="telegram_group_post",
-        platform=DistributionPlatform.TELEGRAM,
-        supported_kinds=frozenset({OpportunityKind.GROUP}),
-        tactic_class=DistributionTacticClass.COMMUNITY,
-        action_type=DistributionActionType.STANDALONE_POST,
-        automation_level=AutomationLevel.ASSISTED,
-        attribution_level=AttributionLevel.CAMPAIGN,
-        identity_required=True,
-        community_policy_required=False,
-        label="relevant standalone group contribution",
-        estimated_cost_min=0,
-        estimated_cost_max=20,
-        effort_hours=1.5,
+        "telegram_group_post",
+        DistributionPlatform.TELEGRAM,
+        frozenset({OpportunityKind.GROUP}),
+        DistributionTacticClass.COMMUNITY,
+        DistributionActionType.STANDALONE_POST,
+        "relevant standalone group contribution",
         time_to_signal_days=3,
         quality_score=7.5,
     ),
     DistributionTacticTemplate(
-        tactic_id="telegram_group_reply",
-        platform=DistributionPlatform.TELEGRAM,
-        supported_kinds=frozenset({OpportunityKind.GROUP}),
-        tactic_class=DistributionTacticClass.COMMUNITY,
-        action_type=DistributionActionType.REPLY,
-        automation_level=AutomationLevel.ASSISTED,
-        attribution_level=AttributionLevel.CAMPAIGN,
-        identity_required=True,
-        community_policy_required=False,
-        label="relevant reply inside an active group conversation",
-        estimated_cost_min=0,
-        estimated_cost_max=20,
+        "telegram_group_reply",
+        DistributionPlatform.TELEGRAM,
+        frozenset({OpportunityKind.GROUP}),
+        DistributionTacticClass.COMMUNITY,
+        DistributionActionType.REPLY,
+        "relevant reply inside an active group conversation",
         effort_hours=1.0,
         time_to_signal_days=3,
-        quality_score=7.0,
+    ),
+    _paid(
+        "telegram_ads",
+        DistributionPlatform.TELEGRAM,
+        frozenset({OpportunityKind.CHANNEL, OpportunityKind.GROUP}),
+        "Telegram Ads test against the discovered audience cluster",
     ),
     DistributionTacticTemplate(
-        tactic_id="telegram_ads",
-        platform=DistributionPlatform.TELEGRAM,
-        supported_kinds=frozenset({OpportunityKind.CHANNEL, OpportunityKind.GROUP}),
-        tactic_class=DistributionTacticClass.PAID_PLATFORM,
-        action_type=DistributionActionType.PAID_CAMPAIGN,
-        automation_level=AutomationLevel.APPROVAL_GATED,
-        attribution_level=AttributionLevel.PAID,
-        identity_required=False,
-        community_policy_required=False,
-        label="Telegram Ads test against the discovered audience cluster",
-        estimated_cost_min=100,
-        estimated_cost_max=500,
-        effort_hours=2.0,
-        time_to_signal_days=5,
-        quality_score=8.0,
-    ),
-    DistributionTacticTemplate(
-        tactic_id="instagram_creator_comment",
-        platform=DistributionPlatform.INSTAGRAM,
-        supported_kinds=frozenset({OpportunityKind.CREATOR_ACCOUNT}),
-        tactic_class=DistributionTacticClass.COMMUNITY,
-        action_type=DistributionActionType.COMMENT,
-        automation_level=AutomationLevel.ASSISTED,
+        "instagram_creator_comment",
+        DistributionPlatform.INSTAGRAM,
+        frozenset({OpportunityKind.CREATOR_ACCOUNT}),
+        DistributionTacticClass.COMMUNITY,
+        DistributionActionType.COMMENT,
+        "relevant comment under a fresh creator Reel/Post",
         attribution_level=AttributionLevel.PROFILE,
-        identity_required=True,
-        community_policy_required=False,
-        label="relevant comment under a fresh creator Reel/Post",
-        estimated_cost_min=0,
-        estimated_cost_max=20,
-        effort_hours=1.5,
-        time_to_signal_days=4,
-        quality_score=7.0,
+    ),
+    _paid(
+        "instagram_ads",
+        DistributionPlatform.INSTAGRAM,
+        frozenset({OpportunityKind.CREATOR_ACCOUNT}),
+        "Instagram/Meta paid acquisition test informed by creator audience evidence",
     ),
     DistributionTacticTemplate(
-        tactic_id="instagram_ads",
-        platform=DistributionPlatform.INSTAGRAM,
-        supported_kinds=frozenset({OpportunityKind.CREATOR_ACCOUNT}),
-        tactic_class=DistributionTacticClass.PAID_PLATFORM,
-        action_type=DistributionActionType.PAID_CAMPAIGN,
-        automation_level=AutomationLevel.APPROVAL_GATED,
-        attribution_level=AttributionLevel.PAID,
-        identity_required=False,
-        community_policy_required=False,
-        label="Instagram/Meta paid acquisition test informed by creator audience evidence",
-        estimated_cost_min=100,
-        estimated_cost_max=500,
-        effort_hours=3.0,
-        time_to_signal_days=5,
-        quality_score=8.0,
-    ),
-    DistributionTacticTemplate(
-        tactic_id="reddit_value_post",
-        platform=DistributionPlatform.REDDIT,
-        supported_kinds=frozenset({OpportunityKind.SUBREDDIT}),
-        tactic_class=DistributionTacticClass.COMMUNITY,
-        action_type=DistributionActionType.STANDALONE_POST,
-        automation_level=AutomationLevel.ASSISTED,
+        "reddit_value_post",
+        DistributionPlatform.REDDIT,
+        frozenset({OpportunityKind.SUBREDDIT}),
+        DistributionTacticClass.COMMUNITY,
+        DistributionActionType.STANDALONE_POST,
+        "value-first standalone post where commercial links are permitted",
         attribution_level=AttributionLevel.ACTION,
-        identity_required=True,
         community_policy_required=True,
-        label="value-first standalone post where commercial links are permitted",
-        estimated_cost_min=0,
-        estimated_cost_max=20,
         effort_hours=2.0,
-        time_to_signal_days=4,
         quality_score=7.5,
         has_direct_product_link=True,
         has_product_mention=True,
     ),
     DistributionTacticTemplate(
-        tactic_id="reddit_comment",
-        platform=DistributionPlatform.REDDIT,
-        supported_kinds=frozenset({OpportunityKind.SUBREDDIT}),
-        tactic_class=DistributionTacticClass.COMMUNITY,
-        action_type=DistributionActionType.COMMENT,
-        automation_level=AutomationLevel.ASSISTED,
+        "reddit_comment",
+        DistributionPlatform.REDDIT,
+        frozenset({OpportunityKind.SUBREDDIT}),
+        DistributionTacticClass.COMMUNITY,
+        DistributionActionType.COMMENT,
+        "relevant comment under a fresh subreddit thread",
         attribution_level=AttributionLevel.PROFILE,
-        identity_required=True,
         community_policy_required=True,
-        label="relevant comment under a fresh subreddit thread",
-        estimated_cost_min=0,
-        estimated_cost_max=20,
         effort_hours=1.0,
-        time_to_signal_days=4,
-        quality_score=7.0,
     ),
     DistributionTacticTemplate(
-        tactic_id="reddit_reply",
-        platform=DistributionPlatform.REDDIT,
-        supported_kinds=frozenset({OpportunityKind.SUBREDDIT}),
-        tactic_class=DistributionTacticClass.COMMUNITY,
-        action_type=DistributionActionType.REPLY,
-        automation_level=AutomationLevel.ASSISTED,
+        "reddit_reply",
+        DistributionPlatform.REDDIT,
+        frozenset({OpportunityKind.SUBREDDIT}),
+        DistributionTacticClass.COMMUNITY,
+        DistributionActionType.REPLY,
+        "relevant reply inside a fresh subreddit discussion",
         attribution_level=AttributionLevel.PROFILE,
-        identity_required=True,
         community_policy_required=True,
-        label="relevant reply inside a fresh subreddit discussion",
-        estimated_cost_min=0,
-        estimated_cost_max=20,
         effort_hours=1.0,
-        time_to_signal_days=4,
+        quality_score=6.5,
+    ),
+    _paid(
+        "reddit_ads",
+        DistributionPlatform.REDDIT,
+        frozenset({OpportunityKind.SUBREDDIT}),
+        "Reddit Ads test against the discovered subreddit audience",
+    ),
+    DistributionTacticTemplate(
+        "tiktok_comment",
+        DistributionPlatform.TIKTOK,
+        frozenset({OpportunityKind.CONTENT_CLUSTER}),
+        DistributionTacticClass.COMMUNITY,
+        DistributionActionType.COMMENT,
+        "relevant comment under a fresh video inside the topic cluster",
+        attribution_level=AttributionLevel.PROFILE,
         quality_score=6.5,
     ),
     DistributionTacticTemplate(
-        tactic_id="reddit_ads",
-        platform=DistributionPlatform.REDDIT,
-        supported_kinds=frozenset({OpportunityKind.SUBREDDIT}),
-        tactic_class=DistributionTacticClass.PAID_PLATFORM,
-        action_type=DistributionActionType.PAID_CAMPAIGN,
-        automation_level=AutomationLevel.APPROVAL_GATED,
-        attribution_level=AttributionLevel.PAID,
-        identity_required=False,
-        community_policy_required=False,
-        label="Reddit Ads test against the discovered subreddit audience",
-        estimated_cost_min=100,
-        estimated_cost_max=500,
-        effort_hours=2.5,
-        time_to_signal_days=5,
-        quality_score=8.0,
-    ),
-    DistributionTacticTemplate(
-        tactic_id="tiktok_comment",
-        platform=DistributionPlatform.TIKTOK,
-        supported_kinds=frozenset({OpportunityKind.CONTENT_CLUSTER}),
-        tactic_class=DistributionTacticClass.COMMUNITY,
-        action_type=DistributionActionType.COMMENT,
-        automation_level=AutomationLevel.ASSISTED,
+        "tiktok_partizan_organic_video",
+        DistributionPlatform.TIKTOK,
+        frozenset({OpportunityKind.CONTENT_CLUSTER}),
+        DistributionTacticClass.OWNED_ORGANIC,
+        DistributionActionType.ORGANIC_VIDEO,
+        "Partizan-owned organic video experiment for the discovered topic cluster",
         attribution_level=AttributionLevel.PROFILE,
-        identity_required=True,
-        community_policy_required=False,
-        label="relevant comment under a fresh video inside the topic cluster",
-        estimated_cost_min=0,
-        estimated_cost_max=20,
-        effort_hours=1.5,
-        time_to_signal_days=4,
-        quality_score=6.5,
-    ),
-    DistributionTacticTemplate(
-        tactic_id="tiktok_partizan_organic_video",
-        platform=DistributionPlatform.TIKTOK,
-        supported_kinds=frozenset({OpportunityKind.CONTENT_CLUSTER}),
-        tactic_class=DistributionTacticClass.OWNED_ORGANIC,
-        action_type=DistributionActionType.ORGANIC_VIDEO,
-        automation_level=AutomationLevel.ASSISTED,
-        attribution_level=AttributionLevel.PROFILE,
-        identity_required=True,
-        community_policy_required=False,
-        label="Partizan-owned organic video experiment for the discovered topic cluster",
-        estimated_cost_min=0,
         estimated_cost_max=50,
         effort_hours=3.0,
-        time_to_signal_days=4,
         quality_score=8.5,
     ),
-    DistributionTacticTemplate(
-        tactic_id="tiktok_ads",
-        platform=DistributionPlatform.TIKTOK,
-        supported_kinds=frozenset({OpportunityKind.CONTENT_CLUSTER}),
-        tactic_class=DistributionTacticClass.PAID_PLATFORM,
-        action_type=DistributionActionType.PAID_CAMPAIGN,
-        automation_level=AutomationLevel.APPROVAL_GATED,
-        attribution_level=AttributionLevel.PAID,
-        identity_required=False,
-        community_policy_required=False,
-        label="TikTok paid acquisition test against the discovered topic cluster",
-        estimated_cost_min=100,
-        estimated_cost_max=500,
-        effort_hours=3.0,
-        time_to_signal_days=5,
-        quality_score=8.5,
+    _paid(
+        "tiktok_ads",
+        DistributionPlatform.TIKTOK,
+        frozenset({OpportunityKind.CONTENT_CLUSTER}),
+        "TikTok paid acquisition test against the discovered topic cluster",
+        quality=8.5,
     ),
 )
 
@@ -301,23 +227,22 @@ class DistributionPlayPlanner:
         paid_keys: set[tuple[object, DistributionPlatform, str]] = set()
 
         for opportunity in opportunities:
-            templates = self._templates_for(opportunity)
-            for template in templates:
+            for template in self._templates_for(opportunity):
                 if template.tactic_class == DistributionTacticClass.PAID_PLATFORM:
                     paid_key = (opportunity.icp_id, opportunity.platform, template.tactic_id)
                     if paid_key in paid_keys:
                         continue
                     paid_keys.add(paid_key)
-
-                play = self._build_play(
-                    product=product,
-                    opportunity=opportunity,
-                    template=template,
-                    identities=identities,
-                    policy=policies.get(opportunity.id),
-                    campaign_slots=campaign_slots,
+                plays.append(
+                    self._build_play(
+                        product=product,
+                        opportunity=opportunity,
+                        template=template,
+                        identities=identities,
+                        policy=policies.get(opportunity.id),
+                        campaign_slots=campaign_slots,
+                    )
                 )
-                plays.append(play)
 
         plays.sort(
             key=lambda play: (
@@ -378,7 +303,6 @@ class DistributionPlayPlanner:
             template.estimated_cost_max,
             product.budget,
         )
-        priority = self._priority(opportunity, template)
         rationale = [
             f"Opportunity relevance={opportunity.relevance_score or 0:.1f}/100.",
             f"Tactic quality hypothesis={template.quality_score:.1f}/10.",
@@ -422,7 +346,7 @@ class DistributionPlayPlanner:
             estimated_cost_max=cost_max,
             effort_hours=template.effort_hours,
             time_to_signal_days=template.time_to_signal_days,
-            priority_score=priority,
+            priority_score=self._priority(opportunity, template),
             rationale=rationale,
         )
 
@@ -439,7 +363,9 @@ class DistributionPlayPlanner:
             steps.insert(1, "Verify CommunityPolicy before preparing the external action.")
         if template.identity_required:
             steps.append("Use the selected active Partizan Distribution Identity.")
-        steps.append("Launch only through the configured approval/execution path and measure outcomes.")
+        steps.append(
+            "Launch through the configured approval/execution path and measure outcomes."
+        )
         return steps
 
     def _priority(
