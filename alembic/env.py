@@ -5,6 +5,7 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 import app.analytics_models  # noqa: F401
+import app.distribution_models  # noqa: F401
 import app.growth_manager_models  # noqa: F401
 import app.models  # noqa: F401
 from alembic import context
