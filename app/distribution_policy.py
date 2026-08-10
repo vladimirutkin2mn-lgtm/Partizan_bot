@@ -80,7 +80,8 @@ class DistributionExecutionPolicy:
             reasons.append("Distribution Identity is not active")
 
         allowed_kinds = {
-            str(value).upper() for value in identity.eligibility.get("allowed_opportunity_kinds", [])
+            str(value).upper()
+            for value in identity.eligibility.get("allowed_opportunity_kinds", [])
         }
         if allowed_kinds and opportunity.kind.value not in allowed_kinds:
             reasons.append("Distribution Identity is not eligible for this opportunity kind")
@@ -191,7 +192,8 @@ class DistributionIdentitySelector:
             return ["identity inactive"]
 
         allowed_kinds = {
-            str(value).upper() for value in identity.eligibility.get("allowed_opportunity_kinds", [])
+            str(value).upper()
+            for value in identity.eligibility.get("allowed_opportunity_kinds", [])
         }
         if allowed_kinds and opportunity.kind.value not in allowed_kinds:
             return ["opportunity kind not eligible"]
