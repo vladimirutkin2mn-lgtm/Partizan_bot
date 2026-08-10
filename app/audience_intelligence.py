@@ -120,7 +120,10 @@ class AudienceIntelligenceEngine:
                 kind=OpportunityKind.CREATOR_ACCOUNT,
                 discovery_query=DiscoveryQuery(
                     SourceClass.CREATOR,
-                    f"site:instagram.com {icp.title} {icp.pain} creator account {market} {language}",
+                    (
+                        f"site:instagram.com {icp.title} {icp.pain} "
+                        f"creator account {market} {language}"
+                    ),
                 ),
             ),
             PlatformDiscoveryQuery(
@@ -145,7 +148,10 @@ class AudienceIntelligenceEngine:
                     topic=normalized_topic,
                     discovery_query=DiscoveryQuery(
                         SourceClass.CREATOR,
-                        f"site:tiktok.com {normalized_topic} videos creators hashtags {market} {language}",
+                        (
+                            f"site:tiktok.com {normalized_topic} videos creators hashtags "
+                            f"{market} {language}"
+                        ),
                     ),
                 )
             )
