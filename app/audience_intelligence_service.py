@@ -45,18 +45,10 @@ class InMemoryAudienceIntelligenceService:
             opportunities=opportunities,
         )
         self._results[product.id] = response
-        self._store.put(
-            AUDIENCE_MAP_NAMESPACE,
-            str(product.id),
-            response.model_dump(mode="json"),
-        )
+        self._persist_map(response)
         for opportunity in opportunities:
             self._opportunities[opportunity.id] = opportunity
-            self._store.put(
-                AUDIENCE_OPPORTUNITY_NAMESPACE,
-                str(opportunity.id),
-                opportunity.model_dump(mode="json"),
-            )
+            self._persist_opportunity(opportunity)
         return response
 
     def get(self, product_id: UUID) -> AudienceDistributionMapView:
@@ -85,6 +77,50 @@ class InMemoryAudienceIntelligenceService:
         opportunity = DistributionOpportunityView.model_validate(payload)
         self._opportunities[opportunity_id] = opportunity
         return opportunity
+
+    def update_opportunity(
+        self,
+        opportunity: DistributionOpportunityView,
+    ) -> DistributionOpportunityView:
+        self._opportunities[opportunity.id] = opportunity
+        self._persist_opportunity(opportunity)
+
+        updated_map = None
+        for product_map in self._all_maps():
+            if not any(item.id == opportunity.id for item in product_map.opportunities):
+                continue
+            opportunities = [
+                opportunity if item.id == opportunity.id else item
+                for item in product_map.opportunities
+            ]
+            updated_map = product_map.model_copy(update={"opportunities": opportunities})
+            self._results[product_map.product_id] = updated_map
+            self._persist_map(updated_map)
+            break
+        if updated_map is None:
+            raise KeyError(opportunity.id)
+        return opportunity
+
+    def _all_maps(self) -> list[AudienceDistributionMapView]:
+        maps = dict(self._results)
+        for payload in self._store.list_namespace(AUDIENCE_MAP_NAMESPACE):
+            product_map = AudienceDistributionMapView.model_validate(payload)
+            maps[product_map.product_id] = product_map
+        return list(maps.values())
+
+    def _persist_map(self, product_map: AudienceDistributionMapView) -> None:
+        self._store.put(
+            AUDIENCE_MAP_NAMESPACE,
+            str(product_map.product_id),
+            product_map.model_dump(mode="json"),
+        )
+
+    def _persist_opportunity(self, opportunity: DistributionOpportunityView) -> None:
+        self._store.put(
+            AUDIENCE_OPPORTUNITY_NAMESPACE,
+            str(opportunity.id),
+            opportunity.model_dump(mode="json"),
+        )
 
     def reset(self) -> None:
         self._results.clear()
