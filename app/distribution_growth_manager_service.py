@@ -50,7 +50,10 @@ class InMemoryDistributionGrowthManagerService:
             return self._decisions[decision_id].model_copy(update={"duplicate": True})
 
         action, rationale = self._decide(product.max_cac, play, analytics.metrics)
-        budget_remaining = self._budget_remaining(product.budget, product_analytics.total_spend)
+        budget_remaining = self._budget_remaining(
+            product.budget,
+            product_analytics.total_spend,
+        )
         if budget_remaining is not None and budget_remaining <= 0 and analytics.metrics.spend > 0:
             action = "STOP"
             rationale = [
@@ -123,9 +126,14 @@ class InMemoryDistributionGrowthManagerService:
         product = product_intake_service.get_product(product_id)
         play_result = distribution_play_service.get(product_id)
         product_analytics = distribution_analytics_service.product_analytics(product_id)
-        budget_remaining = self._budget_remaining(product.budget, product_analytics.total_spend)
+        budget_remaining = self._budget_remaining(
+            product.budget,
+            product_analytics.total_spend,
+        )
         ready = [
-            play for play in play_result.plays if play.status == DistributionPlayStatus.READY
+            play
+            for play in play_result.plays
+            if play.status == DistributionPlayStatus.READY
         ]
         running_play_ids = {
             experiment.distribution_play_id
@@ -147,22 +155,36 @@ class InMemoryDistributionGrowthManagerService:
                 learning_reason,
             ]
             scored.append((score, play, rationale))
-        scored.sort(key=lambda item: (-item[0], item[1].tactic_id, str(item[1].id)))
+        scored.sort(
+            key=lambda item: (
+                -item[0],
+                item[1].tactic_id,
+                str(item[1].id),
+            )
+        )
 
         items: list[DistributionPortfolioItemView] = []
         allocated = 0.0
         used_platforms: set[str] = set()
+        per_item_cap = (
+            round(budget_remaining / max_items, 2)
+            if budget_remaining is not None
+            else None
+        )
         for score, play, rationale in scored:
             if len(items) >= max_items:
                 break
             adjusted_score = score
             if play.platform.value not in used_platforms:
                 adjusted_score = min(100.0, adjusted_score + 3.0)
-                rationale = rationale + ["Small diversification bonus for a new platform."]
+                rationale = rationale + [
+                    "Small diversification bonus for a new platform."
+                ]
             cap = self._portfolio_budget_cap(
                 play,
                 budget_remaining,
                 allocated,
+                per_item_cap,
             )
             if budget_remaining is not None and cap <= 0:
                 break
@@ -193,7 +215,8 @@ class InMemoryDistributionGrowthManagerService:
         peers = [
             item
             for item in experiments
-            if item.play.platform == play.platform and item.play.tactic_id == play.tactic_id
+            if item.play.platform == play.platform
+            and item.play.tactic_id == play.tactic_id
         ]
         if not peers:
             return 0.0, "No prior observed economics for this platform+tactic."
@@ -203,16 +226,27 @@ class InMemoryDistributionGrowthManagerService:
         if target_cac is not None and cac is not None:
             ratio = cac / target_cac if target_cac else float("inf")
             if paid >= MIN_SCALE_PAID_USERS and ratio <= 0.8:
-                return 15.0, f"Winner bonus: observed peer CAC={cac:.2f} below target."
+                return 15.0, (
+                    f"Winner bonus: observed peer CAC={cac:.2f} below target."
+                )
             if ratio <= 1.0:
-                return 8.0, f"Positive bonus: observed peer CAC={cac:.2f} within target."
+                return 8.0, (
+                    f"Positive bonus: observed peer CAC={cac:.2f} within target."
+                )
             if ratio > 1.5 and paid >= 1:
-                return -20.0, f"Loss penalty: observed peer CAC={cac:.2f} far above target."
-        if paid == 0 and spend >= max(play.estimated_cost_max, 25):
-            return -25.0, f"Loss penalty: {spend:.2f} peer spend with no paid users."
+                return -20.0, (
+                    f"Loss penalty: observed peer CAC={cac:.2f} far above target."
+                )
+        no_paid_threshold = self._no_paid_guardrail(play, target_cac)
+        if paid == 0 and spend >= no_paid_threshold:
+            return -25.0, (
+                f"Loss penalty: {spend:.2f} peer spend with no paid users."
+            )
         if paid > 0:
             return 4.0, f"Evidence bonus: peer tactic produced {paid} paid users."
-        return -5.0, "Weak evidence penalty: peer tactic has spend but no conversion signal."
+        return -5.0, (
+            "Weak evidence penalty: peer tactic has spend but no conversion signal."
+        )
 
     def _decide(self, target_cac, play, metrics) -> tuple[str, list[str]]:
         if target_cac is not None:
@@ -220,7 +254,10 @@ class InMemoryDistributionGrowthManagerService:
                 ratio = metrics.cac / target_cac if target_cac else float("inf")
                 if ratio <= 0.8:
                     return "SCALE", [
-                        f"CAC {metrics.cac:.2f} is at least 20% below target {target_cac:.2f}.",
+                        (
+                            f"CAC {metrics.cac:.2f} is at least 20% below target "
+                            f"{target_cac:.2f}."
+                        ),
                         f"{metrics.paid_users} paid users meet the scale threshold.",
                     ]
                 if ratio <= 1.1:
@@ -232,36 +269,67 @@ class InMemoryDistributionGrowthManagerService:
                         f"CAC {metrics.cac:.2f} is above target but the tactic converts."
                     ]
                 return "STOP", [
-                    f"CAC {metrics.cac:.2f} is more than 50% above target {target_cac:.2f}."
+                    (
+                        f"CAC {metrics.cac:.2f} is more than 50% above target "
+                        f"{target_cac:.2f}."
+                    )
                 ]
             if metrics.paid_users > 0 and metrics.cac is not None:
                 if metrics.cac <= target_cac:
                     return "CONTINUE", [
                         "Early CAC is within target; collect more paid-user signal."
                     ]
-                if metrics.cac > target_cac * 1.5 and metrics.spend >= max(25, target_cac * 2):
-                    return "STOP", ["Early CAC materially exceeds the loss guardrail."]
+                if (
+                    metrics.cac > target_cac * 1.5
+                    and metrics.spend >= max(25, target_cac * 2)
+                ):
+                    return "STOP", [
+                        "Early CAC materially exceeds the loss guardrail."
+                    ]
                 return "MODIFY", ["The tactic converts but CAC is above target."]
-            stop_threshold = max(play.estimated_cost_max, target_cac * 3, 25)
+            stop_threshold = self._no_paid_guardrail(play, target_cac)
             if metrics.spend >= stop_threshold:
                 return "STOP", [
-                    f"No paid users after {metrics.spend:.2f} spend; guardrail reached."
+                    (
+                        f"No paid users after {metrics.spend:.2f} spend; "
+                        f"guardrail {stop_threshold:.2f} reached."
+                    )
                 ]
             if metrics.visits >= 20 and metrics.signups == 0:
-                return "MODIFY", ["Traffic arrives but no users sign up; change hook/CTA/landing."]
+                return "MODIFY", [
+                    "Traffic arrives but no users sign up; change hook/CTA/landing."
+                ]
             if metrics.signups >= 5 and metrics.paid_users == 0:
-                return "MODIFY", ["Signups arrive but no paid users; change activation/offer/paywall."]
-            return "CONTINUE", ["Insufficient conversion signal to scale or stop yet."]
+                return "MODIFY", [
+                    "Signups arrive but no paid users; change activation/offer/paywall."
+                ]
+            return "CONTINUE", [
+                "Insufficient conversion signal to scale or stop yet."
+            ]
 
         if metrics.paid_users >= MIN_SCALE_PAID_USERS and (metrics.roas or 0) >= 1:
             return "SCALE", ["Positive ROAS with enough paid-user signal."]
         if metrics.paid_users > 0:
-            return "CONTINUE", ["Paid users observed; collect more signal without a CAC target."]
+            return "CONTINUE", [
+                "Paid users observed; collect more signal without a CAC target."
+            ]
         if metrics.spend >= max(play.estimated_cost_max, 100):
             return "STOP", ["Fallback spend guardrail reached with no paid users."]
         if metrics.visits >= 20:
-            return "MODIFY", ["Visits exist but no paid conversion; change one bottleneck."]
+            return "MODIFY", [
+                "Visits exist but no paid conversion; change one bottleneck."
+            ]
         return "CONTINUE", ["Insufficient signal and no CAC target configured."]
+
+    def _no_paid_guardrail(
+        self,
+        play: DistributionPlayView,
+        target_cac: float | None,
+    ) -> float:
+        if target_cac is None:
+            return max(play.estimated_cost_max, 100)
+        target_guardrail = max(target_cac * 3, 25)
+        return min(play.estimated_cost_max, target_guardrail)
 
     def _recommended_increment(
         self,
@@ -285,20 +353,31 @@ class InMemoryDistributionGrowthManagerService:
         play: DistributionPlayView,
         budget_remaining: float | None,
         already_allocated: float,
+        per_item_cap: float | None,
     ) -> float:
         desired = play.estimated_cost_max
+        if per_item_cap is not None:
+            desired = min(desired, per_item_cap)
         if budget_remaining is None:
             return round(desired, 2)
         available = max(0.0, budget_remaining - already_allocated)
         return round(min(desired, available), 2)
 
-    def _budget_remaining(self, budget: float | None, total_spend: float) -> float | None:
+    def _budget_remaining(
+        self,
+        budget: float | None,
+        total_spend: float,
+    ) -> float | None:
         if budget is None:
             return None
         return round(max(0.0, budget - total_spend), 2)
 
     def _metric_summary(self, metrics, target_cac: float | None) -> str:
-        target = f", target CAC={target_cac:.2f}" if target_cac is not None else ""
+        target = (
+            f", target CAC={target_cac:.2f}"
+            if target_cac is not None
+            else ""
+        )
         return (
             f"Observed: spend={metrics.spend:.2f}, visits={metrics.visits}, "
             f"signups={metrics.signups}, paid={metrics.paid_users}, "
