@@ -81,7 +81,8 @@ class InMemoryDistributionExecutionService:
         action_id = uuid4()
         experiment_id = uuid4()
         referral_token = experiment_id.hex[:16]
-        tracking_base = self._tracking_base(destination_url, play, slot.attribution_route if slot else None)
+        slot_route = slot.attribution_route if slot else None
+        tracking_base = self._tracking_base(destination_url, play, slot_route)
         tracking_url = self._tracking_builder.build(
             tracking_base,
             product_id=product.id,
