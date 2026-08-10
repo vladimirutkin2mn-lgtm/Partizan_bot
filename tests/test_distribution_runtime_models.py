@@ -1,8 +1,7 @@
-from app.db import Base
-
 import app.distribution_models  # noqa: F401
 import app.distribution_runtime_models  # noqa: F401
 import app.runtime_models  # noqa: F401
+from app.db import Base
 
 
 def test_channel_first_runtime_tables_are_registered() -> None:
