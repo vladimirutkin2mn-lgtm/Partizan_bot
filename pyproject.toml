@@ -33,6 +33,9 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.per-file-ignores]
+"alembic/versions/*.py" = ["E501"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
