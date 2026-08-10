@@ -30,7 +30,10 @@ async def prepare_distribution_action(
         play = distribution_play_service.find(product_id, play_id)
         return distribution_execution_service.prepare(product, play, payload)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail="Product or DistributionPlay not found") from exc
+        raise HTTPException(
+            status_code=404,
+            detail="Product or DistributionPlay not found",
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -70,7 +73,10 @@ async def approve_distribution_action(action_id: UUID) -> DistributionExecutionP
     try:
         return distribution_execution_service.approve(action_id)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail="DistributionAction dependency not found") from exc
+        raise HTTPException(
+            status_code=404,
+            detail="DistributionAction dependency not found",
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
