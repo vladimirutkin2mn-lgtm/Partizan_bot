@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from app.audience_intelligence_service import audience_intelligence_service
+from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_play_schemas import DistributionPlayGenerationResponse
 from app.distribution_play_service import distribution_play_service
 from app.product_intake import product_intake_service
@@ -25,7 +26,13 @@ async def generate_distribution_plays(product_id: UUID) -> DistributionPlayGener
         ) from exc
 
     try:
-        return distribution_play_service.generate(product, distribution_map)
+        return distribution_play_service.generate(
+            product,
+            distribution_map,
+            identities=distribution_control_plane_service.list_identities(),
+            community_policies=distribution_control_plane_service.list_policies(),
+            campaign_slots=distribution_control_plane_service.list_campaign_slots(),
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
