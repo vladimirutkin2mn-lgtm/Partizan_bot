@@ -148,6 +148,7 @@ class DistributionIdentitySelector:
         identities: list[DistributionIdentityView],
         campaign_slots: list[CampaignSlotView] | None = None,
         desired_language: str | None = None,
+        action_type: DistributionActionType | None = None,
     ) -> IdentitySelection | None:
         campaign_slots = campaign_slots or []
         selections: list[IdentitySelection] = []
@@ -158,6 +159,7 @@ class DistributionIdentitySelector:
                 opportunity,
                 identity,
                 campaign_slots,
+                action_type=action_type,
             )
             if eligibility_reasons:
                 continue
@@ -185,6 +187,8 @@ class DistributionIdentitySelector:
         opportunity: DistributionOpportunitySeed,
         identity: DistributionIdentityView,
         campaign_slots: list[CampaignSlotView],
+        *,
+        action_type: DistributionActionType | None,
     ) -> list[str]:
         if identity.platform != opportunity.platform:
             return ["platform mismatch"]
@@ -197,6 +201,14 @@ class DistributionIdentitySelector:
         }
         if allowed_kinds and opportunity.kind.value not in allowed_kinds:
             return ["opportunity kind not eligible"]
+
+        if action_type is not None:
+            allowed_actions = {
+                str(value).upper()
+                for value in identity.eligibility.get("allowed_actions", [])
+            }
+            if allowed_actions and action_type.value not in allowed_actions:
+                return ["action type not eligible"]
 
         for slot in campaign_slots:
             if (
