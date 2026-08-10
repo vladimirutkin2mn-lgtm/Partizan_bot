@@ -17,10 +17,8 @@ from app.distribution_types import (
 )
 
 
-class DistributionOpportunityView(BaseModel):
-    id: UUID
+class DistributionOpportunitySeed(BaseModel):
     icp_id: UUID
-    legacy_channel_id: UUID | None = None
     platform: DistributionPlatform
     kind: OpportunityKind
     canonical_key: str = Field(min_length=1, max_length=500)
@@ -32,12 +30,24 @@ class DistributionOpportunityView(BaseModel):
     evidence: list[dict] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_platform_kind(self) -> "DistributionOpportunityView":
+    def validate_platform_kind(self) -> "DistributionOpportunitySeed":
         if not is_valid_opportunity_kind(self.platform, self.kind):
             raise ValueError(
                 f"Opportunity kind {self.kind.value} is not valid for {self.platform.value}"
             )
         return self
+
+
+class DistributionOpportunityView(DistributionOpportunitySeed):
+    id: UUID
+    legacy_channel_id: UUID | None = None
+
+
+class AudienceDistributionMapView(BaseModel):
+    product_id: UUID
+    top_icp_count: int = Field(ge=1)
+    opportunity_count: int = Field(ge=1)
+    opportunities: list[DistributionOpportunitySeed] = Field(min_length=1)
 
 
 class DistributionIdentityView(BaseModel):
