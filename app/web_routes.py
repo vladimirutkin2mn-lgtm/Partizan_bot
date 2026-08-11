@@ -9,8 +9,11 @@ _ASSETS = {
     "partizan.v1.js": "text/javascript; charset=utf-8",
     "execution.v1.css": "text/css; charset=utf-8",
     "execution.v1.js": "text/javascript; charset=utf-8",
+    "execution.v2.js": "text/javascript; charset=utf-8",
     "paid-control.v1.css": "text/css; charset=utf-8",
     "paid-control.v1.js": "text/javascript; charset=utf-8",
+    "results.v1.css": "text/css; charset=utf-8",
+    "results.v1.js": "text/javascript; charset=utf-8",
 }
 
 router = APIRouter(tags=["web"])
@@ -23,7 +26,7 @@ async def root() -> RedirectResponse:
 
 @router.get("/app", include_in_schema=False)
 async def workspace() -> FileResponse:
-    return FileResponse(_WEB_DIR / "index.html", media_type="text/html; charset=utf-8")
+    return FileResponse(_WEB_DIR / "index.v2.html", media_type="text/html; charset=utf-8")
 
 
 @router.get("/app/assets/{asset_name}", include_in_schema=False)

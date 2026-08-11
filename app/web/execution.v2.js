@@ -2,6 +2,8 @@
   "use strict";
 
   const EXECUTION_STORAGE_KEY = "partizan.execution.v1";
+  const RESULTS_STYLE_ID = "partizan-results-style";
+  const RESULTS_SCRIPT_ID = "partizan-results-script";
 
   function loadExecutionV1() {
     const script = document.createElement("script");
@@ -9,6 +11,23 @@
     script.async = false;
     script.addEventListener("load", reopenAfterPaidActivation);
     document.head.append(script);
+  }
+
+  function loadResultsAssets() {
+    if (!document.getElementById(RESULTS_STYLE_ID)) {
+      const style = document.createElement("link");
+      style.id = RESULTS_STYLE_ID;
+      style.rel = "stylesheet";
+      style.href = "/app/assets/results.v1.css";
+      document.head.append(style);
+    }
+    if (!document.getElementById(RESULTS_SCRIPT_ID)) {
+      const script = document.createElement("script");
+      script.id = RESULTS_SCRIPT_ID;
+      script.src = "/app/assets/results.v1.js";
+      script.async = false;
+      document.head.append(script);
+    }
   }
 
   function reopenAfterPaidActivation() {
@@ -41,5 +60,6 @@
     }
   });
 
+  loadResultsAssets();
   loadExecutionV1();
 })();
