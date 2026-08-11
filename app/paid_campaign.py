@@ -48,7 +48,7 @@ class PaidCampaignSpec(BaseModel):
     created_at: datetime
 
     @model_validator(mode="after")
-    def validate_provider_safe_state(self) -> "PaidCampaignSpec":
+    def validate_provider_safe_state(self) -> PaidCampaignSpec:
         if self.launch_mode != PaidCampaignLaunchMode.CREATE_PAUSED:
             raise ValueError("MVP paid campaign specs may only be created in paused mode")
         if not self.audience:
