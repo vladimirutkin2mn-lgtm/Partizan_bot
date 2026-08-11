@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.operator_auth import require_operator
+from app.paid_audit_safe import append_paid_audit, observe_paid_lifecycle
 from app.paid_control_reconciliation import (
     PaidReconcileResultView,
     PaidReconciliationQueueView,
@@ -91,10 +92,10 @@ async def paid_control_reconciliation_queue() -> PaidReconciliationQueueView:
 )
 async def reconcile_paid_control_action(action_id: UUID) -> PaidReconcileResultView:
     try:
-        before = paid_lifecycle_service.get(action_id)
+        before = observe_paid_lifecycle(action_id)
         result = paid_control_reconciliation_service.reconcile(action_id)
-        after = paid_lifecycle_service.get(action_id)
-        paid_audit_ledger.record(
+        after = observe_paid_lifecycle(action_id)
+        append_paid_audit(
             action_id=action_id,
             event_type=PaidAuditEventType.RECONCILIATION_SYNC,
             actor=PaidAuditActor.OPERATOR,
