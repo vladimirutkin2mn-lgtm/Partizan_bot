@@ -16,6 +16,8 @@ _ASSETS = {
     "paid-control.v1.js": "text/javascript; charset=utf-8",
     "results.v1.css": "text/css; charset=utf-8",
     "results.v1.js": "text/javascript; charset=utf-8",
+    "integration.v1.css": "text/css; charset=utf-8",
+    "integration.v1.js": "text/javascript; charset=utf-8",
 }
 
 router = APIRouter(tags=["web"])
