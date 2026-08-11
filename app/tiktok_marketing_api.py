@@ -42,6 +42,33 @@ class TikTokMarketingApiClient(Protocol):
         ad_text: str,
     ) -> str: ...
 
+    def set_campaign_status(
+        self,
+        *,
+        connection: TikTokPaidProviderConnectionView,
+        access_token: str,
+        campaign_id: str,
+        operation_status: str,
+    ) -> None: ...
+
+    def set_adgroup_status(
+        self,
+        *,
+        connection: TikTokPaidProviderConnectionView,
+        access_token: str,
+        adgroup_id: str,
+        operation_status: str,
+    ) -> None: ...
+
+    def set_ad_status(
+        self,
+        *,
+        connection: TikTokPaidProviderConnectionView,
+        access_token: str,
+        ad_id: str,
+        operation_status: str,
+    ) -> None: ...
+
 
 class HttpxTikTokMarketingApiClient:
     def __init__(self, timeout_seconds: float = 20.0) -> None:
@@ -129,6 +156,63 @@ class HttpxTikTokMarketingApiClient:
             return str(ad_ids[0])
         raise TikTokMarketingApiError("TikTok ad create response did not include an ad id")
 
+    def set_campaign_status(
+        self,
+        *,
+        connection: TikTokPaidProviderConnectionView,
+        access_token: str,
+        campaign_id: str,
+        operation_status: str,
+    ) -> None:
+        self._post(
+            connection,
+            access_token,
+            "campaign/status/update/",
+            {
+                "advertiser_id": connection.advertiser_id,
+                "campaign_ids": [campaign_id],
+                "operation_status": operation_status,
+            },
+        )
+
+    def set_adgroup_status(
+        self,
+        *,
+        connection: TikTokPaidProviderConnectionView,
+        access_token: str,
+        adgroup_id: str,
+        operation_status: str,
+    ) -> None:
+        self._post(
+            connection,
+            access_token,
+            "adgroup/status/update/",
+            {
+                "advertiser_id": connection.advertiser_id,
+                "adgroup_ids": [adgroup_id],
+                "operation_status": operation_status,
+            },
+        )
+
+    def set_ad_status(
+        self,
+        *,
+        connection: TikTokPaidProviderConnectionView,
+        access_token: str,
+        ad_id: str,
+        operation_status: str,
+    ) -> None:
+        self._post(
+            connection,
+            access_token,
+            "ad/status/update/",
+            {
+                "advertiser_id": connection.advertiser_id,
+                "ad_ids": [ad_id],
+                "operation_status": operation_status,
+            },
+        )
+
     def _post(
         self,
         connection: TikTokPaidProviderConnectionView,
@@ -159,8 +243,10 @@ class HttpxTikTokMarketingApiClient:
                 f"TikTok Marketing API rejected the request: {self._message(body)}"
             )
         data = body.get("data") if isinstance(body, dict) else None
+        if data is None:
+            return {}
         if not isinstance(data, dict):
-            raise TikTokMarketingApiError("TikTok Marketing API response did not include data")
+            raise TikTokMarketingApiError("TikTok Marketing API response data is invalid")
         return data
 
     def _identifier(self, data: dict, key: str) -> str:
