@@ -7,6 +7,8 @@ _WEB_DIR = Path(__file__).resolve().parent / "web"
 _ASSETS = {
     "partizan.v1.css": "text/css; charset=utf-8",
     "partizan.v1.js": "text/javascript; charset=utf-8",
+    "execution.v1.css": "text/css; charset=utf-8",
+    "execution.v1.js": "text/javascript; charset=utf-8",
 }
 
 router = APIRouter(tags=["web"])
