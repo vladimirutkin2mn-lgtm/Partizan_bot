@@ -4,13 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.meta_paid_control import MetaPaidControlSnapshotView, meta_paid_control_service
 from app.operator_auth import require_operator
+from app.paid_audit_safe import append_paid_audit, observe_paid_lifecycle
 from app.paid_lifecycle_audit import (
     PaidAuditActor,
     PaidAuditEventType,
     PaidAuditResult,
     PaidLifecycleState,
-    paid_audit_ledger,
-    paid_lifecycle_service,
 )
 
 router = APIRouter(
@@ -25,10 +24,10 @@ router = APIRouter(
 )
 async def sync_meta_paid_campaign(action_id: UUID) -> MetaPaidControlSnapshotView:
     try:
-        before = paid_lifecycle_service.get(action_id)
+        before = observe_paid_lifecycle(action_id)
         snapshot = meta_paid_control_service.sync(action_id)
-        after = paid_lifecycle_service.get(action_id)
-        paid_audit_ledger.record(
+        after = observe_paid_lifecycle(action_id)
+        append_paid_audit(
             action_id=action_id,
             event_type=PaidAuditEventType.CONTROL_SYNC,
             actor=PaidAuditActor.OPERATOR,
@@ -42,8 +41,13 @@ async def sync_meta_paid_campaign(action_id: UUID) -> MetaPaidControlSnapshotVie
             reason=snapshot.last_error,
             deduplicate=True,
         )
-        if before.state != PaidLifecycleState.PAUSED and after.state == PaidLifecycleState.PAUSED:
-            paid_audit_ledger.record(
+        if (
+            before is not None
+            and after is not None
+            and before.state != PaidLifecycleState.PAUSED
+            and after.state == PaidLifecycleState.PAUSED
+        ):
+            append_paid_audit(
                 action_id=action_id,
                 event_type=PaidAuditEventType.PROVIDER_PAUSE,
                 actor=PaidAuditActor.OPERATOR,
@@ -66,10 +70,10 @@ async def sync_meta_paid_campaign(action_id: UUID) -> MetaPaidControlSnapshotVie
 )
 async def pause_meta_paid_campaign(action_id: UUID) -> MetaPaidControlSnapshotView:
     try:
-        before = paid_lifecycle_service.get(action_id)
+        before = observe_paid_lifecycle(action_id)
         snapshot = meta_paid_control_service.pause(action_id)
-        after = paid_lifecycle_service.get(action_id)
-        paid_audit_ledger.record(
+        after = observe_paid_lifecycle(action_id)
+        append_paid_audit(
             action_id=action_id,
             event_type=PaidAuditEventType.PROVIDER_PAUSE,
             actor=PaidAuditActor.OPERATOR,
