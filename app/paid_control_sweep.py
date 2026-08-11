@@ -16,6 +16,15 @@ from app.execution_adapters import (
     ExecutionAdapterReceipt,
 )
 from app.meta_paid_control import MetaPaidControlService, meta_paid_control_service
+from app.paid_lifecycle_audit import (
+    PaidAuditActor,
+    PaidAuditEventType,
+    PaidAuditLedger,
+    PaidAuditResult,
+    PaidLifecycleService,
+    PaidLifecycleState,
+    PaidLifecycleView,
+)
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.tiktok_paid_control import TikTokPaidControlService, tiktok_paid_control_service
 
@@ -124,12 +133,16 @@ class PaidControlSweepService:
         store: RuntimeStateStore | None = None,
         registry: PaidControlSweepRegistry | None = None,
         history_retention: int = 100,
+        lifecycle_service: PaidLifecycleService | None = None,
+        audit_ledger: PaidAuditLedger | None = None,
     ) -> None:
         if history_retention < 1:
             raise ValueError("history_retention must be positive")
         self._store = store or get_runtime_store()
         self._registry = registry or PaidControlSweepRegistry()
         self._history_retention = history_retention
+        self._lifecycle = lifecycle_service or PaidLifecycleService(self._store)
+        self._audit = audit_ledger or PaidAuditLedger(self._store, self._lifecycle)
         self._lock = Lock()
 
     @property
@@ -141,9 +154,13 @@ class PaidControlSweepService:
             raise RuntimeError("A paid-control sweep is already running in this process")
         try:
             started_at = datetime.now(UTC)
-            items = [self._run_action(action) for action in self._candidate_actions()]
+            run_id = uuid4()
+            items = [
+                self._run_action(action, correlation_id=run_id)
+                for action in self._candidate_actions()
+            ]
             result = PaidControlSweepView(
-                run_id=uuid4(),
+                run_id=run_id,
                 started_at=started_at,
                 finished_at=datetime.now(UTC),
                 candidate_count=len(items),
@@ -189,7 +206,12 @@ class PaidControlSweepService:
             actions.append(action)
         return sorted(actions, key=lambda action: str(action.id))
 
-    def _run_action(self, action: DistributionActionView) -> PaidControlSweepItemView:
+    def _run_action(
+        self,
+        action: DistributionActionView,
+        *,
+        correlation_id: UUID,
+    ) -> PaidControlSweepItemView:
         receipt_payload = self._store.get(
             EXECUTION_ADAPTER_RECEIPT_NAMESPACE,
             str(action.id),
@@ -209,16 +231,87 @@ class PaidControlSweepService:
                 outcome=PaidControlSweepItemOutcome.SKIPPED,
                 reason="No autonomous paid-control provider is registered for this receipt",
             )
+
+        before = self._observe(action.id)
         try:
-            return provider.sync(action.id)
+            item = provider.sync(action.id)
         except (KeyError, ValueError, RuntimeError) as exc:
-            return PaidControlSweepItemView(
+            item = PaidControlSweepItemView(
                 action_id=action.id,
                 provider=receipt.provider,
                 outcome=PaidControlSweepItemOutcome.ERROR,
                 requires_reconciliation=True,
                 reason=str(exc)[:1000],
             )
+        after = self._observe(action.id)
+        self._record_audit(
+            action_id=action.id,
+            event_type=PaidAuditEventType.CONTROL_SYNC,
+            actor=PaidAuditActor.WORKER,
+            result=(
+                PaidAuditResult.SUCCESS
+                if item.outcome == PaidControlSweepItemOutcome.SYNCED
+                and not item.requires_reconciliation
+                else PaidAuditResult.FAILED
+            ),
+            before=before,
+            after=after,
+            correlation_id=correlation_id,
+            reason=item.reason,
+            deduplicate=True,
+        )
+        if (
+            before is not None
+            and after is not None
+            and before.state != PaidLifecycleState.PAUSED
+            and after.state == PaidLifecycleState.PAUSED
+        ):
+            self._record_audit(
+                action_id=action.id,
+                event_type=PaidAuditEventType.PROVIDER_PAUSE,
+                actor=PaidAuditActor.WORKER,
+                result=PaidAuditResult.SUCCESS,
+                before=before,
+                after=after,
+                correlation_id=correlation_id,
+                reason=after.pause_reason,
+                deduplicate=True,
+            )
+        return item
+
+    def _observe(self, action_id: UUID) -> PaidLifecycleView | None:
+        try:
+            return self._lifecycle.get(action_id)
+        except Exception:
+            return None
+
+    def _record_audit(
+        self,
+        *,
+        action_id: UUID,
+        event_type: PaidAuditEventType,
+        actor: PaidAuditActor,
+        result: PaidAuditResult,
+        before: PaidLifecycleView | None,
+        after: PaidLifecycleView | None,
+        correlation_id: UUID,
+        reason: str | None,
+        deduplicate: bool,
+    ) -> None:
+        try:
+            self._audit.record(
+                action_id=action_id,
+                event_type=event_type,
+                actor=actor,
+                result=result,
+                before=before,
+                after=after,
+                correlation_id=correlation_id,
+                reason=reason,
+                deduplicate=deduplicate,
+            )
+        except Exception:
+            return
 
     def _persist_run(self, result: PaidControlSweepView) -> None:
         self._store.put(
