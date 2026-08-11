@@ -106,10 +106,11 @@ class TikTokPaidControlSweepProvider:
 
 class PaidControlSweepRegistry:
     def __init__(self, providers: list[PaidControlSweepProvider] | None = None) -> None:
-        configured = providers or [
-            MetaPaidControlSweepProvider(),
-            TikTokPaidControlSweepProvider(),
-        ]
+        configured = (
+            [MetaPaidControlSweepProvider(), TikTokPaidControlSweepProvider()]
+            if providers is None
+            else providers
+        )
         self._providers = {provider.provider: provider for provider in configured}
 
     def get(self, provider: str) -> PaidControlSweepProvider | None:
