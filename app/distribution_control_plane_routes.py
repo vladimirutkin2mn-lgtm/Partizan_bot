@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.audience_intelligence_service import audience_intelligence_service
 from app.distribution_control_plane_schemas import (
@@ -17,9 +17,13 @@ from app.distribution_schemas import (
     DistributionIdentityView,
 )
 from app.distribution_types import DistributionPlatform
+from app.operator_auth import require_operator
 from app.product_intake import product_intake_service
 
-router = APIRouter(tags=["distribution-control-plane"])
+router = APIRouter(
+    tags=["distribution-control-plane"],
+    dependencies=[Depends(require_operator)],
+)
 
 
 @router.post(
