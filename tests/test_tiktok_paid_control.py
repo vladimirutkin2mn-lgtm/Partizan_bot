@@ -31,10 +31,7 @@ from app.tiktok_marketing_api import (
     TikTokMarketingApiError,
 )
 from app.tiktok_paid_control import TikTokPaidControlService, tiktok_paid_control_service
-from app.tiktok_paid_provider import (
-    TikTokPaidProviderConnectionCreateRequest,
-    tiktok_paid_provider_connection_service,
-)
+from app.tiktok_paid_provider import tiktok_paid_provider_connection_service
 
 client = TestClient(app)
 
