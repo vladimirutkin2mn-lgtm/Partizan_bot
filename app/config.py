@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,12 +15,21 @@ class Settings(BaseSettings):
     search_model: str = "gpt-5.6-terra"
     openai_api_key: str | None = None
     execution_provider: str = "mock"
+    operator_auth_required: bool = False
+    operator_api_key: SecretStr | None = None
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None
     smtp_password: str | None = None
     smtp_from_email: str | None = None
     smtp_starttls: bool = True
+
+    @field_validator("operator_api_key", mode="before")
+    @classmethod
+    def normalize_operator_api_key(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
