@@ -15,14 +15,21 @@ from app.distribution_execution_schemas import (
 )
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_service import distribution_play_service
+from app.distribution_types import DistributionActionType
 from app.execution_adapters import (
     DistributionAdapterExecuteRequest,
     DistributionAdapterExecutionView,
     distribution_execution_adapter_service,
 )
+from app.paid_campaign import PaidCampaignSpec, paid_campaign_spec_service
 from app.product_intake import product_intake_service
 
 router = APIRouter(tags=["distribution-execution"])
+
+
+def _ensure_paid_spec(plan: DistributionExecutionPlanView) -> None:
+    if plan.action.action_type == DistributionActionType.PAID_CAMPAIGN:
+        paid_campaign_spec_service.ensure(plan.action.id)
 
 
 @router.post(
@@ -37,7 +44,9 @@ async def prepare_distribution_action(
     try:
         product = product_intake_service.get_product(product_id)
         play = distribution_play_service.find(product_id, play_id)
-        return distribution_execution_service.prepare(product, play, payload)
+        plan = distribution_execution_service.prepare(product, play, payload)
+        _ensure_paid_spec(plan)
+        return plan
     except KeyError as exc:
         raise HTTPException(
             status_code=404,
@@ -59,11 +68,13 @@ async def auto_prepare_distribution_action(
     try:
         product = product_intake_service.get_product(product_id)
         play = distribution_play_service.find(product_id, play_id)
-        return await distribution_action_drafting_service.auto_prepare(
+        plan = await distribution_action_drafting_service.auto_prepare(
             product=product,
             play=play,
             destination_url=payload.destination_url,
         )
+        _ensure_paid_spec(plan)
+        return plan
     except KeyError as exc:
         raise HTTPException(
             status_code=404,
@@ -82,6 +93,25 @@ async def get_distribution_action(action_id: UUID) -> DistributionExecutionPlanV
         return distribution_execution_service.get_plan(action_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="DistributionAction not found") from exc
+
+
+@router.get(
+    "/distribution-actions/{action_id}/paid-campaign-spec",
+    response_model=PaidCampaignSpec,
+)
+async def get_paid_campaign_spec(action_id: UUID) -> PaidCampaignSpec:
+    try:
+        spec = paid_campaign_spec_service.get(action_id)
+        if spec is None:
+            action = distribution_execution_service.get_action(action_id)
+            if action.action_type != DistributionActionType.PAID_CAMPAIGN:
+                raise ValueError("DistributionAction is not a paid campaign")
+            spec = paid_campaign_spec_service.ensure(action_id)
+        return spec
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="DistributionAction dependency not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.patch(
