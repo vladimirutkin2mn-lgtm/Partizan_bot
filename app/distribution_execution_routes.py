@@ -15,6 +15,11 @@ from app.distribution_execution_schemas import (
 )
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_service import distribution_play_service
+from app.execution_adapters import (
+    DistributionAdapterExecuteRequest,
+    DistributionAdapterExecutionView,
+    distribution_execution_adapter_service,
+)
 from app.product_intake import product_intake_service
 
 router = APIRouter(tags=["distribution-execution"])
@@ -107,6 +112,22 @@ async def approve_distribution_action(action_id: UUID) -> DistributionExecutionP
             status_code=404,
             detail="DistributionAction dependency not found",
         ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/distribution-actions/{action_id}/execute",
+    response_model=DistributionAdapterExecutionView,
+)
+async def execute_distribution_action(
+    action_id: UUID,
+    payload: DistributionAdapterExecuteRequest,
+) -> DistributionAdapterExecutionView:
+    try:
+        return distribution_execution_adapter_service.execute(action_id, payload)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="DistributionAction not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
