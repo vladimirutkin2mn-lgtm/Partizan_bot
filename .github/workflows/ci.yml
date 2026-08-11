@@ -41,3 +41,9 @@ jobs:
         run: alembic upgrade head
       - name: Test
         run: pytest
+      - name: Validate compose runtime
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+      - name: Build production image
+        run: docker build --tag partizan-bot:ci .
