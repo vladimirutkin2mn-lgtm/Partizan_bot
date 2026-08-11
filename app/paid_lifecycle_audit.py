@@ -143,7 +143,11 @@ class PaidLifecycleService:
         provider_ids = self._provider_ids(receipt)
 
         requires_reconciliation = bool(
-            receipt is not None and receipt.metadata.get("requires_reconciliation")
+            receipt is not None
+            and (
+                receipt.metadata.get("requires_reconciliation")
+                or receipt.metadata.get("partial_provider_ids")
+            )
         )
         provider_status: str | None = None
         provider_spend: float | None = None
@@ -312,25 +316,25 @@ class PaidLifecycleService:
     ) -> PaidLifecycleState:
         if requires_reconciliation:
             return PaidLifecycleState.RECONCILIATION_REQUIRED
-        if control is not None and control.pause_state == "CONFIRMED":
-            return PaidLifecycleState.PAUSED
         if receipt is None:
             return PaidLifecycleState.NOT_STAGED
         if receipt.outcome == AdapterExecutionOutcome.FAILED:
             return PaidLifecycleState.PROVIDER_FAILED
-        if receipt.outcome == AdapterExecutionOutcome.EXECUTED:
-            return PaidLifecycleState.ACTIVE
-        if receipt.outcome != AdapterExecutionOutcome.STAGED:
-            return PaidLifecycleState.NOT_STAGED
-        if authorization is None:
+        if receipt.outcome == AdapterExecutionOutcome.STAGED:
+            if authorization is None:
+                return PaidLifecycleState.STAGED
+            if authorization.consumed_at is not None:
+                return PaidLifecycleState.ACTIVE
+            if authorization.attempted_at is not None:
+                return PaidLifecycleState.ACTIVATION_ATTEMPTED
+            if authorization.expires_at > datetime.now(UTC):
+                return PaidLifecycleState.AUTHORIZED
             return PaidLifecycleState.STAGED
-        if authorization.consumed_at is not None:
+        if receipt.outcome == AdapterExecutionOutcome.EXECUTED:
+            if control is not None and control.pause_state == "CONFIRMED":
+                return PaidLifecycleState.PAUSED
             return PaidLifecycleState.ACTIVE
-        if authorization.attempted_at is not None:
-            return PaidLifecycleState.ACTIVATION_ATTEMPTED
-        if authorization.expires_at > datetime.now(UTC):
-            return PaidLifecycleState.AUTHORIZED
-        return PaidLifecycleState.STAGED
+        return PaidLifecycleState.NOT_STAGED
 
     def _next_action(self, state: PaidLifecycleState) -> PaidLifecycleNextAction:
         if state in {PaidLifecycleState.NOT_STAGED, PaidLifecycleState.PROVIDER_FAILED}:
@@ -474,6 +478,11 @@ class PaidAuditLedger:
         correlation_id: str | None,
         reason: str | None,
     ) -> str:
+        stable_correlation = (
+            None
+            if event_type in {PaidAuditEventType.CONTROL_SYNC, PaidAuditEventType.PROVIDER_PAUSE}
+            else correlation_id
+        )
         payload = {
             "event_type": event_type.value,
             "actor": actor.value,
@@ -485,7 +494,7 @@ class PaidAuditLedger:
             "synced_spend": current.synced_spend,
             "pause_state": current.pause_state,
             "requires_reconciliation": current.requires_reconciliation,
-            "correlation_id": correlation_id,
+            "correlation_id": stable_correlation,
             "reason": reason,
         }
         return json.dumps(payload, sort_keys=True, separators=(",", ":"))[:4000]
