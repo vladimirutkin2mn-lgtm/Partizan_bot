@@ -3,6 +3,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
 from app.audience_intelligence_service import audience_intelligence_service
+from app.config import get_settings
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_schemas import (
     DistributionActionEditRequest,
@@ -28,7 +29,7 @@ DISTRIBUTION_EXPERIMENT_NAMESPACE = "distribution_experiment"
 
 
 class DistributionTrackingLinkBuilder:
-    def build(
+    def build_destination(
         self,
         base_url: str,
         *,
@@ -57,6 +58,31 @@ class DistributionTrackingLinkBuilder:
         return urlunsplit(
             (parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment)
         )
+
+    def build(
+        self,
+        base_url: str,
+        *,
+        product_id: UUID,
+        play_id: UUID,
+        opportunity_id: UUID,
+        action_id: UUID,
+        experiment_id: UUID,
+        medium: str,
+    ) -> str:
+        destination = self.build_destination(
+            base_url,
+            product_id=product_id,
+            play_id=play_id,
+            opportunity_id=opportunity_id,
+            action_id=action_id,
+            experiment_id=experiment_id,
+            medium=medium,
+        )
+        public_base_url = get_settings().partizan_public_base_url
+        if public_base_url is None:
+            return destination
+        return f"{public_base_url}/r/{experiment_id.hex[:16]}"
 
 
 class InMemoryDistributionExecutionService:
