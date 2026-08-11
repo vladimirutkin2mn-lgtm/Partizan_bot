@@ -4,7 +4,7 @@ import logging
 import re
 from typing import Annotated
 from urllib.parse import urlsplit
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from fastapi import APIRouter, Cookie, HTTPException, Request
 from fastapi.responses import RedirectResponse
