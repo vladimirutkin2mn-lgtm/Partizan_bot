@@ -19,6 +19,8 @@ from app.meta_paid_control import MetaPaidControlService, meta_paid_control_serv
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.tiktok_paid_control import TikTokPaidControlService, tiktok_paid_control_service
 
+PAID_CONTROL_SWEEP_RUN_NAMESPACE = "paid_control_sweep_run"
+
 
 class PaidControlSweepItemOutcome(StrEnum):
     SYNCED = "SYNCED"
@@ -67,9 +69,7 @@ class MetaPaidControlSweepProvider:
             action_id=action_id,
             provider=self.provider,
             outcome=PaidControlSweepItemOutcome.SYNCED,
-            provider_status=(
-                f"{snapshot.configured_status}/{snapshot.effective_status}"
-            ),
+            provider_status=f"{snapshot.configured_status}/{snapshot.effective_status}",
             provider_spend=snapshot.provider_spend,
             synced_spend=snapshot.synced_spend,
             pause_state=snapshot.pause_state,
@@ -123,9 +123,13 @@ class PaidControlSweepService:
         *,
         store: RuntimeStateStore | None = None,
         registry: PaidControlSweepRegistry | None = None,
+        history_retention: int = 100,
     ) -> None:
+        if history_retention < 1:
+            raise ValueError("history_retention must be positive")
         self._store = store or get_runtime_store()
         self._registry = registry or PaidControlSweepRegistry()
+        self._history_retention = history_retention
         self._lock = Lock()
 
     @property
@@ -135,22 +139,41 @@ class PaidControlSweepService:
     def run_once(self) -> PaidControlSweepView:
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("A paid-control sweep is already running in this process")
-        started_at = datetime.now(UTC)
         try:
+            started_at = datetime.now(UTC)
             items = [self._run_action(action) for action in self._candidate_actions()]
+            result = PaidControlSweepView(
+                run_id=uuid4(),
+                started_at=started_at,
+                finished_at=datetime.now(UTC),
+                candidate_count=len(items),
+                synced_count=sum(
+                    item.outcome == PaidControlSweepItemOutcome.SYNCED for item in items
+                ),
+                skipped_count=sum(
+                    item.outcome == PaidControlSweepItemOutcome.SKIPPED for item in items
+                ),
+                error_count=sum(
+                    item.outcome == PaidControlSweepItemOutcome.ERROR for item in items
+                ),
+                items=items,
+            )
+            self._persist_run(result)
+            return result
         finally:
             self._lock.release()
-        finished_at = datetime.now(UTC)
-        return PaidControlSweepView(
-            run_id=uuid4(),
-            started_at=started_at,
-            finished_at=finished_at,
-            candidate_count=len(items),
-            synced_count=sum(item.outcome == PaidControlSweepItemOutcome.SYNCED for item in items),
-            skipped_count=sum(item.outcome == PaidControlSweepItemOutcome.SKIPPED for item in items),
-            error_count=sum(item.outcome == PaidControlSweepItemOutcome.ERROR for item in items),
-            items=items,
-        )
+
+    def recent_runs(self, limit: int = 20) -> list[PaidControlSweepView]:
+        if limit < 1 or limit > self._history_retention:
+            raise ValueError(
+                f"limit must be between 1 and {self._history_retention}"
+            )
+        runs = [
+            PaidControlSweepView.model_validate(payload)
+            for payload in self._store.list_namespace(PAID_CONTROL_SWEEP_RUN_NAMESPACE)
+        ]
+        runs.sort(key=lambda run: (run.finished_at, str(run.run_id)), reverse=True)
+        return runs[:limit]
 
     def _candidate_actions(self) -> list[DistributionActionView]:
         actions: list[DistributionActionView] = []
@@ -196,6 +219,22 @@ class PaidControlSweepService:
                 requires_reconciliation=True,
                 reason=str(exc)[:1000],
             )
+
+    def _persist_run(self, result: PaidControlSweepView) -> None:
+        self._store.put(
+            PAID_CONTROL_SWEEP_RUN_NAMESPACE,
+            str(result.run_id),
+            result.model_dump(mode="json"),
+        )
+        runs = [
+            PaidControlSweepView.model_validate(payload)
+            for payload in self._store.list_namespace(PAID_CONTROL_SWEEP_RUN_NAMESPACE)
+        ]
+        if len(runs) <= self._history_retention:
+            return
+        runs.sort(key=lambda run: (run.finished_at, str(run.run_id)), reverse=True)
+        for stale in runs[self._history_retention :]:
+            self._store.delete(PAID_CONTROL_SWEEP_RUN_NAMESPACE, str(stale.run_id))
 
 
 paid_control_sweep_service = PaidControlSweepService()
