@@ -15,14 +15,22 @@ from app.distribution_execution_schemas import (
 )
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_service import distribution_play_service
-from app.distribution_types import DistributionActionType
+from app.distribution_types import DistributionActionType, DistributionPlatform
 from app.execution_adapters import (
+    AdapterExecutionOutcome,
     DistributionAdapterExecuteRequest,
     DistributionAdapterExecutionView,
     distribution_execution_adapter_service,
 )
 from app.operator_auth import require_operator
 from app.paid_campaign import PaidCampaignSpec, paid_campaign_spec_service
+from app.paid_lifecycle_audit import (
+    PaidAuditActor,
+    PaidAuditEventType,
+    PaidAuditResult,
+    paid_audit_ledger,
+    paid_lifecycle_service,
+)
 from app.product_intake import product_intake_service
 
 router = APIRouter(tags=["distribution-execution"])
@@ -159,7 +167,35 @@ async def execute_distribution_action(
     payload: DistributionAdapterExecuteRequest,
 ) -> DistributionAdapterExecutionView:
     try:
-        return distribution_execution_adapter_service.execute(action_id, payload)
+        action = distribution_execution_service.get_action(action_id)
+        audited_paid = (
+            action.action_type == DistributionActionType.PAID_CAMPAIGN
+            and action.platform in {DistributionPlatform.INSTAGRAM, DistributionPlatform.TIKTOK}
+        )
+        before = paid_lifecycle_service.get(action_id) if audited_paid else None
+        result = distribution_execution_adapter_service.execute(action_id, payload)
+        if audited_paid:
+            after = paid_lifecycle_service.get(action_id)
+            outcome = result.receipt.outcome
+            audit_result = (
+                PaidAuditResult.SUCCESS
+                if outcome in {AdapterExecutionOutcome.STAGED, AdapterExecutionOutcome.EXECUTED}
+                else PaidAuditResult.SKIPPED
+                if outcome == AdapterExecutionOutcome.UNAVAILABLE
+                else PaidAuditResult.FAILED
+            )
+            paid_audit_ledger.record(
+                action_id=action_id,
+                event_type=PaidAuditEventType.PROVIDER_STAGING,
+                actor=PaidAuditActor.OPERATOR,
+                result=audit_result,
+                before=before,
+                after=after,
+                correlation_id=result.receipt.external_reference,
+                reason=result.receipt.message if audit_result != PaidAuditResult.SUCCESS else None,
+                deduplicate=True,
+            )
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="DistributionAction not found") from exc
     except ValueError as exc:
