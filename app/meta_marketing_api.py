@@ -52,6 +52,15 @@ class MetaMarketingApiClient(Protocol):
         name: str,
     ) -> str: ...
 
+    def set_status(
+        self,
+        *,
+        connection: PaidProviderConnectionView,
+        access_token: str,
+        object_id: str,
+        status: str,
+    ) -> None: ...
+
 
 class HttpxMetaMarketingApiClient:
     def __init__(self, timeout_seconds: float = 20.0) -> None:
@@ -157,6 +166,23 @@ class HttpxMetaMarketingApiClient:
             },
         )
 
+    def set_status(
+        self,
+        *,
+        connection: PaidProviderConnectionView,
+        access_token: str,
+        object_id: str,
+        status: str,
+    ) -> None:
+        if status not in {"ACTIVE", "PAUSED"}:
+            raise ValueError("Meta status must be ACTIVE or PAUSED")
+        self._post_json(
+            connection=connection,
+            access_token=access_token,
+            path=object_id,
+            data={"status": status},
+        )
+
     def _post_id(
         self,
         *,
@@ -165,6 +191,25 @@ class HttpxMetaMarketingApiClient:
         path: str,
         data: dict[str, str],
     ) -> str:
+        payload = self._post_json(
+            connection=connection,
+            access_token=access_token,
+            path=path,
+            data=data,
+        )
+        identifier = payload.get("id") if isinstance(payload, dict) else None
+        if not identifier:
+            raise MetaMarketingApiError("Meta Marketing API response did not include an object id")
+        return str(identifier)
+
+    def _post_json(
+        self,
+        *,
+        connection: PaidProviderConnectionView,
+        access_token: str,
+        path: str,
+        data: dict[str, str],
+    ) -> dict:
         url = f"https://graph.facebook.com/{connection.api_version}/{path}"
         try:
             response = httpx.post(
@@ -191,7 +236,6 @@ class HttpxMetaMarketingApiClient:
             payload = response.json()
         except ValueError as exc:
             raise MetaMarketingApiError("Meta Marketing API returned invalid JSON") from exc
-        identifier = payload.get("id") if isinstance(payload, dict) else None
-        if not identifier:
-            raise MetaMarketingApiError("Meta Marketing API response did not include an object id")
-        return str(identifier)
+        if not isinstance(payload, dict):
+            raise MetaMarketingApiError("Meta Marketing API returned an invalid response object")
+        return payload
