@@ -15,7 +15,19 @@ DEFAULT_BUDGET = 1000.0
 DEFAULT_MAX_CAC = 12.0
 DEFAULT_PRICE = 6.90
 
-ORACLE_BRIEF_TEMPLATE = """Oracle is an entertainment and self-reflection AI astrologer delivered as a digital assistant. It gives personalized astrology-style readings, relationship compatibility interpretations and daily guidance while avoiding guaranteed claims about the future. The initial market is English-speaking adults aged roughly 20-40 who are already interested in astrology, relationships, self-reflection and spiritual entertainment. Subscription price is ${price:.2f} per month. The first acquisition test budget is ${budget:.2f}, with a target maximum CAC of ${max_cac:.2f} per paid subscriber. The acquisition goal is to find repeatable paid and community channels that can acquire the first 100 paying subscribers. MVP channels are Telegram, Instagram, Reddit and TikTok. The product should be positioned as entertainment/reflection rather than professional medical, legal or financial advice."""
+ORACLE_BRIEF_TEMPLATE = (
+    "Oracle is an entertainment and self-reflection AI astrologer delivered as a digital "
+    "assistant. It gives personalized astrology-style readings, relationship compatibility "
+    "interpretations and daily guidance while avoiding guaranteed claims about the future. "
+    "The initial market is English-speaking adults aged roughly 20-40 who are already "
+    "interested in astrology, relationships, self-reflection and spiritual entertainment. "
+    "Subscription price is ${price:.2f} per month. The first acquisition test budget is "
+    "${budget:.2f}, with a target maximum CAC of ${max_cac:.2f} per paid subscriber. "
+    "The acquisition goal is to find repeatable paid and community channels that can acquire "
+    "the first 100 paying subscribers. MVP channels are Telegram, Instagram, Reddit and "
+    "TikTok. The product should be positioned as entertainment/reflection rather than "
+    "professional medical, legal or financial advice."
+)
 
 KNOWN_CLARIFICATION_ANSWERS = {
     "market": "United States and other English-speaking markets",
@@ -157,10 +169,16 @@ def select_play(
 ) -> dict[str, Any] | None:
     candidates = [play for play in plays if play.get("status") == "READY"]
     if platform:
-        candidates = [play for play in candidates if str(play.get("platform", "")).upper() == platform.upper()]
+        candidates = [
+            play
+            for play in candidates
+            if str(play.get("platform", "")).upper() == platform.upper()
+        ]
     if tactic_class:
         candidates = [
-            play for play in candidates if str(play.get("tactic_class", "")).upper() == tactic_class.upper()
+            play
+            for play in candidates
+            if str(play.get("tactic_class", "")).upper() == tactic_class.upper()
         ]
     if not candidates:
         return None
@@ -262,7 +280,10 @@ def _prepare_selected_play(
     assert report.product_id is not None
     assert report.selected_play is not None
     if not destination_url:
-        report.blockers.append("No destination URL. Pass --destination-url or --reference-link before action prepare.")
+        report.blockers.append(
+            "No destination URL. Pass --destination-url or --reference-link "
+            "before action prepare."
+        )
         return None
     play_id = str(report.selected_play["id"])
     try:
@@ -341,7 +362,7 @@ def run(args: argparse.Namespace) -> ReadinessReport:
     _print_step("API healthy", args.base_url)
 
     brief = oracle_brief(price=args.price, budget=args.budget, max_cac=args.max_cac)
-    product = _create_and_confirm_product(
+    _create_and_confirm_product(
         client,
         brief=brief,
         reference_links=args.reference_link,
@@ -365,7 +386,10 @@ def run(args: argparse.Namespace) -> ReadinessReport:
     report.selected_play = selected
     _print_step(
         "selected play",
-        f"{selected.get('platform')} / {selected.get('tactic_class')} / priority={selected.get('priority_score')}",
+        (
+            f"{selected.get('platform')} / {selected.get('tactic_class')} / "
+            f"priority={selected.get('priority_score')}"
+        ),
     )
 
     destination_url = args.destination_url or (args.reference_link[0] if args.reference_link else None)
@@ -374,10 +398,14 @@ def run(args: argparse.Namespace) -> ReadinessReport:
     _inspect_learning(client, report)
 
     if not args.execute and report.action_id:
-        report.notes.append("Dry-run complete at PREPARED action. Re-run with --execute for approve + adapter execution.")
+        report.notes.append(
+            "Dry-run complete at PREPARED action. Re-run with --execute for approve + "
+            "adapter execution."
+        )
     if args.execute and not operator_key:
         report.notes.append(
-            "No PARTIZAN_OPERATOR_KEY/OPERATOR_API_KEY was supplied; local/dev may allow this, production will not."
+            "No PARTIZAN_OPERATOR_KEY/OPERATOR_API_KEY was supplied; local/dev may allow this, "
+            "production will not."
         )
     return report
 
