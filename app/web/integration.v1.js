@@ -5,6 +5,7 @@
   const OPERATOR_HEADER = "X-Partizan-Operator-Key";
 
   let statusView = null;
+  let statusLoaded = false;
   let operatorKey = "";
   let plaintextKey = "";
   let alertMessage = "";
@@ -58,7 +59,6 @@
     if (!stage) return null;
     let panel = $("#conversion-integration-panel");
     if (panel) return panel;
-
     panel = node("section", "conversion-integration");
     panel.id = "conversion-integration-panel";
     panel.addEventListener("click", handlePanelClick);
@@ -70,10 +70,7 @@
     const panel = ensurePanel();
     if (!panel) return;
     const id = productId();
-    if (statusView && id && statusView.product_id !== id) {
-      statusView = null;
-      plaintextKey = "";
-    }
+    if (statusView && id && statusView.product_id !== id) resetStatus();
     panel.replaceChildren();
 
     const head = node("div", "integration-head");
@@ -83,10 +80,15 @@
       node("h3", "", "Подключить конверсии"),
       node("p", "", "VISIT Partizan может считать сам через tracking redirect. SIGNUP, ACTIVATED и PAID продукт отправляет server-to-server по Product Event Key."),
     );
+    const badgeText = !statusLoaded
+      ? "Статус не проверен"
+      : statusView && statusView.configured
+        ? "Event Key настроен"
+        : "Event Key не настроен";
     const badge = node(
       "span",
-      `integration-status${statusView && statusView.configured ? " configured" : ""}`,
-      statusView && statusView.configured ? "Event Key настроен" : "Event Key не настроен",
+      `integration-status${statusLoaded && statusView && statusView.configured ? " configured" : ""}`,
+      badgeText,
     );
     head.append(copy, badge);
     panel.append(head);
@@ -129,6 +131,7 @@
     operatorInput.value = operatorKey;
     operatorInput.addEventListener("input", () => {
       operatorKey = operatorInput.value.trim();
+      if (!statusLoaded) setAlert("");
     });
     operator.append(operatorLabel, operatorInput);
     card.append(operator);
@@ -136,21 +139,28 @@
     const facts = node("div", "integration-facts");
     facts.append(
       fact("Product ID", id),
-      fact("Key hint", statusView && statusView.key_hint ? statusView.key_hint : "—"),
-      fact("Создан", statusView && statusView.created_at ? formatDate(statusView.created_at) : "—"),
-      fact("Статус", statusView && statusView.configured ? "configured" : "not configured"),
+      fact("Key hint", statusLoaded && statusView && statusView.key_hint ? statusView.key_hint : "—"),
+      fact("Создан", statusLoaded && statusView && statusView.created_at ? formatDate(statusView.created_at) : "—"),
+      fact("Статус", !statusLoaded ? "unknown" : statusView && statusView.configured ? "configured" : "not configured"),
     );
     card.append(facts);
 
     const actions = node("div", "integration-actions");
     actions.append(button("Обновить статус", "refresh", "button button-ghost", busy));
-    const createLabel = statusView && statusView.configured ? "Ротировать Event Key" : "Создать Event Key";
-    actions.append(button(createLabel, "rotate", "button button-primary", busy));
-    if (statusView && statusView.configured) {
+    const createLabel = !statusLoaded
+      ? "Сначала обнови статус"
+      : statusView && statusView.configured
+        ? "Ротировать Event Key"
+        : "Создать Event Key";
+    actions.append(button(createLabel, "rotate", "button button-primary", busy || !statusLoaded));
+    if (statusLoaded && statusView && statusView.configured) {
       actions.append(button("Отозвать ключ", "revoke", "button button-ghost", busy));
     }
     card.append(actions);
 
+    if (!statusLoaded) {
+      card.append(node("p", "integration-muted", "Перед create/rotate Partizan обязательно читает текущий статус, чтобы не инвалидировать существующий ключ без предупреждения."));
+    }
     if (plaintextKey) card.append(renderPlaintextKey());
     return card;
   }
@@ -178,10 +188,8 @@
       node("h4", "", "Server-side endpoint"),
       node("p", "", "Сохрани attribution ptz_experiment / ptz_action при входе пользователя и отправляй downstream события с backend продукта."),
     );
-
     const endpoint = `${window.location.origin}/v1/products/${id}/distribution-events`;
     card.append(node("div", "integration-endpoint", `POST ${endpoint}`));
-
     const code = [
       "# SERVER-SIDE Python example",
       "import os, uuid, httpx",
@@ -200,7 +208,6 @@
       ")",
     ].join("\n");
     card.append(node("pre", "integration-code", code));
-
     card.append(
       node(
         "div",
@@ -244,8 +251,11 @@
     render();
     try {
       statusView = await api(`/v1/products/${id}/distribution-event-key`);
+      statusLoaded = true;
       if (!quiet) setAlert("Статус Event Key обновлён. Plaintext через status API не возвращается.", "success");
     } catch (error) {
+      statusView = null;
+      statusLoaded = false;
       if (!quiet || error.status === 401 || error.status === 503) setAlert(humanizeError(error), "error");
     } finally {
       busy = false;
@@ -255,7 +265,7 @@
 
   async function rotateKey() {
     const id = productId();
-    if (!id || busy) return;
+    if (!id || busy || !statusLoaded) return;
     if (statusView && statusView.configured) {
       const confirmed = window.confirm("Ротация немедленно инвалидирует предыдущий Event Key. Продолжить?");
       if (!confirmed) return;
@@ -272,6 +282,7 @@
         key_hint: created.key_hint,
         created_at: created.created_at,
       };
+      statusLoaded = true;
       setAlert("Новый Event Key создан. Скопируй и сохрани его сейчас.", "success");
     } catch (error) {
       plaintextKey = "";
@@ -284,7 +295,7 @@
 
   async function revokeKey() {
     const id = productId();
-    if (!id || busy || !statusView || !statusView.configured) return;
+    if (!id || busy || !statusLoaded || !statusView || !statusView.configured) return;
     const confirmed = window.confirm("Отозвать Event Key? Клиентский backend сразу перестанет отправлять конверсии этим ключом.");
     if (!confirmed) return;
     busy = true;
@@ -292,6 +303,7 @@
     render();
     try {
       statusView = await api(`/v1/products/${id}/distribution-event-key`, { method: "DELETE" });
+      statusLoaded = true;
       plaintextKey = "";
       setAlert("Event Key отозван.", "success");
     } catch (error) {
@@ -321,6 +333,12 @@
     if (value) value.textContent = "";
     setAlert("Plaintext очищен из интерфейса. Partizan хранит только digest.", "success");
     render();
+  }
+
+  function resetStatus() {
+    statusView = null;
+    statusLoaded = false;
+    plaintextKey = "";
   }
 
   function clearSecrets() {
@@ -374,7 +392,7 @@
       const reset = event.target.closest("#reset-workspace");
       if (reset) {
         clearSecrets();
-        statusView = null;
+        resetStatus();
       }
     });
   }
