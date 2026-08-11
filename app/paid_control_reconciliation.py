@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from uuid import UUID
+from typing import TypeAlias
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
@@ -32,6 +33,18 @@ from app.tiktok_paid_control import (
     TIKTOK_PAID_CONTROL_NAMESPACE,
     TikTokPaidControlSnapshotView,
 )
+
+LatestSweepObservation: TypeAlias = tuple[PaidControlSweepItemView, datetime]
+ControlSignal: TypeAlias = tuple[
+    bool,
+    str,
+    str | None,
+    str | None,
+    float | None,
+    float | None,
+    str | None,
+    datetime,
+]
 
 
 class PaidReconciliationItemView(BaseModel):
@@ -101,7 +114,9 @@ class PaidControlReconciliationService:
                 requires_reconciliation=True,
                 reason=str(exc)[:1000],
             )
-        remaining = self._build_item(action, sync)
+        observed_at = datetime.now(UTC)
+        self._persist_reconcile_observation(sync, observed_at)
+        remaining = self._build_item(action, (sync, observed_at))
         return PaidReconcileResultView(
             action_id=action.id,
             resolved=remaining is None,
@@ -140,12 +155,15 @@ class PaidControlReconciliationService:
     def _build_item(
         self,
         action: DistributionActionView,
-        latest_sweep: PaidControlSweepItemView | None,
+        latest_observation: LatestSweepObservation | None,
     ) -> PaidReconciliationItemView | None:
+        latest_sweep = latest_observation[0] if latest_observation else None
         receipt = self._get_receipt(action.id)
         sources: list[str] = []
         reasons: list[str] = []
-        provider = receipt.provider if receipt else latest_sweep.provider if latest_sweep else None
+        provider = receipt.provider if receipt else None
+        if provider is None and latest_sweep is not None:
+            provider = latest_sweep.provider
         provider_status: str | None = None
         provider_spend: float | None = None
         synced_spend: float | None = None
@@ -164,19 +182,16 @@ class PaidControlReconciliationService:
 
         control = self._control_signal(action, receipt)
         if control is not None:
-            control_requires, control_source, control_reason = control[0], control[1], control[2]
-            provider_status = control[3]
-            provider_spend = control[4]
-            synced_spend = control[5]
-            pause_state = control[6]
-            control_seen = control[7]
-            last_seen = max(last_seen, control_seen)
-            if control_requires:
-                sources.append(control_source)
-                if control_reason:
-                    self._append_unique(reasons, control_reason)
+            requires, source, reason, status, provider_spend, synced_spend, pause_state, seen = control
+            provider_status = status
+            last_seen = max(last_seen, seen)
+            if requires:
+                sources.append(source)
+                if reason:
+                    self._append_unique(reasons, reason)
 
-        if latest_sweep is not None:
+        if latest_observation is not None and latest_sweep is not None:
+            last_seen = max(last_seen, latest_observation[1])
             provider = provider or latest_sweep.provider
             provider_status = latest_sweep.provider_status or provider_status
             provider_spend = (
@@ -221,7 +236,7 @@ class PaidControlReconciliationService:
         self,
         action: DistributionActionView,
         receipt: ExecutionAdapterReceipt | None,
-    ) -> tuple[bool, str, str | None, str | None, float | None, float | None, str | None, datetime] | None:
+    ) -> ControlSignal | None:
         provider = receipt.provider if receipt else None
         if provider == "meta-marketing-api":
             payload = self._store.get(META_PAID_CONTROL_NAMESPACE, str(action.id))
@@ -271,17 +286,38 @@ class PaidControlReconciliationService:
             )
         return None
 
-    def _latest_sweep_items(self) -> dict[UUID, PaidControlSweepItemView]:
+    def _latest_sweep_items(self) -> dict[UUID, LatestSweepObservation]:
         runs = [
             PaidControlSweepView.model_validate(payload)
             for payload in self._store.list_namespace(PAID_CONTROL_SWEEP_RUN_NAMESPACE)
         ]
         runs.sort(key=lambda run: (run.finished_at, str(run.run_id)), reverse=True)
-        latest: dict[UUID, PaidControlSweepItemView] = {}
+        latest: dict[UUID, LatestSweepObservation] = {}
         for run in runs:
             for item in run.items:
-                latest.setdefault(item.action_id, item)
+                latest.setdefault(item.action_id, (item, run.finished_at))
         return latest
+
+    def _persist_reconcile_observation(
+        self,
+        sync: PaidControlSweepItemView,
+        observed_at: datetime,
+    ) -> None:
+        run = PaidControlSweepView(
+            run_id=uuid4(),
+            started_at=observed_at,
+            finished_at=observed_at,
+            candidate_count=1,
+            synced_count=int(sync.outcome == PaidControlSweepItemOutcome.SYNCED),
+            skipped_count=int(sync.outcome == PaidControlSweepItemOutcome.SKIPPED),
+            error_count=int(sync.outcome == PaidControlSweepItemOutcome.ERROR),
+            items=[sync],
+        )
+        self._store.put(
+            PAID_CONTROL_SWEEP_RUN_NAMESPACE,
+            str(run.run_id),
+            run.model_dump(mode="json"),
+        )
 
     def _get_receipt(self, action_id: UUID) -> ExecutionAdapterReceipt | None:
         payload = self._store.get(EXECUTION_ADAPTER_RECEIPT_NAMESPACE, str(action_id))
