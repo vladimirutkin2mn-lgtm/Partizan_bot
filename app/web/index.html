@@ -7,6 +7,7 @@
   <title>Partizan — AI Growth Operator</title>
   <meta name="description" content="Рабочее пространство Partizan: продукт, аудитория, каналы и эксперименты в одном цикле.">
   <link rel="stylesheet" href="/app/assets/partizan.v1.css">
+  <link rel="stylesheet" href="/app/assets/execution.v1.css">
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -22,6 +23,7 @@
     </a>
     <div class="topbar-actions">
       <span id="health-badge" class="health-badge"><i></i><span>проверяем API</span></span>
+      <button id="open-current-execution" class="button button-ghost button-small hidden" type="button">Текущий запуск</button>
       <button id="reset-workspace" class="button button-ghost button-small" type="button">Новый проект</button>
     </div>
   </header>
@@ -175,11 +177,90 @@
     </section>
   </main>
 
+  <div id="execution-backdrop" class="execution-backdrop hidden" aria-hidden="true"></div>
+  <aside id="execution-drawer" class="execution-drawer hidden" aria-label="Подготовка запуска" aria-hidden="true">
+    <div class="execution-header">
+      <div>
+        <span class="section-kicker">Execution Workspace</span>
+        <h2>Из эксперимента — в действие</h2>
+        <p id="execution-play-label">Выберите READY-эксперимент</p>
+      </div>
+      <button id="close-execution" class="drawer-close" type="button" aria-label="Закрыть">×</button>
+    </div>
+
+    <div id="execution-alert" class="execution-alert hidden" role="status"></div>
+
+    <section class="execution-section">
+      <div class="execution-section-title">
+        <span>01</span>
+        <div><strong>Подготовить действие</strong><small>Partizan выберет target и соберёт черновик</small></div>
+      </div>
+      <label class="field-label" for="execution-destination">Куда вести пользователя <small>destination URL</small></label>
+      <input id="execution-destination" type="url" inputmode="url" autocomplete="off" placeholder="https://your-product.com">
+      <p class="field-note">Если оставить пустым, backend возьмёт первую reference link продукта. Для paid это URL будущей рекламной кампании.</p>
+      <button id="prepare-execution" class="button button-primary execution-wide" type="button" disabled>Автоподготовить действие →</button>
+    </section>
+
+    <section id="execution-plan" class="execution-section hidden">
+      <div class="execution-section-title">
+        <span>02</span>
+        <div><strong>Проверить черновик</strong><small id="execution-action-meta">PREPARED</small></div>
+      </div>
+
+      <div class="execution-facts" id="execution-facts"></div>
+
+      <label class="field-label" for="execution-target">Action target <small>может быть пустым для paid/owned</small></label>
+      <input id="execution-target" type="url" inputmode="url" autocomplete="off" placeholder="https://target.example/...">
+
+      <label class="field-label" for="execution-content">Текст / creative brief</label>
+      <textarea id="execution-content" class="execution-text" placeholder="Черновик действия"></textarea>
+
+      <details class="execution-context-wrap">
+        <summary>Контекст, на котором построен черновик</summary>
+        <textarea id="execution-context" class="execution-context" placeholder="Контекст"></textarea>
+      </details>
+
+      <div class="execution-actions">
+        <button id="save-execution" class="button button-ghost" type="button">Сохранить правки</button>
+        <button id="approve-execution" class="button button-primary" type="button">Подтвердить действие</button>
+      </div>
+    </section>
+
+    <section id="operator-access" class="execution-section hidden">
+      <div class="execution-section-title">
+        <span>03</span>
+        <div><strong>Operator access</strong><small>только для защищённых mutation API</small></div>
+      </div>
+      <label class="field-label" for="operator-key">Operator key <small>не сохраняется</small></label>
+      <input id="operator-key" type="password" autocomplete="off" spellcheck="false" placeholder="В local/dev можно оставить пустым">
+      <p class="field-note">Значение живёт только в памяти этой страницы и отправляется только заголовком защищённого запроса. В sessionStorage оно не записывается.</p>
+    </section>
+
+    <section id="execution-run" class="execution-section hidden">
+      <div class="execution-section-title">
+        <span>04</span>
+        <div><strong>Выполнить через adapter</strong><small>реальный backend execution boundary</small></div>
+      </div>
+      <div id="execution-safety-note" class="execution-safety-note"></div>
+      <button id="run-execution" class="button button-primary execution-wide" type="button">Выполнить действие →</button>
+      <button id="retry-execution" class="button button-ghost execution-wide hidden" type="button">Я понимаю риск — повторить попытку</button>
+    </section>
+
+    <section id="execution-receipt" class="execution-section hidden">
+      <div class="execution-section-title">
+        <span>05</span>
+        <div><strong>Результат</strong><small>ExecutionAdapter receipt</small></div>
+      </div>
+      <div id="receipt-card" class="receipt-card"></div>
+    </section>
+  </aside>
+
   <footer class="footer">
     <span>Partizan · dogfooding workspace</span>
     <span>Execution over recommendations.</span>
   </footer>
 
   <script src="/app/assets/partizan.v1.js" defer></script>
+  <script src="/app/assets/execution.v1.js" defer></script>
 </body>
 </html>
