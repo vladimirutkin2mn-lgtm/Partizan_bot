@@ -1,7 +1,8 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.operator_auth import require_operator
 from app.paid_control_reconciliation import (
     PaidReconcileResultView,
     PaidReconciliationQueueView,
@@ -12,7 +13,10 @@ from app.paid_control_sweep import (
     paid_control_sweep_service,
 )
 
-router = APIRouter(tags=["paid-control-ops"])
+router = APIRouter(
+    tags=["paid-control-ops"],
+    dependencies=[Depends(require_operator)],
+)
 
 
 @router.get(

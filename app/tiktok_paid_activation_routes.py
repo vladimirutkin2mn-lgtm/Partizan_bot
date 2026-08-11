@@ -1,8 +1,9 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.execution_adapters import DistributionAdapterExecutionView
+from app.operator_auth import require_operator
 from app.tiktok_paid_activation import (
     TikTokPaidActivationAuthorizationRequest,
     TikTokPaidActivationAuthorizationView,
@@ -10,7 +11,10 @@ from app.tiktok_paid_activation import (
     tiktok_paid_activation_service,
 )
 
-router = APIRouter(tags=["tiktok-paid-activation"])
+router = APIRouter(
+    tags=["tiktok-paid-activation"],
+    dependencies=[Depends(require_operator)],
+)
 
 
 @router.post(

@@ -1,7 +1,8 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.operator_auth import require_operator
 from app.paid_provider_connections import (
     PaidProviderConnectionCreateRequest,
     PaidProviderConnectionView,
@@ -14,7 +15,7 @@ from app.tiktok_paid_provider import (
     tiktok_paid_provider_connection_service,
 )
 
-router = APIRouter(tags=["paid-provider-connections"])
+router = APIRouter(tags=["paid-provider-connections"], dependencies=[Depends(require_operator)])
 
 
 def _require_product(product_id: UUID) -> None:
