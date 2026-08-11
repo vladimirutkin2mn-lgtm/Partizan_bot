@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Partizan — AI Growth Operator</title>
+  <meta name="description" content="Рабочее пространство Partizan: продукт, аудитория, каналы и эксперименты в одном цикле.">
+  <link rel="stylesheet" href="/app/assets/partizan.v1.css">
+</head>
+<body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <header class="topbar">
+    <a class="brand" href="/app" aria-label="Partizan">
+      <span class="brand-mark">P</span>
+      <span>
+        <strong>Partizan</strong>
+        <small>AI Growth Operator</small>
+      </span>
+    </a>
+    <div class="topbar-actions">
+      <span id="health-badge" class="health-badge"><i></i><span>проверяем API</span></span>
+      <button id="reset-workspace" class="button button-ghost button-small" type="button">Новый проект</button>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="hero">
+      <div class="hero-copy">
+        <span class="eyebrow">От идеи до работающего канала</span>
+        <h1>Скажи, что продаёшь. Partizan найдёт, <em>где</em> брать клиентов и <em>что</em> там тестировать.</h1>
+        <p>Опиши продукт, бюджет и цель. Система соберёт профиль, найдёт аудитории, разложит их по площадкам и предложит конкретные эксперименты.</p>
+      </div>
+      <div class="hero-metric">
+        <span>Текущий проект</span>
+        <strong id="project-name">Не создан</strong>
+        <button id="copy-product-id" class="text-action hidden" type="button">Скопировать Product ID</button>
+      </div>
+    </section>
+
+    <nav class="progress" aria-label="Этапы">
+      <button class="progress-step active" data-step="product" type="button">
+        <span>01</span><strong>Продукт</strong><small>что продаём</small>
+      </button>
+      <button class="progress-step" data-step="audience" type="button">
+        <span>02</span><strong>Аудитория</strong><small>кому продаём</small>
+      </button>
+      <button class="progress-step" data-step="distribution" type="button">
+        <span>03</span><strong>Каналы</strong><small>где они живут</small>
+      </button>
+      <button class="progress-step" data-step="experiments" type="button">
+        <span>04</span><strong>Эксперименты</strong><small>что тестировать</small>
+      </button>
+    </nav>
+
+    <div id="notice" class="notice hidden" role="status"></div>
+
+    <section id="stage-product" class="stage active" data-stage="product">
+      <div class="section-heading">
+        <div>
+          <span class="section-kicker">01 · Product Intelligence</span>
+          <h2>Опиши продукт человеческим языком</h2>
+          <p>Можно вставить черновик, описание бота или текст лендинга. Лучше сразу указать географию, цену, бюджет теста и желаемый CAC.</p>
+        </div>
+        <span class="section-state" id="product-state">Не начато</span>
+      </div>
+
+      <div class="two-column product-grid">
+        <form id="product-form" class="panel input-panel">
+          <label class="field-label" for="product-brief">Что это за продукт?</label>
+          <textarea id="product-brief" name="brief" minlength="20" required placeholder="Например: Telegram-бот с персональным AI-астрологом. Подписка $6.90/мес. Ищем англоязычных пользователей 20–40 лет, бюджет первого теста $1,000, целевой CAC до $12..."></textarea>
+          <div class="field-help"><span>Минимум 20 символов</span><span id="brief-count">0</span></div>
+
+          <label class="field-label" for="reference-links">Ссылки на продукт <small>необязательно</small></label>
+          <textarea id="reference-links" class="compact" placeholder="https://example.com&#10;https://t.me/your_bot"></textarea>
+          <p class="field-note">По одной ссылке на строку. Partizan использует их как контекст, а не как список обязательных каналов.</p>
+
+          <button id="create-product" class="button button-primary" type="submit">
+            <span>Разобрать продукт</span><b>→</b>
+          </button>
+        </form>
+
+        <aside id="product-profile" class="panel profile-panel empty-state">
+          <div class="empty-icon">⌁</div>
+          <h3>Здесь появится профиль продукта</h3>
+          <p>Partizan выделит ценность, аудиторию, рынок, бюджет, максимальный CAC и предположения, которые нужно подтвердить.</p>
+        </aside>
+      </div>
+
+      <div id="clarification-panel" class="panel clarification-panel hidden">
+        <div class="panel-header">
+          <div>
+            <span class="mini-label">Нужно уточнить</span>
+            <h3 id="clarification-question">Вопрос</h3>
+          </div>
+          <span id="clarification-counter" class="counter-pill">1 / 1</span>
+        </div>
+        <p id="clarification-rationale" class="muted"></p>
+        <form id="clarification-form" class="inline-form">
+          <input id="clarification-answer" autocomplete="off" placeholder="Напиши ответ…" required>
+          <button class="button button-primary" type="submit">Ответить</button>
+        </form>
+      </div>
+
+      <div id="confirm-panel" class="action-strip hidden">
+        <div>
+          <strong>Профиль готов к работе</strong>
+          <span>Проверь цифры и допущения выше. После подтверждения перейдём к поиску аудиторий.</span>
+        </div>
+        <button id="confirm-product" class="button button-primary" type="button">Подтвердить профиль →</button>
+      </div>
+    </section>
+
+    <section id="stage-audience" class="stage" data-stage="audience">
+      <div class="section-heading">
+        <div>
+          <span class="section-kicker">02 · Audience Intelligence</span>
+          <h2>Кто купит быстрее всего?</h2>
+          <p>Partizan генерирует несколько сегментов и ранжирует их по боли, намерению купить, платёжеспособности и скорости проверки.</p>
+        </div>
+        <button id="generate-icps" class="button button-primary" type="button" disabled>Найти аудитории</button>
+      </div>
+
+      <div id="audience-summary" class="stats-row hidden"></div>
+      <div id="icp-list" class="card-grid audience-grid">
+        <div class="panel empty-wide">
+          <span class="empty-number">02</span>
+          <p>Сначала подтвердите профиль продукта. Здесь появятся наиболее перспективные ICP.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="stage-distribution" class="stage" data-stage="distribution">
+      <div class="section-heading">
+        <div>
+          <span class="section-kicker">03 · Audience Distribution Map</span>
+          <h2>Где эта аудитория уже проводит время?</h2>
+          <p>Ищем не абстрактные «соцсети», а конкретные сообщества, авторов, сабреддиты и тематические кластеры, которые можно тестировать.</p>
+        </div>
+        <button id="discover-distribution" class="button button-primary" type="button" disabled>Найти каналы</button>
+      </div>
+
+      <div id="platform-summary" class="platform-summary"></div>
+      <div class="toolbar hidden" id="opportunity-toolbar">
+        <div class="segmented" id="platform-filter" aria-label="Фильтр площадок"></div>
+        <span id="opportunity-count" class="muted"></span>
+      </div>
+      <div id="opportunity-list" class="card-grid opportunity-grid">
+        <div class="panel empty-wide">
+          <span class="empty-number">03</span>
+          <p>После генерации ICP Partizan построит карту конкретных мест, где можно добраться до выбранной аудитории.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="stage-experiments" class="stage" data-stage="experiments">
+      <div class="section-heading">
+        <div>
+          <span class="section-kicker">04 · Growth Experiments</span>
+          <h2>Что именно тестировать?</h2>
+          <p>Для каждой возможности Partizan выбирает механику, оценивает стоимость и скорость сигнала, проверяет блокеры и ранжирует эксперименты.</p>
+        </div>
+        <button id="generate-plays" class="button button-primary" type="button" disabled>Собрать эксперименты</button>
+      </div>
+
+      <div id="play-summary" class="stats-row hidden"></div>
+      <div id="play-list" class="play-list">
+        <div class="panel empty-wide">
+          <span class="empty-number">04</span>
+          <p>Сначала постройте карту каналов. Здесь появятся приоритетные paid, community и organic эксперименты.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>Partizan · dogfooding workspace</span>
+    <span>Execution over recommendations.</span>
+  </footer>
+
+  <script src="/app/assets/partizan.v1.js" defer></script>
+</body>
+</html>

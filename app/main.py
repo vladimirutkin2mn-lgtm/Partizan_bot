@@ -31,6 +31,7 @@ from app.schemas import (
     ProductProfileView,
     WorkflowStageView,
 )
+from app.web_routes import router as web_router
 from app.workflow import build_mock_growth_workflow
 
 configure_logging()
@@ -40,6 +41,7 @@ app = FastAPI(
     version="0.8.0",
     description="Autonomous growth discovery, execution, analytics and decision API.",
 )
+app.include_router(web_router)
 app.include_router(analytics_router)
 app.include_router(distribution_router)
 app.include_router(distribution_play_router)
