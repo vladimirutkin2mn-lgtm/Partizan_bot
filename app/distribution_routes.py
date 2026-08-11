@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.audience_intelligence_service import audience_intelligence_service
 from app.distribution_control_plane_routes import router as control_plane_router
+from app.distribution_event_routes import router as event_integration_router
 from app.distribution_execution_routes import router as execution_router
 from app.distribution_learning_routes import router as learning_router
 from app.distribution_schemas import AudienceDistributionMapView
@@ -21,6 +22,7 @@ router = APIRouter(prefix="/v1", tags=["distribution"])
 router.include_router(control_plane_router)
 router.include_router(execution_router)
 router.include_router(learning_router)
+router.include_router(event_integration_router)
 router.include_router(enrichment_router)
 router.include_router(paid_provider_router)
 router.include_router(paid_activation_router)
