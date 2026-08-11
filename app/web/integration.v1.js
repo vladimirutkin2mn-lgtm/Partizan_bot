@@ -5,7 +5,10 @@
   const OPERATOR_HEADER = "X-Partizan-Operator-Key";
 
   let statusView = null;
+  let operatorKey = "";
   let plaintextKey = "";
+  let alertMessage = "";
+  let alertType = "";
   let busy = false;
 
   const $ = (selector) => document.querySelector(selector);
@@ -31,9 +34,7 @@
   }
 
   function operatorHeaders() {
-    const input = $("#integration-operator-key");
-    const value = input ? input.value.trim() : "";
-    return value ? { [OPERATOR_HEADER]: value } : {};
+    return operatorKey ? { [OPERATOR_HEADER]: operatorKey } : {};
   }
 
   async function api(path, options = {}) {
@@ -62,7 +63,6 @@
     panel.id = "conversion-integration-panel";
     panel.addEventListener("click", handlePanelClick);
     stage.append(panel);
-    render();
     return panel;
   }
 
@@ -70,6 +70,10 @@
     const panel = ensurePanel();
     if (!panel) return;
     const id = productId();
+    if (statusView && id && statusView.product_id !== id) {
+      statusView = null;
+      plaintextKey = "";
+    }
     panel.replaceChildren();
 
     const head = node("div", "integration-head");
@@ -87,7 +91,11 @@
     head.append(copy, badge);
     panel.append(head);
 
-    const alert = node("div", "integration-alert hidden");
+    const alert = node(
+      "div",
+      `integration-alert${alertMessage ? "" : " hidden"}${alertType ? ` ${alertType}` : ""}`,
+      alertMessage,
+    );
     alert.id = "integration-alert";
     alert.setAttribute("role", "status");
     panel.append(alert);
@@ -118,6 +126,10 @@
     operatorInput.autocomplete = "off";
     operatorInput.spellcheck = false;
     operatorInput.placeholder = "В local/dev можно оставить пустым";
+    operatorInput.value = operatorKey;
+    operatorInput.addEventListener("input", () => {
+      operatorKey = operatorInput.value.trim();
+    });
     operator.append(operatorLabel, operatorInput);
     card.append(operator);
 
@@ -164,7 +176,7 @@
     const card = node("section", "integration-card");
     card.append(
       node("h4", "", "Server-side endpoint"),
-      node("p", "", "Сохрани attribution `ptz_experiment` / `ptz_action` при входе пользователя и отправляй downstream события с backend продукта."),
+      node("p", "", "Сохрани attribution ptz_experiment / ptz_action при входе пользователя и отправляй downstream события с backend продукта."),
     );
 
     const endpoint = `${window.location.origin}/v1/products/${id}/distribution-events`;
@@ -312,18 +324,22 @@
   }
 
   function clearSecrets() {
+    operatorKey = "";
     plaintextKey = "";
     const operator = $("#integration-operator-key");
     if (operator) operator.value = "";
     const value = $("#integration-event-key-once");
     if (value) value.textContent = "";
+    setAlert("");
   }
 
   function setAlert(message, type = "") {
+    alertMessage = message || "";
+    alertType = type || "";
     const alert = $("#integration-alert");
     if (!alert) return;
-    alert.textContent = message || "";
-    alert.className = `integration-alert${message ? "" : " hidden"}${type ? ` ${type}` : ""}`;
+    alert.textContent = alertMessage;
+    alert.className = `integration-alert${alertMessage ? "" : " hidden"}${alertType ? ` ${alertType}` : ""}`;
   }
 
   function humanizeError(error) {
@@ -363,6 +379,6 @@
     });
   }
 
-  ensurePanel();
+  render();
   bindLifecycle();
 })();
