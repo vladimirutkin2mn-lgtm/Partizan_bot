@@ -9,6 +9,8 @@ _ASSETS = {
     "partizan.v1.js": "text/javascript; charset=utf-8",
     "execution.v1.css": "text/css; charset=utf-8",
     "execution.v1.js": "text/javascript; charset=utf-8",
+    "paid-control.v1.css": "text/css; charset=utf-8",
+    "paid-control.v1.js": "text/javascript; charset=utf-8",
 }
 
 router = APIRouter(tags=["web"])
