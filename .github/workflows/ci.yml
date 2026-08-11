@@ -44,6 +44,7 @@ jobs:
           node --check app/web/execution.v2.js
           node --check app/web/paid-control.v1.js
           node --check app/web/results.v1.js
+          node --check app/web/integration.v1.js
       - name: Migrate database
         run: alembic upgrade head
       - name: Test
