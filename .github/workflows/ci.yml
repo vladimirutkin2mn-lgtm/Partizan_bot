@@ -37,6 +37,10 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Lint
         run: ruff check .
+      - name: Check browser JavaScript
+        run: |
+          node --check app/web/partizan.v1.js
+          node --check app/web/execution.v1.js
       - name: Migrate database
         run: alembic upgrade head
       - name: Test
