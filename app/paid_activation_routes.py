@@ -11,14 +11,13 @@ from app.paid_activation import (
     PaidActivationRequest,
     paid_activation_service,
 )
+from app.paid_audit_safe import append_paid_audit, observe_paid_lifecycle
 from app.paid_lifecycle_audit import (
     PaidAuditActor,
     PaidAuditEventType,
     PaidAuditResult,
     PaidLifecycleNextAction,
     PaidLifecycleState,
-    paid_audit_ledger,
-    paid_lifecycle_service,
 )
 
 router = APIRouter(tags=["paid-activation"], dependencies=[Depends(require_operator)])
@@ -34,10 +33,10 @@ async def authorize_paid_campaign_activation(
     payload: PaidActivationAuthorizationRequest,
 ) -> PaidActivationAuthorizationView:
     try:
-        before = paid_lifecycle_service.get(action_id)
+        before = observe_paid_lifecycle(action_id)
         authorization = paid_activation_service.authorize(action_id, payload)
-        after = paid_lifecycle_service.get(action_id)
-        paid_audit_ledger.record(
+        after = observe_paid_lifecycle(action_id)
+        append_paid_audit(
             action_id=action_id,
             event_type=PaidAuditEventType.ACTIVATION_AUTHORIZED,
             actor=PaidAuditActor.OPERATOR,
@@ -62,17 +61,21 @@ async def activate_paid_campaign(
     payload: PaidActivationRequest,
 ) -> DistributionAdapterExecutionView:
     try:
-        before = paid_lifecycle_service.get(action_id)
+        before = observe_paid_lifecycle(action_id)
         result = paid_activation_service.activate(action_id, payload)
-        after = paid_lifecycle_service.get(action_id)
-        attempted = before.model_copy(
-            update={
-                "state": PaidLifecycleState.ACTIVATION_ATTEMPTED,
-                "safe_next_action": PaidLifecycleNextAction.RECONCILE,
-                "observed_at": datetime.now(UTC),
-            }
+        after = observe_paid_lifecycle(action_id)
+        attempted = (
+            before.model_copy(
+                update={
+                    "state": PaidLifecycleState.ACTIVATION_ATTEMPTED,
+                    "safe_next_action": PaidLifecycleNextAction.RECONCILE,
+                    "observed_at": datetime.now(UTC),
+                }
+            )
+            if before is not None
+            else None
         )
-        paid_audit_ledger.record(
+        append_paid_audit(
             action_id=action_id,
             event_type=PaidAuditEventType.ACTIVATION_ATTEMPTED,
             actor=PaidAuditActor.OPERATOR,
@@ -82,7 +85,7 @@ async def activate_paid_campaign(
             correlation_id=payload.authorization_id,
         )
         succeeded = result.receipt.outcome == AdapterExecutionOutcome.EXECUTED
-        paid_audit_ledger.record(
+        append_paid_audit(
             action_id=action_id,
             event_type=(
                 PaidAuditEventType.ACTIVATION_SUCCEEDED
