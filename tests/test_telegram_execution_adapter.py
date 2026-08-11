@@ -21,8 +21,8 @@ from app.execution_adapters import (
     AssistedCommunityExecutionAdapter,
     DistributionAdapterExecuteRequest,
     DistributionExecutionAdapterService,
-    ExecutionAdapterRegistry,
     ExecutionAdapterReceipt,
+    ExecutionAdapterRegistry,
     TelegramBotExecutionAdapter,
     distribution_execution_adapter_service,
 )
