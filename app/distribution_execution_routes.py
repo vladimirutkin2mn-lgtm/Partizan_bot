@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.action_drafting import (
     DistributionAutoPrepareRequest,
@@ -21,6 +21,7 @@ from app.execution_adapters import (
     DistributionAdapterExecutionView,
     distribution_execution_adapter_service,
 )
+from app.operator_auth import require_operator
 from app.paid_campaign import PaidCampaignSpec, paid_campaign_spec_service
 from app.product_intake import product_intake_service
 
@@ -117,6 +118,7 @@ async def get_paid_campaign_spec(action_id: UUID) -> PaidCampaignSpec:
 @router.patch(
     "/distribution-actions/{action_id}",
     response_model=DistributionExecutionPlanView,
+    dependencies=[Depends(require_operator)],
 )
 async def edit_distribution_action(
     action_id: UUID,
@@ -133,6 +135,7 @@ async def edit_distribution_action(
 @router.post(
     "/distribution-actions/{action_id}/approve",
     response_model=DistributionExecutionPlanView,
+    dependencies=[Depends(require_operator)],
 )
 async def approve_distribution_action(action_id: UUID) -> DistributionExecutionPlanView:
     try:
@@ -149,6 +152,7 @@ async def approve_distribution_action(action_id: UUID) -> DistributionExecutionP
 @router.post(
     "/distribution-actions/{action_id}/execute",
     response_model=DistributionAdapterExecutionView,
+    dependencies=[Depends(require_operator)],
 )
 async def execute_distribution_action(
     action_id: UUID,
@@ -165,6 +169,7 @@ async def execute_distribution_action(
 @router.post(
     "/distribution-actions/{action_id}/skip",
     response_model=DistributionExecutionPlanView,
+    dependencies=[Depends(require_operator)],
 )
 async def skip_distribution_action(action_id: UUID) -> DistributionExecutionPlanView:
     try:
@@ -178,6 +183,7 @@ async def skip_distribution_action(action_id: UUID) -> DistributionExecutionPlan
 @router.post(
     "/distribution-actions/{action_id}/mark-executed",
     response_model=DistributionExecutionPlanView,
+    dependencies=[Depends(require_operator)],
 )
 async def mark_distribution_action_executed(
     action_id: UUID,

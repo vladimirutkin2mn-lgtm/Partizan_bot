@@ -1,13 +1,17 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.operator_auth import require_operator
 from app.tiktok_paid_control import (
     TikTokPaidControlSnapshotView,
     tiktok_paid_control_service,
 )
 
-router = APIRouter(tags=["tiktok-paid-control"])
+router = APIRouter(
+    tags=["tiktok-paid-control"],
+    dependencies=[Depends(require_operator)],
+)
 
 
 @router.post(

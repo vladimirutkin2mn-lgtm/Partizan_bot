@@ -1,10 +1,14 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.meta_paid_control import MetaPaidControlSnapshotView, meta_paid_control_service
+from app.operator_auth import require_operator
 
-router = APIRouter(tags=["paid-provider-control"])
+router = APIRouter(
+    tags=["paid-provider-control"],
+    dependencies=[Depends(require_operator)],
+)
 
 
 @router.post(

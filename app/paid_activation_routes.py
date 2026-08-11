@@ -1,8 +1,9 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.execution_adapters import DistributionAdapterExecutionView
+from app.operator_auth import require_operator
 from app.paid_activation import (
     PaidActivationAuthorizationRequest,
     PaidActivationAuthorizationView,
@@ -10,7 +11,7 @@ from app.paid_activation import (
     paid_activation_service,
 )
 
-router = APIRouter(tags=["paid-activation"])
+router = APIRouter(tags=["paid-activation"], dependencies=[Depends(require_operator)])
 
 
 @router.post(
