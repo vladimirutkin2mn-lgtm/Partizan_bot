@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from typing import Protocol
 
 import httpx
@@ -10,6 +11,22 @@ from app.paid_provider_connections import PaidProviderConnectionView
 
 class MetaMarketingApiError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class MetaCampaignState:
+    campaign_id: str
+    configured_status: str
+    effective_status: str
+
+
+@dataclass(frozen=True, slots=True)
+class MetaCampaignInsights:
+    campaign_id: str
+    spend: float
+    impressions: int
+    clicks: int
+    account_currency: str | None = None
 
 
 class MetaMarketingApiClient(Protocol):
@@ -60,6 +77,22 @@ class MetaMarketingApiClient(Protocol):
         object_id: str,
         status: str,
     ) -> None: ...
+
+    def get_campaign_state(
+        self,
+        *,
+        connection: PaidProviderConnectionView,
+        access_token: str,
+        campaign_id: str,
+    ) -> MetaCampaignState: ...
+
+    def get_campaign_insights(
+        self,
+        *,
+        connection: PaidProviderConnectionView,
+        access_token: str,
+        campaign_id: str,
+    ) -> MetaCampaignInsights: ...
 
 
 class HttpxMetaMarketingApiClient:
@@ -174,13 +207,58 @@ class HttpxMetaMarketingApiClient:
         object_id: str,
         status: str,
     ) -> None:
-        if status not in {"ACTIVE", "PAUSED"}:
-            raise ValueError("Meta status must be ACTIVE or PAUSED")
         self._post_json(
             connection=connection,
             access_token=access_token,
             path=object_id,
             data={"status": status},
+        )
+
+    def get_campaign_state(
+        self,
+        *,
+        connection: PaidProviderConnectionView,
+        access_token: str,
+        campaign_id: str,
+    ) -> MetaCampaignState:
+        payload = self._get_json(
+            connection=connection,
+            access_token=access_token,
+            path=campaign_id,
+            params={"fields": "id,configured_status,effective_status"},
+        )
+        return MetaCampaignState(
+            campaign_id=str(payload.get("id") or campaign_id),
+            configured_status=str(payload.get("configured_status") or "UNKNOWN"),
+            effective_status=str(payload.get("effective_status") or "UNKNOWN"),
+        )
+
+    def get_campaign_insights(
+        self,
+        *,
+        connection: PaidProviderConnectionView,
+        access_token: str,
+        campaign_id: str,
+    ) -> MetaCampaignInsights:
+        payload = self._get_json(
+            connection=connection,
+            access_token=access_token,
+            path=f"{campaign_id}/insights",
+            params={
+                "fields": "campaign_id,spend,impressions,clicks,account_currency",
+                "date_preset": "maximum",
+            },
+        )
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        row = rows[0] if isinstance(rows, list) and rows and isinstance(rows[0], dict) else {}
+        return MetaCampaignInsights(
+            campaign_id=str(row.get("campaign_id") or campaign_id),
+            spend=self._float(row.get("spend")),
+            impressions=self._int(row.get("impressions")),
+            clicks=self._int(row.get("clicks")),
+            account_currency=(
+                str(row["account_currency"]) if row.get("account_currency") else None
+            ),
         )
 
     def _post_id(
@@ -220,7 +298,29 @@ class HttpxMetaMarketingApiClient:
             )
         except httpx.HTTPError as exc:
             raise MetaMarketingApiError("Meta Marketing API request failed") from exc
+        return self._parse_response(response)
 
+    def _get_json(
+        self,
+        *,
+        connection: PaidProviderConnectionView,
+        access_token: str,
+        path: str,
+        params: dict[str, str],
+    ) -> dict:
+        url = f"https://graph.facebook.com/{connection.api_version}/{path}"
+        try:
+            response = httpx.get(
+                url,
+                params=params,
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=self._timeout_seconds,
+            )
+        except httpx.HTTPError as exc:
+            raise MetaMarketingApiError("Meta Marketing API request failed") from exc
+        return self._parse_response(response)
+
+    def _parse_response(self, response: httpx.Response) -> dict:
         if response.status_code >= 400:
             message = "Meta Marketing API rejected the request"
             try:
@@ -231,11 +331,22 @@ class HttpxMetaMarketingApiClient:
             except ValueError:
                 pass
             raise MetaMarketingApiError(message[:1000])
-
         try:
             payload = response.json()
         except ValueError as exc:
             raise MetaMarketingApiError("Meta Marketing API returned invalid JSON") from exc
         if not isinstance(payload, dict):
-            raise MetaMarketingApiError("Meta Marketing API returned an invalid response object")
+            raise MetaMarketingApiError("Meta Marketing API returned an invalid object")
         return payload
+
+    def _float(self, value: object) -> float:
+        try:
+            return max(0.0, float(value or 0))
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _int(self, value: object) -> int:
+        try:
+            return max(0, int(float(value or 0)))
+        except (TypeError, ValueError):
+            return 0
