@@ -23,6 +23,7 @@ from app.paid_lifecycle_audit import (
     PaidAuditResult,
     PaidLifecycleService,
     PaidLifecycleState,
+    PaidLifecycleView,
 )
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.tiktok_paid_control import TikTokPaidControlService, tiktok_paid_control_service
@@ -231,7 +232,7 @@ class PaidControlSweepService:
                 reason="No autonomous paid-control provider is registered for this receipt",
             )
 
-        before = self._lifecycle.get(action.id)
+        before = self._observe(action.id)
         try:
             item = provider.sync(action.id)
         except (KeyError, ValueError, RuntimeError) as exc:
@@ -242,8 +243,8 @@ class PaidControlSweepService:
                 requires_reconciliation=True,
                 reason=str(exc)[:1000],
             )
-        after = self._lifecycle.get(action.id)
-        self._audit.record(
+        after = self._observe(action.id)
+        self._record_audit(
             action_id=action.id,
             event_type=PaidAuditEventType.CONTROL_SYNC,
             actor=PaidAuditActor.WORKER,
@@ -259,8 +260,13 @@ class PaidControlSweepService:
             reason=item.reason,
             deduplicate=True,
         )
-        if before.state != PaidLifecycleState.PAUSED and after.state == PaidLifecycleState.PAUSED:
-            self._audit.record(
+        if (
+            before is not None
+            and after is not None
+            and before.state != PaidLifecycleState.PAUSED
+            and after.state == PaidLifecycleState.PAUSED
+        ):
+            self._record_audit(
                 action_id=action.id,
                 event_type=PaidAuditEventType.PROVIDER_PAUSE,
                 actor=PaidAuditActor.WORKER,
@@ -272,6 +278,40 @@ class PaidControlSweepService:
                 deduplicate=True,
             )
         return item
+
+    def _observe(self, action_id: UUID) -> PaidLifecycleView | None:
+        try:
+            return self._lifecycle.get(action_id)
+        except Exception:
+            return None
+
+    def _record_audit(
+        self,
+        *,
+        action_id: UUID,
+        event_type: PaidAuditEventType,
+        actor: PaidAuditActor,
+        result: PaidAuditResult,
+        before: PaidLifecycleView | None,
+        after: PaidLifecycleView | None,
+        correlation_id: UUID,
+        reason: str | None,
+        deduplicate: bool,
+    ) -> None:
+        try:
+            self._audit.record(
+                action_id=action_id,
+                event_type=event_type,
+                actor=actor,
+                result=result,
+                before=before,
+                after=after,
+                correlation_id=correlation_id,
+                reason=reason,
+                deduplicate=deduplicate,
+            )
+        except Exception:
+            return
 
     def _persist_run(self, result: PaidControlSweepView) -> None:
         self._store.put(
