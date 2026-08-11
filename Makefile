@@ -1,4 +1,4 @@
-.PHONY: install dev infra-up infra-down migrate test lint
+.PHONY: install dev infra-up infra-down migrate test lint runtime-up runtime-down runtime-logs worker-once
 
 install:
 	python -m pip install -e ".[dev]"
@@ -20,3 +20,15 @@ test:
 
 lint:
 	ruff check .
+
+runtime-up:
+	docker compose up -d --build postgres migrate api paid-control-worker
+
+runtime-down:
+	docker compose down
+
+runtime-logs:
+	docker compose logs -f api paid-control-worker
+
+worker-once:
+	partizan-paid-control --once
