@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TypeAlias
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -34,8 +33,8 @@ from app.tiktok_paid_control import (
     TikTokPaidControlSnapshotView,
 )
 
-LatestSweepObservation: TypeAlias = tuple[PaidControlSweepItemView, datetime]
-ControlSignal: TypeAlias = tuple[
+type LatestSweepObservation = tuple[PaidControlSweepItemView, datetime]
+type ControlSignal = tuple[
     bool,
     str,
     str | None,
@@ -80,9 +79,13 @@ class PaidControlReconciliationService:
         *,
         store: RuntimeStateStore | None = None,
         registry: PaidControlSweepRegistry | None = None,
+        history_retention: int = 100,
     ) -> None:
+        if history_retention < 1:
+            raise ValueError("history_retention must be positive")
         self._store = store or get_runtime_store()
         self._registry = registry or PaidControlSweepRegistry()
+        self._history_retention = history_retention
 
     def queue(self) -> PaidReconciliationQueueView:
         latest_sweep_items = self._latest_sweep_items()
@@ -318,6 +321,18 @@ class PaidControlReconciliationService:
             str(run.run_id),
             run.model_dump(mode="json"),
         )
+        self._trim_history()
+
+    def _trim_history(self) -> None:
+        runs = [
+            PaidControlSweepView.model_validate(payload)
+            for payload in self._store.list_namespace(PAID_CONTROL_SWEEP_RUN_NAMESPACE)
+        ]
+        if len(runs) <= self._history_retention:
+            return
+        runs.sort(key=lambda run: (run.finished_at, str(run.run_id)), reverse=True)
+        for stale in runs[self._history_retention :]:
+            self._store.delete(PAID_CONTROL_SWEEP_RUN_NAMESPACE, str(stale.run_id))
 
     def _get_receipt(self, action_id: UUID) -> ExecutionAdapterReceipt | None:
         payload = self._store.get(EXECUTION_ADAPTER_RECEIPT_NAMESPACE, str(action_id))
