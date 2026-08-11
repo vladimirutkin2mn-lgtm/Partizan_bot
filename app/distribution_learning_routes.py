@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.distribution_analytics_schemas import (
     DistributionAnalyticsEventCreate,
@@ -17,6 +17,7 @@ from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_execution_schemas import DistributionExperimentView
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_growth_manager_service import distribution_growth_manager_service
+from app.operator_auth import require_operator
 
 router = APIRouter(tags=["distribution-learning"])
 
@@ -25,6 +26,7 @@ router = APIRouter(tags=["distribution-learning"])
     "/distribution-analytics/events",
     response_model=DistributionAnalyticsEventReceipt,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_operator)],
 )
 async def ingest_distribution_event(
     payload: DistributionAnalyticsEventCreate,
@@ -41,6 +43,7 @@ async def ingest_distribution_event(
     "/distribution-experiments/{experiment_id}/spend",
     response_model=DistributionSpendReceipt,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_operator)],
 )
 async def add_distribution_spend(
     experiment_id: UUID,
@@ -57,6 +60,7 @@ async def add_distribution_spend(
 @router.post(
     "/distribution-experiments/{experiment_id}/finish",
     response_model=DistributionExperimentView,
+    dependencies=[Depends(require_operator)],
 )
 async def finish_distribution_experiment(experiment_id: UUID) -> DistributionExperimentView:
     try:
