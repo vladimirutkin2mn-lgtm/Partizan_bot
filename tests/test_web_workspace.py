@@ -37,9 +37,12 @@ def test_workspace_shell_contains_core_growth_and_execution_surfaces() -> None:
         "/app/assets/partizan.v1.css",
         "/app/assets/partizan.v1.js",
         "/app/assets/execution.v1.css",
-        "/app/assets/execution.v1.js",
+        "/app/assets/execution.v2.js",
+        "/app/assets/paid-control.v1.css",
+        "/app/assets/paid-control.v1.js",
     ):
         assert asset in html
+    assert "/app/assets/execution.v1.js" not in html
 
 
 def test_workspace_assets_and_live_api_contracts_are_served() -> None:
@@ -47,6 +50,8 @@ def test_workspace_assets_and_live_api_contracts_are_served() -> None:
     javascript = client.get("/app/assets/partizan.v1.js")
     execution_css = client.get("/app/assets/execution.v1.css")
     execution_js = client.get("/app/assets/execution.v1.js")
+    execution_bootstrap = client.get("/app/assets/execution.v2.js")
+    paid_control = client.get("/app/assets/paid-control.v1.js")
 
     assert css.status_code == 200
     assert "text/css" in css.headers["content-type"]
@@ -79,6 +84,13 @@ def test_workspace_assets_and_live_api_contracts_are_served() -> None:
         assert api_contract in execution_js.text
     assert "PAUSED/DISABLE" in execution_js.text
     assert "Расход не запускается" in execution_js.text
+
+    assert execution_bootstrap.status_code == 200
+    assert "/app/assets/execution.v1.js" in execution_bootstrap.text
+    assert "/app/assets/results.v1.js" in execution_bootstrap.text
+
+    assert paid_control.status_code == 200
+    assert "/v1/ops/paid-control/lifecycle/" in paid_control.text
 
 
 def test_operator_key_is_runtime_only_and_not_browser_persisted() -> None:
