@@ -9,7 +9,6 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Cookie, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from app.config import get_settings
 from app.distribution_analytics_schemas import DistributionAnalyticsEventCreate
 from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_control_plane_service import distribution_control_plane_service
@@ -53,17 +52,12 @@ async def distribution_tracking_redirect(
 
     response = RedirectResponse(url=destination, status_code=302)
     if set_cookie:
-        settings = get_settings()
-        secure = request.url.scheme == "https" or bool(
-            settings.partizan_public_base_url
-            and settings.partizan_public_base_url.startswith("https://")
-        )
         response.set_cookie(
             TRACKING_VISITOR_COOKIE,
             visitor_id,
             max_age=31_536_000,
             httponly=True,
-            secure=secure,
+            secure=request.url.scheme == "https",
             samesite="lax",
         )
     return response
