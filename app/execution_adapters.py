@@ -24,7 +24,20 @@ from app.distribution_types import (
     DistributionActionType,
     DistributionPlatform,
 )
+from app.meta_marketing_api import (
+    HttpxMetaMarketingApiClient,
+    MetaMarketingApiClient,
+    MetaMarketingApiError,
+)
+from app.paid_campaign import PaidCampaignLaunchMode, PaidCampaignSpecService
+from app.paid_provider_connections import PaidProviderConnectionService
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.tiktok_marketing_api import (
+    HttpxTikTokMarketingApiClient,
+    TikTokMarketingApiClient,
+    TikTokMarketingApiError,
+)
+from app.tiktok_paid_provider import TikTokPaidProviderConnectionService
 
 EXECUTION_ADAPTER_RECEIPT_NAMESPACE = "distribution_execution_adapter_receipt"
 _SECRET_ENV_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{2,120}$")
@@ -34,6 +47,7 @@ _TELEGRAM_USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{5,32}$")
 class AdapterExecutionOutcome(StrEnum):
     IN_PROGRESS = "IN_PROGRESS"
     EXECUTED = "EXECUTED"
+    STAGED = "STAGED"
     ASSISTED = "ASSISTED"
     UNAVAILABLE = "UNAVAILABLE"
     FAILED = "FAILED"
@@ -71,19 +85,13 @@ class ExecutionAdapter(Protocol):
 
 
 class SecretResolver(Protocol):
-    def resolve(self, environment_variable: str) -> str: ...
+    def resolve(self, name: str) -> str | None: ...
 
 
 class EnvironmentSecretResolver:
-    def resolve(self, environment_variable: str) -> str:
-        if not _SECRET_ENV_PATTERN.fullmatch(environment_variable):
-            raise ValueError("Telegram bot token env reference is invalid")
-        value = os.getenv(environment_variable)
-        if not value:
-            raise ValueError(
-                f"Telegram bot token secret is not configured in {environment_variable}"
-            )
-        return value
+    def resolve(self, name: str) -> str | None:
+        value = os.getenv(name)
+        return value if value and value.strip() else None
 
 
 class TelegramBotClient(Protocol):
@@ -143,7 +151,10 @@ class TelegramBotExecutionAdapter:
 
     def execute(self, action: DistributionActionView) -> ExecutionAdapterReceipt:
         if action.distribution_identity_id is None:
-            return self._unavailable(action, "Telegram execution requires a Distribution Identity")
+            return self._unavailable(
+                action,
+                "Telegram execution requires a Distribution Identity",
+            )
 
         identity = distribution_control_plane_service.get_identity(
             action.distribution_identity_id
@@ -155,6 +166,8 @@ class TelegramBotExecutionAdapter:
                 action,
                 "Telegram identity has no bot_token_env secret reference",
             )
+        if not _SECRET_ENV_PATTERN.fullmatch(token_env):
+            return self._unavailable(action, "Telegram bot token env reference is invalid")
 
         try:
             chat_id = self._chat_id_from_target(action)
@@ -179,6 +192,11 @@ class TelegramBotExecutionAdapter:
             token = self._secret_resolver.resolve(token_env)
         except ValueError as exc:
             return self._unavailable(action, str(exc))
+        if token is None:
+            return self._unavailable(
+                action,
+                f"Telegram bot token secret is not configured in {token_env}",
+            )
 
         try:
             result = self._client.send_message(
@@ -241,10 +259,14 @@ class TelegramBotExecutionAdapter:
             raise ValueError("Telegram standalone post requires a public target URL")
         parts = urlsplit(str(action.target_url))
         if parts.scheme != "https" or parts.netloc.lower() not in {"t.me", "www.t.me"}:
-            raise ValueError("Telegram Bot adapter accepts only public https://t.me/<username> targets")
+            raise ValueError(
+                "Telegram Bot adapter accepts only public https://t.me/<username> targets"
+            )
         path_parts = [part for part in parts.path.split("/") if part]
         if len(path_parts) != 1:
-            raise ValueError("Telegram Bot adapter requires a chat surface, not a message/invite URL")
+            raise ValueError(
+                "Telegram Bot adapter requires a chat surface, not a message/invite URL"
+            )
         username = path_parts[0]
         if username.startswith("+") or username.lower() == "joinchat":
             raise ValueError("Telegram private invite targets are not supported")
@@ -333,6 +355,306 @@ class UnavailableOwnedExecutionAdapter:
         )
 
 
+class MetaAdsExecutionAdapter:
+    name = "meta-ads-create-paused"
+    provider = "meta-marketing-api"
+
+    def __init__(
+        self,
+        *,
+        client: MetaMarketingApiClient | None = None,
+        secret_resolver: SecretResolver | None = None,
+        connection_service: PaidProviderConnectionService | None = None,
+        spec_service: PaidCampaignSpecService | None = None,
+    ) -> None:
+        self._client = client or HttpxMetaMarketingApiClient()
+        self._secret_resolver = secret_resolver or EnvironmentSecretResolver()
+        self._connection_service = connection_service or PaidProviderConnectionService()
+        self._spec_service = spec_service or PaidCampaignSpecService()
+
+    def supports(self, action: DistributionActionView) -> bool:
+        return (
+            action.platform == DistributionPlatform.INSTAGRAM
+            and action.action_type == DistributionActionType.PAID_CAMPAIGN
+        )
+
+    def execute(self, action: DistributionActionView) -> ExecutionAdapterReceipt:
+        if action.experiment_id is None:
+            return self._failed(action, "Paid action has no DistributionExperiment")
+        experiment = distribution_execution_service.get_experiment(action.experiment_id)
+        connection = self._connection_service.get_meta(experiment.product_id)
+        if connection is None:
+            return self._unavailable(action, "No Meta paid provider connection is configured")
+        if connection.status.value != "ACTIVE":
+            return self._unavailable(action, "Meta paid provider connection is not ACTIVE")
+
+        spec = self._spec_service.get(action.id)
+        if spec is None:
+            return self._failed(action, "PaidCampaignSpec is required before Meta execution")
+        if spec.platform != DistributionPlatform.INSTAGRAM:
+            return self._failed(action, "PaidCampaignSpec platform does not match Meta adapter")
+        if spec.launch_mode != PaidCampaignLaunchMode.CREATE_PAUSED:
+            return self._failed(action, "Meta adapter only supports CREATE_PAUSED")
+
+        access_token = self._secret_resolver.resolve(connection.access_token_env)
+        if access_token is None:
+            return self._unavailable(
+                action,
+                f"Meta access-token secret {connection.access_token_env} is not available",
+            )
+
+        primary_text = self._primary_text(spec.creative_brief)
+        headline = str(spec.creative_brief.get("product_name") or "Partizan campaign")[:255]
+        name_prefix = f"Partizan {spec.tactic_id} {action.id.hex[:8]}"
+        daily_budget_minor_units = max(
+            1,
+            round(
+                spec.budget_cap
+                / connection.test_days
+                * connection.budget_minor_unit_factor
+            ),
+        )
+        provider_ids: dict[str, str] = {}
+        try:
+            provider_ids["campaign_id"] = self._client.create_campaign(
+                connection=connection,
+                access_token=access_token,
+                name=f"{name_prefix} campaign",
+            )
+            provider_ids["ad_set_id"] = self._client.create_ad_set(
+                connection=connection,
+                access_token=access_token,
+                campaign_id=provider_ids["campaign_id"],
+                name=f"{name_prefix} ad set",
+                daily_budget_minor_units=daily_budget_minor_units,
+            )
+            provider_ids["creative_id"] = self._client.create_ad_creative(
+                connection=connection,
+                access_token=access_token,
+                name=f"{name_prefix} creative",
+                destination_url=str(spec.destination_url),
+                primary_text=primary_text,
+                headline=headline,
+            )
+            provider_ids["ad_id"] = self._client.create_ad(
+                connection=connection,
+                access_token=access_token,
+                ad_set_id=provider_ids["ad_set_id"],
+                creative_id=provider_ids["creative_id"],
+                name=f"{name_prefix} ad",
+            )
+        except MetaMarketingApiError as exc:
+            return self._failed(
+                action,
+                str(exc),
+                partial_provider_ids=provider_ids,
+            )
+
+        return ExecutionAdapterReceipt(
+            action_id=action.id,
+            adapter_name=self.name,
+            provider=self.provider,
+            outcome=AdapterExecutionOutcome.STAGED,
+            message=(
+                "Meta campaign, ad set, creative and ad were created in PAUSED state. "
+                "No spend has started; activation requires a separate explicit approval step."
+            ),
+            external_reference=f"meta:ad:{provider_ids['ad_id']}",
+            metadata={
+                "provider_ids": provider_ids,
+                "all_spend_objects_status": "PAUSED",
+                "spend_started": False,
+                "launch_mode": spec.launch_mode.value,
+                "country_codes": list(connection.country_codes),
+                "daily_budget_minor_units": daily_budget_minor_units,
+                "api_version": connection.api_version,
+            },
+            created_at=datetime.now(UTC),
+        )
+
+    def _primary_text(self, creative_brief: dict) -> str:
+        hook = str(creative_brief.get("message_hook") or "").strip()
+        value = str(creative_brief.get("value_proposition") or "").strip()
+        pieces = [piece for piece in (hook, value) if piece]
+        text = " — ".join(pieces)
+        return (text or "Explore the product and decide if it is useful for you.")[:2000]
+
+    def _unavailable(
+        self,
+        action: DistributionActionView,
+        message: str,
+    ) -> ExecutionAdapterReceipt:
+        return ExecutionAdapterReceipt(
+            action_id=action.id,
+            adapter_name=self.name,
+            provider=self.provider,
+            outcome=AdapterExecutionOutcome.UNAVAILABLE,
+            message=message,
+            metadata={"spend_started": False},
+            created_at=datetime.now(UTC),
+        )
+
+    def _failed(
+        self,
+        action: DistributionActionView,
+        message: str,
+        *,
+        partial_provider_ids: dict[str, str] | None = None,
+    ) -> ExecutionAdapterReceipt:
+        return ExecutionAdapterReceipt(
+            action_id=action.id,
+            adapter_name=self.name,
+            provider=self.provider,
+            outcome=AdapterExecutionOutcome.FAILED,
+            message=message[:2000],
+            requires_operator_confirmation=bool(partial_provider_ids),
+            metadata={
+                "partial_provider_ids": partial_provider_ids or {},
+                "spend_started": False,
+            },
+            created_at=datetime.now(UTC),
+        )
+
+
+class TikTokAdsExecutionAdapter:
+    name = "tiktok-ads-create-disabled"
+    provider = "tiktok-marketing-api"
+
+    def __init__(
+        self,
+        *,
+        client: TikTokMarketingApiClient | None = None,
+        secret_resolver: SecretResolver | None = None,
+        connection_service: TikTokPaidProviderConnectionService | None = None,
+        spec_service: PaidCampaignSpecService | None = None,
+    ) -> None:
+        self._client = client or HttpxTikTokMarketingApiClient()
+        self._secret_resolver = secret_resolver or EnvironmentSecretResolver()
+        self._connection_service = connection_service or TikTokPaidProviderConnectionService()
+        self._spec_service = spec_service or PaidCampaignSpecService()
+
+    def supports(self, action: DistributionActionView) -> bool:
+        return (
+            action.platform == DistributionPlatform.TIKTOK
+            and action.action_type == DistributionActionType.PAID_CAMPAIGN
+        )
+
+    def execute(self, action: DistributionActionView) -> ExecutionAdapterReceipt:
+        if action.experiment_id is None:
+            return self._failed(action, "Paid action has no DistributionExperiment")
+        experiment = distribution_execution_service.get_experiment(action.experiment_id)
+        connection = self._connection_service.get(experiment.product_id)
+        if connection is None:
+            return self._unavailable(action, "No TikTok paid provider connection is configured")
+        if connection.status.value != "ACTIVE":
+            return self._unavailable(action, "TikTok paid provider connection is not ACTIVE")
+        spec = self._spec_service.get(action.id)
+        if spec is None:
+            return self._failed(action, "PaidCampaignSpec is required before TikTok execution")
+        if spec.platform != DistributionPlatform.TIKTOK:
+            return self._failed(action, "PaidCampaignSpec platform does not match TikTok adapter")
+        if spec.launch_mode != PaidCampaignLaunchMode.CREATE_PAUSED:
+            return self._failed(action, "TikTok adapter only supports CREATE_PAUSED")
+        access_token = self._secret_resolver.resolve(connection.access_token_env)
+        if access_token is None:
+            return self._unavailable(
+                action,
+                f"TikTok access-token secret {connection.access_token_env} is not available",
+            )
+
+        name_prefix = f"Partizan {spec.tactic_id} {action.id.hex[:8]}"
+        daily_budget = round(max(0.01, spec.budget_cap / connection.test_days), 2)
+        ad_text = self._ad_text(spec.creative_brief)
+        provider_ids: dict[str, str] = {}
+        try:
+            provider_ids["campaign_id"] = self._client.create_campaign(
+                connection=connection,
+                access_token=access_token,
+                name=f"{name_prefix} campaign",
+            )
+            provider_ids["adgroup_id"] = self._client.create_ad_group(
+                connection=connection,
+                access_token=access_token,
+                campaign_id=provider_ids["campaign_id"],
+                name=f"{name_prefix} ad group",
+                daily_budget=daily_budget,
+            )
+            provider_ids["ad_id"] = self._client.create_ad(
+                connection=connection,
+                access_token=access_token,
+                adgroup_id=provider_ids["adgroup_id"],
+                name=f"{name_prefix} ad",
+                destination_url=str(spec.destination_url),
+                ad_text=ad_text,
+            )
+        except TikTokMarketingApiError as exc:
+            return self._failed(action, str(exc), partial_provider_ids=provider_ids)
+
+        return ExecutionAdapterReceipt(
+            action_id=action.id,
+            adapter_name=self.name,
+            provider=self.provider,
+            outcome=AdapterExecutionOutcome.STAGED,
+            message=(
+                "TikTok campaign, ad group and ad creative were created with delivery DISABLED. "
+                "No spend has started; enabling delivery requires separate explicit authorization."
+            ),
+            external_reference=f"tiktok:ad:{provider_ids['ad_id']}",
+            metadata={
+                "provider_ids": provider_ids,
+                "all_spend_objects_status": "DISABLE",
+                "spend_started": False,
+                "launch_mode": spec.launch_mode.value,
+                "location_ids": list(connection.location_ids),
+                "daily_budget": daily_budget,
+                "api_version": connection.api_version,
+            },
+            created_at=datetime.now(UTC),
+        )
+
+    def _ad_text(self, creative_brief: dict) -> str:
+        hook = str(creative_brief.get("message_hook") or "").strip()
+        value = str(creative_brief.get("value_proposition") or "").strip()
+        text = " — ".join(piece for piece in (hook, value) if piece)
+        return (text or "Explore the product and decide if it is useful for you.")[:100]
+
+    def _unavailable(
+        self,
+        action: DistributionActionView,
+        message: str,
+    ) -> ExecutionAdapterReceipt:
+        return ExecutionAdapterReceipt(
+            action_id=action.id,
+            adapter_name=self.name,
+            provider=self.provider,
+            outcome=AdapterExecutionOutcome.UNAVAILABLE,
+            message=message,
+            metadata={"spend_started": False},
+            created_at=datetime.now(UTC),
+        )
+
+    def _failed(
+        self,
+        action: DistributionActionView,
+        message: str,
+        *,
+        partial_provider_ids: dict[str, str] | None = None,
+    ) -> ExecutionAdapterReceipt:
+        return ExecutionAdapterReceipt(
+            action_id=action.id,
+            adapter_name=self.name,
+            provider=self.provider,
+            outcome=AdapterExecutionOutcome.FAILED,
+            message=message[:2000],
+            requires_operator_confirmation=bool(partial_provider_ids),
+            metadata={
+                "partial_provider_ids": partial_provider_ids or {},
+                "spend_started": False,
+            },
+            created_at=datetime.now(UTC),
+        )
+
+
 class UnavailablePaidExecutionAdapter:
     name = "paid-campaign-unavailable"
     provider = "not-configured"
@@ -387,6 +709,8 @@ class ExecutionAdapterRegistry:
     def __init__(self, adapters: list[ExecutionAdapter] | None = None) -> None:
         self._adapters = adapters or [
             TelegramBotExecutionAdapter(),
+            MetaAdsExecutionAdapter(),
+            TikTokAdsExecutionAdapter(),
             AssistedCommunityExecutionAdapter(),
             UnavailableOwnedExecutionAdapter(),
             UnavailablePaidExecutionAdapter(),
@@ -422,6 +746,20 @@ class DistributionExecutionAdapterService:
             return DistributionAdapterExecutionView(
                 receipt=existing,
                 plan=distribution_execution_service.get_plan(action_id),
+            )
+        if existing is not None and existing.outcome == AdapterExecutionOutcome.STAGED:
+            return DistributionAdapterExecutionView(
+                receipt=existing,
+                plan=distribution_execution_service.get_plan(action_id),
+            )
+        if (
+            existing is not None
+            and payload.retry
+            and existing.outcome == AdapterExecutionOutcome.FAILED
+            and existing.metadata.get("partial_provider_ids")
+        ):
+            raise ValueError(
+                "Provider objects were partially created; reconcile them before retrying execution"
             )
 
         if action.status == DistributionActionStatus.EXECUTED:
