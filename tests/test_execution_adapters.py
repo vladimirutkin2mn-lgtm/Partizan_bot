@@ -92,7 +92,7 @@ def test_paid_adapter_is_unavailable_without_authenticated_provider() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["receipt"]["outcome"] == "UNAVAILABLE"
-    assert payload["receipt"]["adapter_name"] == "paid-campaign-unavailable"
+    assert payload["receipt"]["adapter_name"] == "meta-ads-create-paused"
     assert payload["plan"]["action"]["status"] == "APPROVED"
     assert payload["plan"]["experiment"]["status"] == "APPROVED"
 
