@@ -33,6 +33,8 @@ class TikTokPaidProviderConnectionCreateRequest(BaseModel):
     budget_mode: str = Field(min_length=1, max_length=100)
     schedule_type: str = Field(min_length=1, max_length=100)
     promotion_type: str | None = Field(default=None, max_length=100)
+    report_type: str | None = Field(default=None, min_length=1, max_length=100)
+    report_data_level: str | None = Field(default=None, min_length=1, max_length=100)
     test_days: int = Field(default=5, ge=1, le=30)
     status: TikTokPaidProviderConnectionStatus = TikTokPaidProviderConnectionStatus.ACTIVE
 
@@ -76,6 +78,8 @@ class TikTokPaidProviderConnectionView(BaseModel):
     budget_mode: str
     schedule_type: str
     promotion_type: str | None = None
+    report_type: str | None = None
+    report_data_level: str | None = None
     test_days: int
     status: TikTokPaidProviderConnectionStatus
 
