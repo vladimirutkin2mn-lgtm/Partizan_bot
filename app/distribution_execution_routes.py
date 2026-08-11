@@ -23,14 +23,9 @@ from app.execution_adapters import (
     distribution_execution_adapter_service,
 )
 from app.operator_auth import require_operator
+from app.paid_audit_safe import append_paid_audit, observe_paid_lifecycle
 from app.paid_campaign import PaidCampaignSpec, paid_campaign_spec_service
-from app.paid_lifecycle_audit import (
-    PaidAuditActor,
-    PaidAuditEventType,
-    PaidAuditResult,
-    paid_audit_ledger,
-    paid_lifecycle_service,
-)
+from app.paid_lifecycle_audit import PaidAuditActor, PaidAuditEventType, PaidAuditResult
 from app.product_intake import product_intake_service
 
 router = APIRouter(tags=["distribution-execution"])
@@ -172,10 +167,10 @@ async def execute_distribution_action(
             action.action_type == DistributionActionType.PAID_CAMPAIGN
             and action.platform in {DistributionPlatform.INSTAGRAM, DistributionPlatform.TIKTOK}
         )
-        before = paid_lifecycle_service.get(action_id) if audited_paid else None
+        before = observe_paid_lifecycle(action_id) if audited_paid else None
         result = distribution_execution_adapter_service.execute(action_id, payload)
         if audited_paid:
-            after = paid_lifecycle_service.get(action_id)
+            after = observe_paid_lifecycle(action_id)
             outcome = result.receipt.outcome
             audit_result = (
                 PaidAuditResult.SUCCESS
@@ -184,7 +179,7 @@ async def execute_distribution_action(
                 if outcome == AdapterExecutionOutcome.UNAVAILABLE
                 else PaidAuditResult.FAILED
             )
-            paid_audit_ledger.record(
+            append_paid_audit(
                 action_id=action_id,
                 event_type=PaidAuditEventType.PROVIDER_STAGING,
                 actor=PaidAuditActor.OPERATOR,
