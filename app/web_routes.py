@@ -3,6 +3,8 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
 
+from app.tracking_routes import router as tracking_router
+
 _WEB_DIR = Path(__file__).resolve().parent / "web"
 _ASSETS = {
     "partizan.v1.css": "text/css; charset=utf-8",
@@ -17,6 +19,7 @@ _ASSETS = {
 }
 
 router = APIRouter(tags=["web"])
+router.include_router(tracking_router)
 
 
 @router.get("/", include_in_schema=False)
