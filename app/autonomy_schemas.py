@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID
 
@@ -42,16 +42,27 @@ class GrowthMandateUpsertRequest(BaseModel):
             )
         if self.max_autonomous_spend_per_day > self.total_budget_cap:
             raise ValueError("max_autonomous_spend_per_day cannot exceed total_budget_cap")
-        if self.approval_threshold is not None and self.approval_threshold > self.total_budget_cap:
+        if (
+            self.approval_threshold is not None
+            and self.approval_threshold > self.total_budget_cap
+        ):
             raise ValueError("approval_threshold cannot exceed total_budget_cap")
         if self.effective_from is not None and self.effective_until is not None:
-            if self.effective_until <= self.effective_from:
+            starts_at = self._as_utc(self.effective_from)
+            ends_at = self._as_utc(self.effective_until)
+            if ends_at <= starts_at:
                 raise ValueError("effective_until must be after effective_from")
         if self.autonomous_paid_activation and not self.autonomous_approve:
             raise ValueError(
                 "autonomous_paid_activation requires autonomous_approve to be enabled"
             )
         return self
+
+    @staticmethod
+    def _as_utc(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
 
 class GrowthMandateStatusRequest(BaseModel):
