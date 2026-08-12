@@ -168,7 +168,10 @@ class CreativeAssetService:
                 *[str(item) for item in spec.creative_brief.get("constraints", [])],
                 "Use only confirmed product facts; do not fabricate testimonials or social proof.",
                 "Avoid deceptive guarantees, fake urgency and unverifiable claims.",
-                f"Produce a provider-compatible {media_type.value.lower()} for {action.platform.value}.",
+                (
+                    "Produce a provider-compatible "
+                    f"{media_type.value.lower()} for {action.platform.value}."
+                ),
             ]
         elif action.action_type == DistributionActionType.ORGANIC_VIDEO:
             purpose = CreativePurpose.ORGANIC_VIDEO
@@ -260,7 +263,9 @@ class CreativeAssetService:
             source=payload.source,
             status=payload.status,
             public_url=payload.public_url,
-            provider_asset_id=(payload.provider_asset_id.strip() if payload.provider_asset_id else None),
+            provider_asset_id=(
+                payload.provider_asset_id.strip() if payload.provider_asset_id else None
+            ),
             mime_type=payload.mime_type,
             width=payload.width,
             height=payload.height,
@@ -300,7 +305,10 @@ class CreativeAssetService:
         if asset.status == CreativeAssetStatus.RETIRED:
             return asset
         updated = asset.model_copy(
-            update={"status": CreativeAssetStatus.RETIRED, "updated_at": datetime.now(UTC)}
+            update={
+                "status": CreativeAssetStatus.RETIRED,
+                "updated_at": datetime.now(UTC),
+            }
         )
         self._store.put(
             CREATIVE_ASSET_NAMESPACE,
@@ -357,11 +365,13 @@ class CreativeAssetService:
         if brief.purpose == CreativePurpose.PAID_AD:
             if brief.platform == DistributionPlatform.INSTAGRAM and asset.public_url is None:
                 return [
-                    f"CreativeAsset {asset.id} is READY but Meta staging currently requires a public image URL."
+                    f"CreativeAsset {asset.id} is READY but Meta staging currently requires "
+                    "a public image URL."
                 ]
             if brief.platform == DistributionPlatform.TIKTOK and not asset.provider_asset_id:
                 return [
-                    f"CreativeAsset {asset.id} is READY but TikTok staging currently requires a real provider video ID."
+                    f"CreativeAsset {asset.id} is READY but TikTok staging currently requires "
+                    "a real provider video ID."
                 ]
         if brief.purpose == CreativePurpose.ORGANIC_VIDEO:
             if asset.public_url is None and not asset.provider_asset_id:
@@ -385,7 +395,9 @@ class CreativeAssetService:
                 for key, nested in item.items():
                     normalized = str(key).lower().replace("-", "_")
                     if any(marker in normalized for marker in _SECRET_LIKE_KEYS):
-                        raise ValueError(f"Secret-like provenance field is not allowed: {path}.{key}")
+                        raise ValueError(
+                            f"Secret-like provenance field is not allowed: {path}.{key}"
+                        )
                     visit(nested, f"{path}.{key}")
             elif isinstance(item, list):
                 for index, nested in enumerate(item):
