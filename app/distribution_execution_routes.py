@@ -6,6 +6,7 @@ from app.action_drafting import (
     DistributionAutoPrepareRequest,
     distribution_action_drafting_service,
 )
+from app.creative_execution_adapters import creative_distribution_execution_adapter_service
 from app.distribution_execution_schemas import (
     DistributionActionEditRequest,
     DistributionActionExecutionRequest,
@@ -20,7 +21,6 @@ from app.execution_adapters import (
     AdapterExecutionOutcome,
     DistributionAdapterExecuteRequest,
     DistributionAdapterExecutionView,
-    distribution_execution_adapter_service,
 )
 from app.operator_auth import require_operator
 from app.paid_audit_safe import append_paid_audit, observe_paid_lifecycle
@@ -168,7 +168,7 @@ async def execute_distribution_action(
             and action.platform in {DistributionPlatform.INSTAGRAM, DistributionPlatform.TIKTOK}
         )
         before = observe_paid_lifecycle(action_id) if audited_paid else None
-        result = distribution_execution_adapter_service.execute(action_id, payload)
+        result = creative_distribution_execution_adapter_service.execute(action_id, payload)
         if audited_paid:
             after = observe_paid_lifecycle(action_id)
             outcome = result.receipt.outcome
