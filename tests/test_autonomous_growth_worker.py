@@ -3,6 +3,7 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 
+from app.action_drafting import distribution_action_drafting_service
 from app.audience_intelligence_service import audience_intelligence_service
 from app.autonomous_growth import (
     AUTONOMOUS_GROWTH_DECISION_NAMESPACE,
@@ -10,6 +11,7 @@ from app.autonomous_growth import (
     AutonomousGrowthSweepService,
 )
 from app.autonomous_growth_worker import AutonomousGrowthWorker
+from app.autonomy_schemas import GrowthMandateStatus
 from app.autonomy_service import growth_mandate_service
 from app.channel_service import channel_service
 from app.distribution_analytics_service import distribution_analytics_service
@@ -29,6 +31,33 @@ from app.product_intake import product_intake_service
 from app.runtime_store import get_runtime_store
 
 client = TestClient(app)
+
+
+class CountingMockExecutionAdapter(ConfirmedMockExecutionAdapter):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def execute(self, action):
+        self.calls += 1
+        return super().execute(action)
+
+
+class PauseBeforeExecutionMandateService:
+    def __init__(self, product_id: UUID) -> None:
+        self._product_id = product_id
+        self._evaluations = 0
+
+    def evaluate(self, product_id, payload):
+        self._evaluations += 1
+        if self._evaluations == 3:
+            growth_mandate_service.set_status(
+                self._product_id,
+                GrowthMandateStatus.PAUSED,
+            )
+        return growth_mandate_service.evaluate(product_id, payload)
+
+    def get(self, product_id):
+        return growth_mandate_service.get(product_id)
 
 
 @pytest.fixture(autouse=True)
@@ -136,13 +165,19 @@ def _set_mandate(
     return response.json()
 
 
-def _mock_worker_service() -> AutonomousGrowthSweepService:
+def _mock_worker_service(
+    *,
+    adapter=None,
+    mandate_service=None,
+) -> AutonomousGrowthSweepService:
+    execution_adapter = adapter or ConfirmedMockExecutionAdapter()
     adapter_service = DistributionExecutionAdapterService(
-        registry=ExecutionAdapterRegistry([ConfirmedMockExecutionAdapter()]),
+        registry=ExecutionAdapterRegistry([execution_adapter]),
         store=get_runtime_store(),
     )
     return AutonomousGrowthSweepService(
         store=get_runtime_store(),
+        mandate_service=mandate_service,
         adapter_service=adapter_service,
     )
 
@@ -212,6 +247,12 @@ async def test_worker_prepares_but_waits_when_approval_is_not_delegated() -> Non
     assert plan.action.status == "PREPARED"
     assert plan.experiment.status == "DRAFT"
 
+    second = await service.run_once(product_id=UUID(product_id))
+    assert second.executed_count == 0
+    assert second.decisions[0].outcome == "SKIPPED"
+    assert "requires resolution" in second.decisions[0].reasons[0]
+    assert len(distribution_execution_service.list_experiments(UUID(product_id))) == 1
+
 
 @pytest.mark.asyncio
 async def test_worker_does_not_stage_paid_campaigns_in_first_slice() -> None:
@@ -234,6 +275,39 @@ async def test_worker_does_not_stage_paid_campaigns_in_first_slice() -> None:
     assert result.decisions[0].outcome == "SKIPPED"
     assert "non-paid" in result.decisions[0].reasons[0]
     assert distribution_execution_service.list_experiments(UUID(product_id)) == []
+
+
+@pytest.mark.asyncio
+async def test_pause_immediately_before_execution_cancels_without_adapter_call() -> None:
+    product_id = _create_product()
+    product_uuid = UUID(product_id)
+    _add_tiktok_organic_identity(product_id)
+    _generate_plays(product_id)
+    _set_mandate(
+        product_id,
+        platforms=["TIKTOK"],
+        actions=["ORGANIC_VIDEO"],
+    )
+    adapter = CountingMockExecutionAdapter()
+    mandate_service = PauseBeforeExecutionMandateService(product_uuid)
+    service = _mock_worker_service(
+        adapter=adapter,
+        mandate_service=mandate_service,
+    )
+
+    result = await service.run_once(product_id=product_uuid)
+
+    assert result.executed_count == 0
+    assert result.blocked_count == 1
+    assert adapter.calls == 0
+    decision = result.decisions[-1]
+    assert decision.outcome == "BLOCKED"
+    assert "immediately before execution" in decision.reasons[0]
+    assert growth_mandate_service.get(product_uuid).status == GrowthMandateStatus.PAUSED
+    assert decision.action_id is not None
+    plan = distribution_execution_service.get_plan(decision.action_id)
+    assert plan.action.status == "SKIPPED"
+    assert plan.experiment.status == "CANCELLED"
 
 
 def test_recurring_worker_requires_durable_storage() -> None:
