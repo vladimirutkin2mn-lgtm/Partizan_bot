@@ -2,8 +2,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.autonomous_controlled_growth import autonomous_controlled_growth_sweep_service
 from app.autonomous_growth import AutonomousGrowthSweepView
-from app.autonomous_paid_growth import autonomous_paid_growth_sweep_service
 from app.operator_auth import require_operator
 
 router = APIRouter(
@@ -20,7 +20,7 @@ async def run_autonomous_growth_sweep(
     product_id: UUID | None = None,
 ) -> AutonomousGrowthSweepView:
     try:
-        return await autonomous_paid_growth_sweep_service.run_once(product_id=product_id)
+        return await autonomous_controlled_growth_sweep_service.run_once(product_id=product_id)
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -33,6 +33,6 @@ async def list_autonomous_growth_sweeps(
     limit: int = Query(default=20, ge=1, le=100),
 ) -> list[AutonomousGrowthSweepView]:
     try:
-        return autonomous_paid_growth_sweep_service.recent_runs(limit)
+        return autonomous_controlled_growth_sweep_service.recent_runs(limit)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
