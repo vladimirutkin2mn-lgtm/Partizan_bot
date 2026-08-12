@@ -7,8 +7,8 @@ import time
 from collections.abc import Callable
 from uuid import UUID
 
+from app.autonomous_controlled_growth import autonomous_controlled_growth_sweep_service
 from app.autonomous_growth import AutonomousGrowthSweepService
-from app.autonomous_paid_growth import autonomous_paid_growth_sweep_service
 
 
 class AutonomousGrowthWorker:
@@ -18,7 +18,7 @@ class AutonomousGrowthWorker:
         sweep_service: AutonomousGrowthSweepService | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
-        self._sweep_service = sweep_service or autonomous_paid_growth_sweep_service
+        self._sweep_service = sweep_service or autonomous_controlled_growth_sweep_service
         self._sleep = sleep
 
     def run(
