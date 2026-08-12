@@ -1,7 +1,8 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from app.autonomy_overview import AutonomyOverviewView, autonomy_overview_service
 from app.autonomy_schemas import (
     AutonomyEvaluationRequest,
     AutonomyEvaluationView,
@@ -44,6 +45,27 @@ async def get_growth_mandate(product_id: UUID) -> GrowthMandateView:
         return growth_mandate_service.get(product_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Product or Growth Mandate not found") from exc
+
+
+@router.get(
+    "/products/{product_id}/autonomy-overview",
+    response_model=AutonomyOverviewView,
+)
+async def get_autonomy_overview(
+    product_id: UUID,
+    timeline_limit: int = Query(default=30, ge=1, le=100),
+) -> AutonomyOverviewView:
+    try:
+        product_intake_service.get_product(product_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Product not found") from exc
+    try:
+        return autonomy_overview_service.get(
+            product_id,
+            timeline_limit=timeline_limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.patch(

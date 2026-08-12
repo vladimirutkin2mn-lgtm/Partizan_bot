@@ -18,6 +18,8 @@ _ASSETS = {
     "results.v1.js": "text/javascript; charset=utf-8",
     "integration.v1.css": "text/css; charset=utf-8",
     "integration.v1.js": "text/javascript; charset=utf-8",
+    "autonomy.v1.css": "text/css; charset=utf-8",
+    "autonomy.v1.js": "text/javascript; charset=utf-8",
 }
 
 router = APIRouter(tags=["web"])
