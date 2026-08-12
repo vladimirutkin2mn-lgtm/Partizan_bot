@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,6 +15,7 @@ from app.distribution_execution_service import (
     DISTRIBUTION_EXPERIMENT_NAMESPACE,
     distribution_execution_service,
 )
+from app.execution_adapters import EXECUTION_ADAPTER_RECEIPT_NAMESPACE
 from app.main import app
 from app.product_intake import product_intake_service
 from app.runtime_store import get_runtime_store
@@ -34,6 +35,7 @@ def reset_state() -> None:
         store.clear_namespace(DISTRIBUTION_EXPERIMENT_NAMESPACE)
         store.clear_namespace(DISTRIBUTION_ANALYTICS_EVENT_NAMESPACE)
         store.clear_namespace(DISTRIBUTION_SPEND_NAMESPACE)
+        store.clear_namespace(EXECUTION_ADAPTER_RECEIPT_NAMESPACE)
 
 
 def _create_product(name: str = "Oracle") -> str:
@@ -67,7 +69,11 @@ def _mandate_payload(**overrides) -> dict:
         "max_autonomous_spend_per_day": 100,
         "max_concurrent_running_experiments": 3,
         "allowed_platforms": ["TELEGRAM", "INSTAGRAM", "TIKTOK"],
-        "allowed_actions": ["STANDALONE_POST", "ORGANIC_VIDEO", "PAID_CAMPAIGN"],
+        "allowed_actions": [
+            "STANDALONE_POST",
+            "ORGANIC_VIDEO",
+            "PAID_CAMPAIGN",
+        ],
         "autonomous_prepare": True,
         "autonomous_approve": True,
         "autonomous_paid_activation": False,
@@ -104,6 +110,26 @@ def _evaluate(product_id: str, **overrides) -> dict:
     return response.json()
 
 
+def _put_experiment(product_id: str, *, status: str = "FINISHED") -> UUID:
+    experiment_id = uuid4()
+    get_runtime_store().put(
+        DISTRIBUTION_EXPERIMENT_NAMESPACE,
+        str(experiment_id),
+        {
+            "id": str(experiment_id),
+            "product_id": product_id,
+            "distribution_play_id": str(uuid4()),
+            "opportunity_id": str(uuid4()),
+            "action_id": str(uuid4()),
+            "status": status,
+            "attribution_level": "PAID",
+            "tracking_url": "https://example.com/?ptz=1",
+            "referral_token": experiment_id.hex[:16],
+        },
+    )
+    return experiment_id
+
+
 def test_growth_mandate_is_persisted_and_versioned() -> None:
     product_id = _create_product()
     first = _create_mandate(product_id)
@@ -117,8 +143,9 @@ def test_growth_mandate_is_persisted_and_versioned() -> None:
     assert second["version"] == 2
     assert second["max_autonomous_spend_per_experiment"] == 40
 
-    reloaded = GrowthMandateService(store=get_runtime_store()).get(first_product_id := __import__("uuid").UUID(product_id))
-    assert str(reloaded.product_id) == str(first_product_id)
+    product_uuid = UUID(product_id)
+    reloaded = GrowthMandateService(store=get_runtime_store()).get(product_uuid)
+    assert reloaded.product_id == product_uuid
     assert reloaded.version == 2
     assert reloaded.max_autonomous_spend_per_experiment == 40
 
@@ -173,26 +200,14 @@ def test_disallowed_platform_is_blocked() -> None:
 
 def test_daily_spend_cap_blocks_additional_autonomous_spend() -> None:
     product_id = _create_product()
-    _create_mandate(product_id, total_budget_cap=1000, max_autonomous_spend_per_day=100)
-    experiment_id = uuid4()
-    store = get_runtime_store()
-    store.put(
-        DISTRIBUTION_EXPERIMENT_NAMESPACE,
-        str(experiment_id),
-        {
-            "id": str(experiment_id),
-            "product_id": product_id,
-            "distribution_play_id": str(uuid4()),
-            "opportunity_id": str(uuid4()),
-            "action_id": str(uuid4()),
-            "status": "FINISHED",
-            "attribution_level": "PAID",
-            "tracking_url": "https://example.com/?ptz=1",
-            "referral_token": experiment_id.hex[:16],
-        },
+    _create_mandate(
+        product_id,
+        total_budget_cap=1000,
+        max_autonomous_spend_per_day=100,
     )
+    experiment_id = _put_experiment(product_id)
     spend_id = uuid4()
-    store.put(
+    get_runtime_store().put(
         DISTRIBUTION_SPEND_NAMESPACE,
         str(spend_id),
         {
@@ -210,6 +225,52 @@ def test_daily_spend_cap_blocks_additional_autonomous_spend() -> None:
     assert result["current_daily_spend"] == 90
     assert result["remaining_daily_budget"] == 10
     assert any("daily autonomous spend cap" in reason for reason in result["reasons"])
+
+
+def test_paid_reconciliation_required_blocks_autonomy() -> None:
+    product_id = _create_product()
+    _create_mandate(product_id)
+    experiment_id = _put_experiment(product_id, status="APPROVED")
+    action_id = uuid4()
+    store = get_runtime_store()
+    experiment = store.get(DISTRIBUTION_EXPERIMENT_NAMESPACE, str(experiment_id))
+    assert experiment is not None
+    experiment["action_id"] = str(action_id)
+    store.put(DISTRIBUTION_EXPERIMENT_NAMESPACE, str(experiment_id), experiment)
+    store.put(
+        DISTRIBUTION_ACTION_NAMESPACE,
+        str(action_id),
+        {
+            "id": str(action_id),
+            "platform": "INSTAGRAM",
+            "opportunity_id": str(uuid4()),
+            "experiment_id": str(experiment_id),
+            "action_type": "PAID_CAMPAIGN",
+            "status": "APPROVED",
+            "automation_level": "APPROVAL_GATED",
+            "attribution_level": "PAID",
+            "content_payload": {},
+            "operational_metadata": {},
+        },
+    )
+    store.put(
+        EXECUTION_ADAPTER_RECEIPT_NAMESPACE,
+        str(action_id),
+        {
+            "action_id": str(action_id),
+            "adapter_name": "meta-ads-create-paused",
+            "provider": "meta-marketing-api",
+            "outcome": "STAGED",
+            "message": "Provider state needs reconciliation",
+            "metadata": {"requires_reconciliation": True},
+            "created_at": datetime.now(UTC).isoformat(),
+        },
+    )
+
+    result = _evaluate(product_id, proposed_budget=25)
+
+    assert result["decision"] == "BLOCK"
+    assert any("reconciliation" in reason.lower() for reason in result["reasons"])
 
 
 def test_paused_and_revoked_mandates_fail_closed() -> None:
