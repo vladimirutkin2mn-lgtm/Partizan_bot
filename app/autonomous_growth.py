@@ -14,6 +14,7 @@ from app.action_drafting import (
 from app.autonomy_schemas import (
     AutonomyDecision,
     AutonomyEvaluationRequest,
+    AutonomyEvaluationView,
     GrowthMandateStatus,
     GrowthMandateView,
 )
@@ -25,7 +26,6 @@ from app.autonomy_service import (
 from app.distribution_execution_schemas import DistributionExperimentStatus
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_growth_manager_service import distribution_growth_manager_service
-from app.distribution_play_service import distribution_play_service
 from app.distribution_types import DistributionActionType
 from app.execution_adapters import (
     AdapterExecutionOutcome,
@@ -38,6 +38,7 @@ from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 AUTONOMOUS_GROWTH_RUN_NAMESPACE = "autonomous_growth_run"
 AUTONOMOUS_GROWTH_DECISION_NAMESPACE = "autonomous_growth_decision"
+AUTONOMOUS_PORTFOLIO_LIMIT = 12
 
 
 class AutonomousGrowthOutcome(StrEnum):
@@ -165,14 +166,25 @@ class AutonomousGrowthSweepService:
         run_id: UUID,
         mandate: GrowthMandateView,
     ) -> list[AutonomousGrowthDecisionView]:
-        decisions: list[AutonomousGrowthDecisionView] = []
+        pending = self._pending_human_resolution(mandate.product_id)
+        if pending:
+            return [
+                self._record(
+                    run_id=run_id,
+                    mandate=mandate,
+                    outcome=AutonomousGrowthOutcome.SKIPPED,
+                    reasons=[
+                        "An existing DRAFT/APPROVED experiment requires resolution before "
+                        "another autonomous action is prepared"
+                    ],
+                )
+            ]
+
         try:
             product = product_intake_service.get_product(mandate.product_id)
-            play_result = distribution_play_service.get(mandate.product_id)
-            candidate_limit = max(1, len(play_result.plays))
             portfolio = distribution_growth_manager_service.portfolio(
                 mandate.product_id,
-                max_items=candidate_limit,
+                max_items=AUTONOMOUS_PORTFOLIO_LIMIT,
             )
         except KeyError:
             return [
@@ -218,6 +230,7 @@ class AutonomousGrowthSweepService:
                 )
             ]
 
+        decisions: list[AutonomousGrowthDecisionView] = []
         for item in eligible:
             play = item.play
             precheck = self._mandate_service.evaluate(
@@ -231,13 +244,31 @@ class AutonomousGrowthSweepService:
                     requests_paid_activation=False,
                 ),
             )
+            changed = self._mandate_changed(mandate, precheck)
+            if changed:
+                current = self._current_mandate(mandate)
+                return [
+                    self._record(
+                        run_id=run_id,
+                        mandate=current,
+                        play_id=play.id,
+                        platform=play.platform.value,
+                        action_type=play.action_type.value,
+                        evaluation_decision=precheck.decision,
+                        outcome=AutonomousGrowthOutcome.BLOCKED,
+                        reasons=[
+                            "Growth Mandate changed during the sweep; retry under the current "
+                            "mandate version"
+                        ],
+                    )
+                ]
             if precheck.decision != AutonomyDecision.ALLOW:
                 outcome = (
                     AutonomousGrowthOutcome.BLOCKED
                     if precheck.decision == AutonomyDecision.BLOCK
                     else AutonomousGrowthOutcome.WAITING_APPROVAL
                 )
-                decisions.append(
+                return [
                     self._record(
                         run_id=run_id,
                         mandate=mandate,
@@ -248,8 +279,7 @@ class AutonomousGrowthSweepService:
                         outcome=outcome,
                         reasons=precheck.reasons,
                     )
-                )
-                return decisions
+                ]
 
             try:
                 plan = await self._drafting_service.auto_prepare(
@@ -282,9 +312,29 @@ class AutonomousGrowthSweepService:
                     requests_paid_activation=False,
                 ),
             )
+            if self._mandate_changed(mandate, approval_check):
+                distribution_execution_service.skip(plan.action.id)
+                current = self._current_mandate(mandate)
+                return decisions + [
+                    self._record(
+                        run_id=run_id,
+                        mandate=current,
+                        play_id=play.id,
+                        action_id=plan.action.id,
+                        experiment_id=plan.experiment.id,
+                        platform=play.platform.value,
+                        action_type=play.action_type.value,
+                        evaluation_decision=approval_check.decision,
+                        outcome=AutonomousGrowthOutcome.BLOCKED,
+                        reasons=[
+                            "Growth Mandate changed after preparation; the prepared action was "
+                            "cancelled"
+                        ],
+                    )
+                ]
             if approval_check.decision == AutonomyDecision.BLOCK:
                 distribution_execution_service.skip(plan.action.id)
-                decisions.append(
+                return decisions + [
                     self._record(
                         run_id=run_id,
                         mandate=mandate,
@@ -297,10 +347,9 @@ class AutonomousGrowthSweepService:
                         outcome=AutonomousGrowthOutcome.BLOCKED,
                         reasons=approval_check.reasons,
                     )
-                )
-                return decisions
+                ]
             if approval_check.decision == AutonomyDecision.REQUIRE_APPROVAL:
-                decisions.append(
+                return decisions + [
                     self._record(
                         run_id=run_id,
                         mandate=mandate,
@@ -313,20 +362,66 @@ class AutonomousGrowthSweepService:
                         outcome=AutonomousGrowthOutcome.WAITING_APPROVAL,
                         reasons=approval_check.reasons,
                     )
-                )
-                return decisions
+                ]
 
             try:
                 approved = distribution_execution_service.approve(plan.action.id)
+                execution_check = self._mandate_service.evaluate(
+                    mandate.product_id,
+                    AutonomyEvaluationRequest(
+                        platform=play.platform,
+                        action_type=play.action_type,
+                        proposed_budget=0,
+                        requires_prepare=False,
+                        requires_approval=False,
+                        requests_paid_activation=False,
+                    ),
+                )
+                if self._mandate_changed(mandate, execution_check):
+                    distribution_execution_service.skip(approved.action.id)
+                    current = self._current_mandate(mandate)
+                    return decisions + [
+                        self._record(
+                            run_id=run_id,
+                            mandate=current,
+                            play_id=play.id,
+                            action_id=approved.action.id,
+                            experiment_id=approved.experiment.id,
+                            platform=play.platform.value,
+                            action_type=play.action_type.value,
+                            evaluation_decision=execution_check.decision,
+                            outcome=AutonomousGrowthOutcome.BLOCKED,
+                            reasons=[
+                                "Growth Mandate changed immediately before execution; the "
+                                "approved action was cancelled"
+                            ],
+                        )
+                    ]
+                if execution_check.decision != AutonomyDecision.ALLOW:
+                    distribution_execution_service.skip(approved.action.id)
+                    return decisions + [
+                        self._record(
+                            run_id=run_id,
+                            mandate=mandate,
+                            play_id=play.id,
+                            action_id=approved.action.id,
+                            experiment_id=approved.experiment.id,
+                            platform=play.platform.value,
+                            action_type=play.action_type.value,
+                            evaluation_decision=execution_check.decision,
+                            outcome=AutonomousGrowthOutcome.BLOCKED,
+                            reasons=execution_check.reasons,
+                        )
+                    ]
                 execution = self._adapter_service.execute(
                     approved.action.id,
                     DistributionAdapterExecuteRequest(retry=False),
                 )
             except (KeyError, RuntimeError, ValueError) as exc:
-                decisions.append(
+                return decisions + [
                     self._record(
                         run_id=run_id,
-                        mandate=mandate,
+                        mandate=self._current_mandate(mandate),
                         play_id=play.id,
                         action_id=plan.action.id,
                         experiment_id=plan.experiment.id,
@@ -336,12 +431,11 @@ class AutonomousGrowthSweepService:
                         outcome=AutonomousGrowthOutcome.ERROR,
                         reasons=[str(exc)[:1000]],
                     )
-                )
-                return decisions
+                ]
 
             adapter_outcome = execution.receipt.outcome
             outcome = self._adapter_outcome(adapter_outcome)
-            decisions.append(
+            return decisions + [
                 self._record(
                     run_id=run_id,
                     mandate=mandate,
@@ -355,8 +449,7 @@ class AutonomousGrowthSweepService:
                     adapter_outcome=adapter_outcome.value,
                     reasons=[execution.receipt.message],
                 )
-            )
-            return decisions
+            ]
 
         return decisions or [
             self._record(
@@ -383,6 +476,16 @@ class AutonomousGrowthSweepService:
             ]
         return sorted(mandates, key=lambda item: str(item.product_id))
 
+    def _pending_human_resolution(self, product_id: UUID) -> bool:
+        return any(
+            experiment.status
+            in {
+                DistributionExperimentStatus.DRAFT,
+                DistributionExperimentStatus.APPROVED,
+            }
+            for experiment in distribution_execution_service.list_experiments(product_id)
+        )
+
     def _pending_play_ids(self, product_id: UUID) -> set[UUID]:
         return {
             experiment.distribution_play_id
@@ -394,6 +497,22 @@ class AutonomousGrowthSweepService:
                 DistributionExperimentStatus.RUNNING,
             }
         }
+
+    def _mandate_changed(
+        self,
+        mandate: GrowthMandateView,
+        evaluation: AutonomyEvaluationView,
+    ) -> bool:
+        return (
+            evaluation.mandate_id != mandate.id
+            or evaluation.mandate_version != mandate.version
+        )
+
+    def _current_mandate(self, fallback: GrowthMandateView) -> GrowthMandateView:
+        try:
+            return self._mandate_service.get(fallback.product_id)
+        except KeyError:
+            return fallback
 
     def _adapter_outcome(
         self,
