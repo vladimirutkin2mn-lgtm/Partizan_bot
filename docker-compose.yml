@@ -70,5 +70,18 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  autonomous-growth-worker:
+    <<: *partizan-service
+    command:
+      [
+        "sh",
+        "-c",
+        "partizan-autonomous-growth --interval-seconds $${AUTONOMOUS_GROWTH_INTERVAL_SECONDS:-300}",
+      ]
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
 volumes:
   partizan_postgres:
