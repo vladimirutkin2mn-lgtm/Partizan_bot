@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from app.audience_intelligence_service import audience_intelligence_service
+from app.autonomous_growth_routes import router as autonomous_growth_router
 from app.autonomy_routes import router as autonomy_router
 from app.distribution_control_plane_routes import router as control_plane_router
 from app.distribution_event_routes import router as event_integration_router
@@ -32,6 +33,7 @@ router.include_router(tiktok_paid_activation_router)
 router.include_router(tiktok_paid_control_router)
 router.include_router(paid_control_ops_router)
 router.include_router(autonomy_router)
+router.include_router(autonomous_growth_router)
 
 
 @router.post(
