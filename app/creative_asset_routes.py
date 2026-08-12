@@ -9,6 +9,7 @@ from app.creative_assets import (
     CreativeReadinessView,
     creative_asset_service,
 )
+from app.creative_generation import CreativeGenerationView, creative_generation_service
 from app.operator_auth import require_operator
 from app.product_intake import product_intake_service
 
@@ -38,6 +39,19 @@ async def ensure_creative_brief(action_id: UUID) -> CreativeBriefView:
 async def get_creative_readiness(action_id: UUID) -> CreativeReadinessView:
     try:
         return creative_asset_service.readiness(action_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="DistributionAction dependency not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/distribution-actions/{action_id}/creative-generate",
+    response_model=CreativeGenerationView,
+)
+async def generate_creative(action_id: UUID) -> CreativeGenerationView:
+    try:
+        return creative_generation_service.ensure_ready(action_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="DistributionAction dependency not found") from exc
     except ValueError as exc:
