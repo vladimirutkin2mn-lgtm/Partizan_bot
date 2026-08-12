@@ -9,6 +9,7 @@ from app.autonomous_growth_control import (
 )
 from app.autonomous_paid_growth import AutonomousPaidGrowthSweepService
 from app.autonomy_schemas import GrowthMandateView
+from app.creative_execution_adapters import creative_distribution_execution_adapter_service
 
 
 class AutonomousControlledGrowthSweepService(AutonomousPaidGrowthSweepService):
@@ -30,4 +31,6 @@ class AutonomousControlledGrowthSweepService(AutonomousPaidGrowthSweepService):
         return await super()._run_product(run_id, mandate)
 
 
-autonomous_controlled_growth_sweep_service = AutonomousControlledGrowthSweepService()
+autonomous_controlled_growth_sweep_service = AutonomousControlledGrowthSweepService(
+    adapter_service=creative_distribution_execution_adapter_service,
+)
