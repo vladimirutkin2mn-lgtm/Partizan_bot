@@ -11,8 +11,17 @@ from app.autonomy_schemas import (
 )
 from app.distribution_analytics_service import DISTRIBUTION_SPEND_NAMESPACE
 from app.distribution_execution_schemas import DistributionExperimentStatus
-from app.distribution_execution_service import distribution_execution_service
-from app.distribution_types import DistributionActionType, is_valid_action_type
+from app.distribution_execution_service import (
+    DISTRIBUTION_ACTION_NAMESPACE,
+    distribution_execution_service,
+)
+from app.distribution_schemas import DistributionActionView
+from app.distribution_types import (
+    DistributionActionType,
+    DistributionPlatform,
+    is_valid_action_type,
+)
+from app.paid_lifecycle_audit import PaidLifecycleState, paid_lifecycle_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 GROWTH_MANDATE_NAMESPACE = "growth_mandate"
@@ -48,11 +57,21 @@ class GrowthMandateService:
             status=status,
             total_budget_cap=payload.total_budget_cap,
             target_max_cac=payload.target_max_cac,
-            max_autonomous_spend_per_experiment=payload.max_autonomous_spend_per_experiment,
+            max_autonomous_spend_per_experiment=(
+                payload.max_autonomous_spend_per_experiment
+            ),
             max_autonomous_spend_per_day=payload.max_autonomous_spend_per_day,
-            max_concurrent_running_experiments=payload.max_concurrent_running_experiments,
-            allowed_platforms=sorted(set(payload.allowed_platforms), key=lambda item: item.value),
-            allowed_actions=sorted(set(payload.allowed_actions), key=lambda item: item.value),
+            max_concurrent_running_experiments=(
+                payload.max_concurrent_running_experiments
+            ),
+            allowed_platforms=sorted(
+                set(payload.allowed_platforms),
+                key=lambda item: item.value,
+            ),
+            allowed_actions=sorted(
+                set(payload.allowed_actions),
+                key=lambda item: item.value,
+            ),
             autonomous_prepare=payload.autonomous_prepare,
             autonomous_approve=payload.autonomous_approve,
             autonomous_paid_activation=payload.autonomous_paid_activation,
@@ -120,26 +139,45 @@ class GrowthMandateService:
 
         if mandate.status != GrowthMandateStatus.ACTIVE:
             blocks.append(f"Growth Mandate is {mandate.status.value}")
-        if mandate.effective_from is not None and now < self._as_utc(mandate.effective_from):
+        if (
+            mandate.effective_from is not None
+            and now < self._as_utc(mandate.effective_from)
+        ):
             blocks.append("Growth Mandate is not effective yet")
-        if mandate.effective_until is not None and now >= self._as_utc(mandate.effective_until):
+        if (
+            mandate.effective_until is not None
+            and now >= self._as_utc(mandate.effective_until)
+        ):
             blocks.append("Growth Mandate has expired")
         if payload.platform not in mandate.allowed_platforms:
-            blocks.append(f"Platform {payload.platform.value} is not allowed by the Growth Mandate")
+            blocks.append(
+                f"Platform {payload.platform.value} is not allowed by the Growth Mandate"
+            )
         if payload.action_type not in mandate.allowed_actions:
-            blocks.append(f"Action {payload.action_type.value} is not allowed by the Growth Mandate")
+            blocks.append(
+                f"Action {payload.action_type.value} is not allowed by the Growth Mandate"
+            )
         if not is_valid_action_type(payload.platform, payload.action_type):
             blocks.append(
-                f"Action {payload.action_type.value} is not valid for {payload.platform.value}"
+                f"Action {payload.action_type.value} is not valid for "
+                f"{payload.platform.value}"
+            )
+        if self._paid_reconciliation_required(product_id):
+            blocks.append(
+                "A paid provider action requires reconciliation before autonomous mutations"
             )
         if payload.requests_paid_activation:
             if payload.action_type != DistributionActionType.PAID_CAMPAIGN:
-                blocks.append("Paid activation can only be requested for PAID_CAMPAIGN actions")
+                blocks.append(
+                    "Paid activation can only be requested for PAID_CAMPAIGN actions"
+                )
             if payload.proposed_budget <= 0:
                 blocks.append("Paid activation requires a positive proposed budget")
 
         if total_spend + payload.proposed_budget > mandate.total_budget_cap:
-            blocks.append("Proposed spend would exceed the total Growth Mandate budget cap")
+            blocks.append(
+                "Proposed spend would exceed the total Growth Mandate budget cap"
+            )
         if daily_spend + payload.proposed_budget > mandate.max_autonomous_spend_per_day:
             blocks.append("Proposed spend would exceed the daily autonomous spend cap")
         if (
@@ -241,6 +279,38 @@ class GrowthMandateService:
             experiment.status == DistributionExperimentStatus.RUNNING
             for experiment in distribution_execution_service.list_experiments(product_id)
         )
+
+    def _paid_reconciliation_required(self, product_id: UUID) -> bool:
+        for row in self._store.list_namespace(DISTRIBUTION_ACTION_NAMESPACE):
+            try:
+                action = DistributionActionView.model_validate(row)
+            except ValueError:
+                continue
+            if action.action_type != DistributionActionType.PAID_CAMPAIGN:
+                continue
+            if action.platform not in {
+                DistributionPlatform.INSTAGRAM,
+                DistributionPlatform.TIKTOK,
+            }:
+                continue
+            if action.experiment_id is None:
+                return True
+            try:
+                experiment = distribution_execution_service.get_experiment(
+                    action.experiment_id
+                )
+            except KeyError:
+                return True
+            if experiment.product_id != product_id:
+                continue
+            lifecycle = paid_lifecycle_service.get(action.id)
+            if lifecycle.requires_reconciliation or lifecycle.state in {
+                PaidLifecycleState.ACTIVATION_ATTEMPTED,
+                PaidLifecycleState.RECONCILIATION_REQUIRED,
+                PaidLifecycleState.UNKNOWN,
+            }:
+                return True
+        return False
 
     def _as_utc(self, value: datetime) -> datetime:
         if value.tzinfo is None:
