@@ -11,7 +11,7 @@ from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 CREATIVE_BLOB_NAMESPACE = "creative_blob"
 _MAX_BLOB_BYTES = 12 * 1024 * 1024
-_ALLOWED_MIME_TYPES = {"image/png", "image/jpeg", "image/webp"}
+_ALLOWED_MIME_TYPES = {"image/png", "image/jpeg", "image/webp", "video/mp4"}
 
 
 class CreativeBlobView(BaseModel):
@@ -34,6 +34,8 @@ class CreativeBlobStore:
             raise ValueError("Creative blob cannot be empty")
         if len(data) > _MAX_BLOB_BYTES:
             raise ValueError("Creative blob exceeds the 12 MiB limit")
+        if normalized_mime == "video/mp4" and not self._looks_like_mp4(data):
+            raise ValueError("Creative MP4 blob has an invalid file signature")
         blob_id = uuid4()
         view = CreativeBlobView(
             id=blob_id,
@@ -66,11 +68,16 @@ class CreativeBlobStore:
             raise ValueError("Creative blob payload is invalid") from exc
         if len(data) != view.byte_size or hashlib.sha256(data).hexdigest() != view.sha256:
             raise ValueError("Creative blob integrity check failed")
+        if view.mime_type == "video/mp4" and not self._looks_like_mp4(data):
+            raise ValueError("Creative MP4 blob integrity check failed")
         return view, data
 
     def reset(self) -> None:
         if self._store.ephemeral:
             self._store.clear_namespace(CREATIVE_BLOB_NAMESPACE)
+
+    def _looks_like_mp4(self, data: bytes) -> bool:
+        return len(data) >= 12 and data[4:8] == b"ftyp"
 
 
 creative_blob_store = CreativeBlobStore()
