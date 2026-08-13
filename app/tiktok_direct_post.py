@@ -16,9 +16,9 @@ from app.distribution_types import DistributionIdentityStatus
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.tiktok_owned_publishing import EnvironmentSecretResolver, SecretResolver
 from app.tiktok_publish_authorization import (
+    TikTokPrivacyLevel,
     TikTokPublishAuthorizationService,
     TikTokPublishAuthorizationView,
-    TikTokPrivacyLevel,
     tiktok_publish_authorization_service,
 )
 
