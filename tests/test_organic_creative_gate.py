@@ -30,8 +30,8 @@ from app.distribution_growth_manager_service import distribution_growth_manager_
 from app.distribution_play_service import distribution_play_service
 from app.execution_adapters import (
     AdapterExecutionOutcome,
-    DistributionAdapterExecutionView,
     DistributionAdapterExecuteRequest,
+    DistributionAdapterExecutionView,
     DistributionExecutionAdapterService,
     ExecutionAdapterReceipt,
     ExecutionAdapterRegistry,
