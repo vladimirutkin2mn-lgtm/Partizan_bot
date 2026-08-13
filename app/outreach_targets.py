@@ -52,7 +52,7 @@ class OutreachContactEvidence(BaseModel):
     observed_at: datetime | None = None
 
     @model_validator(mode="after")
-    def validate_provenance(self) -> "OutreachContactEvidence":
+    def validate_provenance(self) -> OutreachContactEvidence:
         if self.provenance_type == OutreachContactProvenanceType.PUBLIC_BUSINESS_SOURCE:
             if self.source_url is None:
                 raise ValueError("Public business contact evidence requires source_url")
@@ -145,7 +145,8 @@ class OutreachTargetService:
             raise ValueError("OutreachTarget opportunity does not belong to this product")
         if not self._is_known_target_url(opportunity, str(payload.target_url)):
             raise ValueError(
-                "OutreachTarget target_url must match the DistributionOpportunity or a persisted enrichment action target"
+                "OutreachTarget target_url must match the DistributionOpportunity "
+                "or a persisted enrichment action target"
             )
 
         business_email, contact_key = self._normalize_email(payload.business_email)
