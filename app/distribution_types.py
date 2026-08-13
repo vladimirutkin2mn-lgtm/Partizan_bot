@@ -22,6 +22,7 @@ class DistributionActionType(StrEnum):
     STANDALONE_POST = "STANDALONE_POST"
     ORGANIC_VIDEO = "ORGANIC_VIDEO"
     PAID_CAMPAIGN = "PAID_CAMPAIGN"
+    OUTREACH_EMAIL = "OUTREACH_EMAIL"
 
 
 class AutomationLevel(StrEnum):
@@ -76,12 +77,14 @@ ACTION_TYPES_BY_PLATFORM: dict[
             DistributionActionType.REPLY,
             DistributionActionType.STANDALONE_POST,
             DistributionActionType.PAID_CAMPAIGN,
+            DistributionActionType.OUTREACH_EMAIL,
         }
     ),
     DistributionPlatform.INSTAGRAM: frozenset(
         {
             DistributionActionType.COMMENT,
             DistributionActionType.PAID_CAMPAIGN,
+            DistributionActionType.OUTREACH_EMAIL,
         }
     ),
     DistributionPlatform.REDDIT: frozenset(
@@ -90,6 +93,7 @@ ACTION_TYPES_BY_PLATFORM: dict[
             DistributionActionType.REPLY,
             DistributionActionType.STANDALONE_POST,
             DistributionActionType.PAID_CAMPAIGN,
+            DistributionActionType.OUTREACH_EMAIL,
         }
     ),
     DistributionPlatform.TIKTOK: frozenset(
@@ -97,6 +101,7 @@ ACTION_TYPES_BY_PLATFORM: dict[
             DistributionActionType.COMMENT,
             DistributionActionType.ORGANIC_VIDEO,
             DistributionActionType.PAID_CAMPAIGN,
+            DistributionActionType.OUTREACH_EMAIL,
         }
     ),
 }

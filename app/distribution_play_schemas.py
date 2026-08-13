@@ -16,6 +16,7 @@ class DistributionTacticClass(StrEnum):
     COMMUNITY = "COMMUNITY"
     PAID_PLATFORM = "PAID_PLATFORM"
     OWNED_ORGANIC = "OWNED_ORGANIC"
+    OUTREACH = "OUTREACH"
 
 
 class DistributionPlayStatus(StrEnum):

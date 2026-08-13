@@ -38,6 +38,21 @@ def _ensure_paid_spec(plan: DistributionExecutionPlanView) -> None:
         paid_campaign_spec_service.ensure(plan.action.id)
 
 
+def _reject_generic_outreach_action(action_id: UUID, operation: str) -> None:
+    action = distribution_execution_service.get_action(action_id)
+    if action.action_type == DistributionActionType.OUTREACH_EMAIL:
+        raise ValueError(
+            f"Outreach email {operation} requires the dedicated outreach sender flow"
+        )
+
+
+def _reject_generic_outreach_play(action_type: DistributionActionType) -> None:
+    if action_type == DistributionActionType.OUTREACH_EMAIL:
+        raise ValueError(
+            "Outreach email preparation requires the dedicated evidence-backed outreach flow"
+        )
+
+
 @router.post(
     "/products/{product_id}/distribution-plays/{play_id}/actions/prepare",
     response_model=DistributionExecutionPlanView,
@@ -50,6 +65,7 @@ async def prepare_distribution_action(
     try:
         product = product_intake_service.get_product(product_id)
         play = distribution_play_service.find(product_id, play_id)
+        _reject_generic_outreach_play(play.action_type)
         plan = distribution_execution_service.prepare(product, play, payload)
         _ensure_paid_spec(plan)
         return plan
@@ -74,6 +90,7 @@ async def auto_prepare_distribution_action(
     try:
         product = product_intake_service.get_product(product_id)
         play = distribution_play_service.find(product_id, play_id)
+        _reject_generic_outreach_play(play.action_type)
         plan = await distribution_action_drafting_service.auto_prepare(
             product=product,
             play=play,
@@ -144,6 +161,7 @@ async def edit_distribution_action(
 )
 async def approve_distribution_action(action_id: UUID) -> DistributionExecutionPlanView:
     try:
+        _reject_generic_outreach_action(action_id, "approval")
         return distribution_execution_service.approve(action_id)
     except KeyError as exc:
         raise HTTPException(
@@ -164,6 +182,7 @@ async def execute_distribution_action(
     payload: DistributionAdapterExecuteRequest,
 ) -> DistributionAdapterExecutionView:
     try:
+        _reject_generic_outreach_action(action_id, "execution")
         action = distribution_execution_service.get_action(action_id)
         audited_paid = (
             action.action_type == DistributionActionType.PAID_CAMPAIGN
@@ -226,6 +245,7 @@ async def mark_distribution_action_executed(
     payload: DistributionActionExecutionRequest,
 ) -> DistributionExecutionPlanView:
     try:
+        _reject_generic_outreach_action(action_id, "completion")
         return distribution_execution_service.mark_executed(action_id, payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="DistributionAction not found") from exc
