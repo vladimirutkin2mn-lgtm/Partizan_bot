@@ -206,22 +206,15 @@ def _target(
     return response.json()
 
 
-def test_autosend_delegation_requires_growth_mandate_autonomous_approval() -> None:
+def test_autosend_delegation_is_scoped_from_global_autonomous_approval() -> None:
     product_id, _ = _product_and_opportunity()
     _mandate(product_id, autonomous_approve=False)
     _policy(product_id)
 
-    blocked = client.post(
-        f"/v1/products/{product_id}/outreach-autosend/delegate",
-        json={"confirm_autonomous_initial_send": True},
-    )
-
-    assert blocked.status_code == 409
-    assert "autonomous approval" in blocked.json()["detail"].lower()
-
-    _mandate(product_id, autonomous_approve=True)
-    _policy(product_id)
     delegated = _delegate(product_id)
+
+    mandate = growth_mandate_service.get(UUID(product_id))
+    assert mandate.autonomous_approve is False
     assert delegated["status"] == "ACTIVE"
     assert delegated["max_followups"] == 0
     assert delegated["max_initial_sends_per_day"] == 3
@@ -230,7 +223,7 @@ def test_autosend_delegation_requires_growth_mandate_autonomous_approval() -> No
 @pytest.mark.asyncio
 async def test_autonomous_sweep_sends_one_delegated_initial_message() -> None:
     product_id, opportunity = _product_and_opportunity()
-    _mandate(product_id, autonomous_approve=True)
+    _mandate(product_id, autonomous_approve=False)
     target = _target(
         product_id,
         opportunity,
@@ -263,7 +256,7 @@ async def test_autonomous_sweep_sends_one_delegated_initial_message() -> None:
 @pytest.mark.asyncio
 async def test_without_autosend_delegation_sweep_still_waits_for_approval() -> None:
     product_id, opportunity = _product_and_opportunity()
-    _mandate(product_id, autonomous_approve=True)
+    _mandate(product_id, autonomous_approve=False)
     target = _target(
         product_id,
         opportunity,
@@ -287,7 +280,7 @@ async def test_without_autosend_delegation_sweep_still_waits_for_approval() -> N
 @pytest.mark.asyncio
 async def test_policy_change_invalidates_autosend_without_blocking_manual_preparation() -> None:
     product_id, opportunity = _product_and_opportunity()
-    _mandate(product_id, autonomous_approve=True)
+    _mandate(product_id, autonomous_approve=False)
     target = _target(
         product_id,
         opportunity,
@@ -313,7 +306,7 @@ async def test_policy_change_invalidates_autosend_without_blocking_manual_prepar
 @pytest.mark.asyncio
 async def test_daily_send_cap_blocks_second_autonomous_message() -> None:
     product_id, opportunity = _product_and_opportunity()
-    _mandate(product_id, autonomous_approve=True)
+    _mandate(product_id, autonomous_approve=False)
     first = _target(
         product_id,
         opportunity,
@@ -352,7 +345,7 @@ async def test_daily_send_cap_blocks_second_autonomous_message() -> None:
 @pytest.mark.asyncio
 async def test_ambiguous_send_blocks_future_autonomous_outreach_without_retry() -> None:
     product_id, opportunity = _product_and_opportunity()
-    _mandate(product_id, autonomous_approve=True)
+    _mandate(product_id, autonomous_approve=False)
     first = _target(
         product_id,
         opportunity,
@@ -391,7 +384,7 @@ async def test_ambiguous_send_blocks_future_autonomous_outreach_without_retry() 
 @pytest.mark.asyncio
 async def test_definitive_reject_is_cancelled_and_next_target_can_run() -> None:
     product_id, opportunity = _product_and_opportunity()
-    _mandate(product_id, autonomous_approve=True)
+    _mandate(product_id, autonomous_approve=False)
     rejected_target = _target(
         product_id,
         opportunity,
