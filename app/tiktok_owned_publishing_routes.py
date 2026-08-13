@@ -3,6 +3,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.operator_auth import require_operator
+from app.tiktok_direct_post import (
+    TikTokDirectPostAttemptView,
+    tiktok_direct_post_service,
+)
 from app.tiktok_owned_publishing import (
     TikTokCreatorInfoApiError,
     TikTokCreatorPublishPreflightView,
@@ -93,3 +97,27 @@ async def revoke_tiktok_publish_authorization(
         return tiktok_publish_authorization_service.revoke(action_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="TikTok publish authorization not found") from exc
+
+
+@router.post(
+    "/distribution-actions/{action_id}/owned-publishing/tiktok/direct-post",
+    response_model=TikTokDirectPostAttemptView,
+)
+async def submit_tiktok_direct_post(action_id: UUID) -> TikTokDirectPostAttemptView:
+    try:
+        return tiktok_direct_post_service.submit(action_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Publishing dependency not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/distribution-actions/{action_id}/owned-publishing/tiktok/direct-post",
+    response_model=TikTokDirectPostAttemptView,
+)
+async def get_tiktok_direct_post(action_id: UUID) -> TikTokDirectPostAttemptView:
+    try:
+        return tiktok_direct_post_service.get_latest(action_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="TikTok Direct Post attempt not found") from exc
