@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
@@ -52,6 +53,7 @@ class CountingStagingService:
             message="Provider objects staged without spend.",
             external_reference=f"test:staged:{action_id}",
             metadata={"spend_started": False},
+            created_at=datetime.now(UTC),
         )
         return DistributionAdapterExecutionView(
             receipt=receipt,
