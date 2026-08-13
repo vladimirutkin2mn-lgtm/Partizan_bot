@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import base64
+import json
 from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
+from openai import OpenAI
 from pydantic import BaseModel, Field, HttpUrl
 
+from app.config import get_settings
 from app.creative_assets import (
     CreativeAssetRegisterRequest,
     CreativeAssetSource,
@@ -17,6 +21,8 @@ from app.creative_assets import (
     CreativeReadinessView,
     creative_asset_service,
 )
+from app.creative_blob_store import CreativeBlobStore, creative_blob_store
+from app.distribution_types import DistributionPlatform
 
 
 class CreativeGenerationOutcome(StrEnum):
@@ -92,6 +98,111 @@ class DeterministicMockCreativeGenerator:
             provenance={"generator": "deterministic_mock", "fingerprint": brief.fingerprint},
             message="Deterministic mock video created for local/test execution.",
         )
+
+
+class OpenAIMetaImageCreativeGenerator:
+    """Generate paid Meta images with OpenAI and host them through Partizan's public blob route."""
+
+    def __init__(
+        self,
+        *,
+        api_key: str | None,
+        public_base_url: str | None,
+        model: str = "gpt-image-2",
+        quality: str = "medium",
+        client=None,
+        blob_store: CreativeBlobStore | None = None,
+    ) -> None:
+        self._api_key = api_key.strip() if isinstance(api_key, str) and api_key.strip() else None
+        self._public_base_url = public_base_url.rstrip("/") if public_base_url else None
+        self._model = model.strip() or "gpt-image-2"
+        self._quality = quality.strip().lower() or "medium"
+        self._client = client
+        self._blob_store = blob_store or creative_blob_store
+
+    def generate(self, brief: CreativeBriefView) -> CreativeGeneratorResult:
+        if brief.platform != DistributionPlatform.INSTAGRAM or brief.media_type != CreativeMediaType.IMAGE:
+            return CreativeGeneratorResult(
+                outcome=CreativeGenerationOutcome.UNAVAILABLE,
+                message=(
+                    "The OpenAI image provider currently supports autonomous Instagram/Meta "
+                    "paid-image creatives only."
+                ),
+                provenance={"generator": "openai", "model": self._model},
+            )
+        if self._api_key is None:
+            return CreativeGeneratorResult(
+                outcome=CreativeGenerationOutcome.UNAVAILABLE,
+                message="OPENAI_API_KEY is required for OpenAI creative generation.",
+                provenance={"generator": "openai", "model": self._model},
+            )
+        if self._public_base_url is None:
+            return CreativeGeneratorResult(
+                outcome=CreativeGenerationOutcome.UNAVAILABLE,
+                message=(
+                    "PARTIZAN_PUBLIC_BASE_URL is required so Meta can fetch the generated image."
+                ),
+                provenance={"generator": "openai", "model": self._model},
+            )
+
+        client = self._client or OpenAI(api_key=self._api_key)
+        try:
+            response = client.images.generate(
+                model=self._model,
+                prompt=self._prompt(brief),
+                size="1024x1536",
+                quality=self._quality,
+                output_format="png",
+            )
+            rows = getattr(response, "data", None)
+            encoded = getattr(rows[0], "b64_json", None) if rows else None
+            if not isinstance(encoded, str) or not encoded:
+                return CreativeGeneratorResult(
+                    outcome=CreativeGenerationOutcome.FAILED,
+                    message="OpenAI image generation returned no image data.",
+                    provenance={"generator": "openai", "model": self._model},
+                )
+            image_bytes = base64.b64decode(encoded, validate=True)
+            blob = self._blob_store.put(data=image_bytes, mime_type="image/png")
+        except Exception:
+            return CreativeGeneratorResult(
+                outcome=CreativeGenerationOutcome.FAILED,
+                message="OpenAI image generation failed without a usable creative asset.",
+                provenance={"generator": "openai", "model": self._model},
+            )
+
+        return CreativeGeneratorResult(
+            outcome=CreativeGenerationOutcome.READY,
+            public_url=f"{self._public_base_url}/v1/public/creative-blobs/{blob.id}",
+            mime_type="image/png",
+            width=1024,
+            height=1536,
+            provenance={
+                "generator": "openai",
+                "model": self._model,
+                "quality": self._quality,
+                "blob_id": str(blob.id),
+                "sha256": blob.sha256,
+            },
+            message="OpenAI generated a provider-ready Meta image creative.",
+        )
+
+    def _prompt(self, brief: CreativeBriefView) -> str:
+        content = json.dumps(
+            brief.content,
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        )
+        constraints = "\n".join(f"- {item}" for item in brief.constraints)
+        return (
+            "Create a premium, scroll-stopping paid social advertisement image for Instagram. "
+            "The image must work as a 2:3 portrait creative, feel native to a modern social feed, "
+            "and communicate the product idea visually without fabricating claims, testimonials, "
+            "ratings, press logos, or social proof. Avoid tiny text and avoid placing critical "
+            "content near the edges. Prefer a strong visual concept over a text-heavy poster.\n\n"
+            f"Confirmed creative brief:\n{content}\n\nConstraints:\n{constraints}"
+        )[:12000]
 
 
 class CreativeGenerationService:
@@ -198,4 +309,16 @@ class CreativeGenerationService:
         return None
 
 
-creative_generation_service = CreativeGenerationService()
+def build_creative_generator() -> CreativeGenerator:
+    settings = get_settings()
+    if settings.creative_provider == "openai":
+        return OpenAIMetaImageCreativeGenerator(
+            api_key=settings.openai_api_key,
+            public_base_url=settings.partizan_public_base_url,
+            model=settings.creative_image_model,
+            quality=settings.creative_image_quality,
+        )
+    return UnavailableCreativeGenerator()
+
+
+creative_generation_service = CreativeGenerationService(build_creative_generator())

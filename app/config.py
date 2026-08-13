@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     search_provider: str = "mock"
     search_model: str = "gpt-5.6-terra"
     openai_api_key: str | None = None
+    creative_provider: str = "unavailable"
+    creative_image_model: str = "gpt-image-2"
+    creative_image_quality: str = "medium"
     execution_provider: str = "mock"
     operator_auth_required: bool = False
     operator_api_key: SecretStr | None = None
@@ -32,6 +35,26 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    @field_validator("creative_provider", mode="before")
+    @classmethod
+    def normalize_creative_provider(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if normalized not in {"unavailable", "openai"}:
+            raise ValueError("CREATIVE_PROVIDER must be 'unavailable' or 'openai'")
+        return normalized
+
+    @field_validator("creative_image_quality", mode="before")
+    @classmethod
+    def normalize_creative_image_quality(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if normalized not in {"low", "medium", "high"}:
+            raise ValueError("CREATIVE_IMAGE_QUALITY must be low, medium or high")
+        return normalized
 
     @field_validator("partizan_public_base_url", mode="before")
     @classmethod
