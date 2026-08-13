@@ -128,16 +128,16 @@ def test_outreach_brief_creates_traceable_distribution_experiment() -> None:
     assert analytics.metrics.spend == 0
 
 
-def test_duplicate_target_offer_does_not_create_second_experiment() -> None:
+def test_only_one_active_draft_is_allowed_per_target() -> None:
     product_id, target = _product_and_target()
     path = f"/v1/outreach-targets/{target['id']}/briefs"
 
     first = client.post(path, json={"preferred_offer_type": "CROSS_PROMO"})
-    duplicate = client.post(path, json={"preferred_offer_type": "CROSS_PROMO"})
+    different_offer = client.post(path, json={"preferred_offer_type": "AFFILIATE"})
 
     assert first.status_code == 201
-    assert duplicate.status_code == 409
-    assert "already exists" in duplicate.json()["detail"]
+    assert different_offer.status_code == 409
+    assert "already exists" in different_offer.json()["detail"]
     experiments = distribution_execution_service.list_experiments(UUID(product_id))
     assert len(experiments) == 1
 
@@ -158,6 +158,38 @@ def test_suppressed_target_cannot_prepare_outreach_experiment() -> None:
     assert response.status_code == 409
     assert "OPT_OUT" in response.json()["detail"]
     assert distribution_execution_service.list_experiments(UUID(product_id)) == []
+
+
+def test_generated_or_operator_body_cannot_inject_an_untracked_url() -> None:
+    product_id, target = _product_and_target()
+
+    response = client.post(
+        f"/v1/outreach-targets/{target['id']}/briefs",
+        json={
+            "operator_offer_context": (
+                "review the collaboration terms at https://untracked.example before replying"
+            )
+        },
+    )
+
+    assert response.status_code == 409
+    assert "must not contain URLs" in response.json()["detail"]
+    assert distribution_execution_service.list_experiments(UUID(product_id)) == []
+
+
+def test_registered_outreach_play_survives_channel_play_regeneration() -> None:
+    product_id, target = _product_and_target()
+    brief = _brief(target["id"])
+    outreach_play_id = UUID(brief["distribution_play_id"])
+    product_uuid = UUID(product_id)
+
+    product = product_intake_service.get_product(product_uuid)
+    distribution_map = audience_intelligence_service.get(product_uuid)
+    regenerated = distribution_play_service.generate(product, distribution_map)
+
+    persisted = next(item for item in regenerated.plays if item.id == outreach_play_id)
+    assert persisted.tactic_class.value == "OUTREACH"
+    assert distribution_play_service.find(product_uuid, outreach_play_id).id == outreach_play_id
 
 
 def test_generic_distribution_mutations_cannot_bypass_outreach_flow() -> None:
