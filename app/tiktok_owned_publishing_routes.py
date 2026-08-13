@@ -7,6 +7,11 @@ from app.tiktok_direct_post import (
     TikTokDirectPostAttemptView,
     tiktok_direct_post_service,
 )
+from app.tiktok_direct_post_reconciliation import (
+    TikTokDirectPostReconciliationView,
+    TikTokPostStatusApiError,
+    tiktok_direct_post_reconciliation_service,
+)
 from app.tiktok_owned_publishing import (
     TikTokCreatorInfoApiError,
     TikTokCreatorPublishPreflightView,
@@ -121,3 +126,36 @@ async def get_tiktok_direct_post(action_id: UUID) -> TikTokDirectPostAttemptView
         return tiktok_direct_post_service.get_latest(action_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="TikTok Direct Post attempt not found") from exc
+
+
+@router.post(
+    "/distribution-actions/{action_id}/owned-publishing/tiktok/direct-post/reconcile",
+    response_model=TikTokDirectPostReconciliationView,
+)
+async def reconcile_tiktok_direct_post(
+    action_id: UUID,
+) -> TikTokDirectPostReconciliationView:
+    try:
+        return tiktok_direct_post_reconciliation_service.reconcile(action_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Publishing dependency not found") from exc
+    except TikTokPostStatusApiError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/distribution-actions/{action_id}/owned-publishing/tiktok/direct-post/reconciliation",
+    response_model=TikTokDirectPostReconciliationView,
+)
+async def get_tiktok_direct_post_reconciliation(
+    action_id: UUID,
+) -> TikTokDirectPostReconciliationView:
+    try:
+        return tiktok_direct_post_reconciliation_service.get_latest(action_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="TikTok Direct Post reconciliation not found",
+        ) from exc
