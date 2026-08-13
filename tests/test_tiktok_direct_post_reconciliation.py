@@ -6,8 +6,6 @@ import pytest
 
 from app.distribution_schemas import DistributionIdentityView
 from app.distribution_types import (
-    AttributionLevel,
-    AutomationLevel,
     DistributionActionStatus,
     DistributionActionType,
     DistributionIdentityStatus,
