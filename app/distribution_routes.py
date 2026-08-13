@@ -19,6 +19,7 @@ from app.paid_control_ops_routes import router as paid_control_ops_router
 from app.paid_provider_routes import router as paid_provider_router
 from app.product_intake import product_intake_service
 from app.public_creative_routes import router as public_creative_router
+from app.tiktok_owned_publishing_routes import router as tiktok_owned_publishing_router
 from app.tiktok_paid_activation_routes import router as tiktok_paid_activation_router
 from app.tiktok_paid_control_routes import router as tiktok_paid_control_router
 
@@ -38,6 +39,7 @@ router.include_router(autonomy_router)
 router.include_router(autonomous_growth_router)
 router.include_router(creative_asset_router)
 router.include_router(public_creative_router)
+router.include_router(tiktok_owned_publishing_router)
 
 
 @router.post(
