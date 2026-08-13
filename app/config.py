@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     creative_provider: str = "unavailable"
     creative_image_model: str = "gpt-image-2"
     creative_image_quality: str = "medium"
+    gemini_api_key: str | None = None
+    creative_video_provider: str = "unavailable"
+    creative_video_model: str = "gemini-omni-flash-preview"
     execution_provider: str = "mock"
     operator_auth_required: bool = False
     operator_api_key: SecretStr | None = None
@@ -44,6 +47,18 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"unavailable", "openai"}:
             raise ValueError("CREATIVE_PROVIDER must be 'unavailable' or 'openai'")
+        return normalized
+
+    @field_validator("creative_video_provider", mode="before")
+    @classmethod
+    def normalize_creative_video_provider(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if normalized not in {"unavailable", "gemini_omni"}:
+            raise ValueError(
+                "CREATIVE_VIDEO_PROVIDER must be 'unavailable' or 'gemini_omni'"
+            )
         return normalized
 
     @field_validator("creative_image_quality", mode="before")
