@@ -210,7 +210,6 @@ class TikTokPermissionedOrganicVideoExecutionAdapter(OrganicVideoCreativeExecuti
                 created_at=datetime.now(UTC),
             )
 
-        asset = readiness.selected_asset
         try:
             attempt = self._direct_post_service.get_latest(action.id)
         except KeyError:
