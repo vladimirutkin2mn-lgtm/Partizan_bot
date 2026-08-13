@@ -11,6 +11,7 @@ The core promise is simple:
 The full product vision, agent architecture, MVP scope and development roadmap are documented here:
 
 - [Product Vision & Action Plan](docs/PRODUCT_PLAN.md)
+- [Current Implementation Status](docs/CURRENT_STATUS.md) — what is already in `main`, what remains open, and the next order of work.
 
 ## MVP distribution scope
 
