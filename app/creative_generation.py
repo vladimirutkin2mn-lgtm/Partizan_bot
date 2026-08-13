@@ -22,6 +22,7 @@ from app.creative_assets import (
     creative_asset_service,
 )
 from app.creative_blob_store import CreativeBlobStore, creative_blob_store
+from app.creative_video_blob_store import CreativeVideoBlobStore, creative_video_blob_store
 from app.distribution_types import DistributionPlatform
 
 
@@ -205,6 +206,134 @@ class OpenAIMetaImageCreativeGenerator:
         )[:12000]
 
 
+class OpenAITikTokVideoSourceGenerator:
+    """Generate a stable public MP4 source; TikTok provider finalization is a separate boundary."""
+
+    def __init__(
+        self,
+        *,
+        api_key: str | None,
+        public_base_url: str | None,
+        model: str = "sora-2",
+        seconds: int = 8,
+        size: str = "720x1280",
+        client=None,
+        video_store: CreativeVideoBlobStore | None = None,
+    ) -> None:
+        self._api_key = api_key.strip() if isinstance(api_key, str) and api_key.strip() else None
+        self._public_base_url = public_base_url.rstrip("/") if public_base_url else None
+        self._model = model.strip() or "sora-2"
+        self._seconds = seconds
+        self._size = size
+        self._client = client
+        self._video_store = video_store or creative_video_blob_store
+
+    def generate(self, brief: CreativeBriefView) -> CreativeGeneratorResult:
+        if brief.platform != DistributionPlatform.TIKTOK or brief.media_type != CreativeMediaType.VIDEO:
+            return CreativeGeneratorResult(
+                outcome=CreativeGenerationOutcome.UNAVAILABLE,
+                message="The Sora source generator supports TikTok VIDEO briefs only.",
+                provenance={"generator": "openai", "model": self._model},
+            )
+        if self._api_key is None:
+            return CreativeGeneratorResult(
+                outcome=CreativeGenerationOutcome.UNAVAILABLE,
+                message="OPENAI_API_KEY is required for Sora creative generation.",
+                provenance={"generator": "openai", "model": self._model},
+            )
+        if self._public_base_url is None:
+            return CreativeGeneratorResult(
+                outcome=CreativeGenerationOutcome.UNAVAILABLE,
+                message="PARTIZAN_PUBLIC_BASE_URL is required for stable TikTok video hosting.",
+                provenance={"generator": "openai", "model": self._model},
+            )
+
+        client = self._client or OpenAI(api_key=self._api_key, timeout=600.0)
+        provenance = {
+            "generator": "openai",
+            "model": self._model,
+            "seconds": self._seconds,
+            "size": self._size,
+        }
+        try:
+            video = client.videos.create_and_poll(
+                model=self._model,
+                prompt=self._prompt(brief),
+                seconds=str(self._seconds),
+                size=self._size,
+                poll_interval_ms=2000,
+            )
+            video_id = str(getattr(video, "id", "") or "").strip()
+            status = str(getattr(video, "status", "") or "").strip().lower()
+            if not video_id or status != "completed":
+                return CreativeGeneratorResult(
+                    outcome=CreativeGenerationOutcome.FAILED,
+                    message=f"Sora video generation ended with status {status or 'unknown'}.",
+                    provenance={**provenance, "sora_video_id": video_id or None},
+                )
+            response = client.videos.download_content(video_id)
+            video_bytes = response.read()
+            blob = self._video_store.put(video_bytes)
+        except Exception:
+            return CreativeGeneratorResult(
+                outcome=CreativeGenerationOutcome.FAILED,
+                message="Sora video generation/download failed without a usable MP4 source.",
+                provenance=provenance,
+            )
+
+        width, height = (int(piece) for piece in self._size.split("x", 1))
+        return CreativeGeneratorResult(
+            outcome=CreativeGenerationOutcome.READY,
+            public_url=f"{self._public_base_url}/v1/public/creative-video-blobs/{blob.id}",
+            mime_type="video/mp4",
+            width=width,
+            height=height,
+            duration_seconds=float(self._seconds),
+            provenance={
+                **provenance,
+                "sora_video_id": video_id,
+                "video_blob_id": str(blob.id),
+                "sha256": blob.sha256,
+            },
+            message=(
+                "Sora generated a stable TikTok MP4 source. TikTok provider finalization "
+                "must still return a real video_id before paid staging."
+            ),
+        )
+
+    def _prompt(self, brief: CreativeBriefView) -> str:
+        content = json.dumps(
+            brief.content,
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        )
+        constraints = "\n".join(f"- {item}" for item in brief.constraints)
+        return (
+            "Create a vertical paid-social video for TikTok. Make the first second visually "
+            "arresting, use fast native-feeling pacing, one clear visual idea, and leave enough "
+            "visual room for the platform UI. Do not fabricate testimonials, ratings, press logos, "
+            "results, endorsements, or social proof. Do not introduce product capabilities that "
+            "are absent from the confirmed brief. Prefer visual storytelling over dense on-screen "
+            "text.\n\n"
+            f"Confirmed creative brief:\n{content}\n\nConstraints:\n{constraints}"
+        )[:12000]
+
+
+class RoutedCreativeGenerator:
+    def __init__(self, generators: list[CreativeGenerator]) -> None:
+        self._generators = generators
+
+    def generate(self, brief: CreativeBriefView) -> CreativeGeneratorResult:
+        unavailable: CreativeGeneratorResult | None = None
+        for generator in self._generators:
+            result = generator.generate(brief)
+            if result.outcome != CreativeGenerationOutcome.UNAVAILABLE:
+                return result
+            unavailable = result
+        return unavailable or UnavailableCreativeGenerator().generate(brief)
+
+
 class CreativeGenerationService:
     def __init__(self, generator: CreativeGenerator | None = None) -> None:
         self._generator = generator or UnavailableCreativeGenerator()
@@ -312,11 +441,22 @@ class CreativeGenerationService:
 def build_creative_generator() -> CreativeGenerator:
     settings = get_settings()
     if settings.creative_provider == "openai":
-        return OpenAIMetaImageCreativeGenerator(
-            api_key=settings.openai_api_key,
-            public_base_url=settings.partizan_public_base_url,
-            model=settings.creative_image_model,
-            quality=settings.creative_image_quality,
+        return RoutedCreativeGenerator(
+            [
+                OpenAIMetaImageCreativeGenerator(
+                    api_key=settings.openai_api_key,
+                    public_base_url=settings.partizan_public_base_url,
+                    model=settings.creative_image_model,
+                    quality=settings.creative_image_quality,
+                ),
+                OpenAITikTokVideoSourceGenerator(
+                    api_key=settings.openai_api_key,
+                    public_base_url=settings.partizan_public_base_url,
+                    model=settings.creative_video_model,
+                    seconds=settings.creative_video_seconds,
+                    size=settings.creative_video_size,
+                ),
+            ]
         )
     return UnavailableCreativeGenerator()
 
