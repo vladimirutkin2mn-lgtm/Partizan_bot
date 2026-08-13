@@ -109,7 +109,9 @@ def _public_payload(opportunity: dict) -> dict:
             "source_excerpt": "Partnerships: Collabs@relationshipcoach.example",
             "observed_at": datetime.now(UTC).isoformat(),
         },
-        "relevance_rationale": "The creator publishes relationship-advice content aligned with Oracle's use case.",
+        "relevance_rationale": (
+            "The creator publishes relationship-advice content aligned with Oracle's use case."
+        ),
         "icp_overlap_rationale": "Audience seeks relationship clarity and reflective content.",
         "confidence": 82,
         "language": "English",
@@ -272,7 +274,9 @@ def test_outreach_target_routes_are_operator_authenticated_in_production(monkeyp
 
     get_settings.cache_clear()
     try:
-        response = client.get(f"/v1/products/{'0' * 8}-0000-0000-0000-000000000000/outreach-targets")
+        response = client.get(
+            f"/v1/products/{'0' * 8}-0000-0000-0000-000000000000/outreach-targets"
+        )
         assert response.status_code == 401
     finally:
         get_settings.cache_clear()
