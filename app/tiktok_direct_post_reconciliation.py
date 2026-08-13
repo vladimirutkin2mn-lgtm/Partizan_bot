@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import re
 import os
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Protocol
