@@ -10,8 +10,8 @@ from pydantic import BaseModel, Field
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 CREATIVE_BLOB_NAMESPACE = "creative_blob"
-_MAX_BLOB_BYTES = 12 * 1024 * 1024
-_ALLOWED_MIME_TYPES = {"image/png", "image/jpeg", "image/webp"}
+_MAX_BLOB_BYTES = 64 * 1024 * 1024
+_ALLOWED_MIME_TYPES = {"image/png", "image/jpeg", "image/webp", "video/mp4"}
 
 
 class CreativeBlobView(BaseModel):
@@ -33,7 +33,7 @@ class CreativeBlobStore:
         if not data:
             raise ValueError("Creative blob cannot be empty")
         if len(data) > _MAX_BLOB_BYTES:
-            raise ValueError("Creative blob exceeds the 12 MiB limit")
+            raise ValueError("Creative blob exceeds the 64 MiB limit")
         blob_id = uuid4()
         view = CreativeBlobView(
             id=blob_id,
