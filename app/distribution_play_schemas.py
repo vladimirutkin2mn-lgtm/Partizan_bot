@@ -16,6 +16,7 @@ class DistributionTacticClass(StrEnum):
     COMMUNITY = "COMMUNITY"
     PAID_PLATFORM = "PAID_PLATFORM"
     OWNED_ORGANIC = "OWNED_ORGANIC"
+    OUTREACH = "OUTREACH"
 
 
 class DistributionPlayStatus(StrEnum):
@@ -52,7 +53,7 @@ class DistributionPlayView(BaseModel):
     rationale: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_readiness(self) -> "DistributionPlayView":
+    def validate_readiness(self) -> DistributionPlayView:
         if self.estimated_cost_max < self.estimated_cost_min:
             raise ValueError("estimated_cost_max must be >= estimated_cost_min")
         if self.status == DistributionPlayStatus.READY and self.blockers:
@@ -73,7 +74,7 @@ class DistributionPlayGenerationResponse(BaseModel):
     plays: list[DistributionPlayView] = Field(min_length=1)
 
     @model_validator(mode="after")
-    def validate_counts(self) -> "DistributionPlayGenerationResponse":
+    def validate_counts(self) -> DistributionPlayGenerationResponse:
         if self.play_count != len(self.plays):
             raise ValueError("play_count must match plays length")
         ready = sum(play.status == DistributionPlayStatus.READY for play in self.plays)
