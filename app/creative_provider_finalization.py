@@ -425,4 +425,14 @@ class ProviderAwareCreativeGenerationService:
         )
 
 
-provider_aware_creative_generation_service = ProviderAwareCreativeGenerationService()
+def _build_provider_aware_creative_generation_service() -> ProviderAwareCreativeGenerationService:
+    from app.gemini_video_generation import build_multimedia_creative_generator
+
+    return ProviderAwareCreativeGenerationService(
+        generation_service=CreativeGenerationService(
+            generator=build_multimedia_creative_generator()
+        )
+    )
+
+
+provider_aware_creative_generation_service = _build_provider_aware_creative_generation_service()
