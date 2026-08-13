@@ -24,10 +24,12 @@ from app.creative_generation import (
     CreativeGenerationView,
 )
 from app.distribution_analytics_service import distribution_analytics_service
+from app.distribution_control_plane_schemas import DistributionIdentityCreateRequest
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_growth_manager_service import distribution_growth_manager_service
 from app.distribution_play_service import distribution_play_service
+from app.distribution_types import DistributionActionType, DistributionPlatform
 from app.execution_adapters import (
     AdapterExecutionOutcome,
     DistributionAdapterExecuteRequest,
@@ -128,10 +130,30 @@ def _product_and_organic_play() -> tuple[str, dict]:
     assert client.post(f"/v1/products/{product_id}/confirm").status_code == 200
     assert client.post(f"/v1/products/{product_id}/icps/generate").status_code == 200
     assert client.post(f"/v1/products/{product_id}/distribution/discover").status_code == 200
+
+    initial = client.post(f"/v1/products/{product_id}/distribution-plays/generate")
+    assert initial.status_code == 200
+    candidate = next(
+        play for play in initial.json()["plays"] if play["action_type"] == "ORGANIC_VIDEO"
+    )
+    distribution_control_plane_service.create_identity(
+        DistributionIdentityCreateRequest(
+            platform=DistributionPlatform(candidate["platform"]),
+            theme="AI entertainment relationships reflection",
+            language="English",
+            public_positioning="Helpful short-form relationship reflection content.",
+            allowed_actions=[DistributionActionType.ORGANIC_VIDEO],
+        )
+    )
+
     plays = client.post(f"/v1/products/{product_id}/distribution-plays/generate")
     assert plays.status_code == 200
     organic = next(
-        play for play in plays.json()["plays"] if play["action_type"] == "ORGANIC_VIDEO"
+        play
+        for play in plays.json()["plays"]
+        if play["action_type"] == "ORGANIC_VIDEO"
+        and play["platform"] == candidate["platform"]
+        and play["status"] == "READY"
     )
     return product_id, organic
 
