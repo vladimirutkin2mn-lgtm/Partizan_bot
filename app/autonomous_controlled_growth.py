@@ -17,6 +17,12 @@ from app.execution_adapters import AdapterExecutionOutcome
 from app.organic_creative_execution import (
     organic_creative_distribution_execution_adapter_service,
 )
+from app.outreach_autosend import (
+    OutreachAutonomousSendOutcome,
+    OutreachAutonomousSendService,
+    outreach_autonomous_send_service,
+)
+from app.outreach_autosend_lifecycle import outreach_autosend_lifecycle_service
 from app.outreach_policy import (
     OutreachAutonomousPreparationService,
     outreach_autonomous_preparation_service,
@@ -29,6 +35,7 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
         *,
         control_service: AutonomousGrowthControlService | None = None,
         outreach_preparation_service: OutreachAutonomousPreparationService | None = None,
+        outreach_send_service: OutreachAutonomousSendService | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -36,6 +43,7 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
         self._outreach_preparation_service = (
             outreach_preparation_service or outreach_autonomous_preparation_service
         )
+        self._outreach_send_service = outreach_send_service or outreach_autonomous_send_service
 
     async def _run_product(
         self,
@@ -43,6 +51,38 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
         mandate: GrowthMandateView,
     ) -> list[AutonomousGrowthDecisionView]:
         self._control_service.evaluate_running(mandate)
+
+        auto_send = await self._outreach_send_service.run_next(mandate.product_id)
+        if auto_send is not None:
+            if (
+                auto_send.outcome == OutreachAutonomousSendOutcome.REJECTED
+                and auto_send.brief_id is not None
+            ):
+                outreach_autosend_lifecycle_service.finalize_rejected(auto_send.brief_id)
+            if auto_send.outcome == OutreachAutonomousSendOutcome.SENT:
+                evaluation = AutonomyDecision.ALLOW
+                outcome = AutonomousGrowthOutcome.EXECUTED
+            elif auto_send.outcome == OutreachAutonomousSendOutcome.REJECTED:
+                evaluation = AutonomyDecision.ALLOW
+                outcome = AutonomousGrowthOutcome.FAILED
+            else:
+                evaluation = AutonomyDecision.BLOCK
+                outcome = AutonomousGrowthOutcome.BLOCKED
+            return [
+                self._record(
+                    run_id=run_id,
+                    mandate=mandate,
+                    play_id=auto_send.play_id,
+                    action_id=auto_send.action_id,
+                    experiment_id=auto_send.experiment_id,
+                    platform=auto_send.platform,
+                    action_type="OUTREACH_EMAIL",
+                    evaluation_decision=evaluation,
+                    outcome=outcome,
+                    reasons=auto_send.reasons,
+                )
+            ]
+
         outreach = await self._outreach_preparation_service.prepare_next(mandate.product_id)
         if outreach is not None and outreach.prepared:
             return [
