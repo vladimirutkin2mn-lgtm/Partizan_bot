@@ -170,7 +170,12 @@ class TikTokDirectPostReconciliationService:
         self._direct_post_service = direct_post_service or tiktok_direct_post_service
         self._store = store or get_runtime_store()
 
-    def reconcile(self, action_id: UUID) -> TikTokDirectPostReconciliationView:
+    def reconcile(
+        self,
+        action_id: UUID,
+        *,
+        mark_executed: bool = True,
+    ) -> TikTokDirectPostReconciliationView:
         attempt = self._direct_post_service.get_latest(action_id)
         if attempt.provider_publish_id is None:
             raise ValueError(
@@ -185,7 +190,10 @@ class TikTokDirectPostReconciliationService:
                 TikTokDirectPostReconciliationStatus.PUBLISHED,
                 TikTokDirectPostReconciliationStatus.FAILED,
             }:
-                if latest.status == TikTokDirectPostReconciliationStatus.PUBLISHED:
+                if (
+                    mark_executed
+                    and latest.status == TikTokDirectPostReconciliationStatus.PUBLISHED
+                ):
                     self._ensure_action_executed(attempt, latest)
                 return latest
             raise ValueError(
@@ -237,7 +245,10 @@ class TikTokDirectPostReconciliationService:
                 str(failed_attempt.id),
                 failed_attempt.model_dump(mode="json"),
             )
-        elif reconciliation.status == TikTokDirectPostReconciliationStatus.PUBLISHED:
+        elif (
+            mark_executed
+            and reconciliation.status == TikTokDirectPostReconciliationStatus.PUBLISHED
+        ):
             self._ensure_action_executed(attempt, reconciliation)
 
         return reconciliation
