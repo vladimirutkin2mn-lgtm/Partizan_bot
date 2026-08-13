@@ -25,14 +25,18 @@ from app.creative_generation import (
 )
 from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_control_plane_schemas import (
-    DistributionCampaignSlotCreateRequest,
+    CampaignSlotCreateRequest,
     DistributionIdentityCreateRequest,
 )
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_growth_manager_service import distribution_growth_manager_service
 from app.distribution_play_service import distribution_play_service
-from app.distribution_types import DistributionActionType, DistributionPlatform
+from app.distribution_types import (
+    CampaignSlotStatus,
+    DistributionActionType,
+    DistributionPlatform,
+)
 from app.execution_adapters import (
     AdapterExecutionOutcome,
     DistributionAdapterExecuteRequest,
@@ -149,13 +153,13 @@ def _product_and_organic_play() -> tuple[str, dict]:
         )
     )
     distribution_control_plane_service.create_campaign_slot(
-        DistributionCampaignSlotCreateRequest(
-            product_id=UUID(product_id),
-            platform=identity.platform,
-            identity_id=identity.id,
-            campaign_name="Oracle organic creative test",
+        UUID(product_id),
+        CampaignSlotCreateRequest(
+            distribution_identity_id=identity.id,
+            status=CampaignSlotStatus.ACTIVE,
             attribution_route="https://example.com/oracle",
-        )
+            metadata={"campaign_name": "Oracle organic creative test"},
+        ),
     )
 
     plays = client.post(f"/v1/products/{product_id}/distribution-plays/generate")
