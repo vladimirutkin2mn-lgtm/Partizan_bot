@@ -14,13 +14,14 @@ from app.distribution_execution_schemas import (
     DistributionExperimentView,
 )
 from app.distribution_play_planner import TACTIC_CATALOG
-from app.distribution_play_schemas import DistributionPlayStatus, DistributionPlayView
+from app.distribution_play_schemas import (
+    DistributionPlayStatus,
+    DistributionPlayView,
+    DistributionTacticClass,
+)
 from app.distribution_policy import DistributionExecutionPolicy
 from app.distribution_schemas import DistributionActionView
-from app.distribution_types import (
-    DistributionActionStatus,
-    DistributionActionType,
-)
+from app.distribution_types import DistributionActionStatus, DistributionActionType
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ProductProfileView
 
@@ -186,9 +187,7 @@ class InMemoryDistributionExecutionService:
             update={
                 "target_url": payload.target_url or action.target_url,
                 "content_text": (
-                    payload.content_text
-                    if payload.content_text is not None
-                    else action.content_text
+                    payload.content_text if payload.content_text is not None else action.content_text
                 ),
                 "content_payload": content_payload,
             }
@@ -211,15 +210,11 @@ class InMemoryDistributionExecutionService:
 
         identity = None
         if action.distribution_identity_id is not None:
-            identity = distribution_control_plane_service.get_identity(
-                action.distribution_identity_id
-            )
+            identity = distribution_control_plane_service.get_identity(action.distribution_identity_id)
         policy = None
         if play.community_policy_required:
             try:
-                policy = distribution_control_plane_service.get_policy(
-                    action.opportunity_id
-                )
+                policy = distribution_control_plane_service.get_policy(action.opportunity_id)
             except KeyError:
                 policy = None
         template = next(item for item in TACTIC_CATALOG if item.tactic_id == play.tactic_id)
@@ -234,9 +229,31 @@ class InMemoryDistributionExecutionService:
         if not decision.allowed:
             raise ValueError("; ".join(decision.reasons))
 
-        approved_action = action.model_copy(
-            update={"status": DistributionActionStatus.APPROVED}
-        )
+        return self._set_approved(action, experiment)
+
+    def approve_outreach(self, action_id: UUID) -> DistributionExecutionPlanView:
+        action = self.get_action(action_id)
+        if action.action_type != DistributionActionType.OUTREACH_EMAIL:
+            raise ValueError("Dedicated outreach approval only accepts OUTREACH_EMAIL actions")
+        if action.status != DistributionActionStatus.PREPARED:
+            raise ValueError("Only PREPARED outreach actions can be approved")
+        if not str(action.content_text or "").strip():
+            raise ValueError("Outreach email requires exact drafted content before approval")
+        experiment = self.get_experiment(action.experiment_id)
+        if experiment.status != DistributionExperimentStatus.DRAFT:
+            raise ValueError("Outreach experiment must be DRAFT before approval")
+        play_id = UUID(str(action.operational_metadata["distribution_play_id"]))
+        play = self._find_play(experiment.product_id, play_id)
+        if play.tactic_class != DistributionTacticClass.OUTREACH:
+            raise ValueError("Outreach action must belong to an OUTREACH DistributionPlay")
+        return self._set_approved(action, experiment)
+
+    def _set_approved(
+        self,
+        action: DistributionActionView,
+        experiment: DistributionExperimentView,
+    ) -> DistributionExecutionPlanView:
+        approved_action = action.model_copy(update={"status": DistributionActionStatus.APPROVED})
         approved_experiment = experiment.model_copy(
             update={"status": DistributionExperimentStatus.APPROVED}
         )
@@ -310,9 +327,7 @@ class InMemoryDistributionExecutionService:
         experiment = self.get_experiment(experiment_id)
         if experiment.status != DistributionExperimentStatus.RUNNING:
             raise ValueError("Only RUNNING DistributionExperiments can be finished")
-        finished = experiment.model_copy(
-            update={"status": DistributionExperimentStatus.FINISHED}
-        )
+        finished = experiment.model_copy(update={"status": DistributionExperimentStatus.FINISHED})
         self._experiments[experiment_id] = finished
         self._persist_experiment(finished)
         return finished
@@ -349,9 +364,7 @@ class InMemoryDistributionExecutionService:
         experiments = list(self._experiments.values())
         if product_id is not None:
             experiments = [
-                experiment
-                for experiment in experiments
-                if experiment.product_id == product_id
+                experiment for experiment in experiments if experiment.product_id == product_id
             ]
         return sorted(experiments, key=lambda experiment: str(experiment.id))
 
@@ -452,10 +465,7 @@ class InMemoryDistributionExecutionService:
             return slot_route
         return destination_url
 
-    def _validate_action_ready_for_approval(
-        self,
-        action: DistributionActionView,
-    ) -> None:
+    def _validate_action_ready_for_approval(self, action: DistributionActionView) -> None:
         if action.action_type in {
             DistributionActionType.COMMENT,
             DistributionActionType.REPLY,

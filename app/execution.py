@@ -218,11 +218,16 @@ def get_delivery_provider() -> DeliveryProvider:
     if settings.execution_provider == "smtp":
         if not settings.smtp_host or not settings.smtp_from_email:
             raise ValueError("SMTP_HOST and SMTP_FROM_EMAIL are required for SMTP execution")
+        password = (
+            settings.smtp_password.get_secret_value()
+            if settings.smtp_password is not None
+            else None
+        )
         return SMTPDeliveryProvider(
             host=settings.smtp_host,
             port=settings.smtp_port,
             username=settings.smtp_username,
-            password=settings.smtp_password,
+            password=password,
             from_email=settings.smtp_from_email,
             starttls=settings.smtp_starttls,
         )
