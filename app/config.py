@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     creative_provider: str = "unavailable"
     creative_image_model: str = "gpt-image-2"
     creative_image_quality: str = "medium"
+    creative_video_model: str = "sora-2"
+    creative_video_seconds: int = 8
+    creative_video_size: str = "720x1280"
     execution_provider: str = "mock"
     operator_auth_required: bool = False
     operator_api_key: SecretStr | None = None
@@ -54,6 +57,35 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"low", "medium", "high"}:
             raise ValueError("CREATIVE_IMAGE_QUALITY must be low, medium or high")
+        return normalized
+
+    @field_validator("creative_video_model", mode="before")
+    @classmethod
+    def normalize_creative_video_model(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if normalized not in {"sora-2", "sora-2-pro"}:
+            raise ValueError("CREATIVE_VIDEO_MODEL must be sora-2 or sora-2-pro")
+        return normalized
+
+    @field_validator("creative_video_seconds", mode="before")
+    @classmethod
+    def normalize_creative_video_seconds(cls, value: object) -> object:
+        if isinstance(value, str) and value.strip().isdigit():
+            value = int(value.strip())
+        if value not in {4, 8, 12}:
+            raise ValueError("CREATIVE_VIDEO_SECONDS must be 4, 8 or 12")
+        return value
+
+    @field_validator("creative_video_size", mode="before")
+    @classmethod
+    def normalize_creative_video_size(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if normalized not in {"720x1280", "1024x1792"}:
+            raise ValueError("CREATIVE_VIDEO_SIZE must be a supported portrait Sora size")
         return normalized
 
     @field_validator("partizan_public_base_url", mode="before")
