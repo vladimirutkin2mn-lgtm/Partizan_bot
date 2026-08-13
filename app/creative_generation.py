@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl
 
+from app.config import get_settings
 from app.creative_assets import (
     CreativeAssetRegisterRequest,
     CreativeAssetSource,
@@ -17,6 +21,7 @@ from app.creative_assets import (
     CreativeReadinessView,
     creative_asset_service,
 )
+from app.creative_media import CreativeMediaStore, creative_media_store
 
 
 class CreativeGenerationOutcome(StrEnum):
@@ -50,16 +55,151 @@ class CreativeGenerator(Protocol):
     def generate(self, brief: CreativeBriefView) -> CreativeGeneratorResult: ...
 
 
+class OpenAIImageClient(Protocol):
+    def generate_png(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        size: str,
+        quality: str,
+    ) -> bytes: ...
+
+
+class SDKOpenAIImageClient:
+    def __init__(self, api_key: str) -> None:
+        from openai import OpenAI
+
+        self._client = OpenAI(api_key=api_key)
+
+    def generate_png(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        size: str,
+        quality: str,
+    ) -> bytes:
+        response = self._client.images.generate(
+            model=model,
+            prompt=prompt,
+            size=size,
+            quality=quality,
+            output_format="png",
+        )
+        if not response.data:
+            raise RuntimeError("OpenAI image generation returned no image data")
+        encoded = response.data[0].b64_json
+        if not encoded:
+            raise RuntimeError("OpenAI image generation returned no base64 image")
+        try:
+            return base64.b64decode(encoded, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise RuntimeError("OpenAI image generation returned invalid base64 image data") from exc
+
+
 class UnavailableCreativeGenerator:
+    def __init__(self, reason: str | None = None) -> None:
+        self._reason = reason
+
     def generate(self, brief: CreativeBriefView) -> CreativeGeneratorResult:
+        message = self._reason or (
+            f"No creative generator/upload provider is configured for "
+            f"{brief.platform.value} {brief.media_type.value}."
+        )
         return CreativeGeneratorResult(
             outcome=CreativeGenerationOutcome.UNAVAILABLE,
-            message=(
-                f"No creative generator/upload provider is configured for "
-                f"{brief.platform.value} {brief.media_type.value}."
-            ),
+            message=message[:1000],
             provenance={"generator": "unavailable"},
         )
+
+
+class OpenAICreativeImageGenerator:
+    def __init__(
+        self,
+        *,
+        client: OpenAIImageClient,
+        media_store: CreativeMediaStore,
+        public_base_url: str,
+        model: str = "gpt-image-2",
+        size: str = "1024x1536",
+        quality: str = "medium",
+    ) -> None:
+        self._client = client
+        self._media_store = media_store
+        self._public_base_url = public_base_url.rstrip("/")
+        self._model = model
+        self._size = size
+        self._quality = quality
+
+    def generate(self, brief: CreativeBriefView) -> CreativeGeneratorResult:
+        if brief.media_type != CreativeMediaType.IMAGE:
+            return CreativeGeneratorResult(
+                outcome=CreativeGenerationOutcome.UNAVAILABLE,
+                message=(
+                    "The configured OpenAI creative provider currently generates IMAGE assets only; "
+                    f"{brief.media_type.value} requires a separate video provider/upload path."
+                ),
+                provenance={"generator": "openai_image", "model": self._model},
+            )
+
+        try:
+            image_bytes = self._client.generate_png(
+                model=self._model,
+                prompt=self._prompt(brief),
+                size=self._size,
+                quality=self._quality,
+            )
+            media = self._media_store.put(image_bytes, mime_type="image/png")
+        except Exception:
+            return CreativeGeneratorResult(
+                outcome=CreativeGenerationOutcome.FAILED,
+                message="OpenAI image generation or durable media persistence failed.",
+                provenance={
+                    "generator": "openai_image",
+                    "model": self._model,
+                    "size": self._size,
+                    "quality": self._quality,
+                },
+            )
+
+        width, height = (int(part) for part in self._size.split("x", 1))
+        return CreativeGeneratorResult(
+            outcome=CreativeGenerationOutcome.READY,
+            public_url=f"{self._public_base_url}/v1/media/creative/{media.id}",
+            mime_type="image/png",
+            width=width,
+            height=height,
+            provenance={
+                "generator": "openai_image",
+                "model": self._model,
+                "size": self._size,
+                "quality": self._quality,
+                "media_id": str(media.id),
+                "sha256": media.sha256,
+            },
+            message="OpenAI image generated and persisted to Partizan creative media storage.",
+        )
+
+    def _prompt(self, brief: CreativeBriefView) -> str:
+        content = json.dumps(
+            brief.content,
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        )
+        constraints = "\n".join(f"- {item}" for item in brief.constraints)
+        return (
+            "Create one high-quality advertising image for the campaign brief below.\n"
+            f"Platform: {brief.platform.value}\n"
+            f"Purpose: {brief.purpose.value}\n"
+            f"Confirmed campaign content: {content}\n"
+            "Hard constraints:\n"
+            f"{constraints}\n"
+            "Do not invent product facts, testimonials, endorsements, ratings, awards, scarcity, "
+            "or performance claims. Avoid tiny unreadable text. Produce a clean standalone visual "
+            "that can be used as the image creative for this paid campaign."
+        )[:12000]
 
 
 class DeterministicMockCreativeGenerator:
@@ -198,4 +338,27 @@ class CreativeGenerationService:
         return None
 
 
-creative_generation_service = CreativeGenerationService()
+def _configured_generator() -> CreativeGenerator:
+    settings = get_settings()
+    if settings.creative_generator_provider != "openai":
+        return UnavailableCreativeGenerator()
+    if not settings.openai_api_key:
+        return UnavailableCreativeGenerator(
+            "CREATIVE_GENERATOR_PROVIDER=openai requires OPENAI_API_KEY."
+        )
+    if not settings.partizan_public_base_url:
+        return UnavailableCreativeGenerator(
+            "CREATIVE_GENERATOR_PROVIDER=openai requires PARTIZAN_PUBLIC_BASE_URL so ad providers "
+            "can retrieve persisted creative media."
+        )
+    return OpenAICreativeImageGenerator(
+        client=SDKOpenAIImageClient(settings.openai_api_key),
+        media_store=creative_media_store,
+        public_base_url=settings.partizan_public_base_url,
+        model=settings.creative_image_model,
+        size=settings.creative_image_size,
+        quality=settings.creative_image_quality,
+    )
+
+
+creative_generation_service = CreativeGenerationService(generator=_configured_generator())
