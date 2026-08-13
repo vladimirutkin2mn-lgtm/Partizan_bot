@@ -17,10 +17,10 @@ from app.main import app
 from app.outreach_briefs import outreach_brief_service
 from app.outreach_sender import (
     OUTREACH_SEND_ATTEMPT_NAMESPACE,
-    OutreachSMTPAmbiguousError,
-    OutreachSMTPRejectedError,
     OutreachSendAttemptStatus,
     OutreachSendAttemptView,
+    OutreachSMTPAmbiguousError,
+    OutreachSMTPRejectedError,
     outreach_sender_service,
 )
 from app.outreach_targets import outreach_target_service
