@@ -18,10 +18,7 @@ from app.growth_play_service import growth_play_service
 from app.icp_service import icp_service
 from app.main import app
 from app.outreach_briefs import outreach_brief_service
-from app.outreach_policy import (
-    outreach_autonomous_preparation_service,
-    outreach_policy_service,
-)
+from app.outreach_policy import outreach_policy_service
 from app.outreach_sender import outreach_sender_service
 from app.outreach_targets import outreach_target_service
 from app.product_intake import product_intake_service
