@@ -6,11 +6,13 @@ Automatic outreach execution is an explicit extra delegation on top of an active
 
 Before delegation, the product must have:
 
-- an ACTIVE Growth Mandate that allows `OUTREACH_EMAIL`;
-- `autonomous_prepare=true` and `autonomous_approve=true`;
+- an ACTIVE Growth Mandate that explicitly allows `OUTREACH_EMAIL`;
+- `autonomous_prepare=true`;
 - an ACTIVE, current Outreach Policy;
 - a ready owned SMTP sender with explicit From name, From address and Reply-To;
 - zero autonomous follow-ups.
+
+The product-wide `autonomous_approve` flag does **not** need to be enabled. The outreach execution delegation below is deliberately narrower: it authorizes only the bounded `OUTREACH_EMAIL` initial-message path and does not grant approval rights to other action types.
 
 Create delegation only with explicit confirmation:
 
