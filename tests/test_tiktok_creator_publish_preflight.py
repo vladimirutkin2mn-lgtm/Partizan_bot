@@ -261,8 +261,8 @@ def test_http_client_sends_token_only_in_authorization_header(monkeypatch) -> No
                 "error": {"code": "ok", "message": "", "log_id": "log_1"},
             }
 
-    def fake_post(url, *, headers, json, timeout):
-        captured.update(url=url, headers=headers, json=json, timeout=timeout)
+    def fake_post(url, *, headers, timeout):
+        captured.update(url=url, headers=headers, timeout=timeout)
         return Response()
 
     monkeypatch.setattr("app.tiktok_owned_publishing.httpx.post", fake_post)
@@ -273,10 +273,9 @@ def test_http_client_sends_token_only_in_authorization_header(monkeypatch) -> No
     assert result.creator_username == "creator_123"
     assert captured["url"].endswith("/v2/post/publish/creator_info/query/")
     assert captured["headers"]["Authorization"] == "Bearer top-secret"
-    assert captured["json"] == {}
     assert captured["timeout"] == 17
     assert "top-secret" not in captured["url"]
-    assert "top-secret" not in str(captured["json"])
+    assert set(captured) == {"url", "headers", "timeout"}
 
 
 def test_http_client_sanitizes_provider_rejection(monkeypatch) -> None:
