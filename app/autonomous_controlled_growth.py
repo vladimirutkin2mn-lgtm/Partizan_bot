@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from app.autonomous_creative_paid_growth import AutonomousCreativePaidGrowthSweepService
 from app.autonomous_growth import AutonomousGrowthDecisionView
 from app.autonomous_growth_control import (
     AutonomousGrowthControlService,
     autonomous_growth_control_service,
 )
-from app.autonomous_paid_growth import AutonomousPaidGrowthSweepService
 from app.autonomy_schemas import GrowthMandateView
 from app.creative_execution_adapters import creative_distribution_execution_adapter_service
 
 
-class AutonomousControlledGrowthSweepService(AutonomousPaidGrowthSweepService):
+class AutonomousControlledGrowthSweepService(AutonomousCreativePaidGrowthSweepService):
     def __init__(
         self,
         *,
