@@ -24,7 +24,10 @@ from app.creative_generation import (
     CreativeGenerationView,
 )
 from app.distribution_analytics_service import distribution_analytics_service
-from app.distribution_control_plane_schemas import DistributionIdentityCreateRequest
+from app.distribution_control_plane_schemas import (
+    DistributionCampaignSlotCreateRequest,
+    DistributionIdentityCreateRequest,
+)
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_growth_manager_service import distribution_growth_manager_service
@@ -136,13 +139,22 @@ def _product_and_organic_play() -> tuple[str, dict]:
     candidate = next(
         play for play in initial.json()["plays"] if play["action_type"] == "ORGANIC_VIDEO"
     )
-    distribution_control_plane_service.create_identity(
+    identity = distribution_control_plane_service.create_identity(
         DistributionIdentityCreateRequest(
             platform=DistributionPlatform(candidate["platform"]),
             theme="AI entertainment relationships reflection",
             language="English",
             public_positioning="Helpful short-form relationship reflection content.",
             allowed_actions=[DistributionActionType.ORGANIC_VIDEO],
+        )
+    )
+    distribution_control_plane_service.create_campaign_slot(
+        DistributionCampaignSlotCreateRequest(
+            product_id=UUID(product_id),
+            platform=identity.platform,
+            identity_id=identity.id,
+            campaign_name="Oracle organic creative test",
+            attribution_route="https://example.com/oracle",
         )
     )
 
@@ -161,7 +173,13 @@ def _product_and_organic_play() -> tuple[str, dict]:
 def _approved_organic_action(product_id: str, play: dict) -> str:
     prepared = client.post(
         f"/v1/products/{product_id}/distribution-plays/{play['id']}/actions/prepare",
-        json={"destination_url": "https://example.com/oracle"},
+        json={
+            "destination_url": "https://example.com/oracle",
+            "content_text": (
+                "A short vertical video exploring one relationship uncertainty through a calm, "
+                "entertainment-first reflective prompt. End with a neutral invitation to learn more."
+            ),
+        },
     )
     assert prepared.status_code == 200
     action_id = prepared.json()["action"]["id"]
