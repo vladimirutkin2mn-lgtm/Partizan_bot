@@ -10,6 +10,7 @@ from app.autonomous_growth_control import (
 )
 from app.autonomy_schemas import GrowthMandateView
 from app.creative_execution_adapters import creative_distribution_execution_adapter_service
+from app.creative_provider_finalization import provider_aware_creative_generation_service
 
 
 class AutonomousControlledGrowthSweepService(AutonomousCreativePaidGrowthSweepService):
@@ -33,4 +34,5 @@ class AutonomousControlledGrowthSweepService(AutonomousCreativePaidGrowthSweepSe
 
 autonomous_controlled_growth_sweep_service = AutonomousControlledGrowthSweepService(
     adapter_service=creative_distribution_execution_adapter_service,
+    generation_service=provider_aware_creative_generation_service,
 )
