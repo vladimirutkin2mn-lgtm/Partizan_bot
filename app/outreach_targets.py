@@ -6,7 +6,7 @@ from enum import StrEnum
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, HttpUrl, model_validator
+from pydantic import BaseModel, Field, HttpUrl, computed_field, model_validator
 
 from app.audience_intelligence_service import audience_intelligence_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
@@ -14,6 +14,7 @@ from app.runtime_store import RuntimeStateStore, get_runtime_store
 OUTREACH_TARGET_NAMESPACE = "outreach_target"
 OUTREACH_TARGET_PRODUCT_NAMESPACE = "outreach_target_product"
 OUTREACH_SUPPRESSION_NAMESPACE = "outreach_target_suppression"
+OUTREACH_SUPPRESSION_CONTACT_NAMESPACE = "outreach_contact_suppression"
 
 _EMAIL_LOCAL_RE = re.compile(r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+$")
 _DOMAIN_LABEL_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
@@ -115,6 +116,7 @@ class OutreachTargetView(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    @computed_field(return_type=bool)
     @property
     def executable(self) -> bool:
         return self.status == OutreachTargetStatus.ACTIVE and self.suppression is None
@@ -148,9 +150,17 @@ class OutreachTargetService:
 
         business_email, contact_key = self._normalize_email(payload.business_email)
         self._validate_contact_evidence(payload.contact_evidence, business_email)
+        contact_suppression = self._contact_suppression(contact_key)
+        if contact_suppression is not None:
+            raise ValueError(
+                "business_email is suppressed and cannot be reintroduced through another outreach target "
+                f"({contact_suppression.reason.value})"
+            )
         duplicate = self._find_duplicate(product_id, contact_key, payload.opportunity_id)
         if duplicate is not None:
-            raise ValueError("An OutreachTarget already exists for this product, opportunity and contact")
+            raise ValueError(
+                "An OutreachTarget already exists for this product, opportunity and contact"
+            )
 
         now = datetime.now(UTC)
         evidence = payload.contact_evidence.model_copy(
@@ -183,7 +193,16 @@ class OutreachTargetService:
         payload = self._store.get(OUTREACH_TARGET_NAMESPACE, str(target_id))
         if payload is None:
             raise KeyError(target_id)
-        return OutreachTargetView.model_validate(payload)
+        target = OutreachTargetView.model_validate(payload)
+        contact_suppression = self._contact_suppression(target.contact_key)
+        if contact_suppression is not None and target.suppression is None:
+            return target.model_copy(
+                update={
+                    "status": OutreachTargetStatus.SUPPRESSED,
+                    "suppression": contact_suppression,
+                }
+            )
+        return target
 
     def list_product(self, product_id: UUID) -> OutreachTargetListView:
         index = self._store.get(OUTREACH_TARGET_PRODUCT_NAMESPACE, str(product_id)) or {}
@@ -220,13 +239,22 @@ class OutreachTargetService:
             str(suppression.id),
             suppression.model_dump(mode="json"),
         )
+        self._store.put(
+            OUTREACH_SUPPRESSION_CONTACT_NAMESPACE,
+            target.contact_key,
+            {"suppression_id": str(suppression.id)},
+        )
         self._persist(updated)
         return updated
 
     def require_executable(self, target_id: UUID) -> OutreachTargetView:
         target = self.get(target_id)
         if not target.executable:
-            reason = target.suppression.reason.value if target.suppression else target.status.value
+            reason = (
+                target.suppression.reason.value
+                if target.suppression
+                else target.status.value
+            )
             raise ValueError(f"OutreachTarget is suppressed and cannot execute ({reason})")
         return target
 
@@ -237,7 +265,13 @@ class OutreachTargetService:
         if email.count("@") != 1:
             raise ValueError("business_email must contain exactly one @")
         local, domain = email.rsplit("@", 1)
-        if not local or len(local) > 64 or local.startswith(".") or local.endswith(".") or ".." in local:
+        if (
+            not local
+            or len(local) > 64
+            or local.startswith(".")
+            or local.endswith(".")
+            or ".." in local
+        ):
             raise ValueError("business_email local part is invalid")
         if not _EMAIL_LOCAL_RE.fullmatch(local):
             raise ValueError("business_email local part contains unsupported characters")
@@ -288,8 +322,26 @@ class OutreachTargetService:
                 return target
         return None
 
+    def _contact_suppression(
+        self,
+        contact_key: str,
+    ) -> OutreachSuppressionView | None:
+        index = self._store.get(OUTREACH_SUPPRESSION_CONTACT_NAMESPACE, contact_key)
+        if not index or not index.get("suppression_id"):
+            return None
+        payload = self._store.get(
+            OUTREACH_SUPPRESSION_NAMESPACE,
+            str(index["suppression_id"]),
+        )
+        if payload is None:
+            return None
+        return OutreachSuppressionView.model_validate(payload)
+
     def _index_product(self, target: OutreachTargetView) -> None:
-        index = self._store.get(OUTREACH_TARGET_PRODUCT_NAMESPACE, str(target.product_id)) or {}
+        index = self._store.get(
+            OUTREACH_TARGET_PRODUCT_NAMESPACE,
+            str(target.product_id),
+        ) or {}
         target_ids = list(index.get("target_ids", []))
         value = str(target.id)
         if value not in target_ids:
@@ -312,6 +364,7 @@ class OutreachTargetService:
             self._store.clear_namespace(OUTREACH_TARGET_NAMESPACE)
             self._store.clear_namespace(OUTREACH_TARGET_PRODUCT_NAMESPACE)
             self._store.clear_namespace(OUTREACH_SUPPRESSION_NAMESPACE)
+            self._store.clear_namespace(OUTREACH_SUPPRESSION_CONTACT_NAMESPACE)
 
 
 outreach_target_service = OutreachTargetService()
