@@ -11,11 +11,15 @@ from app.autonomous_growth_control import (
     autonomous_growth_control_service,
 )
 from app.autonomous_owned_creative_growth import AutonomousOwnedCreativeGrowthSweepService
-from app.autonomy_schemas import GrowthMandateView
+from app.autonomy_schemas import AutonomyDecision, GrowthMandateView
 from app.creative_provider_finalization import provider_aware_creative_generation_service
 from app.execution_adapters import AdapterExecutionOutcome
 from app.organic_creative_execution import (
     organic_creative_distribution_execution_adapter_service,
+)
+from app.outreach_policy import (
+    OutreachAutonomousPreparationService,
+    outreach_autonomous_preparation_service,
 )
 
 
@@ -24,10 +28,14 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
         self,
         *,
         control_service: AutonomousGrowthControlService | None = None,
+        outreach_preparation_service: OutreachAutonomousPreparationService | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
         self._control_service = control_service or autonomous_growth_control_service
+        self._outreach_preparation_service = (
+            outreach_preparation_service or outreach_autonomous_preparation_service
+        )
 
     async def _run_product(
         self,
@@ -35,6 +43,22 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
         mandate: GrowthMandateView,
     ) -> list[AutonomousGrowthDecisionView]:
         self._control_service.evaluate_running(mandate)
+        outreach = await self._outreach_preparation_service.prepare_next(mandate.product_id)
+        if outreach is not None and outreach.prepared:
+            return [
+                self._record(
+                    run_id=run_id,
+                    mandate=mandate,
+                    play_id=outreach.play_id,
+                    action_id=outreach.action_id,
+                    experiment_id=outreach.experiment_id,
+                    platform=outreach.platform,
+                    action_type="OUTREACH_EMAIL",
+                    evaluation_decision=AutonomyDecision.REQUIRE_APPROVAL,
+                    outcome=AutonomousGrowthOutcome.WAITING_APPROVAL,
+                    reasons=outreach.reasons,
+                )
+            ]
         return await super()._run_product(run_id, mandate)
 
     def _adapter_outcome(
