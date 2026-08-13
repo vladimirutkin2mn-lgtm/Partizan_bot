@@ -83,16 +83,19 @@ def _product_and_target() -> tuple[str, dict]:
     return product_id, target.json()
 
 
+def _brief(target_id: str, offer: str = "CREATOR_SEEDING") -> dict:
+    response = client.post(
+        f"/v1/outreach-targets/{target_id}/briefs",
+        json={"preferred_offer_type": offer},
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
 def test_outreach_brief_creates_traceable_distribution_experiment() -> None:
     product_id, target = _product_and_target()
+    brief = _brief(target["id"])
 
-    response = client.post(
-        f"/v1/outreach-targets/{target['id']}/briefs",
-        json={"preferred_offer_type": "CREATOR_SEEDING"},
-    )
-
-    assert response.status_code == 201
-    brief = response.json()
     assert brief["product_id"] == product_id
     assert brief["outreach_target_id"] == target["id"]
     assert brief["offer_type"] == "CREATOR_SEEDING"
@@ -155,6 +158,36 @@ def test_suppressed_target_cannot_prepare_outreach_experiment() -> None:
     assert response.status_code == 409
     assert "OPT_OUT" in response.json()["detail"]
     assert distribution_execution_service.list_experiments(UUID(product_id)) == []
+
+
+def test_generic_distribution_mutations_cannot_bypass_outreach_flow() -> None:
+    product_id, target = _product_and_target()
+    brief = _brief(target["id"])
+    action_id = brief["action_id"]
+    play_id = brief["distribution_play_id"]
+
+    prepare = client.post(
+        f"/v1/products/{product_id}/distribution-plays/{play_id}/actions/prepare",
+        json={"destination_url": "https://oracle.example/product"},
+    )
+    auto_prepare = client.post(
+        f"/v1/products/{product_id}/distribution-plays/{play_id}/actions/auto-prepare",
+        json={"destination_url": "https://oracle.example/product"},
+    )
+    approve = client.post(f"/v1/distribution-actions/{action_id}/approve")
+    execute = client.post(f"/v1/distribution-actions/{action_id}/execute", json={})
+    mark_executed = client.post(
+        f"/v1/distribution-actions/{action_id}/mark-executed",
+        json={"external_reference": "fake-send"},
+    )
+
+    for response in (prepare, auto_prepare, approve, execute, mark_executed):
+        assert response.status_code == 409
+        assert "outreach" in response.json()["detail"].lower()
+    plan = distribution_execution_service.get_plan(UUID(action_id))
+    assert plan.action.status.value == "PREPARED"
+    assert plan.experiment.status.value == "DRAFT"
+    assert len(distribution_execution_service.list_experiments(UUID(product_id))) == 1
 
 
 def test_outreach_brief_uses_only_actual_product_facts() -> None:
