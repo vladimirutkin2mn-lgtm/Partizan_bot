@@ -48,6 +48,7 @@ class CreativeMediaStore:
             raise ValueError("Creative media content cannot be empty")
         if len(content) > MAX_CREATIVE_MEDIA_BYTES:
             raise ValueError("Creative media content exceeds 20 MiB limit")
+        self._validate_image_signature(content, mime_type)
 
         digest = hashlib.sha256(content).hexdigest()
         factory = get_sync_session_factory()
@@ -78,6 +79,21 @@ class CreativeMediaStore:
             if blob is None:
                 raise KeyError(media_id)
             return self._record(blob)
+
+    def _validate_image_signature(self, content: bytes, mime_type: str) -> None:
+        valid = False
+        if mime_type == "image/png":
+            valid = content.startswith(b"\x89PNG\r\n\x1a\n")
+        elif mime_type == "image/jpeg":
+            valid = content.startswith(b"\xff\xd8\xff")
+        elif mime_type == "image/webp":
+            valid = (
+                len(content) >= 12
+                and content[:4] == b"RIFF"
+                and content[8:12] == b"WEBP"
+            )
+        if not valid:
+            raise ValueError(f"Creative media bytes do not match declared MIME type {mime_type}")
 
     def _record(self, blob: CreativeMediaBlob) -> CreativeMediaRecord:
         return CreativeMediaRecord(
