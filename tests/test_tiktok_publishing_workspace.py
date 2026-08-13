@@ -22,11 +22,11 @@ def test_publishing_workspace_assets_are_served() -> None:
 def test_execution_bootstrap_loads_publishing_after_creative_lab() -> None:
     javascript = client.get("/app/assets/execution.v2.js").text
 
-    creative_pos = javascript.index("/app/assets/creative.v1.js")
-    publishing_pos = javascript.index("/app/assets/publishing.v1.js")
-    assert creative_pos < publishing_pos
+    assert 'script.src = "/app/assets/creative.v1.js"' in javascript
     assert 'script.addEventListener("load", loadPublishingAssets)' in javascript
+    assert 'script.src = "/app/assets/publishing.v1.js"' in javascript
     assert "/app/assets/publishing.v1.css" in javascript
+    assert "else {\n      loadPublishingAssets();\n    }" in javascript
 
 
 def test_publishing_workspace_uses_exact_permissioned_backend_contracts() -> None:
