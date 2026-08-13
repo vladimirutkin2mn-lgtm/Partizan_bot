@@ -1,12 +1,17 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.operator_auth import require_operator
 from app.tiktok_owned_publishing import (
     TikTokCreatorInfoApiError,
     TikTokCreatorPublishPreflightView,
     tiktok_creator_publish_preflight_service,
+)
+from app.tiktok_publish_authorization import (
+    TikTokPublishAuthorizationCreateRequest,
+    TikTokPublishAuthorizationView,
+    tiktok_publish_authorization_service,
 )
 
 router = APIRouter(
@@ -45,3 +50,46 @@ async def get_tiktok_creator_preflight(
         raise HTTPException(status_code=404, detail="TikTok creator preflight not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/distribution-actions/{action_id}/owned-publishing/tiktok/authorization",
+    response_model=TikTokPublishAuthorizationView,
+    status_code=status.HTTP_201_CREATED,
+)
+async def authorize_tiktok_publish(
+    action_id: UUID,
+    payload: TikTokPublishAuthorizationCreateRequest,
+) -> TikTokPublishAuthorizationView:
+    try:
+        return tiktok_publish_authorization_service.authorize(action_id, payload)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Publishing dependency not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/distribution-actions/{action_id}/owned-publishing/tiktok/authorization",
+    response_model=TikTokPublishAuthorizationView,
+)
+async def get_tiktok_publish_authorization(
+    action_id: UUID,
+) -> TikTokPublishAuthorizationView:
+    try:
+        return tiktok_publish_authorization_service.get_current(action_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="TikTok publish authorization not found") from exc
+
+
+@router.post(
+    "/distribution-actions/{action_id}/owned-publishing/tiktok/authorization/revoke",
+    response_model=TikTokPublishAuthorizationView,
+)
+async def revoke_tiktok_publish_authorization(
+    action_id: UUID,
+) -> TikTokPublishAuthorizationView:
+    try:
+        return tiktok_publish_authorization_service.revoke(action_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="TikTok publish authorization not found") from exc
