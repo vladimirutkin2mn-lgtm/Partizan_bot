@@ -63,7 +63,9 @@ def _operator_target(opportunity: dict, email: str) -> dict:
             "provenance_type": "OPERATOR_SUPPLIED",
             "source_label": "Provided directly by operator",
         },
-        "relevance_rationale": "Concrete distribution opportunity already discovered by Partizan.",
+        "relevance_rationale": (
+            "Concrete distribution opportunity already discovered by Partizan."
+        ),
         "icp_overlap_rationale": "The opportunity was discovered for the confirmed product ICP.",
         "confidence": 75,
     }
