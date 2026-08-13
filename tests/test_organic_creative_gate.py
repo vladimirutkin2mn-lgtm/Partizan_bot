@@ -226,7 +226,8 @@ def test_ready_organic_video_reaches_consent_boundary_with_asset_attribution() -
     assert attribution.adapter_outcome == "UNAVAILABLE"
 
 
-def test_autonomous_worker_resumes_same_approved_organic_action_with_retry() -> None:
+@pytest.mark.asyncio
+async def test_autonomous_worker_resumes_same_approved_organic_action_with_retry() -> None:
     product_id, play = _product_and_organic_play()
     action_id = _approved_organic_action(product_id, play)
     mandate = client.put(
@@ -252,7 +253,7 @@ def test_autonomous_worker_resumes_same_approved_organic_action_with_retry() -> 
         adapter_service=resume,  # type: ignore[arg-type]
     )
 
-    result = pytest.run(async_fn=worker.run_once, product_id=UUID(product_id))
+    result = await worker.run_once(product_id=UUID(product_id))
 
     assert result.unavailable_count == 1
     assert result.decisions[0].action_id == UUID(action_id)
