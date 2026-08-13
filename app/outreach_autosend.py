@@ -124,8 +124,6 @@ class OutreachAutoSendDelegationService:
             blockers.append("Growth Mandate must explicitly allow OUTREACH_EMAIL")
         if not mandate.autonomous_prepare:
             blockers.append("Growth Mandate must delegate autonomous preparation")
-        if not mandate.autonomous_approve:
-            blockers.append("Growth Mandate must delegate autonomous approval for auto-send")
         if policy.max_followups != 0:
             blockers.append("Autonomous outreach follow-ups must remain disabled")
         readiness = outreach_sender_service.readiness()
@@ -231,8 +229,6 @@ class OutreachAutoSendDelegationService:
             reasons.append(
                 "Growth Mandate changed after auto-send was delegated; delegate auto-send again"
             )
-        if not mandate.autonomous_approve:
-            reasons.append("Growth Mandate no longer delegates autonomous approval")
         readiness = outreach_sender_service.readiness()
         if not readiness.ready:
             reasons.extend(["Outreach sender is not ready", *readiness.blockers])
@@ -323,7 +319,7 @@ class OutreachAutonomousSendService:
                 action_type=DistributionActionType.OUTREACH_EMAIL,
                 proposed_budget=0,
                 requires_prepare=False,
-                requires_approval=True,
+                requires_approval=False,
                 requests_paid_activation=False,
             ),
         )
