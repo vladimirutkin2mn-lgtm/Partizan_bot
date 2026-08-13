@@ -99,7 +99,6 @@ class HttpxTikTokCreatorInfoClient:
                     "Authorization": f"Bearer {access_token}",
                     "Content-Type": "application/json; charset=UTF-8",
                 },
-                json={},
                 timeout=self._timeout_seconds,
             )
         except httpx.HTTPError as exc:
@@ -155,13 +154,19 @@ class TikTokCreatorPublishPreflightService:
             action.platform != DistributionPlatform.TIKTOK
             or action.action_type != DistributionActionType.ORGANIC_VIDEO
         ):
-            raise ValueError("TikTok creator publishing preflight requires a TikTok ORGANIC_VIDEO action")
+            raise ValueError(
+                "TikTok creator publishing preflight requires a TikTok ORGANIC_VIDEO action"
+            )
         if action.status != DistributionActionStatus.APPROVED:
             raise ValueError("TikTok creator publishing preflight requires an APPROVED action")
         if action.distribution_identity_id is None:
-            raise ValueError("TikTok creator publishing requires an explicit Distribution Identity")
+            raise ValueError(
+                "TikTok creator publishing requires an explicit Distribution Identity"
+            )
 
-        identity = distribution_control_plane_service.get_identity(action.distribution_identity_id)
+        identity = distribution_control_plane_service.get_identity(
+            action.distribution_identity_id
+        )
         if identity.platform != DistributionPlatform.TIKTOK:
             raise ValueError("Distribution Identity platform does not match TikTok publishing")
         if identity.status != DistributionIdentityStatus.ACTIVE:
@@ -190,10 +195,14 @@ class TikTokCreatorPublishPreflightService:
             readiness.status != CreativeReadinessStatus.READY
             or readiness.selected_asset is None
         ):
-            raise ValueError("TikTok creator publishing requires a READY action-level video asset")
+            raise ValueError(
+                "TikTok creator publishing requires a READY action-level video asset"
+            )
         asset = readiness.selected_asset
 
-        experiment = distribution_execution_service.get_experiment(readiness.brief.experiment_id)
+        experiment = distribution_execution_service.get_experiment(
+            readiness.brief.experiment_id
+        )
         info = self._client.query_creator_info(access_token=access_token)
         if (
             asset.duration_seconds is not None
@@ -253,8 +262,16 @@ class TikTokCreatorPublishPreflightService:
         )
         return snapshot
 
-    def get_latest(self, action_id: UUID, *, require_fresh: bool = False) -> TikTokCreatorPublishPreflightView:
-        index = self._store.get(TIKTOK_CREATOR_PREFLIGHT_ACTION_NAMESPACE, str(action_id))
+    def get_latest(
+        self,
+        action_id: UUID,
+        *,
+        require_fresh: bool = False,
+    ) -> TikTokCreatorPublishPreflightView:
+        index = self._store.get(
+            TIKTOK_CREATOR_PREFLIGHT_ACTION_NAMESPACE,
+            str(action_id),
+        )
         if not index or not index.get("preflight_id"):
             raise KeyError(action_id)
         payload = self._store.get(
@@ -265,7 +282,9 @@ class TikTokCreatorPublishPreflightService:
             raise KeyError(action_id)
         snapshot = TikTokCreatorPublishPreflightView.model_validate(payload)
         if require_fresh and snapshot.expires_at <= datetime.now(UTC):
-            raise ValueError("TikTok creator publishing preflight has expired; refresh creator info")
+            raise ValueError(
+                "TikTok creator publishing preflight has expired; refresh creator info"
+            )
 
         readiness = creative_asset_service.readiness(action_id)
         if (
