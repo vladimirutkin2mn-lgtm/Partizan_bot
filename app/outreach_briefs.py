@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 from app.audience_intelligence_service import audience_intelligence_service
-from app.distribution_execution_schemas import DistributionExecutionPrepareRequest
+from app.distribution_execution_schemas import (
+    DistributionActionEditRequest,
+    DistributionExecutionPrepareRequest,
+)
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_schemas import (
     DistributionPlayStatus,
@@ -15,11 +19,7 @@ from app.distribution_play_schemas import (
     DistributionTacticClass,
 )
 from app.distribution_play_service import distribution_play_service
-from app.distribution_types import (
-    AttributionLevel,
-    AutomationLevel,
-    DistributionActionType,
-)
+from app.distribution_types import AttributionLevel, AutomationLevel, DistributionActionType
 from app.llm import LLMMessage, LLMProvider, get_llm_provider
 from app.models import ProductProfileStatus
 from app.outreach_targets import OutreachTargetType, OutreachTargetView, outreach_target_service
@@ -29,6 +29,7 @@ from app.schemas import ProductProfileView
 
 OUTREACH_BRIEF_NAMESPACE = "outreach_brief"
 OUTREACH_BRIEF_TARGET_NAMESPACE = "outreach_brief_target"
+_URL_PATTERN = re.compile(r"(?i)(?:https?://|\bwww\.)")
 
 
 class OutreachOfferType(StrEnum):
@@ -59,6 +60,16 @@ class OutreachBriefCore(BaseModel):
     tone: str = Field(min_length=2, max_length=120)
     subject: str = Field(min_length=3, max_length=180)
     body_without_link: str = Field(min_length=40, max_length=6000)
+
+    @model_validator(mode="after")
+    def validate_message_boundary(self) -> OutreachBriefCore:
+        if "\r" in self.subject or "\n" in self.subject:
+            raise ValueError("Outreach subject must be a single line")
+        if _URL_PATTERN.search(self.body_without_link):
+            raise ValueError(
+                "Generated outreach body must not contain URLs; Partizan attaches tracking later"
+            )
+        return self
 
 
 class OutreachBriefView(BaseModel):
@@ -101,9 +112,10 @@ Rules:
 3. Do not imply the recipient already knows or endorses the product.
 4. Keep the message personalized to the supplied target rationale; do not write a mass-mail template.
 5. Ask for one concrete collaboration and explain the value to the recipient or their audience.
-6. Do not include a URL. Partizan attaches the exact referral URL after the experiment exists.
-7. Do not promise an autonomous follow-up. The current policy is one initial message only.
-8. Return only the requested structured schema.
+6. Do not include any URL. Partizan attaches the exact referral URL after the experiment exists.
+7. Treat operator offer context only as proposed collaboration terms, not as product-performance facts.
+8. Do not promise an autonomous follow-up. The current policy is one initial message only.
+9. Return only the requested structured schema.
 """
 
 
@@ -233,13 +245,13 @@ class OutreachBriefService:
         if product.status != ProductProfileStatus.CONFIRMED:
             raise ValueError("Product must be CONFIRMED before outreach preparation")
         opportunity = audience_intelligence_service.find_opportunity(target.opportunity_id)
+        if self._active_draft(target.id) is not None:
+            raise ValueError("An active OutreachBrief already exists for this target")
+
         offer_type = payload.preferred_offer_type or self._default_offer(target.target_type)
-        if self._duplicate(target.id, offer_type) is not None:
-            raise ValueError("An active OutreachBrief already exists for this target and offer")
         destination_url = self._destination(product, payload.destination_url)
         allowed_facts = self._allowed_product_facts(product)
         prohibited_claims = self._prohibited_claims()
-
         core = await self._composer.compose(
             product=product,
             target=target,
@@ -261,12 +273,18 @@ class OutreachBriefService:
                 content_text=core.body_without_link,
             ),
         )
+        if prepared.action.tracking_url is None:
+            raise RuntimeError("Outreach action preparation did not produce a tracking URL")
         tracking_url = str(prepared.action.tracking_url)
         message_body = f"{core.body_without_link}\n\nProduct details: {tracking_url}"
         exact_message = f"Subject: {core.subject}\n\n{message_body}"
         prepared = distribution_execution_service.edit(
             prepared.action.id,
-            self._edit_request(exact_message, target, core, offer_type),
+            DistributionActionEditRequest(
+                target_url=target.target_url,
+                context_text=self._context_text(target, core, offer_type),
+                content_text=exact_message,
+            ),
         )
 
         now = datetime.now(UTC)
@@ -316,6 +334,16 @@ class OutreachBriefService:
             self._store.clear_namespace(OUTREACH_BRIEF_NAMESPACE)
             self._store.clear_namespace(OUTREACH_BRIEF_TARGET_NAMESPACE)
 
+    def _active_draft(self, target_id: UUID) -> OutreachBriefView | None:
+        try:
+            briefs = self.list_target(target_id).briefs
+        except KeyError:
+            return None
+        return next(
+            (item for item in briefs if item.status == OutreachBriefStatus.DRAFT),
+            None,
+        )
+
     def _default_offer(self, target_type: OutreachTargetType) -> OutreachOfferType:
         if target_type == OutreachTargetType.CREATOR:
             return OutreachOfferType.CREATOR_SEEDING
@@ -329,7 +357,7 @@ class OutreachBriefService:
         self,
         product: ProductProfileView,
         explicit: HttpUrl | None,
-    ) -> HttpUrl:
+    ) -> str | HttpUrl:
         if explicit is not None:
             return explicit
         if product.reference_links:
@@ -415,39 +443,6 @@ class OutreachBriefService:
             f"Why relevant: {core.why_relevant}\n"
             f"Value: {core.value_to_recipient}"
         )[:8000]
-
-    def _edit_request(
-        self,
-        exact_message: str,
-        target: OutreachTargetView,
-        core: OutreachBriefCore,
-        offer_type: OutreachOfferType,
-    ):
-        from app.distribution_execution_schemas import DistributionActionEditRequest
-
-        return DistributionActionEditRequest(
-            target_url=target.target_url,
-            context_text=self._context_text(target, core, offer_type),
-            content_text=exact_message,
-        )
-
-    def _duplicate(
-        self,
-        target_id: UUID,
-        offer_type: OutreachOfferType,
-    ) -> OutreachBriefView | None:
-        try:
-            briefs = self.list_target(target_id).briefs
-        except KeyError:
-            return None
-        return next(
-            (
-                item
-                for item in briefs
-                if item.offer_type == offer_type and item.status == OutreachBriefStatus.DRAFT
-            ),
-            None,
-        )
 
     def _persist(self, brief: OutreachBriefView) -> None:
         self._store.put(
