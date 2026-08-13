@@ -23,7 +23,6 @@ from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_service import distribution_play_service
 from app.distribution_types import DistributionActionStatus, DistributionActionType
 from app.execution_adapters import AdapterExecutionOutcome, DistributionAdapterExecuteRequest
-from app.paid_campaign import paid_campaign_spec_service
 from app.product_intake import product_intake_service
 
 
