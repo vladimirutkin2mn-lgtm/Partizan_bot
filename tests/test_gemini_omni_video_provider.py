@@ -1,11 +1,13 @@
 import base64
 from datetime import UTC, datetime
-from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
 from app.creative_assets import (
+    CreativeAssetSource,
+    CreativeAssetStatus,
+    CreativeAssetView,
     CreativeBriefView,
     CreativeMediaType,
     CreativePurpose,
@@ -79,7 +81,7 @@ class SequencedFinalizer:
                 ),
                 message="No source video yet.",
             )
-        provider_asset = SimpleNamespace(provider_asset_id="video_real_123")
+        asset = _provider_asset(self.brief)
         return CreativeProviderFinalizationView(
             action_id=action_id,
             outcome=CreativeProviderFinalizationOutcome.READY,
@@ -87,10 +89,10 @@ class SequencedFinalizer:
                 action_id=action_id,
                 brief=self.brief,
                 status=CreativeReadinessStatus.READY,
-                selected_asset=None,
+                selected_asset=asset,
                 reasons=["Provider-ready TikTok video."],
             ),
-            asset=provider_asset,
+            asset=asset,
             message="TikTok provider video ID persisted.",
         )
 
@@ -142,6 +144,30 @@ def _brief(
         ],
         fingerprint="b" * 64,
         created_at=datetime.now(UTC),
+    )
+
+
+def _provider_asset(brief: CreativeBriefView) -> CreativeAssetView:
+    now = datetime.now(UTC)
+    return CreativeAssetView(
+        id=uuid4(),
+        product_id=brief.product_id,
+        action_id=brief.action_id,
+        brief_id=brief.id,
+        brief_fingerprint=brief.fingerprint,
+        platform=brief.platform,
+        purpose=brief.purpose,
+        media_type=brief.media_type,
+        source=CreativeAssetSource.EXISTING_PROVIDER,
+        status=CreativeAssetStatus.READY,
+        public_url="https://growth.example.com/v1/public/creative-blobs/source",
+        provider_asset_id="video_real_123",
+        mime_type="video/mp4",
+        width=720,
+        height=1280,
+        provenance={"provider": "tiktok_marketing_api"},
+        created_at=now,
+        updated_at=now,
     )
 
 
@@ -237,9 +263,7 @@ def test_gemini_video_generator_persists_public_mp4_without_provider_id() -> Non
     assert str(result.public_url).startswith(
         "https://growth.example.com/v1/public/creative-blobs/"
     )
-    blob_id = uuid4()
-    actual_id = str(result.public_url).rsplit("/", 1)[-1]
-    blob_id = type(blob_id)(actual_id)
+    blob_id = UUID(str(result.public_url).rsplit("/", 1)[-1])
     view, data = store.get(blob_id)
     assert data == MP4_BYTES
     assert view.mime_type == "video/mp4"
