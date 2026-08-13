@@ -29,9 +29,9 @@ from app.tiktok_direct_post import (
     TikTokDirectPostService,
 )
 from app.tiktok_publish_authorization import (
+    TikTokPrivacyLevel,
     TikTokPublishAuthorizationStatus,
     TikTokPublishAuthorizationView,
-    TikTokPrivacyLevel,
 )
 
 
