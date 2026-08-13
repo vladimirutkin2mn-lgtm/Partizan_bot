@@ -28,15 +28,32 @@ class Settings(BaseSettings):
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None
-    smtp_password: str | None = None
+    smtp_password: SecretStr | None = None
     smtp_from_email: str | None = None
+    smtp_from_name: str | None = None
+    smtp_reply_to: str | None = None
     smtp_starttls: bool = True
 
-    @field_validator("operator_api_key", mode="before")
+    @field_validator("operator_api_key", "smtp_password", mode="before")
     @classmethod
-    def normalize_operator_api_key(cls, value: object) -> object:
+    def normalize_secret(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
             return None
+        return value
+
+    @field_validator(
+        "smtp_host",
+        "smtp_username",
+        "smtp_from_email",
+        "smtp_from_name",
+        "smtp_reply_to",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_text(cls, value: object) -> object:
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
         return value
 
     @field_validator("creative_provider", mode="before")
