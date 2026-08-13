@@ -1,7 +1,9 @@
 from functools import lru_cache
+from threading import Lock
 from typing import Protocol
 
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.config import get_settings
 from app.db import get_sync_session_factory
@@ -15,6 +17,8 @@ class RuntimeStateStore(Protocol):
 
     def put(self, namespace: str, entity_key: str, payload: dict) -> None: ...
 
+    def put_if_absent(self, namespace: str, entity_key: str, payload: dict) -> bool: ...
+
     def delete(self, namespace: str, entity_key: str) -> None: ...
 
     def clear_namespace(self, namespace: str) -> None: ...
@@ -27,6 +31,7 @@ class MemoryRuntimeStateStore:
 
     def __init__(self) -> None:
         self._payloads: dict[tuple[str, str], dict] = {}
+        self._reservation_lock = Lock()
 
     def get(self, namespace: str, entity_key: str) -> dict | None:
         payload = self._payloads.get((namespace, entity_key))
@@ -34,6 +39,14 @@ class MemoryRuntimeStateStore:
 
     def put(self, namespace: str, entity_key: str, payload: dict) -> None:
         self._payloads[(namespace, entity_key)] = dict(payload)
+
+    def put_if_absent(self, namespace: str, entity_key: str, payload: dict) -> bool:
+        key = (namespace, entity_key)
+        with self._reservation_lock:
+            if key in self._payloads:
+                return False
+            self._payloads[key] = dict(payload)
+            return True
 
     def delete(self, namespace: str, entity_key: str) -> None:
         self._payloads.pop((namespace, entity_key), None)
@@ -82,6 +95,17 @@ class DatabaseRuntimeStateStore:
                 )
             else:
                 row.payload = payload
+
+    def put_if_absent(self, namespace: str, entity_key: str, payload: dict) -> bool:
+        session_factory = get_sync_session_factory()
+        statement = (
+            pg_insert(RuntimeSnapshot)
+            .values(namespace=namespace, entity_key=entity_key, payload=payload)
+            .on_conflict_do_nothing(index_elements=["namespace", "entity_key"])
+        )
+        with session_factory.begin() as session:
+            result = session.execute(statement)
+            return result.rowcount == 1
 
     def delete(self, namespace: str, entity_key: str) -> None:
         session_factory = get_sync_session_factory()
