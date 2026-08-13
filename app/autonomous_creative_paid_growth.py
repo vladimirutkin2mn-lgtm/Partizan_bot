@@ -137,8 +137,9 @@ class AutonomousCreativePaidGrowthSweepService(AutonomousPaidGrowthSweepService)
         plan: DistributionExecutionPlanView,
         precheck_decision: AutonomyDecision | None,
     ) -> list[AutonomousGrowthDecisionView]:
-        spec = self._spec_service.get(plan.action.id)
-        if spec is None:
+        try:
+            spec = self._spec_service.ensure(plan.action.id)
+        except (KeyError, RuntimeError, ValueError) as exc:
             if plan.action.status in {
                 DistributionActionStatus.PREPARED,
                 DistributionActionStatus.APPROVED,
@@ -155,7 +156,7 @@ class AutonomousCreativePaidGrowthSweepService(AutonomousPaidGrowthSweepService)
                     action_type=play.action_type.value,
                     evaluation_decision=precheck_decision,
                     outcome=AutonomousGrowthOutcome.ERROR,
-                    reasons=["PaidCampaignSpec is required before creative preflight"],
+                    reasons=[f"PaidCampaignSpec could not be created: {str(exc)[:900]}"],
                 )
             ]
         exact_budget = round(spec.budget_cap, 2)
