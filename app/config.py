@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     search_provider: str = "mock"
     search_model: str = "gpt-5.6-terra"
     openai_api_key: str | None = None
+    creative_generator_provider: str = "unavailable"
+    creative_image_model: str = "gpt-image-2"
+    creative_image_quality: str = "medium"
+    creative_image_size: str = "1024x1536"
     execution_provider: str = "mock"
     operator_auth_required: bool = False
     operator_api_key: SecretStr | None = None
@@ -48,6 +52,32 @@ class Settings(BaseSettings):
             raise ValueError("PARTIZAN_PUBLIC_BASE_URL must be an absolute http(s) origin")
         if parts.path not in {"", "/"} or parts.query or parts.fragment:
             raise ValueError("PARTIZAN_PUBLIC_BASE_URL must not contain a path, query or fragment")
+        return normalized
+
+    @field_validator("creative_generator_provider")
+    @classmethod
+    def validate_creative_generator_provider(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"unavailable", "openai"}:
+            raise ValueError("CREATIVE_GENERATOR_PROVIDER must be unavailable or openai")
+        return normalized
+
+    @field_validator("creative_image_quality")
+    @classmethod
+    def validate_creative_image_quality(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"low", "medium", "high"}:
+            raise ValueError("CREATIVE_IMAGE_QUALITY must be low, medium or high")
+        return normalized
+
+    @field_validator("creative_image_size")
+    @classmethod
+    def validate_creative_image_size(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"1024x1024", "1024x1536", "1536x1024"}:
+            raise ValueError(
+                "CREATIVE_IMAGE_SIZE must be 1024x1024, 1024x1536 or 1536x1024"
+            )
         return normalized
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
