@@ -193,6 +193,7 @@
         metaRow("Источник", selected.source),
         metaRow("Размер", dimensions(selected)),
         metaRow("Модель", selected.provenance && selected.provenance.model ? selected.provenance.model : "—"),
+        metaRow("Provider asset", selected.provider_asset_id || "—"),
         metaRow("Обновлён", formatDate(selected.updated_at)),
       );
       card.append(meta);
