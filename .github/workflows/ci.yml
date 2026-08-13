@@ -47,6 +47,7 @@ jobs:
           node --check app/web/integration.v1.js
           node --check app/web/autonomy.v1.js
           node --check app/web/creative.v1.js
+          node --check app/web/publishing.v1.js
       - name: Migrate database
         run: alembic upgrade head
       - name: Test

@@ -10,6 +10,8 @@
   const AUTONOMY_SCRIPT_ID = "partizan-autonomy-script";
   const CREATIVE_STYLE_ID = "partizan-creative-style";
   const CREATIVE_SCRIPT_ID = "partizan-creative-script";
+  const PUBLISHING_STYLE_ID = "partizan-publishing-style";
+  const PUBLISHING_SCRIPT_ID = "partizan-publishing-script";
 
   function loadExecutionV1() {
     const script = document.createElement("script");
@@ -17,6 +19,23 @@
     script.async = false;
     script.addEventListener("load", reopenAfterPaidActivation);
     document.head.append(script);
+  }
+
+  function loadPublishingAssets() {
+    if (!document.getElementById(PUBLISHING_STYLE_ID)) {
+      const style = document.createElement("link");
+      style.id = PUBLISHING_STYLE_ID;
+      style.rel = "stylesheet";
+      style.href = "/app/assets/publishing.v1.css";
+      document.head.append(style);
+    }
+    if (!document.getElementById(PUBLISHING_SCRIPT_ID)) {
+      const script = document.createElement("script");
+      script.id = PUBLISHING_SCRIPT_ID;
+      script.src = "/app/assets/publishing.v1.js";
+      script.async = false;
+      document.head.append(script);
+    }
   }
 
   function loadCreativeAssets() {
@@ -32,7 +51,10 @@
       script.id = CREATIVE_SCRIPT_ID;
       script.src = "/app/assets/creative.v1.js";
       script.async = false;
+      script.addEventListener("load", loadPublishingAssets);
       document.head.append(script);
+    } else {
+      loadPublishingAssets();
     }
   }
 
