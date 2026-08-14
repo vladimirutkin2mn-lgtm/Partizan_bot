@@ -24,6 +24,8 @@ _ASSETS = {
     "creative.v1.js": "text/javascript; charset=utf-8",
     "publishing.v1.css": "text/css; charset=utf-8",
     "publishing.v1.js": "text/javascript; charset=utf-8",
+    "outreach.v1.css": "text/css; charset=utf-8",
+    "outreach.v1.js": "text/javascript; charset=utf-8",
 }
 
 router = APIRouter(tags=["web"])
