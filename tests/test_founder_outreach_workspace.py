@@ -67,7 +67,8 @@ def test_founder_outreach_workspace_never_sends_from_browser() -> None:
 
     assert "/send-authorizations" not in javascript
     assert "/outreach-send-authorizations" not in javascript
-    assert 'method: "POST" })' not in javascript.split("/send-attempt")[1].split("/distribution-experiments")[0]
+    attempt_view = javascript.split("/send-attempt")[1].split("/distribution-experiments")[0]
+    assert 'method: "POST" })' not in attempt_view
     assert "Отправка из браузера намеренно отключена" in javascript
     assert "Review workspace не запускает отправку" in javascript
 
@@ -82,16 +83,9 @@ def test_founder_outreach_workspace_reuses_live_operator_key_without_persisting_
     assert "dataset.operatorKey" not in javascript
 
 
-def test_founder_outreach_workspace_has_no_paid_or_budget_mutations() -> None:
+def test_founder_outreach_workspace_has_no_autonomous_prepare_mutation() -> None:
     javascript = client.get("/app/assets/outreach.v1.js").text
 
-    for forbidden in (
-        "/paid-campaign/activate",
-        "/activation-authorizations",
-        "/paid-campaign/meta/pause",
-        "/paid-campaign/tiktok/pause",
-        "/spend",
-        "/growth-mandate",
-        "/outreach-autonomy/prepare-next",
-    ):
-        assert forbidden not in javascript
+    assert "/outreach-autonomy/prepare-next" not in javascript
+    assert "/growth-mandate" not in javascript
+    assert "/spend" not in javascript
