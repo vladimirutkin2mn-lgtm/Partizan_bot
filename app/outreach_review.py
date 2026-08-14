@@ -27,7 +27,7 @@ class OutreachBriefEditRequest(BaseModel):
     message_body_without_link: str = Field(min_length=40, max_length=6000)
 
     @model_validator(mode="after")
-    def validate_message(self) -> "OutreachBriefEditRequest":
+    def validate_message(self) -> OutreachBriefEditRequest:
         if "\r" in self.message_subject or "\n" in self.message_subject:
             raise ValueError("Outreach subject must be a single line")
         if _URL_PATTERN.search(self.message_body_without_link):
