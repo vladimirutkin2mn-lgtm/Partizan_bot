@@ -14,6 +14,8 @@
   const PUBLISHING_SCRIPT_ID = "partizan-publishing-script";
   const OUTREACH_STYLE_ID = "partizan-outreach-style";
   const OUTREACH_SCRIPT_ID = "partizan-outreach-script";
+  const OUTREACH_AUTOSEND_STYLE_ID = "partizan-outreach-autosend-style";
+  const OUTREACH_AUTOSEND_SCRIPT_ID = "partizan-outreach-autosend-script";
 
   function loadExecutionV1() {
     const script = document.createElement("script");
@@ -21,6 +23,23 @@
     script.async = false;
     script.addEventListener("load", reopenAfterPaidActivation);
     document.head.append(script);
+  }
+
+  function loadOutreachAutosendAssets() {
+    if (!document.getElementById(OUTREACH_AUTOSEND_STYLE_ID)) {
+      const style = document.createElement("link");
+      style.id = OUTREACH_AUTOSEND_STYLE_ID;
+      style.rel = "stylesheet";
+      style.href = "/app/assets/outreach-autosend.v1.css";
+      document.head.append(style);
+    }
+    if (!document.getElementById(OUTREACH_AUTOSEND_SCRIPT_ID)) {
+      const script = document.createElement("script");
+      script.id = OUTREACH_AUTOSEND_SCRIPT_ID;
+      script.src = "/app/assets/outreach-autosend.v1.js";
+      script.async = false;
+      document.head.append(script);
+    }
   }
 
   function loadOutreachAssets() {
@@ -36,7 +55,10 @@
       script.id = OUTREACH_SCRIPT_ID;
       script.src = "/app/assets/outreach.v1.js";
       script.async = false;
+      script.addEventListener("load", loadOutreachAutosendAssets);
       document.head.append(script);
+    } else {
+      loadOutreachAutosendAssets();
     }
   }
 
