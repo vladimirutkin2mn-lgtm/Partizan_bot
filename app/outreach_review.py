@@ -42,7 +42,7 @@ class OutreachBriefReviewService:
         self._store = store or get_runtime_store()
 
     def edit(self, brief_id: UUID, payload: OutreachBriefEditRequest) -> OutreachBriefView:
-        brief = self._editable_brief(brief_id)
+        brief = self._reviewable_brief(brief_id, require_executable_target=True)
         subject = payload.message_subject.strip()
         body_without_link = payload.message_body_without_link.strip()
         message_body = f"{body_without_link}\n\nProduct details: {brief.tracking_url}"
@@ -63,7 +63,7 @@ class OutreachBriefReviewService:
         return updated
 
     def reject(self, brief_id: UUID) -> OutreachBriefView:
-        brief = self._editable_brief(brief_id)
+        brief = self._reviewable_brief(brief_id, require_executable_target=False)
         distribution_execution_service.skip(brief.action_id)
         updated = brief.model_copy(
             update={
@@ -74,11 +74,17 @@ class OutreachBriefReviewService:
         self._persist(updated)
         return updated
 
-    def _editable_brief(self, brief_id: UUID) -> OutreachBriefView:
+    def _reviewable_brief(
+        self,
+        brief_id: UUID,
+        *,
+        require_executable_target: bool,
+    ) -> OutreachBriefView:
         brief = outreach_brief_service.get(brief_id)
         if brief.status != OutreachBriefStatus.DRAFT:
             raise ValueError("Only DRAFT OutreachBrief objects can be reviewed")
-        outreach_target_service.require_executable(brief.outreach_target_id)
+        if require_executable_target:
+            outreach_target_service.require_executable(brief.outreach_target_id)
         if outreach_sender_service.get_attempt(brief.id) is not None:
             raise ValueError("Outreach draft cannot change after an SMTP send attempt exists")
         action = distribution_execution_service.get_action(brief.action_id)
