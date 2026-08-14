@@ -14,6 +14,7 @@ from app.distribution_schemas import AudienceDistributionMapView
 from app.icp_service import icp_service
 from app.meta_paid_control_routes import router as meta_paid_control_router
 from app.opportunity_enrichment_routes import router as enrichment_router
+from app.outreach_autosend_routes import router as outreach_autosend_router
 from app.outreach_brief_routes import router as outreach_brief_router
 from app.outreach_policy_routes import router as outreach_policy_router
 from app.outreach_review_routes import router as outreach_review_router
@@ -39,6 +40,7 @@ router.include_router(outreach_brief_router)
 router.include_router(outreach_review_router)
 router.include_router(outreach_sender_router)
 router.include_router(outreach_policy_router)
+router.include_router(outreach_autosend_router)
 router.include_router(paid_provider_router)
 router.include_router(paid_activation_router)
 router.include_router(meta_paid_control_router)
