@@ -23,6 +23,7 @@ from app.outreach_autosend import (
     outreach_autonomous_send_service,
 )
 from app.outreach_autosend_lifecycle import outreach_autosend_lifecycle_service
+from app.outreach_learning import OutreachLearningFeedService, outreach_learning_feed_service
 from app.outreach_policy import (
     OutreachAutonomousPreparationService,
     outreach_autonomous_preparation_service,
@@ -36,6 +37,7 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
         control_service: AutonomousGrowthControlService | None = None,
         outreach_preparation_service: OutreachAutonomousPreparationService | None = None,
         outreach_send_service: OutreachAutonomousSendService | None = None,
+        outreach_learning_service: OutreachLearningFeedService | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -44,6 +46,7 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
             outreach_preparation_service or outreach_autonomous_preparation_service
         )
         self._outreach_send_service = outreach_send_service or outreach_autonomous_send_service
+        self._outreach_learning_service = outreach_learning_service or outreach_learning_feed_service
 
     async def _run_product(
         self,
@@ -53,7 +56,7 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
         self._control_service.evaluate_running(mandate)
 
         try:
-            auto_send = await self._outreach_send_service.run_next(mandate.product_id)
+            learning = self._outreach_learning_service.feed(mandate.product_id)
         except (KeyError, RuntimeError, ValueError) as exc:
             return [
                 self._record(
@@ -63,9 +66,34 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
                     evaluation_decision=AutonomyDecision.BLOCK,
                     outcome=AutonomousGrowthOutcome.BLOCKED,
                     reasons=[
-                        "Outreach auto-send failed closed before a confirmed external mutation: "
+                        "Outreach learning failed closed before another autonomous action: "
                         f"{str(exc)[:900]}"
                     ],
+                )
+            ]
+        learning_note = (
+            f"Growth Manager learned from {len(learning.evaluated)} updated outreach experiment(s)."
+            if learning.evaluated
+            else None
+        )
+
+        try:
+            auto_send = await self._outreach_send_service.run_next(mandate.product_id)
+        except (KeyError, RuntimeError, ValueError) as exc:
+            reasons = [
+                "Outreach auto-send failed closed before a confirmed external mutation: "
+                f"{str(exc)[:900]}"
+            ]
+            if learning_note:
+                reasons.append(learning_note)
+            return [
+                self._record(
+                    run_id=run_id,
+                    mandate=mandate,
+                    action_type="OUTREACH_EMAIL",
+                    evaluation_decision=AutonomyDecision.BLOCK,
+                    outcome=AutonomousGrowthOutcome.BLOCKED,
+                    reasons=reasons,
                 )
             ]
         if auto_send is not None:
@@ -83,6 +111,9 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
             else:
                 evaluation = AutonomyDecision.BLOCK
                 outcome = AutonomousGrowthOutcome.BLOCKED
+            reasons = list(auto_send.reasons)
+            if learning_note:
+                reasons.append(learning_note)
             return [
                 self._record(
                     run_id=run_id,
@@ -94,12 +125,15 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
                     action_type="OUTREACH_EMAIL",
                     evaluation_decision=evaluation,
                     outcome=outcome,
-                    reasons=auto_send.reasons,
+                    reasons=reasons,
                 )
             ]
 
         outreach = await self._outreach_preparation_service.prepare_next(mandate.product_id)
         if outreach is not None and outreach.prepared:
+            reasons = list(outreach.reasons)
+            if learning_note:
+                reasons.append(learning_note)
             return [
                 self._record(
                     run_id=run_id,
@@ -111,7 +145,7 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
                     action_type="OUTREACH_EMAIL",
                     evaluation_decision=AutonomyDecision.REQUIRE_APPROVAL,
                     outcome=AutonomousGrowthOutcome.WAITING_APPROVAL,
-                    reasons=outreach.reasons,
+                    reasons=reasons,
                 )
             ]
         return await super()._run_product(run_id, mandate)
