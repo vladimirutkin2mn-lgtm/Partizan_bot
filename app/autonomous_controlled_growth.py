@@ -52,7 +52,22 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
     ) -> list[AutonomousGrowthDecisionView]:
         self._control_service.evaluate_running(mandate)
 
-        auto_send = await self._outreach_send_service.run_next(mandate.product_id)
+        try:
+            auto_send = await self._outreach_send_service.run_next(mandate.product_id)
+        except (KeyError, RuntimeError, ValueError) as exc:
+            return [
+                self._record(
+                    run_id=run_id,
+                    mandate=mandate,
+                    action_type="OUTREACH_EMAIL",
+                    evaluation_decision=AutonomyDecision.BLOCK,
+                    outcome=AutonomousGrowthOutcome.BLOCKED,
+                    reasons=[
+                        "Outreach auto-send failed closed before a confirmed external mutation: "
+                        f"{str(exc)[:900]}"
+                    ],
+                )
+            ]
         if auto_send is not None:
             if (
                 auto_send.outcome == OutreachAutonomousSendOutcome.REJECTED
