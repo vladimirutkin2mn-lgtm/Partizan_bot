@@ -24,7 +24,7 @@ Product brief
   -> concrete distribution opportunities
   -> platform-aware Distribution Plays
   -> DistributionAction + Experiment
-  -> permissioned execution adapters
+  -> permissioned / bounded execution
   -> VISIT / SIGNUP / ACTIVATED / PAID attribution
   -> spend / CAC / ROAS
   -> SCALE / CONTINUE / MODIFY / STOP
@@ -42,33 +42,53 @@ Current production-oriented capabilities include:
 - first-click referral tracking plus server-to-server conversion ingestion;
 - Results & Learning workspace with experiment economics and Growth Manager decisions;
 - creative generation/finalization flows and permissioned TikTok owned publishing;
-- evidence-backed creator/partner OutreachTarget, suppression, personalized OutreachBrief, owned SMTP readiness, explicit one-message authorization and restart-safe send ledger;
-- bounded Outreach Policy with autonomous target/draft preparation that stops at approval when no narrower execution delegation exists.
+- evidence-backed creator/partner OutreachTarget with contact provenance and suppression;
+- truthful personalized OutreachBrief + offer + exact referral attribution;
+- owned SMTP sender readiness and restart-safe one-message send ledger;
+- bounded Outreach Policy with autonomous target/draft preparation;
+- explicit, revocable autonomous outreach-send delegation pinned to exact policy, Growth Mandate and sender versions;
+- hard autonomous outreach limits: at most 5 initial messages/day, at most 1/contact-domain/day, target/domain cooldowns, zero autonomous follow-up;
+- ambiguous SMTP outcomes become `RECONCILIATION_REQUIRED` and block further autonomous outreach rather than being retried blindly;
+- Founder Outreach workspace showing evidence, ICP overlap, offer/message, sender/policy, delivery/reconciliation and attributed conversions;
+- separate Autonomous Outreach workspace for explicit delegate/pause/resume/revoke controls; the browser cannot trigger SMTP sending;
+- outreach conversion changes feed the existing Growth Manager and learning memory before another autonomous outreach action is attempted.
 
-## Current active milestone — #109
+## Milestone 12 — Autonomous Creator & Partner Outreach (#109) — completed
 
-**Milestone 12 — Autonomous Creator & Partner Outreach** is the current implementation focus.
+Issue #109 is closed as completed. The full implemented loop is now:
 
-Already in `main`:
+```text
+ChannelOpportunity / ActionTarget
+  -> evidence-backed OutreachTarget
+  -> personalized OutreachBrief + Offer
+  -> exact message draft
+  -> policy / suppression / sender checks
+  -> explicit bounded execution delegation
+  -> restart-safe owned SMTP send
+  -> referral / conversion attribution
+  -> Growth Manager decision
+  -> learning memory
+  -> next portfolio / next bounded action
+```
 
-1. evidence-backed OutreachTarget and suppression;
-2. truthful personalized OutreachBrief + offer + referral tracking;
-3. owned SMTP sender readiness and restart-safe one-message execution;
-4. bounded Outreach Policy and autonomous preparation.
+Safety invariants remain intentionally strict:
 
-Still required to close #109:
+- no guessed or synthesized email addresses;
+- no private/personal contact scraping;
+- no purchased/breached contact lists;
+- no mass unsolicited-email engine;
+- no autonomous follow-up in the current MVP;
+- no sender/domain rotation to evade reputation controls;
+- no blind resend after an ambiguous provider outcome;
+- exact target / offer / message / experiment attribution is preserved;
+- SMTP credentials remain deployment-secret-only;
+- changes to Outreach Policy, Growth Mandate or sender identity invalidate the autonomous-send delegation until it is explicitly reissued.
 
-1. Founder Outreach workspace in `/app` showing target evidence, ICP overlap, offer/message, sender/policy state, delivery/reconciliation state and conversions;
-2. explicit milestone sign-off for the already implemented analytics -> Growth Manager -> learning integration;
-3. any autonomous execution extension must remain separately delegated, low-volume, zero-follow-up and fail closed on ambiguous provider outcomes.
+The milestone was completed through the merged Founder Outreach workspace, bounded autonomous-send execution and final outreach-learning/delegation UI slices. Validation-only issue #115 is also closed.
 
-PR #114 contains a draft implementation of the narrowly delegated bounded autonomous send slice. It is intentionally not part of `main` until that execution boundary is approved for merge.
+## Current active milestone — real-product dogfood (#10)
 
-The current test suite already covers executed experiment attribution, CAC/ROAS, Growth Manager decisions, learning memory, next-portfolio changes, first-click redirect VISIT tracking, and the one-message outreach send transition to `RUNNING`. Issue #115 remains the bookkeeping item for explicit validation closure rather than a missing analytics capability.
-
-## Real-product dogfood — #10
-
-**Milestone 8 — Dogfood on a real product** remains open by design. Code readiness is not enough to close it.
+**Milestone 8 — Dogfood on a real product** is now the next active proof. Code readiness is not enough to close it.
 
 Chosen product: `Bot_globa / Oracle`.
 
@@ -78,7 +98,7 @@ Business assumptions for the first acquisition loop:
 - initial acquisition budget: `$1,000`;
 - target max CAC: `$12` per paid subscriber;
 - initial audience: English-speaking adults roughly 20–40 interested in astrology, relationships and self-reflection;
-- initial distribution scope: Telegram / Instagram / Reddit / TikTok.
+- initial distribution scope: Telegram / Instagram / Reddit / TikTok plus bounded creator/partner outreach where policy permits.
 
 ### Oracle runtime status
 
@@ -94,7 +114,7 @@ That production job proved:
 - container-internal `/health/live` and `/health/ready` return HTTP 200;
 - deployment verification passes for API health, Telegram webhook configuration/authentication/backlog and configured payment routes.
 
-Therefore **“deploy the Oracle backend” is no longer the current dogfood blocker**. Normal Bot_globa releases can already deploy automatically from `main`; a local VS Code/SSH session is not required for that normal release path.
+Therefore **deploying the Oracle backend is not the current dogfood blocker**. Normal Bot_globa releases can deploy automatically from `main`; a local VS Code/SSH session is not required for the normal release path.
 
 What is still unproven is the public acquisition path and paid-release readiness:
 
@@ -104,7 +124,9 @@ What is still unproven is the public acquisition path and paid-release readiness
 4. `Bot_globa#41` — execute the five real provider/model staging gates for the exact candidate release;
 5. keep Oracle acquisition rollout at zero until routing and release-readiness are intentionally cleared.
 
-A billing-disabled acquisition run cannot finish Partizan #10 because the milestone requires a real `PAID` conversion and calculable CAC. The intended sequence is:
+A billing-disabled acquisition run cannot finish Partizan #10 because the milestone requires a real `PAID` conversion and calculable CAC.
+
+The intended sequence is:
 
 ```text
 public route / deployment preflight
@@ -129,12 +151,11 @@ The remaining Partizan dogfood proof is therefore real-world:
 
 ## Next order of work
 
-1. finish the safe Founder Outreach visibility/review surface for #109;
-2. review the bounded autonomous-send draft separately from the already merged preparation path;
-3. clear Bot_globa public-route preflight (#58/#73);
-4. build isolated staging and complete the five live release gates (#74/#41);
-5. begin the limited Oracle rollout and run the first real Partizan acquisition experiment;
-6. use dogfood evidence, not architecture speculation, to choose the next execution integrations.
+1. clear Bot_globa public-route/preflight blockers (#58/#73);
+2. build isolated staging and complete the five live release gates (#74/#41);
+3. begin the limited Oracle rollout;
+4. run the first real Partizan acquisition experiment and collect a real `PAID` conversion;
+5. use dogfood evidence, not architecture speculation, to choose the next execution integrations.
 
 ## Product principle
 
