@@ -1,0 +1,127 @@
+.outreach-autosend-panel {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.outreach-autosend-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.outreach-autosend-head h3 {
+  margin: 4px 0 6px;
+}
+
+.outreach-autosend-head p,
+.outreach-autosend-muted,
+.outreach-autosend-help,
+.outreach-autosend-card small {
+  color: var(--muted, #64748b);
+}
+
+.outreach-autosend-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.outreach-autosend-card,
+.outreach-autosend-blockers,
+.outreach-autosend-form,
+.outreach-autosend-alert {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 14px;
+  background: rgba(148, 163, 184, 0.06);
+  padding: 14px;
+}
+
+.outreach-autosend-card {
+  display: grid;
+  gap: 5px;
+}
+
+.outreach-autosend-label {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #64748b);
+}
+
+.outreach-autosend-ok {
+  color: #16a34a;
+}
+
+.outreach-autosend-warn {
+  color: #b45309;
+}
+
+.outreach-autosend-blockers,
+.outreach-autosend-actions,
+.outreach-autosend-form,
+.outreach-autosend-alert {
+  grid-column: 1 / -1;
+}
+
+.outreach-autosend-blockers ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.outreach-autosend-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.outreach-autosend-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.outreach-autosend-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  line-height: 1.45;
+}
+
+.outreach-autosend-check input {
+  margin-top: 3px;
+}
+
+.outreach-autosend-help {
+  margin: 0;
+  font-size: 12px;
+}
+
+.outreach-autosend-alert {
+  margin-bottom: 14px;
+}
+
+.outreach-autosend-alert.success {
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.outreach-autosend-alert.error {
+  border-color: rgba(239, 68, 68, 0.38);
+}
+
+@media (max-width: 900px) {
+  .outreach-autosend-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .outreach-autosend-head {
+    flex-direction: column;
+  }
+}
