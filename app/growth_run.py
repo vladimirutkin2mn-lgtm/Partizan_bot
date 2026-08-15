@@ -471,7 +471,8 @@ def run(args: argparse.Namespace) -> GrowthRunReport:
         )
     if args.execute and not operator_key:
         report.notes.append(
-            "No PARTIZAN_OPERATOR_KEY/OPERATOR_API_KEY was supplied; local/dev may allow this, production will not."
+            "No PARTIZAN_OPERATOR_KEY/OPERATOR_API_KEY was supplied; "
+            "local/dev may allow this, production will not."
         )
     return report
 
