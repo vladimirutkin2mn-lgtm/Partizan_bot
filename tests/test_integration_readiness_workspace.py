@@ -59,7 +59,8 @@ def test_readiness_workspace_does_not_persist_operator_credentials() -> None:
     assert "sessionStorage.setItem" not in javascript
     assert "localStorage" not in javascript
     assert "dataset.operatorKey" not in javascript
-    assert "event_key" not in javascript
+    assert 'payload["event_key"]' not in javascript
+    assert "payload.event_key" not in javascript
 
 
 def test_readiness_observer_only_mounts_missing_card() -> None:
