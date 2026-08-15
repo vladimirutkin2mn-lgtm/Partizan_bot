@@ -7,7 +7,7 @@ from app.config import Settings, get_settings
 from app.main import app
 from app.operator_auth import (
     OPERATOR_KEY_HEADER,
-    PUBLIC_MUTATION_ROUTE_TEMPLATES,
+    PUBLIC_API_ROUTE_TEMPLATES,
     require_control_plane_operator,
 )
 
@@ -33,9 +33,10 @@ def test_global_control_plane_guard_is_installed() -> None:
     dependency_calls = {dependency.dependency for dependency in app.router.dependencies}
 
     assert require_control_plane_operator in dependency_calls
-    assert PUBLIC_MUTATION_ROUTE_TEMPLATES == {
+    assert PUBLIC_API_ROUTE_TEMPLATES == {
         ("POST", "/v1/products/{product_id}/distribution-events"),
         ("POST", "/v1/products/{product_id}/distribution-events/verify"),
+        ("GET", "/v1/public/creative-blobs/{blob_id}"),
     }
 
 
@@ -53,6 +54,13 @@ def test_local_default_keeps_legacy_mutation_compatible() -> None:
     response = client.post("/v1/products", json={"brief": "A small test product"})
 
     assert response.status_code == 201
+
+
+def test_health_and_browser_surface_remain_public_in_production() -> None:
+    _override(_settings(app_env="production", operator_api_key="correct-secret"))
+
+    assert client.get("/health/ready").status_code == 200
+    assert client.get("/app").status_code == 200
 
 
 def test_production_without_configured_operator_key_fails_closed() -> None:
@@ -137,9 +145,15 @@ def test_global_guard_blocks_legacy_provider_execution_before_lookup() -> None:
         ("POST", f"/v1/distribution-experiments/{uuid4()}/growth-decision", None),
         ("POST", f"/v1/distribution-experiments/{uuid4()}/finish", None),
         ("PATCH", f"/v1/execution-packages/{uuid4()}", {"subject": "x", "body": "y"}),
+        ("GET", f"/v1/distribution-actions/{uuid4()}", None),
+        ("GET", f"/v1/products/{uuid4()}/distribution-analytics", None),
     ],
 )
-def test_global_guard_blocks_control_plane_mutations(method: str, path: str, body) -> None:
+def test_global_guard_blocks_internal_control_plane_requests(
+    method: str,
+    path: str,
+    body,
+) -> None:
     _override(_settings(app_env="production", operator_api_key="correct-secret"))
 
     response = client.request(method, path, json=body)
@@ -170,6 +184,14 @@ def test_event_key_data_plane_remains_outside_operator_boundary() -> None:
     assert verify.json()["detail"] == "Distribution event authentication required"
 
 
+def test_public_creative_blob_route_bypasses_operator_boundary() -> None:
+    _override(_settings(app_env="production", operator_api_key="correct-secret"))
+
+    response = client.get(f"/v1/public/creative-blobs/{uuid4()}")
+
+    assert response.status_code == 404
+
+
 def test_generic_execute_is_protected_before_action_lookup() -> None:
     _override(_settings(app_env="production", operator_api_key="correct-secret"))
     action_id = uuid4()
@@ -185,9 +207,15 @@ def test_generic_execute_is_protected_before_action_lookup() -> None:
     assert allowed_to_lookup.status_code == 404
 
 
-def test_distribution_action_read_remains_outside_operator_boundary() -> None:
+def test_distribution_action_read_requires_operator_in_production() -> None:
     _override(_settings(app_env="production", operator_api_key="correct-secret"))
+    action_id = uuid4()
 
-    response = client.get(f"/v1/distribution-actions/{uuid4()}")
+    blocked = client.get(f"/v1/distribution-actions/{action_id}")
+    allowed_to_lookup = client.get(
+        f"/v1/distribution-actions/{action_id}",
+        headers={OPERATOR_KEY_HEADER: "correct-secret"},
+    )
 
-    assert response.status_code == 404
+    assert blocked.status_code == 401
+    assert allowed_to_lookup.status_code == 404

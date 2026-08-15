@@ -1,0 +1,44 @@
+.global-operator-access {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.global-operator-access input {
+  width: 112px;
+  min-width: 72px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.global-operator-access input::placeholder {
+  color: rgba(255, 255, 255, 0.34);
+}
+
+.global-operator-access:focus-within {
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+@media (max-width: 720px) {
+  .global-operator-access span {
+    display: none;
+  }
+
+  .global-operator-access input {
+    width: 76px;
+  }
+}

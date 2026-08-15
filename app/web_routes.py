@@ -1,14 +1,17 @@
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from app.tracking_routes import router as tracking_router
 
 _WEB_DIR = Path(__file__).resolve().parent / "web"
+_OPERATOR_AUTH_SCRIPT = '<script src="/app/assets/operator-auth.v1.js" defer></script>'
 _ASSETS = {
     "partizan.v1.css": "text/css; charset=utf-8",
     "partizan.v1.js": "text/javascript; charset=utf-8",
+    "operator-auth.v1.css": "text/css; charset=utf-8",
+    "operator-auth.v1.js": "text/javascript; charset=utf-8",
     "execution.v1.css": "text/css; charset=utf-8",
     "execution.v1.js": "text/javascript; charset=utf-8",
     "execution.v2.js": "text/javascript; charset=utf-8",
@@ -44,8 +47,13 @@ async def root() -> RedirectResponse:
 
 
 @router.get("/app", include_in_schema=False)
-async def workspace() -> FileResponse:
-    return FileResponse(_WEB_DIR / "index.v2.html", media_type="text/html; charset=utf-8")
+async def workspace() -> HTMLResponse:
+    html = (_WEB_DIR / "index.v2.html").read_text(encoding="utf-8")
+    marker = '<script src="/app/assets/partizan.v1.js" defer></script>'
+    if marker not in html:
+        raise HTTPException(status_code=500, detail="Workspace bootstrap marker missing")
+    html = html.replace(marker, f"{_OPERATOR_AUTH_SCRIPT}\n  {marker}", 1)
+    return HTMLResponse(html, media_type="text/html; charset=utf-8")
 
 
 @router.get("/app/assets/{asset_name}", include_in_schema=False)

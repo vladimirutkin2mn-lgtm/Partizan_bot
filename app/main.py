@@ -5,7 +5,7 @@ from sqlalchemy import text
 
 from app.analytics_routes import router as analytics_router
 from app.channel_service import channel_service
-from app.db import get_engine
+from app.db import get_sync_engine
 from app.distribution_play_routes import router as distribution_play_router
 from app.distribution_routes import router as distribution_router
 from app.execution_service import execution_service, find_growth_play
@@ -61,12 +61,12 @@ async def health() -> dict[str, str]:
 
 
 @app.get("/health/ready", tags=["system"])
-async def readiness() -> dict[str, str]:
+def readiness() -> dict[str, str]:
     """Return ready only when the production persistence dependency is reachable."""
 
     try:
-        async with get_engine().connect() as connection:
-            await connection.execute(text("SELECT 1"))
+        with get_sync_engine().connect() as connection:
+            connection.execute(text("SELECT 1"))
     except Exception as exc:
         raise HTTPException(status_code=503, detail="database unavailable") from exc
     return {"status": "ok", "database": "available"}
