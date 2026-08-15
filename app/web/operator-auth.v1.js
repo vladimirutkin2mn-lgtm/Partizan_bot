@@ -2,12 +2,15 @@
   "use strict";
 
   const OPERATOR_HEADER = "X-Partizan-Operator-Key";
-  const INPUT_ID = "global-operator-key";
+  const GLOBAL_INPUT_ID = "global-operator-key";
+  const EXECUTION_INPUT_ID = "operator-key";
   const nativeFetch = window.fetch.bind(window);
 
   function operatorKey() {
-    const input = document.getElementById(INPUT_ID);
-    return input ? input.value.trim() : "";
+    const globalInput = document.getElementById(GLOBAL_INPUT_ID);
+    const executionInput = document.getElementById(EXECUTION_INPUT_ID);
+    return (globalInput && globalInput.value.trim()) ||
+      (executionInput && executionInput.value.trim()) || "";
   }
 
   function isInternalApi(input) {
@@ -22,7 +25,7 @@
       new Headers(init.headers).forEach((value, name) => headers.set(name, value));
     }
     const key = operatorKey();
-    if (key && !headers.has(OPERATOR_HEADER)) headers.set(OPERATOR_HEADER, key);
+    if (key) headers.set(OPERATOR_HEADER, key);
     return headers;
   }
 
@@ -35,8 +38,17 @@
     return nativeFetch(input, { ...init, headers });
   };
 
+  function syncInputs(source, target) {
+    if (!source || !target) return;
+    source.addEventListener("input", () => {
+      if (target.value === source.value) return;
+      target.value = source.value;
+      target.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
   function mountOperatorAccess() {
-    if (document.getElementById(INPUT_ID)) return;
+    if (document.getElementById(GLOBAL_INPUT_ID)) return;
     const actions = document.querySelector(".topbar-actions");
     if (!actions) return;
 
@@ -52,7 +64,7 @@
     const label = document.createElement("span");
     label.textContent = "Operator";
     const input = document.createElement("input");
-    input.id = INPUT_ID;
+    input.id = GLOBAL_INPUT_ID;
     input.type = "password";
     input.autocomplete = "off";
     input.spellcheck = false;
@@ -61,6 +73,12 @@
 
     wrap.append(label, input);
     actions.prepend(wrap);
+
+    const executionInput = document.getElementById(EXECUTION_INPUT_ID);
+    if (executionInput) {
+      syncInputs(input, executionInput);
+      syncInputs(executionInput, input);
+    }
   }
 
   if (document.readyState === "loading") {
