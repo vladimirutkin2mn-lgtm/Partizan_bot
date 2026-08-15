@@ -4,28 +4,15 @@ This document is the current source of truth for implementation progress. `PRODU
 
 ## Repository boundary
 
-When Partizan work depends on another product or repository, that dependency is documented as an external blocker only. Partizan work must not modify another repository unless the product owner gives explicit permission for that specific external project/action.
+When Partizan work depends on another product or repository, that dependency is an external blocker only. Partizan must not modify, deploy or migrate another project unless the product owner gives explicit permission for that specific external project/action.
 
-Dogfood integrations therefore follow this rule:
+The intended integration model is self-service:
 
-1. Partizan exposes a documented integration contract;
-2. the external product owner connects the product or explicitly authorizes repository work;
-3. until that authorization exists, Partizan does not patch, deploy, migrate or otherwise mutate the external project.
+1. Partizan exposes tracking, conversion and execution contracts;
+2. the external product owner connects the product or explicitly authorizes external work;
+3. without that authorization Partizan stays inside `Partizan_bot`.
 
-## Completed foundation
-
-The original Milestones 0–7 are implemented and their GitHub issues are closed as completed:
-
-- Milestone 0 — Foundation (#2)
-- Milestone 1 — Product Brief & Clarification (#3)
-- Milestone 2 — ICP Engine (#4)
-- Milestone 3 — Channel Hunter (#5)
-- Milestone 4 — Growth Play Generator (#6)
-- Milestone 5 — Execution Assistant (#7)
-- Milestone 6 — Analytics Loop (#8)
-- Milestone 7 — Growth Manager (#9)
-
-The current `main` loop is:
+## Core growth loop in `main`
 
 ```text
 Product brief
@@ -38,116 +25,120 @@ Product brief
   -> VISIT / SIGNUP / ACTIVATED / PAID attribution
   -> spend / CAC / ROAS
   -> SCALE / CONTINUE / MODIFY / STOP
-  -> learning memory + next portfolio
-```
-
-## Execution capabilities already in `main`
-
-Current production-oriented capabilities include:
-
-- Telegram permissioned execution for explicitly configured and allowlisted owned targets;
-- Meta Ads staged creation, exact-budget activation authorization, activation, provider sync, hard stop and reconciliation;
-- TikTok Ads staged creation, exact-budget activation authorization, activation, provider sync, hard stop and reconciliation;
-- paid-control worker that may sync/pause/reconcile but cannot create new spend authorization, increase budgets or restart paused spend;
-- first-click referral tracking plus server-to-server conversion ingestion;
-- Results & Learning workspace with experiment economics and Growth Manager decisions;
-- creative generation/finalization flows and permissioned TikTok owned publishing;
-- evidence-backed creator/partner OutreachTarget with contact provenance and suppression;
-- truthful personalized OutreachBrief + offer + exact referral attribution;
-- owned SMTP sender readiness and restart-safe one-message send ledger;
-- bounded Outreach Policy with autonomous target/draft preparation;
-- explicit, revocable autonomous outreach-send delegation pinned to exact policy, Growth Mandate and sender versions;
-- hard autonomous outreach limits: at most 5 initial messages/day, at most 1/contact-domain/day, target/domain cooldowns, zero autonomous follow-up;
-- ambiguous SMTP outcomes become `RECONCILIATION_REQUIRED` and block further autonomous outreach rather than being retried blindly;
-- Founder Outreach workspace showing evidence, ICP overlap, offer/message, sender/policy, delivery/reconciliation and attributed conversions;
-- separate Autonomous Outreach workspace for explicit delegate/pause/resume/revoke controls; the browser cannot trigger SMTP sending;
-- outreach conversion changes feed the existing Growth Manager and learning memory before another autonomous outreach action is attempted.
-
-## Milestone 12 — Autonomous Creator & Partner Outreach (#109) — completed
-
-Issue #109 is closed as completed. The full implemented loop is now:
-
-```text
-ChannelOpportunity / ActionTarget
-  -> evidence-backed OutreachTarget
-  -> personalized OutreachBrief + Offer
-  -> exact message draft
-  -> policy / suppression / sender checks
-  -> explicit bounded execution delegation
-  -> restart-safe owned SMTP send
-  -> referral / conversion attribution
-  -> Growth Manager decision
   -> learning memory
   -> next portfolio / next bounded action
 ```
 
-Safety invariants remain intentionally strict:
+Original Milestones 0–7 are completed. Milestone 12 autonomous creator/partner outreach (#109) is also completed.
 
-- no guessed or synthesized email addresses;
-- no private/personal contact scraping;
-- no purchased/breached contact lists;
-- no mass unsolicited-email engine;
-- no autonomous follow-up in the current MVP;
-- no sender/domain rotation to evade reputation controls;
-- no blind resend after an ambiguous provider outcome;
-- exact target / offer / message / experiment attribution is preserved;
-- SMTP credentials remain deployment-secret-only;
-- changes to Outreach Policy, Growth Mandate or sender identity invalidate the autonomous-send delegation until it is explicitly reissued.
+Production-oriented execution already includes:
 
-## Milestone 8 — real-product dogfood (#10) — externally blocked
+- permissioned owned Telegram execution;
+- Meta and TikTok paid staging, exact-budget activation authorization, activation, sync, hard stop and reconciliation;
+- permissioned TikTok owned publishing;
+- first-click referral tracking and server-to-server conversion ingestion;
+- Results & Learning workspace and Growth Manager decisions;
+- evidence-backed creator/partner outreach with contact provenance and suppression;
+- owned SMTP sending with restart-safe at-most-one submission attempt;
+- explicit revocable outreach-send delegation and strict daily/domain/cooldown limits;
+- fail-closed reconciliation after ambiguous provider outcomes;
+- outreach attribution feeding Growth Manager and learning before another autonomous outreach action.
 
-Milestone #10 remains open because its Definition of Done requires real users, a real `PAID` conversion, calculable CAC and a data-backed Growth Manager decision.
+## Milestone 14 — Universal Product Integration Kit (#122) — completed
 
-The previous Oracle-specific runbook remains historical dogfood tooling, but no external repository work is a Partizan task by default. If a chosen dogfood product is not ready, Partizan records that as an external dependency and continues improving its own runtime/integration surface.
+Completed through merged PRs #123–#126.
 
-A real dogfood run should only start after:
+A product can now connect to Partizan without Partizan developers patching its repository:
 
-1. Partizan itself has a stable production runtime and public tracking origin;
-2. the external product is connected through the documented conversion-event contract;
-3. any required changes in that external product have been explicitly authorized by its owner;
-4. at least one Partizan experiment can be launched within the configured provider/account boundaries.
+- `GET /v1/products/{product_id}/integration-status` shows Event Key/public tracking/experiment readiness and real observed VISIT/SIGNUP/ACTIVATED/PAID signals without exposing the key;
+- `POST /v1/products/{product_id}/distribution-events/verify` validates the real conversion contract and attribution while guaranteeing `persisted=false`;
+- `GET /v1/products/{product_id}/integration-guide` generates product-specific cURL, Python and Node.js examples with secret placeholders only;
+- `/app` contains read-only Integration Readiness and copyable integration-code workspaces;
+- the guide documents stable event IDs, backend-only Event Keys and transactional outbox/retry semantics;
+- `partizan-growth-run` is now the primary product-agnostic CLI for Product -> distribution -> experiment traversal;
+- free-text runs require explicit `--answer field=value` for material clarifications rather than guessing;
+- dry-run is the default and paid execution still stops at `STAGED`; the generic runner cannot authorize/activate spend.
 
-## Current active milestone — productionize Partizan
+`partizan-dogfood-oracle` remains only as a compatibility preset for the historical first dogfood scenario. Oracle is no longer an architectural requirement.
 
-The next engineering milestone is to make Partizan itself deployable and verifiable as a stable service rather than relying on `localhost` / production-like Docker execution.
+## Milestone 15 — Isolated end-to-end growth sandbox (#127) — completed
 
-Target production runtime:
+Merged PR #128 adds `partizan-sandbox-run`.
+
+The sandbox proves the real internal Partizan loop from a clean isolated child process:
 
 ```text
-GitHub main
-  -> CI
-  -> explicit production deployment boundary
-  -> sync release to Partizan host
-  -> build production images
-  -> migrate PostgreSQL
-  -> start API + paid-control worker + autonomous-growth worker
-  -> internal liveness/readiness smoke
-  -> optional public HTTPS smoke
+ProductProfile
+  -> ICP
+  -> distribution/play
+  -> action + RUNNING experiment
+  -> VISIT / SIGNUP / ACTIVATED / PAID
+  -> spend
+  -> CAC / ROAS
+  -> Growth Manager
+  -> learning memory
+  -> next portfolio using observed economics
 ```
 
-The production milestone must preserve these boundaries:
+Isolation is deliberate:
 
-- deployment secrets remain GitHub/deployment secrets only;
-- production uses database-backed runtime storage;
-- PostgreSQL is not published publicly by the production compose file;
-- migrations complete before API/workers start;
-- `/health/live` checks process liveness without external dependencies;
-- `/health/ready` proves PostgreSQL is reachable before traffic is considered ready;
-- missing deployment secrets cause deployment to skip/fail safely rather than inventing host configuration;
-- public HTTPS verification is enabled only when an explicit public Partizan URL is configured;
-- production deployment does not mutate any external product/repository.
+- refuses to run when the parent is `APP_ENV=production`;
+- child starts from a temporary directory with `RUNTIME_STORAGE=memory`;
+- LLM/search/execution are mock and creative providers unavailable;
+- no database, OpenAI, Gemini, SMTP, operator, Meta or TikTok secret is passed to the child;
+- no external execution-provider mutation is called;
+- child state disappears when the subprocess exits;
+- report is explicitly labeled `SANDBOX — SYNTHETIC / NOT PRODUCTION DATA`.
+
+The deterministic proof uses three synthetic complete funnels, $30 total spend and $90 revenue, yielding CAC=$10 and ROAS=3.0, then verifies the real Growth Manager `SCALE` decision, one learning entry and a next portfolio that incorporates the observed economics.
+
+This is an internal correctness proof only. It does **not** count as real acquisition performance and does not satisfy dogfood #10.
+
+## Milestone 13 — Productionize Partizan (#121) — current active blocker
+
+The code-side production runtime is implemented:
+
+- `docker-compose.prod.yml` with non-public PostgreSQL;
+- one-shot migrations before API/workers;
+- API, paid-control worker and autonomous-growth worker;
+- `/health/live` and PostgreSQL-backed `/health/ready`;
+- fail-closed GitHub Actions production deployment;
+- remote deploy and smoke scripts;
+- optional public HTTPS smoke;
+- CI validation of production shell/Compose/image contracts.
+
+What is still genuinely external configuration, and therefore not completed in code:
+
+1. configure a **dedicated Partizan production host/environment** and Partizan-specific GitHub deployment secrets;
+2. run the first successful Partizan production deploy from `main`;
+3. configure explicit `PARTIZAN_PUBLIC_URL` / `PARTIZAN_PUBLIC_BASE_URL`;
+4. prove public HTTPS `/health/live` and `/health/ready`;
+5. prove API and workers stay healthy across a deployment/restart cycle.
+
+The current deploy workflow safely skips deployment when Partizan-specific SSH configuration is absent. No host is guessed and no other project's deployment credentials are reused.
+
+## Milestone 8 — real-product dogfood (#10) — remains open
+
+Real dogfood still requires real users, at least one real `PAID` conversion, calculable CAC and a data-backed Growth Manager decision.
+
+Start it only after:
+
+1. #121 is completed and Partizan has its own public production origin;
+2. the chosen product is connected through the Integration Kit;
+3. any required work in that external product is explicitly authorized by its owner;
+4. provider/account execution prerequisites for the chosen experiment are intentionally configured.
 
 ## Next order of work
 
-1. production runtime + deployment workflow + liveness/readiness/smoke;
-2. universal Product Integration Kit with generated Event Key guidance and integration verification;
-3. generic product growth runner (remove Oracle as the architectural special case);
-4. Partizan-local end-to-end sandbox for VISIT -> SIGNUP -> ACTIVATED -> PAID -> CAC -> Growth Manager -> learning;
-5. real external dogfood only after explicit permission for any required external-project work;
-6. use real dogfood evidence to choose later execution/provider integrations.
+1. complete the real infrastructure portion of #121: dedicated Partizan host, secrets, public URL and production smoke;
+2. run `partizan-sandbox-run` as a release proof when useful, while keeping its data explicitly synthetic;
+3. connect a chosen real product through the Integration Kit;
+4. ask for explicit permission before any required external-project modification;
+5. run real dogfood #10 to a real PAID conversion, CAC and Growth Manager decision;
+6. use real dogfood evidence—not architecture speculation—to choose subsequent provider/channel integrations.
 
 ## Product principle
 
 **Execution over recommendations — but only inside explicit user-authorized boundaries.**
 
-New integrations should improve the number of measurable customer-acquisition cycles Partizan can complete, not merely add more recommendation surfaces.
+New work should increase the number of measurable customer-acquisition cycles Partizan can complete, not merely add more recommendation surfaces.
