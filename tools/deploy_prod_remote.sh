@@ -34,10 +34,29 @@ rsync -az --delete \
   -e "ssh ${DEPLOY_SSH_OPTS}" \
   ./ "${DEPLOY_HOST}:${DEPLOY_PATH}/"
 
-REMOTE_COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env.prod"
+require_public_url=false
+if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
+  require_public_url=true
+fi
 
-echo "==> Validating production compose"
-ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} config --quiet"
+echo "==> Running fail-closed production host preflight"
+ssh_remote "cd '${DEPLOY_PATH}' && PARTIZAN_REQUIRE_PUBLIC_URL='${require_public_url}' bash tools/preflight_prod_host.sh .env.prod"
+
+if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
+  if [[ "${PARTIZAN_PUBLIC_URL}" != https://* ]]; then
+    echo "Refusing public smoke: PARTIZAN_PUBLIC_URL must use https://" >&2
+    exit 1
+  fi
+  expected_public_url="${PARTIZAN_PUBLIC_URL%/}"
+  configured_public_url="$(ssh_remote "grep -E '^PARTIZAN_PUBLIC_BASE_URL=' '${DEPLOY_PATH}/.env.prod' | tail -n 1 | cut -d= -f2-" || true)"
+  configured_public_url="${configured_public_url%/}"
+  if [[ "${configured_public_url}" != "${expected_public_url}" ]]; then
+    echo "Refusing deployment: PARTIZAN_PUBLIC_URL does not match PARTIZAN_PUBLIC_BASE_URL on host" >&2
+    exit 1
+  fi
+fi
+
+REMOTE_COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env.prod"
 
 echo "==> Building Partizan release image"
 ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} build"
@@ -67,10 +86,6 @@ for path in ('/health/live', '/health/ready'):
 \""
 
 if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
-  if [[ "${PARTIZAN_PUBLIC_URL}" != https://* ]]; then
-    echo "Refusing public smoke: PARTIZAN_PUBLIC_URL must use https://" >&2
-    exit 1
-  fi
   base="${PARTIZAN_PUBLIC_URL%/}"
   echo "==> Public HTTPS smoke"
   for path in /health/live /health/ready; do
