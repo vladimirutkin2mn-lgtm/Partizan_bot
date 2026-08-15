@@ -48,6 +48,7 @@ def _valid_env(**overrides: str) -> str:
 
 
 def _run_preflight(tmp_path: Path, content: str, *, require_public: bool = False):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     env_file = tmp_path / ".env.prod"
     env_file.write_text(content, encoding="utf-8")
     env_file.chmod(0o600)
