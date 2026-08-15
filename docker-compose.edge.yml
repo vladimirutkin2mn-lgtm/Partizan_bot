@@ -1,0 +1,21 @@
+services:
+  edge:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      PARTIZAN_PUBLIC_HOST: ${PARTIZAN_PUBLIC_HOST:?Set PARTIZAN_PUBLIC_HOST for public HTTPS}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      - partizan_caddy_data:/data
+      - partizan_caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  partizan_caddy_data:
+  partizan_caddy_config:
