@@ -23,6 +23,10 @@ from app.distribution_event_verification import (
 from app.distribution_execution_service import distribution_execution_service
 from app.operator_auth import require_operator
 from app.product_intake import product_intake_service
+from app.product_integration_guide import (
+    ProductIntegrationGuideView,
+    product_integration_guide_service,
+)
 from app.product_integration_status import (
     ProductIntegrationStatusView,
     product_integration_status_service,
@@ -82,6 +86,22 @@ async def get_product_integration_status(
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Product not found") from exc
     return product_integration_status_service.get(product_id, settings)
+
+
+@router.get(
+    "/products/{product_id}/integration-guide",
+    response_model=ProductIntegrationGuideView,
+    dependencies=[Depends(require_operator)],
+)
+async def get_product_integration_guide(
+    product_id: UUID,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ProductIntegrationGuideView:
+    try:
+        product_intake_service.get_product(product_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Product not found") from exc
+    return product_integration_guide_service.get(product_id, settings)
 
 
 @router.delete(
