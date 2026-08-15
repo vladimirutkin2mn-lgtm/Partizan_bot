@@ -94,28 +94,45 @@ The deterministic proof uses three synthetic complete funnels, $30 total spend a
 
 This is an internal correctness proof only. It does **not** count as real acquisition performance and does not satisfy dogfood #10.
 
-## Milestone 13 — Productionize Partizan (#121) — current active blocker
+## Milestone 13 — Productionize Partizan (#121) — repository work complete, real infrastructure pending
 
-The code-side production runtime is implemented:
+All repository/code-side production work is implemented in `main`.
 
-- `docker-compose.prod.yml` with non-public PostgreSQL;
+Runtime/deployment foundation:
+
+- `docker-compose.prod.yml` with PostgreSQL private to the Docker network and API direct binding on host loopback only;
 - one-shot migrations before API/workers;
 - API, paid-control worker and autonomous-growth worker;
-- `/health/live` and PostgreSQL-backed `/health/ready`;
+- `/health/live` plus PostgreSQL-backed `/health/ready`;
 - fail-closed GitHub Actions production deployment;
-- remote deploy and smoke scripts;
-- optional public HTTPS smoke;
-- CI validation of production shell/Compose/image contracts.
+- remote deployment and smoke scripts;
+- production image/Compose/shell validation in CI.
 
-What is still genuinely external configuration, and therefore not completed in code:
+Production hardening added in the final code-side slices:
 
-1. configure a **dedicated Partizan production host/environment** and Partizan-specific GitHub deployment secrets;
-2. run the first successful Partizan production deploy from `main`;
-3. configure explicit `PARTIZAN_PUBLIC_URL` / `PARTIZAN_PUBLIC_BASE_URL`;
-4. prove public HTTPS `/health/live` and `/health/ready`;
-5. prove API and workers stay healthy across a deployment/restart cycle.
+- PR #131 / #130 — deny-by-default operator authentication for production `POST/PUT/PATCH/DELETE`; only the two product-scoped Event Key conversion data-plane POST routes are explicit exceptions;
+- PR #133 / #132 — host-local `.env.prod` bootstrap with generated PostgreSQL/operator secrets plus fail-closed preflight before build, database start, migration or service mutation;
+- PR #135 / #134 — database-backed heartbeats for both recurring workers, with restart reset, interval-relative staleness and deploy verification requiring a successful sweep from each current process;
+- PR #137 / #136 — optional repository-managed Caddy HTTPS edge, loaded only for an explicit public Partizan URL, with automatic TLS state stored in host volumes and real Caddy parser validation in CI.
 
-The current deploy workflow safely skips deployment when Partizan-specific SSH configuration is absent. No host is guessed and no other project's deployment credentials are reused.
+Canonical public-origin safety is also fail-closed: GitHub `PARTIZAN_PUBLIC_URL`, host `PARTIZAN_PUBLIC_BASE_URL` and `PARTIZAN_PUBLIC_HOST` must agree before a public deployment proceeds.
+
+The latest `main` CI after PR #137 passes 483/483 pytest, development/production Compose validation, the real Caddy configuration parser and production image build.
+
+The latest production workflow confirms the unconfigured-host boundary: without Partizan-specific deployment secrets, SSH agent setup, host-key pinning, host verification and deploy/migrate/smoke are all skipped. No host is guessed and no other project's deployment credentials are reused.
+
+There is no remaining honest repository-only implementation step for #121. Completion now requires explicit real infrastructure:
+
+1. provision/select a **dedicated Partizan production host**;
+2. configure Partizan-specific GitHub deployment secrets (`DEPLOY_HOST`, `DEPLOY_SSH_KEY`, `DEPLOY_SSH_KNOWN_HOSTS`, `DEPLOY_PATH`);
+3. run the host-local bootstrap and intentionally configure live providers/secrets in `.env.prod`;
+4. choose a Partizan DNS hostname, point it to the host and allow inbound 80/443;
+5. configure matching `PARTIZAN_PUBLIC_URL`, `PARTIZAN_PUBLIC_BASE_URL` and `PARTIZAN_PUBLIC_HOST`;
+6. execute the first real deploy from `main`;
+7. prove public HTTPS `/health/live` and `/health/ready`;
+8. prove both recurring worker heartbeats remain healthy across one actual deployment/restart cycle.
+
+Until those infrastructure inputs are explicitly supplied, #121 remains open rather than inventing another code milestone.
 
 ## Milestone 8 — real-product dogfood (#10) — remains open
 
@@ -130,12 +147,14 @@ Start it only after:
 
 ## Next order of work
 
-1. complete the real infrastructure portion of #121: dedicated Partizan host, secrets, public URL and production smoke;
-2. run `partizan-sandbox-run` as a release proof when useful, while keeping its data explicitly synthetic;
+1. complete the real infrastructure proof for #121: dedicated Partizan host, deployment secrets, DNS/public URL and first production deploy;
+2. verify current-process worker heartbeats after a real restart and public HTTPS health;
 3. connect a chosen real product through the Integration Kit;
 4. ask for explicit permission before any required external-project modification;
 5. run real dogfood #10 to a real PAID conversion, CAC and Growth Manager decision;
 6. use real dogfood evidence—not architecture speculation—to choose subsequent provider/channel integrations.
+
+`partizan-sandbox-run` can still be used as a synthetic release proof, but its results never count as real dogfood or acquisition performance.
 
 ## Product principle
 
