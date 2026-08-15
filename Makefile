@@ -1,4 +1,4 @@
-.PHONY: install dev infra-up infra-down migrate test lint runtime-up runtime-down runtime-logs worker-once
+.PHONY: install dev infra-up infra-down migrate test lint runtime-up runtime-down runtime-logs worker-once prod-config prod-smoke
 
 install:
 	python -m pip install -e ".[dev]"
@@ -22,13 +22,19 @@ lint:
 	ruff check .
 
 runtime-up:
-	docker compose up -d --build postgres migrate api paid-control-worker
+	docker compose up -d --build postgres migrate api paid-control-worker autonomous-growth-worker
 
 runtime-down:
 	docker compose down
 
 runtime-logs:
-	docker compose logs -f api paid-control-worker
+	docker compose logs -f api paid-control-worker autonomous-growth-worker
 
 worker-once:
 	partizan-paid-control --once
+
+prod-config:
+	bash tools/check_prod_config.sh .env.example
+
+prod-smoke:
+	bash tools/smoke_prod_remote.sh --local
