@@ -7,9 +7,14 @@ import time
 from collections.abc import Callable
 from uuid import UUID
 
-from app.autonomous_controlled_growth import autonomous_controlled_growth_sweep_service
+from app.autonomous_controlled_growth import (
+    AutonomousGrowthSweepAlreadyRunning,
+    autonomous_controlled_growth_sweep_service,
+)
 from app.autonomous_growth import AutonomousGrowthSweepService
 from app.worker_health import AUTONOMOUS_GROWTH_WORKER, WorkerHeartbeatService
+
+AUTONOMOUS_SWEEP_CONTENTION_RETRY_SECONDS = 5.0
 
 
 class AutonomousGrowthWorker:
@@ -48,6 +53,12 @@ class AutonomousGrowthWorker:
                 heartbeat.mark_running(AUTONOMOUS_GROWTH_WORKER)
             try:
                 result = asyncio.run(self._sweep_service.run_once(product_id=product_id))
+            except AutonomousGrowthSweepAlreadyRunning as exc:
+                emit(json.dumps({"status": "skipped", "reason": str(exc)}))
+                if once:
+                    return 0
+                self._sleep(AUTONOMOUS_SWEEP_CONTENTION_RETRY_SECONDS)
+                continue
             except Exception as exc:
                 if heartbeat is not None:
                     heartbeat.mark_failed(
