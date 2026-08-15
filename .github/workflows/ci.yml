@@ -55,6 +55,8 @@ jobs:
           bash -n tools/deploy_prod_remote.sh
           bash -n tools/smoke_prod_remote.sh
           bash -n tools/check_prod_config.sh
+          bash -n tools/preflight_prod_host.sh
+          bash -n tools/bootstrap_prod_host.sh
       - name: Migrate database
         run: alembic upgrade head
       - name: Test
