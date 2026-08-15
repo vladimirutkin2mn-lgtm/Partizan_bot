@@ -42,6 +42,7 @@ def _valid_env(**overrides: str) -> str:
         ),
         "OPERATOR_API_KEY": "b" * 64,
         "PARTIZAN_PUBLIC_BASE_URL": "https://partizan.example.com",
+        "PARTIZAN_PUBLIC_HOST": "partizan.example.com",
     }
     values.update(overrides)
     return "".join(f"{key}={value}\n" for key, value in values.items())
@@ -81,6 +82,15 @@ def test_valid_production_host_preflight_passes(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert "production host preflight: ok" in result.stdout
     assert "b" * 64 not in result.stdout + result.stderr
+
+
+def test_internal_only_preflight_passes_without_public_edge(tmp_path: Path) -> None:
+    result = _run_preflight(
+        tmp_path,
+        _valid_env(PARTIZAN_PUBLIC_BASE_URL="", PARTIZAN_PUBLIC_HOST=""),
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_preflight_rejects_missing_or_placeholder_operator_key(tmp_path: Path) -> None:
@@ -133,7 +143,7 @@ def test_preflight_rejects_insecure_env_permissions(tmp_path: Path) -> None:
 def test_preflight_can_require_public_https_origin(tmp_path: Path) -> None:
     missing = _run_preflight(
         tmp_path / "missing",
-        _valid_env(PARTIZAN_PUBLIC_BASE_URL=""),
+        _valid_env(PARTIZAN_PUBLIC_BASE_URL="", PARTIZAN_PUBLIC_HOST=""),
         require_public=True,
     )
     invalid = _run_preflight(
@@ -145,6 +155,31 @@ def test_preflight_can_require_public_https_origin(tmp_path: Path) -> None:
     assert invalid.returncode != 0
     assert "PARTIZAN_PUBLIC_BASE_URL is required" in missing.stderr
     assert "HTTPS origin" in invalid.stderr
+
+
+def test_preflight_rejects_public_host_mismatch_or_non_dns_host(tmp_path: Path) -> None:
+    mismatch = _run_preflight(
+        tmp_path / "mismatch",
+        _valid_env(PARTIZAN_PUBLIC_HOST="other.example.com"),
+    )
+    port = _run_preflight(
+        tmp_path / "port",
+        _valid_env(
+            PARTIZAN_PUBLIC_BASE_URL="https://partizan.example.com:8443",
+            PARTIZAN_PUBLIC_HOST="partizan.example.com:8443",
+        ),
+    )
+    orphan_host = _run_preflight(
+        tmp_path / "orphan",
+        _valid_env(PARTIZAN_PUBLIC_BASE_URL="", PARTIZAN_PUBLIC_HOST="partizan.example.com"),
+    )
+
+    assert mismatch.returncode != 0
+    assert port.returncode != 0
+    assert orphan_host.returncode != 0
+    assert "exactly match" in mismatch.stderr
+    assert "DNS hostname" in port.stderr
+    assert "must be empty" in orphan_host.stderr
 
 
 def test_live_provider_modes_require_matching_api_keys(tmp_path: Path) -> None:
@@ -189,6 +224,7 @@ def test_bootstrap_generates_private_env_without_printing_secrets(tmp_path: Path
     assert values["APP_ENV"] == "production"
     assert values["RUNTIME_STORAGE"] == "database"
     assert values["PARTIZAN_PUBLIC_BASE_URL"] == "https://partizan.example.com"
+    assert values["PARTIZAN_PUBLIC_HOST"] == "partizan.example.com"
     assert values["POSTGRES_PASSWORD"] not in result.stdout + result.stderr
     assert values["OPERATOR_API_KEY"] not in result.stdout + result.stderr
 
