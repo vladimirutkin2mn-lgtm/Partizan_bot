@@ -17,11 +17,11 @@ from app.distribution_event_ingestion import (
 )
 from app.distribution_execution_service import distribution_execution_service
 from app.operator_auth import require_operator
+from app.product_intake import product_intake_service
 from app.product_integration_status import (
     ProductIntegrationStatusView,
     product_integration_status_service,
 )
-from app.product_intake import product_intake_service
 
 router = APIRouter(tags=["distribution-event-integration"])
 
