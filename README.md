@@ -15,6 +15,7 @@ The full product vision, agent architecture, MVP scope and development roadmap a
 - [Repository Boundary](docs/REPOSITORY_BOUNDARY.md) — external products are dependencies, not implicit write targets.
 - [Production Runtime](docs/PRODUCTION_RUNTIME.md)
 - [Generic Growth Runner](docs/GENERIC_GROWTH_RUNNER.md)
+- [Isolated Growth Sandbox](docs/GROWTH_SANDBOX.md)
 
 ## MVP distribution scope
 
@@ -71,6 +72,18 @@ If Product Intake asks a material clarification, the runner stops rather than gu
 `partizan-dogfood-oracle` remains available only as a compatibility preset for the original dogfood scenario. New products should use `partizan-growth-run`.
 
 See [Generic Growth Runner](docs/GENERIC_GROWTH_RUNNER.md) and the Product Integration Kit in `/app` before enabling real conversion delivery.
+
+## Isolated end-to-end proof
+
+Before involving a real product, the entire internal economics/learning loop can be proven with synthetic data:
+
+```bash
+partizan-sandbox-run
+```
+
+The sandbox starts a separate localhost Partizan process with in-memory state and mock/unavailable providers, traverses Product → experiment → VISIT/SIGNUP/ACTIVATED/PAID → spend → CAC/ROAS → Growth Manager → learning → next portfolio, then destroys the child process. It refuses `APP_ENV=production` and does not inherit provider/database/operator secrets.
+
+Sandbox output is always synthetic and must not be treated as real dogfood performance. See [Isolated Growth Sandbox](docs/GROWTH_SANDBOX.md).
 
 ## Local development
 
