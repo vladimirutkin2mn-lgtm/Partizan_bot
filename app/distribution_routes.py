@@ -28,6 +28,7 @@ from app.public_creative_routes import router as public_creative_router
 from app.tiktok_owned_publishing_routes import router as tiktok_owned_publishing_router
 from app.tiktok_paid_activation_routes import router as tiktok_paid_activation_router
 from app.tiktok_paid_control_routes import router as tiktok_paid_control_router
+from app.worker_health_routes import router as worker_health_router
 
 router = APIRouter(prefix="/v1", tags=["distribution"])
 router.include_router(control_plane_router)
@@ -47,6 +48,7 @@ router.include_router(meta_paid_control_router)
 router.include_router(tiktok_paid_activation_router)
 router.include_router(tiktok_paid_control_router)
 router.include_router(paid_control_ops_router)
+router.include_router(worker_health_router)
 router.include_router(autonomy_router)
 router.include_router(autonomous_growth_router)
 router.include_router(creative_asset_router)
