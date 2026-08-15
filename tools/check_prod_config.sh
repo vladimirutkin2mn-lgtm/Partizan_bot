@@ -8,6 +8,7 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   exit 1
 fi
 
-docker compose -f docker-compose.prod.yml --env-file "${ENV_FILE}" config --quiet
+PARTIZAN_ENV_FILE="${ENV_FILE}" \
+  docker compose -f docker-compose.prod.yml --env-file "${ENV_FILE}" config --quiet
 
 echo "production compose config: ok"
