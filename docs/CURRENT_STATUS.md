@@ -2,6 +2,16 @@
 
 This document is the current source of truth for implementation progress. `PRODUCT_PLAN.md` remains the long-form product vision and historical roadmap.
 
+## Repository boundary
+
+When Partizan work depends on another product or repository, that dependency is documented as an external blocker only. Partizan work must not modify another repository unless the product owner gives explicit permission for that specific external project/action.
+
+Dogfood integrations therefore follow this rule:
+
+1. Partizan exposes a documented integration contract;
+2. the external product owner connects the product or explicitly authorizes repository work;
+3. until that authorization exists, Partizan does not patch, deploy, migrate or otherwise mutate the external project.
+
 ## Completed foundation
 
 The original Milestones 0–7 are implemented and their GitHub issues are closed as completed:
@@ -84,78 +94,57 @@ Safety invariants remain intentionally strict:
 - SMTP credentials remain deployment-secret-only;
 - changes to Outreach Policy, Growth Mandate or sender identity invalidate the autonomous-send delegation until it is explicitly reissued.
 
-The milestone was completed through the merged Founder Outreach workspace, bounded autonomous-send execution and final outreach-learning/delegation UI slices. Validation-only issue #115 is also closed.
+## Milestone 8 — real-product dogfood (#10) — externally blocked
 
-## Current active milestone — real-product dogfood (#10)
+Milestone #10 remains open because its Definition of Done requires real users, a real `PAID` conversion, calculable CAC and a data-backed Growth Manager decision.
 
-**Milestone 8 — Dogfood on a real product** is now the next active proof. Code readiness is not enough to close it.
+The previous Oracle-specific runbook remains historical dogfood tooling, but no external repository work is a Partizan task by default. If a chosen dogfood product is not ready, Partizan records that as an external dependency and continues improving its own runtime/integration surface.
 
-Chosen product: `Bot_globa / Oracle`.
+A real dogfood run should only start after:
 
-Business assumptions for the first acquisition loop:
+1. Partizan itself has a stable production runtime and public tracking origin;
+2. the external product is connected through the documented conversion-event contract;
+3. any required changes in that external product have been explicitly authorized by its owner;
+4. at least one Partizan experiment can be launched within the configured provider/account boundaries.
 
-- subscription: `$6.90/month`;
-- initial acquisition budget: `$1,000`;
-- target max CAC: `$12` per paid subscriber;
-- initial audience: English-speaking adults roughly 20–40 interested in astrology, relationships and self-reflection;
-- initial distribution scope: Telegram / Instagram / Reddit / TikTok plus bounded creator/partner outreach where policy permits.
+## Current active milestone — productionize Partizan
 
-### Oracle runtime status
+The next engineering milestone is to make Partizan itself deployable and verifiable as a stable service rather than relying on `localhost` / production-like Docker execution.
 
-The Oracle backend is already deployed to the shared production host through the Bot_globa GitHub Actions production environment. Bot Globa CI run #44 for commit `3d18a118d2322cd282758daa299089280de5a44c` completed its production deploy job successfully on 2026-08-13.
-
-That production job proved:
-
-- configured production SSH access reaches the host;
-- production images build and start;
-- PostgreSQL becomes healthy;
-- release migrations complete under the advisory lock;
-- API and workers reach healthy state;
-- container-internal `/health/live` and `/health/ready` return HTTP 200;
-- deployment verification passes for API health, Telegram webhook configuration/authentication/backlog and configured payment routes.
-
-Therefore **deploying the Oracle backend is not the current dogfood blocker**. Normal Bot_globa releases can deploy automatically from `main`; a local VS Code/SSH session is not required for the normal release path.
-
-What is still unproven is the public acquisition path and paid-release readiness:
-
-1. `Bot_globa#58` — finish and verify the public `https://predict.mypresence.ru` route;
-2. `Bot_globa#73` — fix the shared-host proxy-network alias/preflight and add public HTTPS smoke instead of relying only on container-internal health;
-3. `Bot_globa#74` — create an isolated reproducible staging environment;
-4. `Bot_globa#41` — execute the five real provider/model staging gates for the exact candidate release;
-5. keep Oracle acquisition rollout at zero until routing and release-readiness are intentionally cleared.
-
-A billing-disabled acquisition run cannot finish Partizan #10 because the milestone requires a real `PAID` conversion and calculable CAC.
-
-The intended sequence is:
+Target production runtime:
 
 ```text
-public route / deployment preflight
-  -> isolated staging
-  -> five live release gates + ready_for_limited_production
-  -> limited Oracle rollout
-  -> first real Partizan experiment
-  -> VISIT / SIGNUP / ACTIVATED / PAID
-  -> real CAC
-  -> Growth Manager decision
-  -> learning / next portfolio
+GitHub main
+  -> CI
+  -> explicit production deployment boundary
+  -> sync release to Partizan host
+  -> build production images
+  -> migrate PostgreSQL
+  -> start API + paid-control worker + autonomous-growth worker
+  -> internal liveness/readiness smoke
+  -> optional public HTTPS smoke
 ```
 
-The remaining Partizan dogfood proof is therefore real-world:
+The production milestone must preserve these boundaries:
 
-1. confirm a healthy public Oracle destination and release readiness;
-2. run at least one real Partizan experiment to `RUNNING`;
-3. receive real `VISIT / SIGNUP / ACTIVATED / PAID` events;
-4. calculate real CAC;
-5. obtain a data-backed Growth Manager decision;
-6. persist the result into learning / next portfolio.
+- deployment secrets remain GitHub/deployment secrets only;
+- production uses database-backed runtime storage;
+- PostgreSQL is not published publicly by the production compose file;
+- migrations complete before API/workers start;
+- `/health/live` checks process liveness without external dependencies;
+- `/health/ready` proves PostgreSQL is reachable before traffic is considered ready;
+- missing deployment secrets cause deployment to skip/fail safely rather than inventing host configuration;
+- public HTTPS verification is enabled only when an explicit public Partizan URL is configured;
+- production deployment does not mutate any external product/repository.
 
 ## Next order of work
 
-1. clear Bot_globa public-route/preflight blockers (#58/#73);
-2. build isolated staging and complete the five live release gates (#74/#41);
-3. begin the limited Oracle rollout;
-4. run the first real Partizan acquisition experiment and collect a real `PAID` conversion;
-5. use dogfood evidence, not architecture speculation, to choose the next execution integrations.
+1. production runtime + deployment workflow + liveness/readiness/smoke;
+2. universal Product Integration Kit with generated Event Key guidance and integration verification;
+3. generic product growth runner (remove Oracle as the architectural special case);
+4. Partizan-local end-to-end sandbox for VISIT -> SIGNUP -> ACTIVATED -> PAID -> CAC -> Growth Manager -> learning;
+5. real external dogfood only after explicit permission for any required external-project work;
+6. use real dogfood evidence to choose later execution/provider integrations.
 
 ## Product principle
 
