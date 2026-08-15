@@ -1,0 +1,44 @@
+.integration-readiness-card {
+  margin-top: 16px;
+}
+
+.integration-readiness-badges,
+.integration-readiness-funnel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.integration-readiness-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.integration-readiness-badge.ok {
+  border-color: rgba(91, 209, 142, 0.45);
+}
+
+.integration-readiness-badge.missing {
+  opacity: 0.62;
+}
+
+.integration-readiness-message,
+.integration-readiness-ready {
+  margin: 12px 0 0;
+}
+
+.integration-readiness-ready {
+  font-weight: 700;
+}
+
+.integration-readiness-blockers {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
