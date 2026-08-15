@@ -39,6 +39,17 @@ class DistributionAnalyticsEventReceipt(BaseModel):
     duplicate: bool = False
 
 
+class DistributionAnalyticsEventVerification(BaseModel):
+    valid: Literal[True] = True
+    persisted: Literal[False] = False
+    event_id: UUID
+    experiment_id: UUID
+    event_type: Literal["VISIT", "SIGNUP", "ACTIVATED", "PAID"]
+    attributed_by: str
+    duplicate: bool = False
+    detail: str = "Event is valid and was not persisted"
+
+
 class DistributionSpendCreate(BaseModel):
     spend_id: UUID = Field(default_factory=uuid4)
     amount: float = Field(gt=0)
