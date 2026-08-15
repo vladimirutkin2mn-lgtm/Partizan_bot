@@ -79,6 +79,6 @@ jobs:
           docker run --rm \
             -e PARTIZAN_PUBLIC_HOST=partizan.example.com \
             -v "$PWD/Caddyfile.prod:/etc/caddy/Caddyfile:ro" \
-            caddy:2-alpine validate --config /etc/caddy/Caddyfile
+            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
       - name: Build production image
         run: docker build --tag partizan-bot:ci .
