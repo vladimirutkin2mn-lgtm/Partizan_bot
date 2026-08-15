@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status
 from sqlalchemy import text
 
 from app.analytics_routes import router as analytics_router
@@ -14,6 +14,7 @@ from app.growth_play_service import growth_play_service
 from app.icp_service import icp_service
 from app.logging import configure_logging
 from app.models import ProductProfileStatus
+from app.operator_auth import require_control_plane_operator
 from app.product_intake import product_intake_service
 from app.schemas import (
     ChannelDiscoveryResponse,
@@ -42,6 +43,7 @@ app = FastAPI(
     title="Partizan Bot API",
     version="0.8.0",
     description="Autonomous growth discovery, execution, analytics and decision API.",
+    dependencies=[Depends(require_control_plane_operator)],
 )
 app.include_router(web_router)
 app.include_router(analytics_router)
