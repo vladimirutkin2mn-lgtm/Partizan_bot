@@ -9,6 +9,7 @@ from uuid import UUID
 
 from app.autonomous_controlled_growth import autonomous_controlled_growth_sweep_service
 from app.autonomous_growth import AutonomousGrowthSweepService
+from app.worker_health import AUTONOMOUS_GROWTH_WORKER, WorkerHeartbeatService
 
 
 class AutonomousGrowthWorker:
@@ -16,9 +17,11 @@ class AutonomousGrowthWorker:
         self,
         *,
         sweep_service: AutonomousGrowthSweepService | None = None,
+        heartbeat_service: WorkerHeartbeatService | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._sweep_service = sweep_service or autonomous_controlled_growth_sweep_service
+        self._heartbeat_service = heartbeat_service
         self._sleep = sleep
 
     def run(
@@ -36,14 +39,35 @@ class AutonomousGrowthWorker:
             raise RuntimeError(
                 "Recurring autonomous-growth worker requires RUNTIME_STORAGE=database"
             )
+        heartbeat = self._heartbeat()
+        if heartbeat is not None:
+            heartbeat.mark_started(AUTONOMOUS_GROWTH_WORKER, interval_seconds=interval_seconds)
         runs = 0
         while True:
-            result = asyncio.run(self._sweep_service.run_once(product_id=product_id))
+            if heartbeat is not None:
+                heartbeat.mark_running(AUTONOMOUS_GROWTH_WORKER)
+            try:
+                result = asyncio.run(self._sweep_service.run_once(product_id=product_id))
+            except Exception as exc:
+                if heartbeat is not None:
+                    heartbeat.mark_failed(
+                        AUTONOMOUS_GROWTH_WORKER,
+                        error_type=type(exc).__name__,
+                    )
+                raise
             emit(result.model_dump_json())
             runs += 1
+            if heartbeat is not None:
+                heartbeat.mark_success(AUTONOMOUS_GROWTH_WORKER, run_count=runs)
             if once or (max_runs is not None and runs >= max_runs):
                 return 0
             self._sleep(float(interval_seconds))
+
+    def _heartbeat(self) -> WorkerHeartbeatService | None:
+        if self._heartbeat_service is not None:
+            return self._heartbeat_service
+        store = getattr(self._sweep_service, "store", None)
+        return WorkerHeartbeatService(store) if store is not None else None
 
 
 def build_parser() -> argparse.ArgumentParser:
