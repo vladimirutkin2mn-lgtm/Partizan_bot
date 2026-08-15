@@ -6,6 +6,8 @@
   const RESULTS_SCRIPT_ID = "partizan-results-script";
   const INTEGRATION_STYLE_ID = "partizan-integration-style";
   const INTEGRATION_SCRIPT_ID = "partizan-integration-script";
+  const INTEGRATION_STATUS_STYLE_ID = "partizan-integration-status-style";
+  const INTEGRATION_STATUS_SCRIPT_ID = "partizan-integration-status-script";
   const AUTONOMY_STYLE_ID = "partizan-autonomy-style";
   const AUTONOMY_SCRIPT_ID = "partizan-autonomy-script";
   const CREATIVE_STYLE_ID = "partizan-creative-style";
@@ -122,6 +124,26 @@
     }
   }
 
+  function loadIntegrationStatusAssets() {
+    if (!document.getElementById(INTEGRATION_STATUS_STYLE_ID)) {
+      const style = document.createElement("link");
+      style.id = INTEGRATION_STATUS_STYLE_ID;
+      style.rel = "stylesheet";
+      style.href = "/app/assets/integration-status.v1.css";
+      document.head.append(style);
+    }
+    if (!document.getElementById(INTEGRATION_STATUS_SCRIPT_ID)) {
+      const script = document.createElement("script");
+      script.id = INTEGRATION_STATUS_SCRIPT_ID;
+      script.src = "/app/assets/integration-status.v1.js";
+      script.async = false;
+      script.addEventListener("load", loadAutonomyAssets);
+      document.head.append(script);
+    } else {
+      loadAutonomyAssets();
+    }
+  }
+
   function loadIntegrationAssets() {
     if (!document.getElementById(INTEGRATION_STYLE_ID)) {
       const style = document.createElement("link");
@@ -135,10 +157,10 @@
       script.id = INTEGRATION_SCRIPT_ID;
       script.src = "/app/assets/integration.v1.js";
       script.async = false;
-      script.addEventListener("load", loadAutonomyAssets);
+      script.addEventListener("load", loadIntegrationStatusAssets);
       document.head.append(script);
     } else {
-      loadAutonomyAssets();
+      loadIntegrationStatusAssets();
     }
   }
 
