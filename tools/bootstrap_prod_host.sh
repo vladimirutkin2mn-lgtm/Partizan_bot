@@ -16,6 +16,10 @@ if [[ -n "${PUBLIC_BASE_URL}" && ! "${PUBLIC_BASE_URL}" =~ ^https://[^/?#]+/?$ ]
   fail "PARTIZAN_PUBLIC_BASE_URL must be an HTTPS origin without path/query/fragment"
 fi
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL%/}"
+PUBLIC_HOST=""
+if [[ -n "${PUBLIC_BASE_URL}" ]]; then
+  PUBLIC_HOST="${PUBLIC_BASE_URL#https://}"
+fi
 
 mkdir -p "${DEPLOY_PATH}"
 chmod 750 "${DEPLOY_PATH}"
@@ -50,6 +54,7 @@ EXECUTION_PROVIDER=mock
 OPERATOR_AUTH_REQUIRED=true
 OPERATOR_API_KEY=${OPERATOR_API_KEY}
 PARTIZAN_PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
+PARTIZAN_PUBLIC_HOST=${PUBLIC_HOST}
 
 # Owned SMTP sender is intentionally disabled until explicitly configured.
 SMTP_HOST=
