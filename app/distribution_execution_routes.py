@@ -124,15 +124,15 @@ async def get_distribution_action(action_id: UUID) -> DistributionExecutionPlanV
 )
 async def get_paid_campaign_spec(action_id: UUID) -> PaidCampaignSpec:
     try:
+        action = distribution_execution_service.get_action(action_id)
+        if action.action_type != DistributionActionType.PAID_CAMPAIGN:
+            raise ValueError("DistributionAction is not a paid campaign")
         spec = paid_campaign_spec_service.get(action_id)
         if spec is None:
-            action = distribution_execution_service.get_action(action_id)
-            if action.action_type != DistributionActionType.PAID_CAMPAIGN:
-                raise ValueError("DistributionAction is not a paid campaign")
-            spec = paid_campaign_spec_service.ensure(action_id)
+            raise KeyError(action_id)
         return spec
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail="DistributionAction dependency not found") from exc
+        raise HTTPException(status_code=404, detail="Paid campaign spec not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
