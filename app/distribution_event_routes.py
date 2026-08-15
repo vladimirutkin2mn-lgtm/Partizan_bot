@@ -7,6 +7,7 @@ from app.config import Settings, get_settings
 from app.distribution_analytics_schemas import (
     DistributionAnalyticsEventCreate,
     DistributionAnalyticsEventReceipt,
+    DistributionAnalyticsEventVerification,
 )
 from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_event_ingestion import (
@@ -14,6 +15,10 @@ from app.distribution_event_ingestion import (
     DistributionEventKeyCreateView,
     DistributionEventKeyStatusView,
     distribution_event_key_service,
+)
+from app.distribution_event_verification import (
+    DistributionEventProductMismatchError,
+    distribution_event_verification_service,
 )
 from app.distribution_execution_service import distribution_execution_service
 from app.operator_auth import require_operator
@@ -24,6 +29,15 @@ from app.product_integration_status import (
 )
 
 router = APIRouter(tags=["distribution-event-integration"])
+
+
+def _require_event_key(product_id: UUID, event_key: str | None) -> None:
+    if not distribution_event_key_service.verify(product_id, event_key):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Distribution event authentication required",
+            headers={"WWW-Authenticate": "PartizanEventKey"},
+        )
 
 
 @router.post(
@@ -84,6 +98,27 @@ async def revoke_distribution_event_key(product_id: UUID) -> DistributionEventKe
 
 
 @router.post(
+    "/products/{product_id}/distribution-events/verify",
+    response_model=DistributionAnalyticsEventVerification,
+)
+async def verify_product_distribution_event(
+    product_id: UUID,
+    payload: DistributionAnalyticsEventCreate,
+    event_key: Annotated[str | None, Header(alias=DISTRIBUTION_EVENT_KEY_HEADER)] = None,
+) -> DistributionAnalyticsEventVerification:
+    _require_event_key(product_id, event_key)
+    try:
+        product_intake_service.get_product(product_id)
+        return distribution_event_verification_service.verify(product_id, payload)
+    except DistributionEventProductMismatchError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Distribution attribution target not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
     "/products/{product_id}/distribution-events",
     response_model=DistributionAnalyticsEventReceipt,
     status_code=status.HTTP_201_CREATED,
@@ -93,12 +128,7 @@ async def ingest_product_distribution_event(
     payload: DistributionAnalyticsEventCreate,
     event_key: Annotated[str | None, Header(alias=DISTRIBUTION_EVENT_KEY_HEADER)] = None,
 ) -> DistributionAnalyticsEventReceipt:
-    if not distribution_event_key_service.verify(product_id, event_key):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Distribution event authentication required",
-            headers={"WWW-Authenticate": "PartizanEventKey"},
-        )
+    _require_event_key(product_id, event_key)
 
     try:
         product_intake_service.get_product(product_id)
