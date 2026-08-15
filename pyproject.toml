@@ -18,7 +18,7 @@ dependencies = [
 [project.scripts]
 partizan-paid-control = "app.paid_control_worker:main"
 partizan-autonomous-growth = "app.autonomous_growth_worker:main"
-partizan-growth-run = "app.growth_run:main"
+partizan-growth-run = "app.growth_run_cli:main"
 partizan-sandbox-run = "app.growth_sandbox:main"
 partizan-dogfood-oracle = "app.oracle_dogfood:main"
 
