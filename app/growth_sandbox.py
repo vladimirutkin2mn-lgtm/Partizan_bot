@@ -2,31 +2,30 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import socket
 import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-from uuid import NAMESPACE_URL, UUID, uuid5
+from uuid import NAMESPACE_URL, uuid5
 
 from app.config import Settings
 
 SANDBOX_MODE = "SANDBOX"
 SANDBOX_PRODUCT_NAME = "Partizan Isolated Growth Sandbox"
 SANDBOX_DESTINATION = "https://sandbox.invalid/product"
-SANDBOX_MAX_CAC = 15.0
 SANDBOX_SPEND = 30.0
 SANDBOX_PAID_REVENUE = 30.0
 SANDBOX_ACTORS = ("sandbox-user-1", "sandbox-user-2", "sandbox-user-3")
 SANDBOX_BRIEF = """Product: Partizan Isolated Growth Sandbox
-Description: A deterministic digital subscription product used only to prove Partizan's internal acquisition loop.
+Description: A deterministic subscription product for Partizan's internal growth proof.
 Problem: Users need a focused workflow to complete recurring digital tasks faster.
 Value proposition: Personalized guidance that reduces time spent deciding what to do next.
 Use cases: Daily workflow guidance; personalized recommendations; progress review.
@@ -178,7 +177,6 @@ def _repository_root() -> Path:
 
 
 def _sandbox_environment(repository_root: Path, port: int) -> dict[str, str]:
-    pythonpath = str(repository_root)
     return {
         "APP_ENV": "sandbox",
         "APP_LOG_LEVEL": "WARNING",
@@ -190,16 +188,29 @@ def _sandbox_environment(repository_root: Path, port: int) -> dict[str, str]:
         "CREATIVE_VIDEO_PROVIDER": "unavailable",
         "OPERATOR_AUTH_REQUIRED": "false",
         "PARTIZAN_PUBLIC_BASE_URL": f"http://127.0.0.1:{port}",
-        "PYTHONPATH": pythonpath,
+        "PYTHONPATH": str(repository_root),
         "PYTHONUNBUFFERED": "1",
     }
+
+
+def _child_error(process: subprocess.Popen[bytes]) -> str:
+    if process.stderr is None:
+        return ""
+    try:
+        return process.stderr.read().decode("utf-8", errors="replace").strip()
+    except OSError:
+        return ""
 
 
 def _wait_for_child(client: SandboxApiClient, process: subprocess.Popen[bytes]) -> None:
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
         if process.poll() is not None:
-            raise SandboxError(f"Sandbox API exited early with code {process.returncode}")
+            detail = _child_error(process)
+            suffix = f": {detail}" if detail else ""
+            raise SandboxError(
+                f"Sandbox API exited early with code {process.returncode}{suffix}"
+            )
         try:
             payload = client.get("/health/live")
             if isinstance(payload, dict) and payload.get("status") == "ok":
@@ -213,8 +224,7 @@ def _wait_for_child(client: SandboxApiClient, process: subprocess.Popen[bytes]) 
 @contextmanager
 def _isolated_api() -> Iterator[tuple[SandboxApiClient, subprocess.Popen[bytes]]]:
     port = _reserve_local_port()
-    repository_root = _repository_root()
-    env = _sandbox_environment(repository_root, port)
+    env = _sandbox_environment(_repository_root(), port)
     with tempfile.TemporaryDirectory(prefix="partizan-sandbox-") as temp_dir:
         process = subprocess.Popen(  # noqa: S603
             [
@@ -232,7 +242,7 @@ def _isolated_api() -> Iterator[tuple[SandboxApiClient, subprocess.Popen[bytes]]
             cwd=temp_dir,
             env=env,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
         )
         client = SandboxApiClient(f"http://127.0.0.1:{port}")
         try:
@@ -250,8 +260,7 @@ def _isolated_api() -> Iterator[tuple[SandboxApiClient, subprocess.Popen[bytes]]
 
 def _create_confirmed_product(client: SandboxApiClient) -> str:
     response = client.post("/v1/products", body={"brief": SANDBOX_BRIEF})
-    product = response["product"]
-    product_id = str(product["id"])
+    product_id = str(response["product"]["id"])
     clarifications = list(response.get("clarifications") or [])
     while clarifications:
         question = clarifications[0]
@@ -290,7 +299,6 @@ def _select_sandbox_play(plays: list[dict[str, Any]]) -> dict[str, Any]:
             continue
         key = (str(play.get("platform")), str(play.get("tactic_id")))
         groups.setdefault(key, []).append(play)
-
     preferred = [
         group
         for (platform, tactic), group in groups.items()
@@ -299,7 +307,7 @@ def _select_sandbox_play(plays: list[dict[str, Any]]) -> dict[str, Any]:
     candidates = preferred or [group for group in groups.values() if len(group) >= 2]
     if not candidates:
         raise SandboxError(
-            "Sandbox needs at least two READY plays for one platform+tactic to prove portfolio learning"
+            "Sandbox needs two READY plays for one platform+tactic to prove portfolio learning"
         )
     group = max(
         candidates,
@@ -343,8 +351,7 @@ def _ingest_funnel(
     experiment_id: str,
 ) -> None:
     created = client.post(f"/v1/products/{product_id}/distribution-event-key")
-    event_key = str(created["event_key"])
-    headers = {"X-Partizan-Event-Key": event_key}
+    headers = {"X-Partizan-Event-Key": str(created["event_key"])}
     for actor in SANDBOX_ACTORS:
         for event_type in ("VISIT", "SIGNUP", "ACTIVATED", "PAID"):
             body: dict[str, Any] = {
@@ -401,13 +408,13 @@ def _assert_expected_economics(economics: SandboxEconomics) -> None:
     expected_revenue = expected_paid * SANDBOX_PAID_REVENUE
     expected_cac = SANDBOX_SPEND / expected_paid
     expected_roas = expected_revenue / SANDBOX_SPEND
-    expected = {
+    expected_counts = {
         "visits": expected_paid,
         "signups": expected_paid,
         "activated_users": expected_paid,
         "paid_users": expected_paid,
     }
-    for field_name, expected_value in expected.items():
+    for field_name, expected_value in expected_counts.items():
         if getattr(economics, field_name) != expected_value:
             raise SandboxError(f"Unexpected sandbox {field_name}: {economics}")
     if economics.spend != SANDBOX_SPEND:
@@ -427,8 +434,7 @@ def run_sandbox() -> SandboxReport:
     with _isolated_api() as (client, child):
         process = child
         product_id = _create_confirmed_product(client)
-        plays = _generate_ready_plays(client, product_id)
-        selected = _select_sandbox_play(plays)
+        selected = _select_sandbox_play(_generate_ready_plays(client, product_id))
         action_id, experiment_id = _prepare_running_experiment(
             client,
             product_id,
@@ -443,15 +449,22 @@ def run_sandbox() -> SandboxReport:
             f"/v1/distribution-experiments/{experiment_id}/growth-decision"
         )
         if decision["action"] != "SCALE":
-            raise SandboxError(f"Expected deterministic SCALE decision, got {decision['action']}")
+            raise SandboxError(
+                f"Expected deterministic SCALE decision, got {decision['action']}"
+            )
         learning = client.get(f"/v1/products/{product_id}/distribution-learning")
         if len(learning.get("entries") or []) != 1:
-            raise SandboxError("Sandbox Growth Manager did not persist exactly one learning entry")
-        portfolio = client.get(f"/v1/products/{product_id}/distribution-portfolio?max_items=6")
+            raise SandboxError(
+                "Sandbox Growth Manager did not persist exactly one learning entry"
+            )
+        portfolio = client.get(
+            f"/v1/products/{product_id}/distribution-portfolio?max_items=6"
+        )
         uses_observed = _portfolio_uses_observed_economics(portfolio)
         if not uses_observed:
-            raise SandboxError("Next sandbox portfolio did not use observed experiment economics")
-
+            raise SandboxError(
+                "Next sandbox portfolio did not use observed experiment economics"
+            )
         report_data = {
             "product_id": product_id,
             "action_id": action_id,
@@ -467,7 +480,8 @@ def run_sandbox() -> SandboxReport:
 
     if process is None or process.poll() is None:
         raise SandboxError("Sandbox child process was not terminated")
-    assert report_data is not None
+    if report_data is None:
+        raise SandboxError("Sandbox report was not produced")
     return SandboxReport(
         mode=SANDBOX_MODE,
         isolated_runtime_storage="memory",
