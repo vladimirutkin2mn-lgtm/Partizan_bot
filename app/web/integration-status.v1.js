@@ -34,7 +34,11 @@
   }
 
   function badge(label, ok) {
-    return node("span", `integration-readiness-badge ${ok ? "ok" : "missing"}`, `${ok ? "✓" : "○"} ${label}`);
+    return node(
+      "span",
+      `integration-readiness-badge ${ok ? "ok" : "missing"}`,
+      `${ok ? "✓" : "○"} ${label}`,
+    );
   }
 
   function ensureCard() {
@@ -61,7 +65,11 @@
     card.replaceChildren();
     card.append(
       node("h4", "", "Проверка интеграции"),
-      node("p", "", "Partizan показывает только фактически настроенные зависимости и реально увиденные события. Проверка ничего не отправляет в продукт и не создаёт конверсии."),
+      node(
+        "p",
+        "",
+        "Partizan показывает только фактически настроенные зависимости и реально увиденные события. Проверка ничего не отправляет в продукт и не создаёт конверсии.",
+      ),
     );
 
     if (!id) {
@@ -70,7 +78,11 @@
     }
 
     const actions = node("div", "integration-actions");
-    const refresh = node("button", "button button-ghost", busy ? "Проверяю…" : "Проверить интеграцию");
+    const refresh = node(
+      "button",
+      "button button-ghost",
+      busy ? "Проверяю…" : "Проверить интеграцию",
+    );
     refresh.type = "button";
     refresh.disabled = busy;
     refresh.dataset.integrationReadinessRefresh = "true";
@@ -99,7 +111,13 @@
     card.append(funnel);
 
     if (statusView.ready_for_attributed_conversions) {
-      card.append(node("p", "integration-readiness-ready", "Базовая инфраструктура готова принимать и связывать реальные конверсии."));
+      card.append(
+        node(
+          "p",
+          "integration-readiness-ready",
+          "Базовая инфраструктура готова принимать и связывать реальные конверсии.",
+        ),
+      );
     }
 
     if (statusView.blockers && statusView.blockers.length) {
@@ -131,7 +149,9 @@
       const response = await fetch(`/v1/products/${id}/integration-status`, { headers });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(response.status === 401 ? "Нужен operator key." : payload.detail || `HTTP ${response.status}`);
+        throw new Error(
+          response.status === 401 ? "Нужен operator key." : payload.detail || `HTTP ${response.status}`,
+        );
       }
       statusView = payload;
       message = "Статус обновлён по текущему состоянию Partizan.";
@@ -150,7 +170,12 @@
   });
 
   const observer = new MutationObserver(() => {
-    if (document.querySelector("#conversion-integration-panel")) render();
+    if (
+      document.querySelector("#conversion-integration-panel") &&
+      !document.querySelector("#integration-readiness-card")
+    ) {
+      render();
+    }
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
   render();
