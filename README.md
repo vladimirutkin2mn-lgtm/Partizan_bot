@@ -12,6 +12,9 @@ The full product vision, agent architecture, MVP scope and development roadmap a
 
 - [Product Vision & Action Plan](docs/PRODUCT_PLAN.md)
 - [Current Implementation Status](docs/CURRENT_STATUS.md) — what is already in `main`, what remains open, and the next order of work.
+- [Repository Boundary](docs/REPOSITORY_BOUNDARY.md) — external products are dependencies, not implicit write targets.
+- [Production Runtime](docs/PRODUCTION_RUNTIME.md)
+- [Generic Growth Runner](docs/GENERIC_GROWTH_RUNNER.md)
 
 ## MVP distribution scope
 
@@ -37,22 +40,37 @@ Product + ICP
 
 Partizan Bot should evolve from “here is what you could do” to **“here is what I found, what I launched, what worked and what I am doing next.”**
 
-## Dogfooding workspace
+## Browser workspace
 
-The first browser workspace is served directly by FastAPI at `/app`; `/` redirects there.
+The browser workspace is served directly by FastAPI at `/app`; `/` redirects there.
 
-It uses the live Partizan API for the core discovery flow:
+It uses the live Partizan API for the core flow and now includes customer/operator surfaces for discovery, execution, results, conversion integration, integration readiness, product-specific integration code, autonomy, creative/publishing and bounded outreach.
 
-```text
-Product brief
-  → clarifications and ProductProfile confirmation
-  → ranked ICPs
-  → Audience Distribution Map
-  → Telegram / Instagram / Reddit / TikTok opportunities
-  → ranked Distribution Plays
+The customer workspace intentionally does not expose sensitive provider secrets. Convenience state is kept only in the current browser tab through `sessionStorage`; operator/Event Key secrets remain server/deployment scoped.
+
+## Generic product growth run
+
+The primary CLI for a product-agnostic acquisition run is:
+
+```bash
+partizan-growth-run \
+  --product-id <CONFIRMED_PRODUCT_UUID> \
+  --destination-url https://your-product.example
 ```
 
-The customer workspace intentionally does not expose sensitive operator mutations. Convenience state is kept only in the current browser tab through `sessionStorage`.
+Or start from a free-text brief:
+
+```bash
+partizan-growth-run \
+  --brief-file product.txt \
+  --destination-url https://your-product.example
+```
+
+If Product Intake asks a material clarification, the runner stops rather than guessing and tells you the exact `--answer field=value` needed. Dry-run is the default. `--execute` invokes only the existing approval + execution-adapter boundary; paid actions still stop at `STAGED` and the runner cannot authorize/activate spend.
+
+`partizan-dogfood-oracle` remains available only as a compatibility preset for the original dogfood scenario. New products should use `partizan-growth-run`.
+
+See [Generic Growth Runner](docs/GENERIC_GROWTH_RUNNER.md) and the Product Integration Kit in `/app` before enabling real conversion delivery.
 
 ## Local development
 
@@ -87,9 +105,9 @@ postgres healthy
       ↓
 migrate (alembic upgrade head)
       ↓
- ┌────┴───────────────┐
- API              paid-control-worker
- :8000             recurring provider sync
+ ┌────┼─────────────────────┐
+ API  paid-control-worker   autonomous-growth-worker
+ :8000 provider control     bounded growth sweeps
 ```
 
 Start the complete stack:
@@ -102,7 +120,7 @@ make runtime-logs
 
 Stop it with `make runtime-down`.
 
-Both the API and `paid-control-worker` are forced to use `RUNTIME_STORAGE=database` and the same container database URL. The worker never creates spend authorization, increases campaign budgets, or restarts paused campaigns; it only invokes existing provider-control sync and hard-stop/reconciliation paths.
+Production/runtime workers are forced to use `RUNTIME_STORAGE=database` and the same container database URL. Paid control never creates spend authorization, increases campaign budgets or restarts paused campaigns; autonomous growth remains bounded by its explicit mandates/delegations and execution-specific controls.
 
 ### Paid-control operations
 
@@ -116,4 +134,8 @@ Operational endpoints include:
 
 ## Health
 
-The API exposes `GET /health`, which is also used by the Docker API service healthcheck.
+The API exposes:
+
+- `GET /health` — compatibility liveness;
+- `GET /health/live` — process liveness;
+- `GET /health/ready` — PostgreSQL-backed readiness.
