@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -19,6 +20,7 @@ from app.worker_health import (
     WorkerLifecycleState,
 )
 
+ROOT = Path(__file__).resolve().parent.parent
 client = TestClient(app)
 
 
@@ -213,3 +215,22 @@ def test_worker_health_endpoint_is_operator_authenticated_in_production() -> Non
         PAID_CONTROL_WORKER,
         AUTONOMOUS_GROWTH_WORKER,
     }
+
+
+def test_production_deploy_waits_for_worker_health_probe() -> None:
+    deploy = (ROOT / "tools" / "deploy_prod_remote.sh").read_text(encoding="utf-8")
+    probe = (ROOT / "app" / "worker_health_probe.py").read_text(encoding="utf-8")
+
+    start_marker = "Starting API and workers"
+    worker_marker = "Waiting for successful post-start worker sweeps"
+    smoke_marker = "Internal production smoke"
+    assert start_marker in deploy
+    assert worker_marker in deploy
+    assert smoke_marker in deploy
+    assert deploy.index(start_marker) < deploy.index(worker_marker) < deploy.index(smoke_marker)
+    assert "python -m app.worker_health_probe" in deploy
+    assert "/v1/ops/workers/health" in probe
+    assert "OPERATOR_API_KEY" in probe
+    assert "operator_key" not in '\n'.join(
+        line for line in probe.splitlines() if line.lstrip().startswith("print(")
+    )
