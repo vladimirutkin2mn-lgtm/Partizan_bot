@@ -2,7 +2,7 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
-from app.config import get_settings
+from app.config import Settings
 from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_event_ingestion import distribution_event_key_service
 
@@ -28,9 +28,8 @@ class ProductIntegrationStatusView(BaseModel):
 
 
 class ProductIntegrationStatusService:
-    def get(self, product_id: UUID) -> ProductIntegrationStatusView:
+    def get(self, product_id: UUID, settings: Settings) -> ProductIntegrationStatusView:
         key_status = distribution_event_key_service.status(product_id)
-        settings = get_settings()
         analytics = distribution_analytics_service.product_analytics(product_id)
 
         funnel = ProductIntegrationFunnelView(
