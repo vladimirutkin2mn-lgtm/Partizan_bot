@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from uuid import UUID
 
 from app.autonomous_growth import (
     AutonomousGrowthDecisionView,
     AutonomousGrowthOutcome,
+    AutonomousGrowthSweepView,
 )
 from app.autonomous_growth_control import (
     AutonomousGrowthControlService,
@@ -13,6 +16,7 @@ from app.autonomous_growth_control import (
 from app.autonomous_owned_creative_growth import AutonomousOwnedCreativeGrowthSweepService
 from app.autonomy_schemas import AutonomyDecision, GrowthMandateView
 from app.creative_provider_finalization import provider_aware_creative_generation_service
+from app.database_advisory_lock import postgres_session_advisory_lock
 from app.execution_adapters import AdapterExecutionOutcome
 from app.organic_creative_execution import (
     organic_creative_distribution_execution_adapter_service,
@@ -29,6 +33,13 @@ from app.outreach_policy import (
     outreach_autonomous_preparation_service,
 )
 
+AUTONOMOUS_GROWTH_ADVISORY_LOCK_KEY = 507_120_260_815
+SweepLockFactory = Callable[[], AbstractContextManager[bool]]
+
+
+class AutonomousGrowthSweepAlreadyRunning(RuntimeError):
+    pass
+
 
 class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepService):
     def __init__(
@@ -38,6 +49,7 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
         outreach_preparation_service: OutreachAutonomousPreparationService | None = None,
         outreach_send_service: OutreachAutonomousSendService | None = None,
         outreach_learning_service: OutreachLearningFeedService | None = None,
+        sweep_lock_factory: SweepLockFactory | None = None,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -47,6 +59,23 @@ class AutonomousControlledGrowthSweepService(AutonomousOwnedCreativeGrowthSweepS
         )
         self._outreach_send_service = outreach_send_service or outreach_autonomous_send_service
         self._outreach_learning_service = outreach_learning_service or outreach_learning_feed_service
+        self._sweep_lock_factory = sweep_lock_factory or (
+            lambda: postgres_session_advisory_lock(AUTONOMOUS_GROWTH_ADVISORY_LOCK_KEY)
+        )
+
+    async def run_once(
+        self,
+        product_id: UUID | None = None,
+    ) -> AutonomousGrowthSweepView:
+        if self.store.ephemeral:
+            return await super().run_once(product_id=product_id)
+
+        with self._sweep_lock_factory() as acquired:
+            if not acquired:
+                raise AutonomousGrowthSweepAlreadyRunning(
+                    "An autonomous-growth sweep is already running in another process"
+                )
+            return await super().run_once(product_id=product_id)
 
     async def _run_product(
         self,
