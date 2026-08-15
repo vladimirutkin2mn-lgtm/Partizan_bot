@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+DEPLOY_HOST="${DEPLOY_HOST:?Set DEPLOY_HOST (user@host)}"
+DEPLOY_PATH="${DEPLOY_PATH:?Set DEPLOY_PATH to an absolute remote Partizan directory}"
+DEPLOY_SSH_OPTS="${DEPLOY_SSH_OPTS:-}"
+PARTIZAN_PUBLIC_URL="${PARTIZAN_PUBLIC_URL:-}"
+
+if [[ "${DEPLOY_PATH}" != /* ]]; then
+  echo "Refusing deployment: DEPLOY_PATH must be absolute" >&2
+  exit 1
+fi
+
+SSH_ARGS=()
+if [[ -n "${DEPLOY_SSH_OPTS}" ]]; then
+  # shellcheck disable=SC2206
+  SSH_ARGS=( ${DEPLOY_SSH_OPTS} )
+fi
+
+ssh_remote() {
+  ssh "${SSH_ARGS[@]}" "${DEPLOY_HOST}" "$1"
+}
+
+echo "==> Verifying remote production environment"
+ssh_remote "test -f '${DEPLOY_PATH}/.env.prod' || { echo 'Missing ${DEPLOY_PATH}/.env.prod' >&2; exit 1; }"
+
+echo "==> Syncing exact Partizan release source"
+rsync -az --delete \
+  --exclude '.git/' \
+  --exclude '.env' \
+  --exclude '.env.prod' \
+  --exclude '__pycache__/' \
+  --exclude '.pytest_cache/' \
+  -e "ssh ${DEPLOY_SSH_OPTS}" \
+  ./ "${DEPLOY_HOST}:${DEPLOY_PATH}/"
+
+REMOTE_COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env.prod"
+
+echo "==> Validating production compose"
+ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} config --quiet"
+
+echo "==> Building Partizan release image"
+ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} build"
+
+echo "==> Starting PostgreSQL"
+ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} up -d postgres"
+
+echo "==> Applying migrations"
+ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} run --rm migrate"
+
+echo "==> Starting API and workers"
+ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} up -d --remove-orphans api paid-control-worker autonomous-growth-worker"
+
+echo "==> Waiting for API readiness"
+ssh_remote "cd '${DEPLOY_PATH}' && for i in \$(seq 1 30); do if ${REMOTE_COMPOSE} exec -T api python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)\" >/dev/null 2>&1; then exit 0; fi; sleep 2; done; ${REMOTE_COMPOSE} ps; exit 1"
+
+echo "==> Internal production smoke"
+ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} exec -T api python -c \"
+import json
+import urllib.request
+for path in ('/health/live', '/health/ready'):
+    with urllib.request.urlopen('http://127.0.0.1:8000' + path, timeout=5) as response:
+        payload = json.loads(response.read().decode('utf-8'))
+        assert response.status == 200, (path, response.status)
+        assert payload.get('status') == 'ok', (path, payload)
+        print(path, response.status)
+\""
+
+if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
+  if [[ "${PARTIZAN_PUBLIC_URL}" != https://* ]]; then
+    echo "Refusing public smoke: PARTIZAN_PUBLIC_URL must use https://" >&2
+    exit 1
+  fi
+  base="${PARTIZAN_PUBLIC_URL%/}"
+  echo "==> Public HTTPS smoke"
+  for path in /health/live /health/ready; do
+    status="$(curl --silent --show-error --max-time 15 --output /dev/null --write-out '%{http_code}' "${base}${path}")"
+    if [[ "${status}" != "200" ]]; then
+      echo "Public smoke failed: ${base}${path} returned ${status}" >&2
+      exit 1
+    fi
+    echo "${base}${path} 200"
+  done
+fi
+
+echo "==> Partizan production deployment verified"
