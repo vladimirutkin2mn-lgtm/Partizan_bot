@@ -85,11 +85,24 @@ container_database_url="$(env_value CONTAINER_DATABASE_URL)"
   fail "CONTAINER_DATABASE_URL must target the internal postgres service"
 
 public_base_url="$(env_value PARTIZAN_PUBLIC_BASE_URL)"
+public_host="$(env_value PARTIZAN_PUBLIC_HOST)"
 if [[ "${REQUIRE_PUBLIC_URL}" == "true" && -z "${public_base_url}" ]]; then
   fail "PARTIZAN_PUBLIC_BASE_URL is required for public production smoke"
 fi
-if [[ -n "${public_base_url}" && ! "${public_base_url}" =~ ^https://[^/?#]+/?$ ]]; then
-  fail "PARTIZAN_PUBLIC_BASE_URL must be an HTTPS origin without path/query/fragment"
+if [[ -n "${public_base_url}" ]]; then
+  [[ "${public_base_url}" =~ ^https://[^/?#]+/?$ ]] || \
+    fail "PARTIZAN_PUBLIC_BASE_URL must be an HTTPS origin without path/query/fragment"
+  expected_public_host="${public_base_url#https://}"
+  expected_public_host="${expected_public_host%/}"
+  [[ -n "${public_host}" ]] || fail "PARTIZAN_PUBLIC_HOST is required when public base URL is set"
+  [[ "${public_host}" == "${expected_public_host}" ]] || \
+    fail "PARTIZAN_PUBLIC_HOST must exactly match the hostname in PARTIZAN_PUBLIC_BASE_URL"
+  [[ "${public_host}" =~ ^[A-Za-z0-9.-]+$ ]] || \
+    fail "PARTIZAN_PUBLIC_HOST must be a DNS hostname without scheme, port or path"
+  [[ -f Caddyfile.prod && -f docker-compose.edge.yml ]] || \
+    fail "public HTTPS edge files are missing from the release"
+elif [[ -n "${public_host}" ]]; then
+  fail "PARTIZAN_PUBLIC_HOST must be empty when PARTIZAN_PUBLIC_BASE_URL is empty"
 fi
 
 openai_required=false
@@ -108,7 +121,16 @@ if [[ "$(env_value CREATIVE_VIDEO_PROVIDER)" == "gemini_omni" ]]; then
   reject_placeholder GEMINI_API_KEY
 fi
 
-PARTIZAN_ENV_FILE="${ENV_FILE}" \
-  docker compose -f docker-compose.prod.yml --env-file "${ENV_FILE}" config --quiet
+if [[ -n "${public_base_url}" ]]; then
+  PARTIZAN_ENV_FILE="${ENV_FILE}" \
+    docker compose \
+      -f docker-compose.prod.yml \
+      -f docker-compose.edge.yml \
+      --env-file "${ENV_FILE}" \
+      config --quiet
+else
+  PARTIZAN_ENV_FILE="${ENV_FILE}" \
+    docker compose -f docker-compose.prod.yml --env-file "${ENV_FILE}" config --quiet
+fi
 
 echo "production host preflight: ok"
