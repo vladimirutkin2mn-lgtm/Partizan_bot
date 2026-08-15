@@ -97,6 +97,27 @@ The `production` GitHub environment may contain:
 
 If the core SSH secrets are absent, the deploy job does not guess a host. It exits through the explicit "not configured" path.
 
+## Worker heartbeat semantics
+
+The two long-running workers write a minimal heartbeat to the shared RuntimeStateStore:
+
+- `paid-control-worker`;
+- `autonomous-growth-worker`.
+
+A heartbeat contains only lifecycle state, interval, run count, timestamps and the exception type for the last failed sweep. Provider payloads, exception text and secrets are never persisted in the heartbeat.
+
+`GET /v1/ops/workers/health` is operator-authenticated. A worker is healthy only after it has completed at least one successful sweep since its latest process start and while its last heartbeat is fresh relative to its configured loop interval.
+
+On every process start, prior success is cleared before the new sweep. Therefore a stale heartbeat from the previous container cannot make a fresh deployment look healthy.
+
+The in-container probe is:
+
+```bash
+python -m app.worker_health_probe
+```
+
+It reads `OPERATOR_API_KEY` from the API container environment, calls the local operator endpoint and prints only worker names/states. It never prints the operator key.
+
 ## What deployment does
 
 `tools/deploy_prod_remote.sh` performs this sequence on the configured Partizan host:
@@ -109,9 +130,10 @@ If the core SSH secrets are absent, the deploy job does not guess a host. It exi
 6. starts PostgreSQL and waits for health;
 7. runs `alembic upgrade head` as a one-shot service;
 8. starts API and workers;
-9. waits for API health;
-10. runs internal `/health/live` and `/health/ready` smoke checks;
-11. optionally checks public HTTPS liveness/readiness when `PARTIZAN_PUBLIC_URL` is configured.
+9. waits for API readiness;
+10. waits until both workers report a successful post-start sweep through the shared database heartbeat;
+11. runs internal `/health/live` and `/health/ready` smoke checks;
+12. optionally checks public HTTPS liveness/readiness when `PARTIZAN_PUBLIC_URL` is configured.
 
 A deploy never writes to another repository or product host.
 
@@ -125,6 +147,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod build
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d postgres
 docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm migrate
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d api paid-control-worker autonomous-growth-worker
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api python -m app.worker_health_probe
 bash tools/smoke_prod_remote.sh --local
 ```
 
@@ -134,6 +157,7 @@ Do not create a production `.env.prod` by copying `.env.example`; the example in
 
 - `GET /health` — compatibility liveness endpoint;
 - `GET /health/live` — process liveness only;
-- `GET /health/ready` — returns 200 only when PostgreSQL is reachable.
+- `GET /health/ready` — returns 200 only when PostgreSQL is reachable;
+- `GET /v1/ops/workers/health` — operator-authenticated worker-loop readiness.
 
-Readiness deliberately does not call LLM/search/ad/social providers. A temporary third-party outage must not make the Partizan API disappear from the reverse proxy; provider-specific failures remain visible in their own execution/readiness surfaces.
+API readiness deliberately does not call LLM/search/ad/social providers. A temporary third-party outage must not make the Partizan API disappear from the reverse proxy. Worker readiness is checked separately and proves the recurring control loops themselves are making progress after a deployment/restart.
