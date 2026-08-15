@@ -4,7 +4,7 @@ This runbook describes the production boundary for Partizan itself. It does not 
 
 ## Deployment model
 
-Production is a single Partizan host running:
+Production is a single dedicated Partizan host running:
 
 - PostgreSQL;
 - one-shot Alembic migration container;
@@ -12,28 +12,78 @@ Production is a single Partizan host running:
 - paid-control worker;
 - autonomous-growth worker.
 
-The production compose file is `docker-compose.prod.yml`. PostgreSQL is not published to the host network. Only the API loopback port is published; TLS / public routing should be owned by an explicitly configured reverse proxy on the Partizan host.
+The production compose file is `docker-compose.prod.yml`. PostgreSQL is not published to the host network. Only the API loopback port is published; TLS/public routing must be owned by an explicitly configured reverse proxy on the Partizan host.
+
+## One-time host bootstrap
+
+The host needs Docker with Compose v2, `rsync` and `openssl`. Do not reuse another project's deployment directory or secrets implicitly.
+
+`tools/bootstrap_prod_host.sh` creates the Partizan deployment directory and a new `.env.prod` with fresh PostgreSQL/operator secrets generated on the host. It refuses to overwrite an existing file and never prints the generated secrets.
+
+From a trusted checkout, the bootstrap script can be streamed to the dedicated server without copying a secret file through GitHub:
+
+```bash
+ssh <user@partizan-host> 'bash -s -- /absolute/partizan/path' < tools/bootstrap_prod_host.sh
+```
+
+If the public HTTPS origin is already known, set it explicitly for that one command:
+
+```bash
+PARTIZAN_PUBLIC_BASE_URL=https://partizan.example.com \
+ssh <user@partizan-host> \
+  'PARTIZAN_PUBLIC_BASE_URL=https://partizan.example.com bash -s -- /absolute/partizan/path' \
+  < tools/bootstrap_prod_host.sh
+```
+
+The bootstrap intentionally leaves research providers in mock/unavailable mode and external credentials blank. Edit `.env.prod` directly on the Partizan host to enable only the providers/capabilities intended for production.
 
 ## Required server file
 
-Create `${DEPLOY_PATH}/.env.prod` on the target host. It is intentionally never synced from GitHub.
+`${DEPLOY_PATH}/.env.prod` is deployment-only state and is never synced from GitHub. It must have mode `600`.
 
-At minimum production should set:
+A live production configuration should include, at minimum:
 
 ```dotenv
 APP_ENV=production
 APP_LOG_LEVEL=INFO
-POSTGRES_PASSWORD=<strong-random-secret>
-CONTAINER_DATABASE_URL=postgresql+asyncpg://partizan:<url-encoded-password>@postgres:5432/partizan
 RUNTIME_STORAGE=database
+POSTGRES_PASSWORD=<strong-random-secret>
+CONTAINER_DATABASE_URL=postgresql+asyncpg://partizan:<password>@postgres:5432/partizan
+OPERATOR_AUTH_REQUIRED=true
 OPERATOR_API_KEY=<strong-random-secret>
 PARTIZAN_PUBLIC_BASE_URL=https://partizan.example.com
 LLM_PROVIDER=openai
+SEARCH_PROVIDER=openai
 OPENAI_API_KEY=<secret>
-SEARCH_PROVIDER=<configured-provider>
 ```
 
 Provider credentials, SMTP credentials and paid-platform access tokens remain environment secrets and are added only when the corresponding capability is intentionally enabled.
+
+## Host preflight
+
+Before image build, database start, migration or worker restart, deployment runs:
+
+```bash
+bash tools/preflight_prod_host.sh .env.prod
+```
+
+The preflight is fail-closed and checks:
+
+- Docker and Compose v2 are available;
+- `rsync` is available;
+- `.env.prod` exists with mode `600`;
+- PostgreSQL and operator secrets are non-placeholder and sufficiently long;
+- `CONTAINER_DATABASE_URL` points to the internal `postgres` service;
+- production persistence settings are not accidentally local/memory values;
+- configured public base URL is an HTTPS origin with no path/query/fragment;
+- OpenAI/Gemini provider modes have the matching API key;
+- production Compose resolves successfully.
+
+Set `PARTIZAN_REQUIRE_PUBLIC_URL=true` to make an HTTPS public origin mandatory. The GitHub deploy automatically does this when `PARTIZAN_PUBLIC_URL` is configured.
+
+When GitHub `PARTIZAN_PUBLIC_URL` is present, deployment also refuses to continue if it does not exactly match the host's `PARTIZAN_PUBLIC_BASE_URL` (ignoring only a trailing slash). This keeps first-click/referral attribution on the same canonical origin that public smoke tests use.
+
+The preflight prints no secret values.
 
 ## GitHub production secrets
 
@@ -51,31 +101,34 @@ If the core SSH secrets are absent, the deploy job does not guess a host. It exi
 
 `tools/deploy_prod_remote.sh` performs this sequence on the configured Partizan host:
 
-1. refuses to run without `.env.prod`;
-2. syncs the exact GitHub release source to the configured Partizan directory;
-3. validates `docker-compose.prod.yml`;
-4. builds the release image;
-5. starts PostgreSQL and waits for health;
-6. runs `alembic upgrade head` as a one-shot service;
-7. starts API and workers;
-8. waits for API health;
-9. runs internal `/health/live` and `/health/ready` smoke checks;
-10. optionally checks public HTTPS liveness/readiness when `PARTIZAN_PUBLIC_URL` is configured.
+1. refuses to run without the host-owned `.env.prod`;
+2. syncs the exact GitHub release source while excluding all `.env*` files;
+3. runs the fail-closed host preflight;
+4. if public smoke is configured, verifies GitHub and host public origins match;
+5. builds the release image;
+6. starts PostgreSQL and waits for health;
+7. runs `alembic upgrade head` as a one-shot service;
+8. starts API and workers;
+9. waits for API health;
+10. runs internal `/health/live` and `/health/ready` smoke checks;
+11. optionally checks public HTTPS liveness/readiness when `PARTIZAN_PUBLIC_URL` is configured.
 
 A deploy never writes to another repository or product host.
 
-## Manual local validation
+## Manual production validation
+
+On the Partizan host, from the synced checkout:
 
 ```bash
-cp .env.example .env.prod
-# replace local/dev secrets before treating this as production-like
-docker compose -f docker-compose.prod.yml --env-file .env.prod config --quiet
+bash tools/preflight_prod_host.sh .env.prod
 docker compose -f docker-compose.prod.yml --env-file .env.prod build
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d postgres
 docker compose -f docker-compose.prod.yml --env-file .env.prod run --rm migrate
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d api paid-control-worker autonomous-growth-worker
 bash tools/smoke_prod_remote.sh --local
 ```
+
+Do not create a production `.env.prod` by copying `.env.example`; the example intentionally contains local/mock defaults.
 
 ## Health semantics
 
