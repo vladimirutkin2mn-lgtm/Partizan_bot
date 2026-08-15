@@ -221,7 +221,7 @@ def test_production_deploy_waits_for_worker_health_probe() -> None:
     deploy = (ROOT / "tools" / "deploy_prod_remote.sh").read_text(encoding="utf-8")
     probe = (ROOT / "app" / "worker_health_probe.py").read_text(encoding="utf-8")
 
-    start_marker = "Starting API and workers"
+    start_marker = "Starting API"
     worker_marker = "Waiting for successful post-start worker sweeps"
     smoke_marker = "Internal production smoke"
     assert start_marker in deploy

@@ -57,6 +57,11 @@ if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
 fi
 
 REMOTE_COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env.prod"
+START_SERVICES="api paid-control-worker autonomous-growth-worker"
+if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
+  REMOTE_COMPOSE="docker compose -f docker-compose.prod.yml -f docker-compose.edge.yml --env-file .env.prod"
+  START_SERVICES="${START_SERVICES} edge"
+fi
 
 echo "==> Building Partizan release image"
 ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} build"
@@ -67,8 +72,8 @@ ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} up -d postgres"
 echo "==> Applying migrations"
 ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} run --rm migrate"
 
-echo "==> Starting API and workers"
-ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} up -d --remove-orphans api paid-control-worker autonomous-growth-worker"
+echo "==> Starting API, workers and configured edge"
+ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} up -d --remove-orphans ${START_SERVICES}"
 
 echo "==> Waiting for API readiness"
 ssh_remote "cd '${DEPLOY_PATH}' && for i in \$(seq 1 30); do if ${REMOTE_COMPOSE} exec -T api python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)\" >/dev/null 2>&1; then exit 0; fi; sleep 2; done; ${REMOTE_COMPOSE} ps; exit 1"

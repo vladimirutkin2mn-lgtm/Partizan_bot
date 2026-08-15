@@ -67,5 +67,18 @@ jobs:
           docker compose config --quiet
       - name: Validate production compose runtime
         run: bash tools/check_prod_config.sh .env.example
+      - name: Validate production HTTPS edge
+        run: |
+          PARTIZAN_ENV_FILE=.env.example \
+          PARTIZAN_PUBLIC_HOST=partizan.example.com \
+            docker compose \
+              -f docker-compose.prod.yml \
+              -f docker-compose.edge.yml \
+              --env-file .env.example \
+              config --quiet
+          docker run --rm \
+            -e PARTIZAN_PUBLIC_HOST=partizan.example.com \
+            -v "$PWD/Caddyfile.prod:/etc/caddy/Caddyfile:ro" \
+            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
       - name: Build production image
         run: docker build --tag partizan-bot:ci .
