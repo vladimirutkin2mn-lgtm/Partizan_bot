@@ -78,9 +78,12 @@ def test_workspace_assets_and_live_api_contracts_are_served() -> None:
     assert operator_js.status_code == 200
     assert operator_css.status_code == 200
     assert 'const OPERATOR_HEADER = "X-Partizan-Operator-Key"' in operator_js.text
-    assert 'const INPUT_ID = "global-operator-key"' in operator_js.text
+    assert 'const GLOBAL_INPUT_ID = "global-operator-key"' in operator_js.text
+    assert 'const EXECUTION_INPUT_ID = "operator-key"' in operator_js.text
     assert 'url.pathname.startsWith("/v1/")' in operator_js.text
     assert "url.origin === window.location.origin" in operator_js.text
+    assert "syncInputs(input, executionInput)" in operator_js.text
+    assert "syncInputs(executionInput, input)" in operator_js.text
     assert "localStorage" not in operator_js.text
     assert "sessionStorage" not in operator_js.text
     assert ".global-operator-access" in operator_css.text
@@ -141,7 +144,9 @@ def test_workspace_operator_bootstrap_covers_internal_api_only() -> None:
     assert 'url.pathname.startsWith("/v1/")' in javascript
     assert "url.origin === window.location.origin" in javascript
     assert "if (!isInternalApi(input)) return nativeFetch(input, init);" in javascript
-    assert "headers.has(OPERATOR_HEADER)" in javascript
+    assert "headers.set(OPERATOR_HEADER, key)" in javascript
+    assert "syncInputs(input, executionInput)" in javascript
+    assert "syncInputs(executionInput, input)" in javascript
 
 
 def test_execution_retry_ui_respects_backend_reconciliation_boundary() -> None:
