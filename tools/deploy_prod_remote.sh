@@ -73,6 +73,9 @@ ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} up -d --remove-orphans api 
 echo "==> Waiting for API readiness"
 ssh_remote "cd '${DEPLOY_PATH}' && for i in \$(seq 1 30); do if ${REMOTE_COMPOSE} exec -T api python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)\" >/dev/null 2>&1; then exit 0; fi; sleep 2; done; ${REMOTE_COMPOSE} ps; exit 1"
 
+echo "==> Waiting for successful post-start worker sweeps"
+ssh_remote "cd '${DEPLOY_PATH}' && for i in \$(seq 1 90); do if ${REMOTE_COMPOSE} exec -T api python -m app.worker_health_probe >/dev/null 2>&1; then ${REMOTE_COMPOSE} exec -T api python -m app.worker_health_probe; exit 0; fi; sleep 2; done; ${REMOTE_COMPOSE} exec -T api python -m app.worker_health_probe || true; ${REMOTE_COMPOSE} ps; exit 1"
+
 echo "==> Internal production smoke"
 ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} exec -T api python -c \"
 import json
