@@ -1,9 +1,12 @@
 # Next
 
-After Milestone 0, move to Milestone 1 — Product Brief & Clarification (#3).
+## Active: Productionize Partizan
 
-Primary target:
+1. Land and validate production runtime/deployment infrastructure in `Partizan_bot` only.
+2. Configure a dedicated Partizan production host/environment and prove deploy + migrate + smoke.
+3. Build a universal Product Integration Kit and verification flow.
+4. Replace Oracle-specific dogfood architecture with a generic product runner.
+5. Prove the full conversion/economics loop in a Partizan-local sandbox.
+6. Run external dogfood only after explicit permission for any required work outside `Partizan_bot`.
 
-`free-text brief → structured draft → gap/contradiction detection → 1–3 high-value questions → confirmed ProductProfile`
-
-Do not start channel discovery until the confirmed product profile contract is implemented and tested.
+External products are dependencies, not implicit write targets.
