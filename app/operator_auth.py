@@ -9,19 +9,20 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from app.config import Settings, get_settings
 
 OPERATOR_KEY_HEADER = "X-Partizan-Operator-Key"
-SAFE_HTTP_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
-# These are the only intentionally public unsafe-method endpoints. They are
-# product-scoped data-plane calls and enforce their own Product Event Key.
-PUBLIC_MUTATION_ROUTE_TEMPLATES = frozenset(
+# These are the only intentionally public /v1 endpoints. Conversion ingestion
+# enforces its own Product Event Key. Creative blobs are opaque public assets.
+PUBLIC_API_ROUTE_TEMPLATES = frozenset(
     {
         ("POST", "/v1/products/{product_id}/distribution-events"),
         ("POST", "/v1/products/{product_id}/distribution-events/verify"),
+        ("GET", "/v1/public/creative-blobs/{blob_id}"),
     }
 )
-_PUBLIC_MUTATION_PATHS = (
-    re.compile(r"^/v1/products/[^/]+/distribution-events$"),
-    re.compile(r"^/v1/products/[^/]+/distribution-events/verify$"),
+_PUBLIC_API_PATHS = (
+    ("POST", re.compile(r"^/v1/products/[^/]+/distribution-events$")),
+    ("POST", re.compile(r"^/v1/products/[^/]+/distribution-events/verify$")),
+    ("GET", re.compile(r"^/v1/public/creative-blobs/[^/]+$")),
 )
 
 
@@ -32,10 +33,12 @@ def operator_auth_required(settings: Settings) -> bool:
     }
 
 
-def _is_public_data_plane_mutation(method: str, path: str) -> bool:
-    if method.upper() != "POST":
-        return False
-    return any(pattern.fullmatch(path) for pattern in _PUBLIC_MUTATION_PATHS)
+def _is_public_api_route(method: str, path: str) -> bool:
+    normalized_method = method.upper()
+    return any(
+        route_method == normalized_method and pattern.fullmatch(path)
+        for route_method, pattern in _PUBLIC_API_PATHS
+    )
 
 
 def _enforce_operator_key(settings: Settings, operator_key: str | None) -> None:
@@ -61,18 +64,22 @@ async def require_control_plane_operator(
     settings: Annotated[Settings, Depends(get_settings)],
     operator_key: Annotated[str | None, Header(alias=OPERATOR_KEY_HEADER)] = None,
 ) -> None:
-    """Fail closed for every control-plane mutation when operator auth is active.
+    """Protect every internal ``/v1`` control-plane request when auth is active.
 
-    The default is intentionally deny-by-default for unsafe HTTP methods. The
-    only exemptions are the two product Event Key data-plane endpoints above.
-    This protects legacy and future mutation routes even if an individual route
-    forgets to attach ``Depends(require_operator)``.
+    Health, browser assets and tracking redirects live outside ``/v1`` and stay
+    public. Inside ``/v1`` the default is fail-closed for both reads and writes;
+    only the explicit data-plane/public-asset routes above bypass operator auth.
+    This keeps a newly added GET from accidentally exposing internal state on a
+    public Partizan origin.
     """
 
     method = request.method.upper()
-    if method in SAFE_HTTP_METHODS:
+    path = request.url.path
+    if not path.startswith("/v1/"):
         return
-    if _is_public_data_plane_mutation(method, request.url.path):
+    if method == "OPTIONS":
+        return
+    if _is_public_api_route(method, path):
         return
     _enforce_operator_key(settings, operator_key)
 
