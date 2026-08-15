@@ -26,11 +26,8 @@ def test_readiness_loads_after_conversion_integration_before_autonomy() -> None:
     assert "/app/assets/integration-status.v1.js" in javascript
     assert 'script.addEventListener("load", loadIntegrationStatusAssets)' in javascript
     assert 'script.addEventListener("load", loadAutonomyAssets)' in javascript
-
-    integration_index = javascript.index("/app/assets/integration.v1.js")
-    readiness_index = javascript.index("/app/assets/integration-status.v1.js")
-    autonomy_index = javascript.index("/app/assets/autonomy.v1.js")
-    assert integration_index < readiness_index < autonomy_index
+    assert "else {\n      loadIntegrationStatusAssets();\n    }" in javascript
+    assert "else {\n      loadAutonomyAssets();\n    }" in javascript
 
 
 def test_readiness_workspace_is_read_only_and_reuses_live_operator_key() -> None:
