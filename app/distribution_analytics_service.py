@@ -60,16 +60,10 @@ class InMemoryDistributionAnalyticsService:
         )
         self._ensure_measurable(experiment.status)
 
-        existing = self._get_event(payload.event_id)
-        if existing is not None:
-            self._assert_same_event(existing, payload, experiment.id)
-            return DistributionAnalyticsEventReceipt(
-                event_id=existing.event_id,
-                experiment_id=existing.experiment_id,
-                event_type=existing.event_type,
-                attributed_by=existing.attributed_by,
-                duplicate=True,
-            )
+        cached = self._events.get(payload.event_id)
+        if cached is not None:
+            self._assert_same_event(cached, payload, experiment.id)
+            return self._event_receipt(cached, duplicate=True)
 
         event = DistributionAttributedEvent(
             event_id=payload.event_id,
@@ -81,14 +75,20 @@ class InMemoryDistributionAnalyticsService:
             properties=payload.properties,
             attributed_by=attributed_by,
         )
-        self._events[event.event_id] = event
-        self._persist_event(event)
-        return DistributionAnalyticsEventReceipt(
-            event_id=event.event_id,
-            experiment_id=event.experiment_id,
-            event_type=event.event_type,
-            attributed_by=event.attributed_by,
+        inserted = self._store.put_if_absent(
+            DISTRIBUTION_ANALYTICS_EVENT_NAMESPACE,
+            str(event.event_id),
+            self._event_payload(event),
         )
+        if not inserted:
+            existing = self._get_event(event.event_id)
+            if existing is None:
+                raise RuntimeError("event idempotency reservation disappeared after conflict")
+            self._assert_same_event(existing, payload, experiment.id)
+            return self._event_receipt(existing, duplicate=True)
+
+        self._events[event.event_id] = event
+        return self._event_receipt(event)
 
     def add_spend(
         self,
@@ -97,16 +97,11 @@ class InMemoryDistributionAnalyticsService:
     ) -> DistributionSpendReceipt:
         experiment = distribution_execution_service.get_experiment(experiment_id)
         self._ensure_measurable(experiment.status)
-        existing = self._get_spend(payload.spend_id)
-        if existing is not None:
-            if existing.experiment_id != experiment_id or existing.amount != payload.amount:
-                raise ValueError("spend_id is already used for a different spend record")
-            return DistributionSpendReceipt(
-                spend_id=existing.spend_id,
-                experiment_id=existing.experiment_id,
-                amount=existing.amount,
-                duplicate=True,
-            )
+
+        cached = self._spend.get(payload.spend_id)
+        if cached is not None:
+            self._assert_same_spend(cached, payload, experiment_id)
+            return self._spend_receipt(cached, duplicate=True)
 
         entry = DistributionSpendEntry(
             spend_id=payload.spend_id,
@@ -115,13 +110,20 @@ class InMemoryDistributionAnalyticsService:
             occurred_at=payload.occurred_at or datetime.now(UTC),
             properties=payload.properties,
         )
-        self._spend[entry.spend_id] = entry
-        self._persist_spend(entry)
-        return DistributionSpendReceipt(
-            spend_id=entry.spend_id,
-            experiment_id=entry.experiment_id,
-            amount=entry.amount,
+        inserted = self._store.put_if_absent(
+            DISTRIBUTION_SPEND_NAMESPACE,
+            str(entry.spend_id),
+            self._spend_payload(entry),
         )
+        if not inserted:
+            existing = self._get_spend(entry.spend_id)
+            if existing is None:
+                raise RuntimeError("spend idempotency reservation disappeared after conflict")
+            self._assert_same_spend(existing, payload, experiment_id)
+            return self._spend_receipt(existing, duplicate=True)
+
+        self._spend[entry.spend_id] = entry
+        return self._spend_receipt(entry)
 
     def experiment_analytics(
         self,
@@ -241,33 +243,52 @@ class InMemoryDistributionAnalyticsService:
             entry = self._spend_from_payload(payload)
             self._spend[entry.spend_id] = entry
 
-    def _persist_event(self, event: DistributionAttributedEvent) -> None:
-        self._store.put(
-            DISTRIBUTION_ANALYTICS_EVENT_NAMESPACE,
-            str(event.event_id),
-            {
-                "event_id": str(event.event_id),
-                "experiment_id": str(event.experiment_id),
-                "event_type": event.event_type,
-                "actor_id": event.actor_id,
-                "revenue": event.revenue,
-                "occurred_at": event.occurred_at.isoformat(),
-                "properties": event.properties,
-                "attributed_by": event.attributed_by,
-            },
+    def _event_payload(self, event: DistributionAttributedEvent) -> dict[str, Any]:
+        return {
+            "event_id": str(event.event_id),
+            "experiment_id": str(event.experiment_id),
+            "event_type": event.event_type,
+            "actor_id": event.actor_id,
+            "revenue": event.revenue,
+            "occurred_at": event.occurred_at.isoformat(),
+            "properties": event.properties,
+            "attributed_by": event.attributed_by,
+        }
+
+    def _spend_payload(self, entry: DistributionSpendEntry) -> dict[str, Any]:
+        return {
+            "spend_id": str(entry.spend_id),
+            "experiment_id": str(entry.experiment_id),
+            "amount": entry.amount,
+            "occurred_at": entry.occurred_at.isoformat(),
+            "properties": entry.properties,
+        }
+
+    def _event_receipt(
+        self,
+        event: DistributionAttributedEvent,
+        *,
+        duplicate: bool = False,
+    ) -> DistributionAnalyticsEventReceipt:
+        return DistributionAnalyticsEventReceipt(
+            event_id=event.event_id,
+            experiment_id=event.experiment_id,
+            event_type=event.event_type,
+            attributed_by=event.attributed_by,
+            duplicate=duplicate,
         )
 
-    def _persist_spend(self, entry: DistributionSpendEntry) -> None:
-        self._store.put(
-            DISTRIBUTION_SPEND_NAMESPACE,
-            str(entry.spend_id),
-            {
-                "spend_id": str(entry.spend_id),
-                "experiment_id": str(entry.experiment_id),
-                "amount": entry.amount,
-                "occurred_at": entry.occurred_at.isoformat(),
-                "properties": entry.properties,
-            },
+    def _spend_receipt(
+        self,
+        entry: DistributionSpendEntry,
+        *,
+        duplicate: bool = False,
+    ) -> DistributionSpendReceipt:
+        return DistributionSpendReceipt(
+            spend_id=entry.spend_id,
+            experiment_id=entry.experiment_id,
+            amount=entry.amount,
+            duplicate=duplicate,
         )
 
     def _event_from_payload(self, payload: dict) -> DistributionAttributedEvent:
@@ -306,13 +327,35 @@ class InMemoryDistributionAnalyticsService:
         payload: DistributionAnalyticsEventCreate,
         experiment_id: UUID,
     ) -> None:
+        occurred_at_changed = (
+            payload.occurred_at is not None and existing.occurred_at != payload.occurred_at
+        )
         if (
             existing.experiment_id != experiment_id
             or existing.event_type != payload.event_type
             or existing.actor_id != payload.actor_id
             or existing.revenue != payload.revenue
+            or existing.properties != payload.properties
+            or occurred_at_changed
         ):
             raise ValueError("event_id is already used for a different distribution event")
+
+    def _assert_same_spend(
+        self,
+        existing: DistributionSpendEntry,
+        payload: DistributionSpendCreate,
+        experiment_id: UUID,
+    ) -> None:
+        occurred_at_changed = (
+            payload.occurred_at is not None and existing.occurred_at != payload.occurred_at
+        )
+        if (
+            existing.experiment_id != experiment_id
+            or existing.amount != payload.amount
+            or existing.properties != payload.properties
+            or occurred_at_changed
+        ):
+            raise ValueError("spend_id is already used for a different spend record")
 
     def _metrics(
         self,
