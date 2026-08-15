@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 
+from app.config import Settings, get_settings
 from app.distribution_analytics_schemas import (
     DistributionAnalyticsEventCreate,
     DistributionAnalyticsEventReceipt,
@@ -58,12 +59,15 @@ async def get_distribution_event_key_status(
     response_model=ProductIntegrationStatusView,
     dependencies=[Depends(require_operator)],
 )
-async def get_product_integration_status(product_id: UUID) -> ProductIntegrationStatusView:
+async def get_product_integration_status(
+    product_id: UUID,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ProductIntegrationStatusView:
     try:
         product_intake_service.get_product(product_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Product not found") from exc
-    return product_integration_status_service.get(product_id)
+    return product_integration_status_service.get(product_id, settings)
 
 
 @router.delete(
