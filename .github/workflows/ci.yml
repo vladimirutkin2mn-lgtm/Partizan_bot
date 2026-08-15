@@ -46,6 +46,7 @@ jobs:
           node --check app/web/results.v1.js
           node --check app/web/integration.v1.js
           node --check app/web/integration-status.v1.js
+          node --check app/web/integration-guide.v1.js
           node --check app/web/autonomy.v1.js
           node --check app/web/creative.v1.js
           node --check app/web/publishing.v1.js
