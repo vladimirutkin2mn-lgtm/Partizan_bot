@@ -46,15 +46,15 @@ def _override_settings(**overrides: object) -> None:
 
 def test_guide_is_tied_to_product_and_public_base_url() -> None:
     product_id = _product()
-    _override_settings(partizan_public_base_url="https://partizan.example.com/base/")
+    _override_settings(partizan_public_base_url="https://partizan.example.com")
 
     response = client.get(f"/v1/products/{product_id}/integration-guide")
 
     assert response.status_code == 200
     payload = response.json()
-    expected_event = f"https://partizan.example.com/base/v1/products/{product_id}/distribution-events"
+    expected_event = f"https://partizan.example.com/v1/products/{product_id}/distribution-events"
     assert payload["product_id"] == product_id
-    assert payload["base_url"] == "https://partizan.example.com/base"
+    assert payload["base_url"] == "https://partizan.example.com"
     assert payload["public_base_configured"] is True
     assert payload["event_endpoint"] == expected_event
     assert payload["verification_endpoint"] == f"{expected_event}/verify"
