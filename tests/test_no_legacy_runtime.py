@@ -42,7 +42,11 @@ def test_retired_runtime_files_stay_absent() -> None:
 
 
 def test_main_does_not_mount_retired_runtime_routes() -> None:
-    route_paths = {route.path for route in app.routes}
+    route_paths = {
+        path
+        for route in app.routes
+        if (path := getattr(route, "path", None)) is not None
+    }
 
     for fragment in RETIRED_ROUTE_FRAGMENTS:
         assert all(fragment not in path for path in route_paths)
