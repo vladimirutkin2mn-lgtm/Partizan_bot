@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Partizan — Start finding customers</title>
+  <style>
+    :root{--bg:#080a0d;--surface:#10141a;--surface2:#141920;--line:rgba(255,255,255,.10);--text:#f4f6f8;--muted:#8f99a4;--lime:#c8ff4d;--violet:#9c8cff;font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 80% 0%,rgba(200,255,77,.07),transparent 30%),var(--bg);color:var(--text);min-height:100vh}.shell{width:min(calc(100% - 32px),1040px);margin:auto}.top{height:76px;display:flex;align-items:center;justify-content:space-between}.brand{display:flex;align-items:center;gap:10px;font-weight:800}.mark{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;background:var(--lime);color:#0b0d0f}.back{color:var(--muted);font-size:13px;text-decoration:none}.main{padding:52px 0 90px}.steps{display:flex;gap:8px;margin-bottom:34px}.steps span{height:4px;border-radius:999px;background:rgba(255,255,255,.08);flex:1}.steps span.on{background:var(--lime)}.eyebrow{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:#aab3bc}.head{max-width:760px}.head h1{font-size:clamp(45px,7vw,72px);line-height:.95;letter-spacing:-.055em;margin:18px 0 18px}.head h1 em{font-style:normal;color:var(--lime)}.head p{color:var(--muted);font-size:17px;line-height:1.65;max-width:650px}.panel{margin-top:38px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(150deg,rgba(255,255,255,.055),rgba(255,255,255,.018));padding:26px;box-shadow:0 24px 80px rgba(0,0,0,.24)}label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#7d8792;margin:0 0 9px}textarea,input,select{width:100%;border:1px solid var(--line);border-radius:13px;background:rgba(0,0,0,.25);color:var(--text);padding:15px 16px;font:inherit;outline:none}textarea{min-height:112px;resize:vertical}textarea:focus,input:focus,select:focus{border-color:rgba(200,255,77,.45);box-shadow:0 0 0 3px rgba(200,255,77,.06)}.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:18px}.button{border:0;border-radius:13px;min-height:52px;padding:0 22px;background:var(--lime);color:#0a0c0e;font-weight:850;cursor:pointer;margin-top:22px;font-size:14px}.button:hover{transform:translateY(-1px)}.note{font-size:11px;color:#66717c;margin:12px 0 0}.hidden{display:none!important}.run{margin-top:38px}.run-card{border:1px solid var(--line);border-radius:24px;background:rgba(255,255,255,.025);overflow:hidden}.run-head{padding:22px 24px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.run-head strong{font-size:18px}.live{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--lime)}.task{display:grid;grid-template-columns:28px 1fr auto;gap:12px;align-items:center;padding:18px 24px;border-bottom:1px solid rgba(255,255,255,.06)}.task:last-child{border-bottom:0}.icon{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.06);color:#7c8792;font-size:11px}.task.done .icon{background:rgba(200,255,77,.12);color:var(--lime)}.task.active .icon{border:1px solid rgba(200,255,77,.35);color:var(--lime);animation:p 1s ease-in-out infinite alternate}.task strong{font-size:13px}.task small{display:block;color:#6f7984;margin-top:4px}.task>span:last-child{font-size:10px;color:#69747e;text-transform:uppercase;letter-spacing:.08em}.task.done>span:last-child{color:var(--lime)}@keyframes p{to{opacity:.45;transform:scale(.86)}}.results{margin-top:34px}.results h2{font-size:34px;letter-spacing:-.04em}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.card{border:1px solid var(--line);border-radius:18px;padding:20px;background:rgba(255,255,255,.03)}.card b{font-size:12px}.card h3{font-size:18px;margin:16px 0 8px}.card p{font-size:12px;color:var(--muted);line-height:1.55}.tag{display:inline-block;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--lime);border:1px solid rgba(200,255,77,.18);border-radius:999px;padding:6px 8px}.budget{margin-top:18px;padding:20px;border:1px solid rgba(200,255,77,.18);background:rgba(200,255,77,.045);border-radius:18px;display:flex;align-items:center;justify-content:space-between;gap:20px}.budget p{margin:4px 0 0;color:var(--muted);font-size:12px}.budget .button{margin:0;white-space:nowrap}.connect{margin-top:34px}.connect-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:16px 0;border-bottom:1px solid rgba(255,255,255,.07)}.connect-row small{display:block;color:var(--muted);margin-top:4px}.connect-btn{border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--text);border-radius:10px;padding:10px 14px;cursor:pointer}.connect-btn.connected{color:var(--lime);border-color:rgba(200,255,77,.25)}
+    @media(max-width:760px){.main{padding-top:28px}.grid,.cards{grid-template-columns:1fr}.panel{padding:18px}.budget{align-items:flex-start;flex-direction:column}.budget .button{width:100%}.head h1{font-size:48px}}
+  </style>
+</head>
+<body>
+  <header class="shell top"><div class="brand"><span class="mark">P</span>Partizan</div><a class="back" href="marketing-site.html">← Back to site</a></header>
+  <main class="shell main">
+    <div class="steps"><span class="on"></span><span></span><span></span></div>
+    <section id="input-step">
+      <div class="head"><span class="eyebrow">Start finding customers</span><h1>Tell me what you sell.<br><em>I’ll find where to start.</em></h1><p>Give Partizan enough context to understand the product and the economics. The rest of the research should happen automatically.</p></div>
+      <form id="start-form" class="panel">
+        <label for="product">Product or website</label>
+        <textarea id="product" required minlength="12">AI bookkeeping assistant for US freelancers. $19/month subscription.</textarea>
+        <div class="grid">
+          <div><label for="budget">Test budget</label><input id="budget" type="number" min="100" step="50" value="1000" required></div>
+          <div><label for="market">Market</label><input id="market" value="United States" required></div>
+          <div><label for="goal">Goal</label><select id="goal"><option>Get paying customers</option><option>Get signups</option><option>Validate demand</option></select></div>
+        </div>
+        <button class="button" type="submit">Find my customers →</button>
+        <p class="note">Preview only: this screen simulates the customer experience. It does not spend money or connect external accounts.</p>
+      </form>
+    </section>
+
+    <section id="run-step" class="run hidden">
+      <div class="steps"><span class="on"></span><span class="on"></span><span></span></div>
+      <div class="head"><span class="eyebrow">Partizan is working</span><h1>Finding the fastest path<br>to <em>real signal.</em></h1><p id="run-copy"></p></div>
+      <div class="run-card">
+        <div class="run-head"><strong>Acquisition research</strong><span class="live">● running</span></div>
+        <div class="task" data-task="0"><span class="icon">1</span><div><strong>Understand the product</strong><small>Offer, price, market and economics</small></div><span>queued</span></div>
+        <div class="task" data-task="1"><span class="icon">2</span><div><strong>Find people most likely to buy</strong><small>Pain, intent and ability to pay</small></div><span>queued</span></div>
+        <div class="task" data-task="2"><span class="icon">3</span><div><strong>Search where they already spend time</strong><small>Communities, creators, paid surfaces and outreach</small></div><span>queued</span></div>
+        <div class="task" data-task="3"><span class="icon">4</span><div><strong>Build the first experiments</strong><small>Prioritized by speed, cost and expected signal</small></div><span>queued</span></div>
+      </div>
+    </section>
+
+    <section id="result-step" class="results hidden">
+      <div class="steps"><span class="on"></span><span class="on"></span><span class="on"></span></div>
+      <div class="head"><span class="eyebrow">First acquisition plan</span><h1>I found <em>3 promising ways</em><br>to get your first customers.</h1><p>Partizan would now turn these opportunities into bounded experiments and measure which channel deserves more budget.</p></div>
+      <div class="cards">
+        <article class="card"><span class="tag">High intent</span><h3>Reddit communities</h3><p>Freelancers are already discussing bookkeeping pain in focused communities. Start with helpful, problem-first participation and track visits/signups.</p></article>
+        <article class="card"><span class="tag">Fast paid signal</span><h3>Meta prospecting</h3><p>Two cold-audience angles are suitable for a small paid validation test, with strict spend limits before scaling.</p></article>
+        <article class="card"><span class="tag">Trust channel</span><h3>Micro-creators</h3><p>Small freelancer and finance creators can produce credible distribution without requiring a large upfront media budget.</p></article>
+      </div>
+      <div class="budget"><div><strong id="budget-title">Recommended first test: $1,000</strong><p>Partizan will not spend beyond the approved test budget. Allocation changes only as evidence arrives.</p></div><button id="launch" class="button" type="button">Start acquiring customers →</button></div>
+      <div id="connect-step" class="connect hidden">
+        <h2>Connect what Partizan needs to execute</h2>
+        <div class="connect-row"><div><strong>Meta Ads</strong><small>For bounded paid acquisition tests</small></div><button class="connect-btn">Connect</button></div>
+        <div class="connect-row"><div><strong>TikTok</strong><small>Optional for this first plan</small></div><button class="connect-btn">Connect</button></div>
+        <div class="connect-row"><div><strong>Conversion tracking</strong><small>So Partizan can measure visits, signups and paid customers</small></div><button class="connect-btn">Connect</button></div>
+        <p class="note">Preview only. These buttons simulate the connection state and do not request credentials.</p>
+      </div>
+    </section>
+  </main>
+  <script>
+    const form=document.getElementById('start-form');
+    const inputStep=document.getElementById('input-step');
+    const runStep=document.getElementById('run-step');
+    const resultStep=document.getElementById('result-step');
+    const budgetInput=document.getElementById('budget');
+    form.addEventListener('submit',(e)=>{
+      e.preventDefault();
+      const budget=Number(budgetInput.value||1000);
+      const market=document.getElementById('market').value;
+      inputStep.classList.add('hidden');runStep.classList.remove('hidden');
+      document.getElementById('run-copy').textContent=`Using a $${budget.toLocaleString('en-US')} test budget in ${market}, Partizan is ranking the smallest useful experiments first.`;
+      const tasks=[...document.querySelectorAll('.task')];
+      tasks.forEach((task,i)=>{
+        setTimeout(()=>{task.classList.add('active');task.querySelector(':scope > span:last-child').textContent='working';},i*650);
+        setTimeout(()=>{task.classList.remove('active');task.classList.add('done');task.querySelector('.icon').textContent='✓';task.querySelector(':scope > span:last-child').textContent='done';},i*650+520);
+      });
+      setTimeout(()=>{runStep.classList.add('hidden');resultStep.classList.remove('hidden');document.getElementById('budget-title').textContent=`Recommended first test: $${budget.toLocaleString('en-US')}`;window.scrollTo({top:0,behavior:'smooth'});},4*650+650);
+    });
+    document.getElementById('launch').addEventListener('click',()=>{document.getElementById('connect-step').classList.remove('hidden');document.getElementById('launch').textContent='Execution setup ↓';document.getElementById('connect-step').scrollIntoView({behavior:'smooth'});});
+    document.querySelectorAll('.connect-btn').forEach(btn=>btn.addEventListener('click',()=>{btn.classList.toggle('connected');btn.textContent=btn.classList.contains('connected')?'Connected ✓':'Connect';}));
+  </script>
+</body>
+</html>
