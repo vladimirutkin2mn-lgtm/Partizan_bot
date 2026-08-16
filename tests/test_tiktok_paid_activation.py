@@ -5,7 +5,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.audience_intelligence_service import audience_intelligence_service
-from app.channel_service import channel_service
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_service import distribution_play_service
@@ -15,7 +14,6 @@ from app.execution_adapters import (
     ExecutionAdapterReceipt,
     distribution_execution_adapter_service,
 )
-from app.growth_play_service import growth_play_service
 from app.icp_service import icp_service
 from app.main import app
 from app.paid_campaign import paid_campaign_spec_service
@@ -65,9 +63,7 @@ class FakeTikTokStatusClient:
 def reset_state() -> None:
     product_intake_service.reset()
     icp_service.reset()
-    channel_service.reset()
     audience_intelligence_service.reset()
-    growth_play_service.reset()
     distribution_play_service.reset()
     distribution_control_plane_service.reset()
     distribution_execution_service.reset()
@@ -241,9 +237,7 @@ def test_tiktok_status_http_payloads_use_enable_and_access_token_header(monkeypa
         return Response()
 
     monkeypatch.setattr("app.tiktok_marketing_api.httpx.post", fake_post)
-    connection = tiktok_paid_provider_connection_service.get(
-        UUID(_setup()[0])
-    )
+    connection = tiktok_paid_provider_connection_service.get(UUID(_setup()[0]))
     assert connection is not None
     api = HttpxTikTokMarketingApiClient()
     api.set_ad_status(
