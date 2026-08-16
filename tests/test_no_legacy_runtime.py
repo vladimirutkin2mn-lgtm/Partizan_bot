@@ -49,7 +49,12 @@ def test_main_does_not_mount_retired_runtime_routes() -> None:
 
 
 def test_retired_http_paths_are_not_served_locally() -> None:
-    assert client.post("/v1/products/00000000-0000-0000-0000-000000000000/channels/discover").status_code == 404
-    assert client.post("/v1/products/00000000-0000-0000-0000-000000000000/growth-plays/generate").status_code == 404
-    assert client.post("/v1/execution-packages/00000000-0000-0000-0000-000000000000/run").status_code == 404
-    assert client.post("/v1/products/00000000-0000-0000-0000-000000000000/mock-workflow").status_code == 404
+    product_id = "00000000-0000-0000-0000-000000000000"
+    retired_paths = (
+        f"/v1/products/{product_id}/channels/discover",
+        f"/v1/products/{product_id}/growth-plays/generate",
+        f"/v1/execution-packages/{product_id}/run",
+        f"/v1/products/{product_id}/mock-workflow",
+    )
+
+    assert all(client.post(path).status_code == 404 for path in retired_paths)
