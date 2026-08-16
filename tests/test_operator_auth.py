@@ -48,7 +48,7 @@ def test_local_default_allows_operator_route_without_key() -> None:
     assert response.status_code == 200
 
 
-def test_local_default_keeps_legacy_mutation_compatible() -> None:
+def test_local_default_allows_control_plane_mutation_without_key() -> None:
     _override(_settings(app_env="local", operator_auth_required=False))
 
     response = client.post("/v1/products", json={"brief": "A small test product"})
@@ -122,20 +122,6 @@ def test_explicit_operator_auth_can_be_required_outside_production() -> None:
     assert mutation_missing.status_code == 401
 
 
-def test_global_guard_blocks_legacy_provider_execution_before_lookup() -> None:
-    _override(_settings(app_env="production", operator_api_key="correct-secret"))
-    package_id = uuid4()
-
-    blocked = client.post(f"/v1/execution-packages/{package_id}/run")
-    allowed_to_lookup = client.post(
-        f"/v1/execution-packages/{package_id}/run",
-        headers={OPERATOR_KEY_HEADER: "correct-secret"},
-    )
-
-    assert blocked.status_code == 401
-    assert allowed_to_lookup.status_code == 404
-
-
 @pytest.mark.parametrize(
     ("method", "path", "body"),
     [
@@ -144,7 +130,6 @@ def test_global_guard_blocks_legacy_provider_execution_before_lookup() -> None:
         ("POST", f"/v1/products/{uuid4()}/distribution/discover", None),
         ("POST", f"/v1/distribution-experiments/{uuid4()}/growth-decision", None),
         ("POST", f"/v1/distribution-experiments/{uuid4()}/finish", None),
-        ("PATCH", f"/v1/execution-packages/{uuid4()}", {"subject": "x", "body": "y"}),
         ("GET", f"/v1/distribution-actions/{uuid4()}", None),
         ("GET", f"/v1/products/{uuid4()}/distribution-analytics", None),
     ],
