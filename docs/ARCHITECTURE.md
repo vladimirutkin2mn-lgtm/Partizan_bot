@@ -1,42 +1,75 @@
-# Partizan Bot — Architecture Notes
+# Partizan Bot — Architecture
 
 ## Shape
 
-Partizan Bot starts as a modular monolith. The goal is to preserve clear contracts between product intake, discovery, execution, analytics and decision-making without paying the operational cost of microservices.
+Partizan is a modular monolith: one application image, one PostgreSQL database, one FastAPI control/data plane, and bounded background workers. Domain boundaries stay explicit so execution, provider adapters and learning can evolve without introducing microservice operational cost prematurely.
 
 ```text
-FastAPI
-  |
-  +-- Product Intake
-  +-- Growth Workflow
-  +-- LLM Provider abstraction
-  +-- Job Queue abstraction
-  |
-PostgreSQL / Alembic
+                         ┌──────────────────────┐
+Product brief ──────────▶│ Product Intake + ICP │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │ Audience Intelligence │
+                         │ + Distribution Plays │
+                         └──────────┬───────────┘
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │ Distribution Action  │
+                         │ + Experiment         │
+                         └──────────┬───────────┘
+                                    │
+                  ┌─────────────────┼──────────────────┐
+                  ▼                 ▼                  ▼
+             paid/provider      owned/organic       outreach
+               adapters            adapters          boundary
+                  └─────────────────┼──────────────────┘
+                                    ▼
+                         ┌──────────────────────┐
+                         │ Attribution/events   │
+                         │ spend/CAC/ROAS       │
+                         └──────────┬───────────┘
+                                    ▼
+                         ┌──────────────────────┐
+                         │ Growth Manager       │
+                         │ learning + portfolio │
+                         └──────────────────────┘
 ```
 
-## Boundaries
+## Runtime processes
 
-### Product intake
+Production uses the same image for separate responsibilities:
 
-Owns the transition from a user-written product brief to a confirmed `ProductProfile`.
+- **API** — browser workspace, operator control plane, Product Event Key data plane, tracking and health endpoints.
+- **paid-control-worker** — provider reconciliation and bounded paid-control sweeps.
+- **autonomous-growth-worker** — bounded autonomous growth sweeps under explicit Growth Mandates.
+- **PostgreSQL** — durable runtime state and migration-backed schema.
+- **Caddy edge** — optional repository-owned HTTPS reverse proxy on a dedicated Partizan host.
 
-### Growth workflow
+Workers share durable state with the API. Autonomous sweeps are serialized across processes with a PostgreSQL advisory lock; worker health is verified by database-backed heartbeats rather than container presence alone.
 
-Owns stage orchestration. In Milestone 0 it exposes only a mock sequence; later milestones replace each pending stage with real agents/services.
+## Security boundaries
 
-### LLM provider
+Production internal `/v1` control-plane reads and writes require the operator key by default. Explicit public surfaces are limited to health/web/tracking, opaque public creative blobs and Product Event Key conversion verification/ingestion endpoints.
 
-All model calls must pass through `LLMProvider`. Business services should not depend directly on a specific vendor SDK.
+The browser operator key is runtime-only and is never persisted in `localStorage` or `sessionStorage`. Provider credentials remain server/deployment scoped.
 
-### Job queue
+## Persistence
 
-Long-running work must depend on `JobQueue`, not on a specific queue backend. Milestone 0 uses an inline implementation; a durable backend can be swapped in when asynchronous discovery becomes real.
+Current domain runtime state is stored through `RuntimeStateStore`; production requires the database implementation. Product Intake, ICP and distribution services hydrate from durable snapshots after restart.
 
-### Persistence
+Historical Alembic revisions and SQLAlchemy model metadata from pre-distribution milestones remain intentionally present. They are database history, not an active second runtime architecture, and must not be rewritten or deleted merely because the corresponding early HTTP flow has been retired.
 
-SQLAlchemy models and the initial Alembic migration define the long-lived domain contracts. The temporary in-memory product-intake service is not the persistence architecture; it only proves the API/state machine before Milestone 1.
+## Provider boundary
+
+External mutations happen only through explicit execution/provider adapters and dedicated reconciliation/control services. Paid activation, organic publishing and outreach each retain their own fail-closed safety contracts. Ambiguous external results require reconciliation rather than blind retry.
+
+## Product integration
+
+External products integrate through Partizan's tracking and Product Event Key contracts. Partizan must not modify another product repository implicitly; external codebases and infrastructure are dependencies unless their owner explicitly authorizes changes.
 
 ## Principle
 
-Prefer the smallest abstraction that makes the next milestone replaceable without rewriting the public API or core domain contracts.
+**Execution over recommendations, but mutation only through an explicit bounded contract.**

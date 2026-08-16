@@ -12,7 +12,6 @@ from app.autonomous_growth import (
 from app.autonomous_growth_worker import AutonomousGrowthWorker
 from app.autonomy_schemas import GrowthMandateStatus
 from app.autonomy_service import growth_mandate_service
-from app.channel_service import channel_service
 from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_service import distribution_execution_service
@@ -23,7 +22,6 @@ from app.execution_adapters import (
     DistributionExecutionAdapterService,
     ExecutionAdapterRegistry,
 )
-from app.growth_play_service import growth_play_service
 from app.icp_service import icp_service
 from app.main import app
 from app.product_intake import product_intake_service
@@ -63,9 +61,7 @@ class PauseBeforeExecutionMandateService:
 def reset_state() -> None:
     product_intake_service.reset()
     icp_service.reset()
-    channel_service.reset()
     audience_intelligence_service.reset()
-    growth_play_service.reset()
     distribution_play_service.reset()
     distribution_control_plane_service.reset()
     distribution_execution_service.reset()

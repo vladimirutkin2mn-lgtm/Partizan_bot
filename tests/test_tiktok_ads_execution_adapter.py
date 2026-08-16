@@ -4,7 +4,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.audience_intelligence_service import audience_intelligence_service
-from app.channel_service import channel_service
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_service import distribution_play_service
@@ -16,7 +15,6 @@ from app.execution_adapters import (
     TikTokAdsExecutionAdapter,
     distribution_execution_adapter_service,
 )
-from app.growth_play_service import growth_play_service
 from app.icp_service import icp_service
 from app.main import app
 from app.paid_campaign import paid_campaign_spec_service
@@ -65,9 +63,7 @@ class FakeTikTokClient:
 def reset_state() -> None:
     product_intake_service.reset()
     icp_service.reset()
-    channel_service.reset()
     audience_intelligence_service.reset()
-    growth_play_service.reset()
     distribution_play_service.reset()
     distribution_control_plane_service.reset()
     distribution_execution_service.reset()
@@ -160,7 +156,7 @@ def test_tiktok_provider_stages_disabled_stack_and_keeps_experiment_approved() -
     action_id = _approved_tiktok_paid_action(product_id)
     _connect_tiktok(product_id)
     fake = FakeTikTokClient()
-    service = _service(fake, "top-secret-token")
+    service = _service(fake, "provider-test-token")
 
     result = service.execute(UUID(action_id), DistributionAdapterExecuteRequest())
 
@@ -175,7 +171,7 @@ def test_tiktok_provider_stages_disabled_stack_and_keeps_experiment_approved() -
     }
     assert result.receipt.metadata["all_spend_objects_status"] == "DISABLE"
     assert result.receipt.metadata["spend_started"] is False
-    assert "top-secret-token" not in result.receipt.model_dump_json()
+    assert "provider-test-token" not in result.receipt.model_dump_json()
 
     repeated = service.execute(
         UUID(action_id),
@@ -190,7 +186,7 @@ def test_tiktok_provider_is_unavailable_without_connection_or_secret() -> None:
     action_id = _approved_tiktok_paid_action(product_id)
     fake = FakeTikTokClient()
 
-    without_connection = _service(fake, "top-secret-token").execute(
+    without_connection = _service(fake, "provider-test-token").execute(
         UUID(action_id), DistributionAdapterExecuteRequest()
     )
     assert without_connection.receipt.outcome == AdapterExecutionOutcome.UNAVAILABLE
@@ -210,7 +206,7 @@ def test_partial_tiktok_failure_preserves_ids_and_blocks_blind_retry() -> None:
     action_id = _approved_tiktok_paid_action(product_id)
     _connect_tiktok(product_id)
     fake = FakeTikTokClient(fail_at="ad")
-    service = _service(fake, "top-secret-token")
+    service = _service(fake, "provider-test-token")
 
     result = service.execute(UUID(action_id), DistributionAdapterExecuteRequest())
 

@@ -12,16 +12,16 @@ The intended integration model is self-service:
 2. the external product owner connects the product or explicitly authorizes external work;
 3. without that authorization Partizan stays inside `Partizan_bot`.
 
-## Core growth loop in `main`
+## Current production architecture
 
 ```text
 Product brief
   -> ProductProfile + clarifications
   -> ranked ICPs
-  -> concrete distribution opportunities
+  -> Audience Intelligence / concrete Distribution Opportunities
   -> platform-aware Distribution Plays
   -> DistributionAction + Experiment
-  -> permissioned / bounded execution
+  -> permissioned / bounded execution adapters
   -> VISIT / SIGNUP / ACTIVATED / PAID attribution
   -> spend / CAC / ROAS
   -> SCALE / CONTINUE / MODIFY / STOP
@@ -31,35 +31,56 @@ Product brief
 
 Original Milestones 0–7 are completed. Milestone 12 autonomous creator/partner outreach (#109) is also completed.
 
-Production-oriented execution already includes:
+Production-oriented execution includes:
 
 - permissioned owned Telegram execution;
 - Meta and TikTok paid staging, exact-budget activation authorization, activation, sync, hard stop and reconciliation;
 - permissioned TikTok owned publishing;
 - first-click referral tracking and server-to-server conversion ingestion;
-- Results & Learning workspace and Growth Manager decisions;
+- Results & Learning workspace and Distribution Growth Manager decisions;
 - evidence-backed creator/partner outreach with contact provenance and suppression;
 - owned SMTP sending with restart-safe at-most-one submission attempt;
 - explicit revocable outreach-send delegation and strict daily/domain/cooldown limits;
 - fail-closed reconciliation after ambiguous provider outcomes;
 - outreach attribution feeding Growth Manager and learning before another autonomous outreach action.
 
+## Repository-wide pre-launch code audit (#139) — completed in code
+
+The repository was reviewed end to end across API routes, browser workspace, persistence, workers, execution/provider boundaries, attribution/analytics, Growth Manager, migrations, production Compose/Caddy/deploy scripts and CI contracts.
+
+Audit fixes are documented in `docs/CODE_AUDIT.md`. The launch-critical findings fixed in PRs #140 and #142 include:
+
+- production UI/operator-auth mismatch that would have made `/app` render but core `/v1` actions fail with `401`;
+- internal production `/v1` reads being less protected than writes;
+- non-atomic event/spend idempotency under concurrent requests;
+- a GET paid-campaign-spec route that could mutate state;
+- readiness tied unnecessarily to async event-loop lifecycle;
+- autonomous growth serialized only by a process-local lock even though API and worker run as separate processes.
+
+Production control-plane access is now deny-by-default for internal `/v1` reads and writes. Explicit public exceptions are limited to the Product Event Key conversion data plane and intentionally public opaque creative blobs; health, workspace and tracking routes remain outside the internal `/v1` operator boundary.
+
+The final cleanup retires the obsolete pre-distribution runtime (`ChannelHunter -> GrowthPlay -> ExecutionPackage -> legacy analytics/GrowthManager`), old mock/job scaffolding and product-specific dogfood compatibility code. The current browser workspace, generic growth runner and workers use the durable distribution domain only. A regression test prevents the retired runtime/routes from being reintroduced accidentally.
+
+Historical Alembic revisions and SQLAlchemy model metadata are intentionally retained. They are schema/migration history and must not be rewritten merely because the early HTTP runtime was retired.
+
+Repository CI can prove checked-in code, migration, JavaScript, Compose/Caddy, sandbox and image-build contracts. It cannot prove live provider credentials, provider-account permissions, DNS, a dedicated production host or real acquisition performance; those remain operational/dogfood milestones below.
+
 ## Milestone 14 — Universal Product Integration Kit (#122) — completed
 
 Completed through merged PRs #123–#126.
 
-A product can now connect to Partizan without Partizan developers patching its repository:
+A product can connect to Partizan without Partizan developers patching its repository:
 
 - `GET /v1/products/{product_id}/integration-status` shows Event Key/public tracking/experiment readiness and real observed VISIT/SIGNUP/ACTIVATED/PAID signals without exposing the key;
 - `POST /v1/products/{product_id}/distribution-events/verify` validates the real conversion contract and attribution while guaranteeing `persisted=false`;
 - `GET /v1/products/{product_id}/integration-guide` generates product-specific cURL, Python and Node.js examples with secret placeholders only;
 - `/app` contains read-only Integration Readiness and copyable integration-code workspaces;
 - the guide documents stable event IDs, backend-only Event Keys and transactional outbox/retry semantics;
-- `partizan-growth-run` is now the primary product-agnostic CLI for Product -> distribution -> experiment traversal;
+- `partizan-growth-run` is the primary product-agnostic CLI for Product -> distribution -> experiment traversal;
 - free-text runs require explicit `--answer field=value` for material clarifications rather than guessing;
 - dry-run is the default and paid execution still stops at `STAGED`; the generic runner cannot authorize/activate spend.
 
-`partizan-dogfood-oracle` remains only as a compatibility preset for the historical first dogfood scenario. Oracle is no longer an architectural requirement.
+There is no product-specific dogfood runner in the active architecture; product-specific integration belongs outside Partizan unless separately authorized.
 
 ## Milestone 15 — Isolated end-to-end growth sandbox (#127) — completed
 
@@ -96,7 +117,7 @@ This is an internal correctness proof only. It does **not** count as real acquis
 
 ## Milestone 13 — Productionize Partizan (#121) — repository work complete, real infrastructure pending
 
-All repository/code-side production work is implemented in `main`.
+All repository/code-side production work is implemented.
 
 Runtime/deployment foundation:
 
@@ -108,18 +129,17 @@ Runtime/deployment foundation:
 - remote deployment and smoke scripts;
 - production image/Compose/shell validation in CI.
 
-Production hardening added in the final code-side slices:
+Production hardening includes:
 
-- PR #131 / #130 — deny-by-default operator authentication for production `POST/PUT/PATCH/DELETE`; only the two product-scoped Event Key conversion data-plane POST routes are explicit exceptions;
-- PR #133 / #132 — host-local `.env.prod` bootstrap with generated PostgreSQL/operator secrets plus fail-closed preflight before build, database start, migration or service mutation;
-- PR #135 / #134 — database-backed heartbeats for both recurring workers, with restart reset, interval-relative staleness and deploy verification requiring a successful sweep from each current process;
-- PR #137 / #136 — optional repository-managed Caddy HTTPS edge, loaded only for an explicit public Partizan URL, with automatic TLS state stored in host volumes and real Caddy parser validation in CI.
+- deny-by-default operator authentication for production internal `/v1` reads and writes, with only explicit public data-plane exceptions;
+- host-local `.env.prod` bootstrap with generated PostgreSQL/operator secrets plus fail-closed preflight before build, database start, migration or service mutation;
+- database-backed heartbeats for both recurring workers, with restart reset, interval-relative staleness and deploy verification requiring a successful sweep from each current process;
+- PostgreSQL advisory-lock serialization of autonomous sweeps across API and worker processes;
+- optional repository-managed Caddy HTTPS edge, loaded only for an explicit public Partizan URL, with automatic TLS state stored in host volumes and real Caddy parser validation in CI.
 
-Canonical public-origin safety is also fail-closed: GitHub `PARTIZAN_PUBLIC_URL`, host `PARTIZAN_PUBLIC_BASE_URL` and `PARTIZAN_PUBLIC_HOST` must agree before a public deployment proceeds.
+Canonical public-origin safety is fail-closed: GitHub `PARTIZAN_PUBLIC_URL`, host `PARTIZAN_PUBLIC_BASE_URL` and `PARTIZAN_PUBLIC_HOST` must agree before a public deployment proceeds.
 
-The latest `main` CI after PR #137 passes 483/483 pytest, development/production Compose validation, the real Caddy configuration parser and production image build.
-
-The latest production workflow confirms the unconfigured-host boundary: without Partizan-specific deployment secrets, SSH agent setup, host-key pinning, host verification and deploy/migrate/smoke are all skipped. No host is guessed and no other project's deployment credentials are reused.
+Without Partizan-specific deployment secrets, SSH agent setup, host-key pinning, host verification and deploy/migrate/smoke are skipped. No host is guessed and no other project's deployment credentials are reused.
 
 There is no remaining honest repository-only implementation step for #121. Completion now requires explicit real infrastructure:
 

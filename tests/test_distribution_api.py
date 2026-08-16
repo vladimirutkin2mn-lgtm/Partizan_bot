@@ -2,7 +2,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.audience_intelligence_service import audience_intelligence_service
-from app.channel_service import channel_service
 from app.icp_service import icp_service
 from app.main import app
 from app.product_intake import product_intake_service
@@ -14,7 +13,6 @@ client = TestClient(app)
 def reset_state() -> None:
     product_intake_service.reset()
     icp_service.reset()
-    channel_service.reset()
     audience_intelligence_service.reset()
 
 
@@ -73,15 +71,13 @@ def test_distribution_discovery_returns_only_mvp_platforms() -> None:
     }
 
 
-def test_distribution_discovery_can_be_retrieved_without_replacing_legacy_channels() -> None:
+def test_distribution_discovery_can_be_retrieved() -> None:
     product_id = _confirmed_product()
     client.post(f"/v1/products/{product_id}/icps/generate")
 
     distribution = client.post(f"/v1/products/{product_id}/distribution/discover")
-    legacy = client.post(f"/v1/products/{product_id}/channels/discover")
     stored = client.get(f"/v1/products/{product_id}/distribution")
 
     assert distribution.status_code == 200
-    assert legacy.status_code == 200
     assert stored.status_code == 200
     assert stored.json() == distribution.json()

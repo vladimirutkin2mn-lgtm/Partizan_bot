@@ -21,7 +21,7 @@ The full product vision, agent architecture, MVP scope and development roadmap a
 
 The channel-first MVP focuses on Telegram, Instagram, Reddit and TikTok.
 
-The current backend loop is:
+The production runtime uses the current distribution domain end to end:
 
 ```text
 Product + ICP
@@ -30,10 +30,13 @@ Product + ICP
   → platform-aware tactics
   → DistributionAction + Experiment
   → execution adapter
-  → analytics / CAC / ROAS
-  → Growth Manager
+  → distribution analytics / CAC / ROAS
+  → Distribution Growth Manager
+  → learning memory
   → next portfolio
 ```
+
+The earlier pre-distribution `ChannelHunter → GrowthPlay → ExecutionPackage → legacy analytics` HTTP loop was retired after the repository-wide pre-launch audit. Historical Alembic migrations and SQLAlchemy model metadata are intentionally retained for schema continuity.
 
 ## North-star product principle
 
@@ -45,13 +48,13 @@ Partizan Bot should evolve from “here is what you could do” to **“here is 
 
 The browser workspace is served directly by FastAPI at `/app`; `/` redirects there.
 
-It uses the live Partizan API for the core flow and now includes customer/operator surfaces for discovery, execution, results, conversion integration, integration readiness, product-specific integration code, autonomy, creative/publishing and bounded outreach.
+It uses the live Partizan API for the core flow and includes customer/operator surfaces for discovery, execution, results, conversion integration, integration readiness, product-specific integration code, autonomy, creative/publishing and bounded outreach.
 
 The customer workspace intentionally does not expose sensitive provider secrets. Convenience state is kept only in the current browser tab through `sessionStorage`; operator/Event Key secrets remain server/deployment scoped.
 
 ## Generic product growth run
 
-The primary CLI for a product-agnostic acquisition run is:
+The product-agnostic acquisition CLI is:
 
 ```bash
 partizan-growth-run \
@@ -68,8 +71,6 @@ partizan-growth-run \
 ```
 
 If Product Intake asks a material clarification, the runner stops rather than guessing and tells you the exact `--answer field=value` needed. Dry-run is the default. `--execute` invokes only the existing approval + execution-adapter boundary; paid actions still stop at `STAGED` and the runner cannot authorize/activate spend.
-
-`partizan-dogfood-oracle` remains available only as a compatibility preset for the original dogfood scenario. New products should use `partizan-growth-run`.
 
 See [Generic Growth Runner](docs/GENERIC_GROWTH_RUNNER.md) and the Product Integration Kit in `/app` before enabling real conversion delivery.
 

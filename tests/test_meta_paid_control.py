@@ -5,7 +5,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.audience_intelligence_service import audience_intelligence_service
-from app.channel_service import channel_service
 from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_schemas import DistributionActionExecutionRequest
@@ -17,7 +16,6 @@ from app.execution_adapters import (
     ExecutionAdapterReceipt,
     distribution_execution_adapter_service,
 )
-from app.growth_play_service import growth_play_service
 from app.icp_service import icp_service
 from app.main import app
 from app.meta_marketing_api import (
@@ -85,9 +83,7 @@ class FakeMetaControlClient:
 def reset_state() -> None:
     product_intake_service.reset()
     icp_service.reset()
-    channel_service.reset()
     audience_intelligence_service.reset()
-    growth_play_service.reset()
     distribution_play_service.reset()
     distribution_control_plane_service.reset()
     distribution_execution_service.reset()

@@ -2,10 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.audience_intelligence_service import audience_intelligence_service
-from app.channel_service import channel_service
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_play_service import distribution_play_service
-from app.growth_play_service import growth_play_service
 from app.icp_service import icp_service
 from app.main import app
 from app.product_intake import product_intake_service
@@ -17,9 +15,7 @@ client = TestClient(app)
 def reset_state() -> None:
     product_intake_service.reset()
     icp_service.reset()
-    channel_service.reset()
     audience_intelligence_service.reset()
-    growth_play_service.reset()
     distribution_play_service.reset()
     distribution_control_plane_service.reset()
 
@@ -82,18 +78,13 @@ def test_distribution_play_api_uses_only_mvp_platforms_and_concrete_opportunitie
     )
 
 
-def test_distribution_play_api_keeps_legacy_growth_play_path_available() -> None:
+def test_distribution_play_api_can_retrieve_generated_portfolio() -> None:
     product_id = _confirmed_product()
     client.post(f"/v1/products/{product_id}/icps/generate")
     client.post(f"/v1/products/{product_id}/distribution/discover")
-    new_path = client.post(f"/v1/products/{product_id}/distribution-plays/generate")
+    generated = client.post(f"/v1/products/{product_id}/distribution-plays/generate")
 
-    legacy_channels = client.post(f"/v1/products/{product_id}/channels/discover")
-    legacy_plays = client.post(f"/v1/products/{product_id}/growth-plays/generate")
-
-    assert new_path.status_code == 200
-    assert legacy_channels.status_code == 200
-    assert legacy_plays.status_code == 200
+    assert generated.status_code == 200
     stored = client.get(f"/v1/products/{product_id}/distribution-plays")
     assert stored.status_code == 200
-    assert stored.json() == new_path.json()
+    assert stored.json() == generated.json()

@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 from app.audience_intelligence_service import audience_intelligence_service
 from app.autonomous_owned_creative_growth import AutonomousOwnedCreativeGrowthSweepService
 from app.autonomy_service import growth_mandate_service
-from app.channel_service import channel_service
 from app.creative_assets import (
     CreativeAssetRegisterRequest,
     CreativeAssetSource,
@@ -45,7 +44,6 @@ from app.execution_adapters import (
     ExecutionAdapterReceipt,
     ExecutionAdapterRegistry,
 )
-from app.growth_play_service import growth_play_service
 from app.icp_service import icp_service
 from app.main import app
 from app.organic_creative_execution import OrganicVideoCreativeExecutionAdapter
@@ -101,9 +99,7 @@ class ResumeExecutionService:
 def reset_state() -> None:
     product_intake_service.reset()
     icp_service.reset()
-    channel_service.reset()
     audience_intelligence_service.reset()
-    growth_play_service.reset()
     distribution_play_service.reset()
     distribution_control_plane_service.reset()
     distribution_execution_service.reset()

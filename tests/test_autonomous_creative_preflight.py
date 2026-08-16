@@ -11,7 +11,6 @@ from app.autonomous_paid import (
     AutonomousPaidActivationResult,
 )
 from app.autonomy_service import growth_mandate_service
-from app.channel_service import channel_service
 from app.creative_assets import CreativeReadinessStatus, creative_asset_service
 from app.creative_generation import (
     CreativeGenerationService,
@@ -27,7 +26,6 @@ from app.execution_adapters import (
     DistributionAdapterExecutionView,
     ExecutionAdapterReceipt,
 )
-from app.growth_play_service import growth_play_service
 from app.icp_service import icp_service
 from app.main import app
 from app.paid_campaign import paid_campaign_spec_service
@@ -106,9 +104,7 @@ class RetireBeforeStagingMandateService:
 def reset_state() -> None:
     product_intake_service.reset()
     icp_service.reset()
-    channel_service.reset()
     audience_intelligence_service.reset()
-    growth_play_service.reset()
     distribution_play_service.reset()
     distribution_control_plane_service.reset()
     distribution_execution_service.reset()
