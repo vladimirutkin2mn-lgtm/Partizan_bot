@@ -3,7 +3,6 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.analytics_service import analytics_service
 from app.audience_intelligence_service import audience_intelligence_service
 from app.channel_service import channel_service
 from app.distribution_analytics_service import distribution_analytics_service
@@ -11,7 +10,6 @@ from app.distribution_control_plane_service import distribution_control_plane_se
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_growth_manager_service import distribution_growth_manager_service
 from app.distribution_play_service import distribution_play_service
-from app.growth_manager_service import growth_manager_service
 from app.growth_play_service import growth_play_service
 from app.icp_service import icp_service
 from app.main import app
@@ -32,8 +30,6 @@ def reset_state() -> None:
     distribution_execution_service.reset()
     distribution_analytics_service.reset()
     distribution_growth_manager_service.reset()
-    analytics_service.reset()
-    growth_manager_service.reset()
 
 
 def _product() -> str:
