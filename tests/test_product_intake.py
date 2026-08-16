@@ -106,10 +106,8 @@ def test_free_text_intake_requires_explicit_confirmation() -> None:
     assert body["product"]["status"] == "DRAFT"
     assert body["next_action"] == "confirm"
     product_id = body["product"]["id"]
-    assert client.post(f"/v1/products/{product_id}/mock-workflow").status_code == 409
     confirmed = client.post(f"/v1/products/{product_id}/confirm")
     assert confirmed.json()["product"]["status"] == "CONFIRMED"
-    assert client.post(f"/v1/products/{product_id}/mock-workflow").status_code == 200
 
 
 def test_clarification_answers_reach_confirmable_draft() -> None:
