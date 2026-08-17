@@ -47,6 +47,8 @@ class AutonomousPaidGrowthSweepService(AutonomousGrowthSweepService):
             portfolio = distribution_growth_manager_service.portfolio(
                 mandate.product_id,
                 max_items=AUTONOMOUS_PORTFOLIO_LIMIT,
+                allowed_platforms=mandate.allowed_platforms,
+                allowed_actions=mandate.allowed_actions,
             )
         except (KeyError, ValueError):
             return await super()._run_product(run_id, mandate)

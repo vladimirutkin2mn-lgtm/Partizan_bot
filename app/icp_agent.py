@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.llm import LLMMessage, LLMProvider
+from app.marketing_intelligence import MarketingTask, render_marketing_guidance
 
 
 class ICPDimensionScores(BaseModel):
@@ -77,6 +78,9 @@ Rules:
 8. competitive_headroom means how favorable the competitive situation is: 10 is attractive,
    differentiated or underserved; 1 is saturated and hard to win.
 9. Give concise rationale for the most important assumptions behind each segment.
+10. If no external customer evidence is present, do not claim observed demand, validated personas,
+    measured willingness to pay, or confirmed market size. State the relevant uncertainty in rationale.
+11. A high score is a prioritization hypothesis for testing, not evidence that the segment will convert.
 
 Scoring dimensions:
 - pain_intensity: urgency/strength of the underlying problem or desire;
@@ -165,8 +169,12 @@ class ICPEngine:
             for key, value in product_profile.items()
             if value not in (None, "", [], {}) and key not in {"id", "status"}
         )
+        marketing_guidance = render_marketing_guidance(MarketingTask.ICP_GENERATION)
         return [
-            LLMMessage(role="system", content=SYSTEM_PROMPT),
+            LLMMessage(
+                role="system",
+                content=f"{SYSTEM_PROMPT}\n\n{marketing_guidance}",
+            ),
             LLMMessage(
                 role="user",
                 content=f"Founder-confirmed ProductProfile:\n{facts}",
