@@ -130,6 +130,40 @@ def test_signed_checkout_webhook_unlocks_only_matching_pending_session(monkeypat
     assert project.json()["status"] == "UNLOCKED"
 
 
+def test_signed_webhook_cannot_unlock_project_without_matching_pending_checkout(monkeypatch) -> None:
+    preview = client.post("/v1/customer-projects/preview", json=_preview_payload()).json()
+    project_id = UUID(preview["project_id"])
+    event = {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": "cs_unbound",
+                "payment_status": "paid",
+                "customer": "cus_unbound",
+                "metadata": {
+                    "partizan_project_id": str(project_id),
+                    "partizan_entitlement": "launch_plan",
+                },
+            }
+        },
+    }
+    monkeypatch.setattr("app.customer_routes.construct_stripe_event", lambda **kwargs: event)
+
+    response = client.post(
+        "/v1/billing/stripe/webhook",
+        content=b"signed-payload",
+        headers={"Stripe-Signature": "t=1,v1=test"},
+    )
+    project = client.get(
+        f"/v1/customer-projects/{project_id}",
+        headers={"X-Partizan-Customer-Token": preview["customer_token"]},
+    )
+
+    assert response.status_code == 200
+    assert project.json()["launch_unlocked"] is False
+    assert project.json()["status"] == "PREVIEW"
+
+
 def test_customer_start_page_and_assets_are_served() -> None:
     page = client.get("/start")
     css = client.get("/start/assets/start.v1.css")
