@@ -102,6 +102,7 @@
         method: 'POST',
         body: JSON.stringify({
           brief: $('brief').value.trim(),
+          website_url: $('website').value.trim(),
           market: $('market').value.trim(),
           goal: $('goal').value,
           budget_usd: Number($('budget').value),
