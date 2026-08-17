@@ -3,6 +3,9 @@ set -euo pipefail
 
 ENV_FILE="${1:-.env.prod}"
 REQUIRE_PUBLIC_URL="${PARTIZAN_REQUIRE_PUBLIC_URL:-false}"
+# Mirrors tools/deploy_prod_remote.sh so the validated compose set is the deployed one.
+MANAGED_EDGE="${PARTIZAN_MANAGED_EDGE:-true}"
+EXTRA_COMPOSE_FILES="${PARTIZAN_EXTRA_COMPOSE_FILES:-}"
 
 fail() {
   echo "production preflight: $*" >&2
@@ -52,6 +55,14 @@ need_command docker
 need_command rsync
 docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is unavailable"
 
+[[ "${MANAGED_EDGE}" == "true" || "${MANAGED_EDGE}" == "false" ]] || \
+  fail "PARTIZAN_MANAGED_EDGE must be true or false"
+
+for extra_compose_file in ${EXTRA_COMPOSE_FILES}; do
+  [[ -f "${extra_compose_file}" ]] || \
+    fail "extra compose file is missing from the release: ${extra_compose_file}"
+done
+
 [[ -f "${ENV_FILE}" ]] || fail "environment file not found: ${ENV_FILE}"
 
 mode="$(stat -c '%a' "${ENV_FILE}" 2>/dev/null || true)"
@@ -99,8 +110,10 @@ if [[ -n "${public_base_url}" ]]; then
     fail "PARTIZAN_PUBLIC_HOST must exactly match the hostname in PARTIZAN_PUBLIC_BASE_URL"
   [[ "${public_host}" =~ ^[A-Za-z0-9.-]+$ ]] || \
     fail "PARTIZAN_PUBLIC_HOST must be a DNS hostname without scheme, port or path"
-  [[ -f Caddyfile.prod && -f docker-compose.edge.yml ]] || \
-    fail "public HTTPS edge files are missing from the release"
+  if [[ "${MANAGED_EDGE}" == "true" ]]; then
+    [[ -f Caddyfile.prod && -f docker-compose.edge.yml ]] || \
+      fail "public HTTPS edge files are missing from the release"
+  fi
 
   # The public product exposes a paid Acquisition Plan. Never publish that funnel
   # with a checkout that is silently unconfigured.
@@ -134,16 +147,15 @@ if [[ "$(env_value CREATIVE_VIDEO_PROVIDER)" == "gemini_omni" ]]; then
   reject_placeholder GEMINI_API_KEY
 fi
 
-if [[ -n "${public_base_url}" ]]; then
-  PARTIZAN_ENV_FILE="${ENV_FILE}" \
-    docker compose \
-      -f docker-compose.prod.yml \
-      -f docker-compose.edge.yml \
-      --env-file "${ENV_FILE}" \
-      config --quiet
-else
-  PARTIZAN_ENV_FILE="${ENV_FILE}" \
-    docker compose -f docker-compose.prod.yml --env-file "${ENV_FILE}" config --quiet
+compose_file_args=(-f docker-compose.prod.yml)
+if [[ -n "${public_base_url}" && "${MANAGED_EDGE}" == "true" ]]; then
+  compose_file_args+=(-f docker-compose.edge.yml)
 fi
+for extra_compose_file in ${EXTRA_COMPOSE_FILES}; do
+  compose_file_args+=(-f "${extra_compose_file}")
+done
+
+PARTIZAN_ENV_FILE="${ENV_FILE}" \
+  docker compose "${compose_file_args[@]}" --env-file "${ENV_FILE}" config --quiet
 
 echo "production host preflight: ok"

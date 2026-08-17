@@ -1,6 +1,11 @@
 # Partizan public HTTPS edge
 
-The public edge is optional and belongs to the Partizan production deployment. It is not shared with, and does not modify, any external product.
+The public edge is optional. It has two mutually exclusive modes:
+
+- **managed edge** — the default. Partizan runs its own Caddy, owns ports 80/443, and touches no external product.
+- **shared host** — another product already terminates TLS on those ports. Partizan runs no Caddy of its own and is routed by the existing proxy. See [Shared-host mode](#shared-host-mode).
+
+Choosing the wrong one is not a cosmetic mistake: starting the managed edge on a host where something else holds 80/443 fails to bind and takes the neighbouring products' public traffic down with it.
 
 ## Architecture
 
@@ -51,14 +56,71 @@ If no public URL is configured, deployment does not load the edge overlay and do
 
 Before the first public deployment, the operator must explicitly arrange infrastructure outside the repository:
 
-1. a dedicated Partizan host;
+1. a host for Partizan — dedicated for managed-edge mode, or a shared one whose existing proxy will route the hostname;
 2. DNS for the chosen hostname resolving to that host;
 3. inbound TCP 80 and 443 allowed to that host;
 4. outbound HTTPS/DNS connectivity required by the host for certificate issuance and configured providers.
 
 The Compose overlay also publishes 443/UDP so HTTP/3 can be used when the host/network permits it; HTTPS over TCP 443 remains the required path.
 
-Partizan does not guess a hostname, change DNS records, open cloud firewalls, or reuse another project's reverse proxy configuration.
+Partizan does not guess a hostname, change DNS records or open cloud firewalls. In the default managed-edge mode it also does not reuse another project's reverse proxy; shared-host mode does, and requires the operator to make that routing change deliberately.
+
+## Shared-host mode
+
+Use this when Partizan is one of several products on a host and something else — typically another compose project's Caddy or nginx — already owns 80/443 and issues certificates for every subdomain.
+
+Partizan then publishes no public port at all. The API joins the existing proxy's Docker network under the stable alias `partizan-api`, and the proxy reverse-proxies the hostname to `partizan-api:8000`.
+
+```text
+Internet :80/:443
+       |
+  the host's existing proxy        (owned by another project)
+       |  proxy network
+   partizan-api:8000               (alias on the Partizan API container)
+```
+
+Three things must line up.
+
+**1. The overlay names the proxy's network.** In the host-owned `.env.prod`:
+
+```dotenv
+PARTIZAN_EDGE_NETWORK=the_existing_proxy_network
+```
+
+The overlay treats this as required and refuses to render without it, because there is no safe network to guess.
+
+**2. Every deploy applies the overlay.** Deploy with:
+
+```bash
+PARTIZAN_MANAGED_EDGE=false \
+PARTIZAN_EXTRA_COMPOSE_FILES=docker-compose.shared-host.yml \
+DEPLOY_HOST=... DEPLOY_PATH=... \
+  bash tools/deploy_prod_remote.sh
+```
+
+For the GitHub deployment, set the same two as repository or `production` environment **variables** (they carry no secret). A deploy that omits them recreates the API without the proxy network, and public routing silently breaks on the next push to `main` even though the workflow reports success.
+
+Ad-hoc operations must apply the overlay too, or the next `up` detaches the API. Use the wrapper rather than assembling compose flags by hand:
+
+```bash
+bash /path/to/partizan/tools/compose_shared_host.sh ps
+bash /path/to/partizan/tools/compose_shared_host.sh logs --tail=50 api
+```
+
+**3. The proxy routes the hostname.** That configuration belongs to the other project and is edited there, for example as a Caddy site block:
+
+```text
+partizan.example.com {
+	encode zstd gzip
+	reverse_proxy partizan-api:8000
+}
+```
+
+Back up that file before editing it — it carries the neighbouring products' routing. If the proxy's admin API is disabled, a config reload does nothing and the proxy container has to be restarted, which briefly interrupts every product behind it. Confirm each neighbour serves again afterwards.
+
+`PARTIZAN_PUBLIC_BASE_URL`, `PARTIZAN_PUBLIC_HOST` and `PARTIZAN_PUBLIC_URL` mean the same thing in both modes, and the public HTTPS smoke still applies — it is verifying the shared proxy's route rather than a Partizan-owned listener.
+
+Certificates live with the proxy that issues them, so `partizan_caddy_data` and `partizan_caddy_config` are never created in this mode.
 
 ## TLS state
 

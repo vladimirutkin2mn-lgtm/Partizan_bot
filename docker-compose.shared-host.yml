@@ -1,0 +1,29 @@
+# Shared-host overlay.
+#
+# On a host Partizan owns alone, `docker-compose.edge.yml` starts its own Caddy, binds
+# 80/443 and reaches the API over the project's `default` network. Nothing here is needed.
+#
+# On a host shared with other products, another proxy already owns 80/443 and terminates
+# TLS for every subdomain. Starting the edge compose file there collides on those ports and
+# takes the neighbouring products down with it. Use this overlay instead: the API joins the
+# existing proxy's network under a stable alias, and that proxy routes the subdomain to
+# `partizan-api:8000` from its own configuration.
+#
+# Deploy with:
+#   PARTIZAN_MANAGED_EDGE=false \
+#   PARTIZAN_EXTRA_COMPOSE_FILES=docker-compose.shared-host.yml \
+#     bash tools/deploy_prod_remote.sh
+#
+# PARTIZAN_EDGE_NETWORK must name the already-existing proxy network in .env.prod.
+services:
+  api:
+    networks:
+      default:
+      edge:
+        aliases:
+          - partizan-api
+
+networks:
+  edge:
+    external: true
+    name: ${PARTIZAN_EDGE_NETWORK:?Set PARTIZAN_EDGE_NETWORK to the existing proxy network}

@@ -5,11 +5,28 @@ DEPLOY_HOST="${DEPLOY_HOST:?Set DEPLOY_HOST (user@host)}"
 DEPLOY_PATH="${DEPLOY_PATH:?Set DEPLOY_PATH to an absolute remote Partizan directory}"
 DEPLOY_SSH_OPTS="${DEPLOY_SSH_OPTS:-}"
 PARTIZAN_PUBLIC_URL="${PARTIZAN_PUBLIC_URL:-}"
+# Whether this deployment owns the public HTTPS edge. Set to false on a host where another
+# product already terminates TLS on 80/443; see docker-compose.shared-host.yml.
+PARTIZAN_MANAGED_EDGE="${PARTIZAN_MANAGED_EDGE:-true}"
+# Space-separated extra compose files, applied after the production file.
+PARTIZAN_EXTRA_COMPOSE_FILES="${PARTIZAN_EXTRA_COMPOSE_FILES:-}"
 
 if [[ "${DEPLOY_PATH}" != /* ]]; then
   echo "Refusing deployment: DEPLOY_PATH must be absolute" >&2
   exit 1
 fi
+
+if [[ "${PARTIZAN_MANAGED_EDGE}" != "true" && "${PARTIZAN_MANAGED_EDGE}" != "false" ]]; then
+  echo "Refusing deployment: PARTIZAN_MANAGED_EDGE must be true or false" >&2
+  exit 1
+fi
+
+for extra_compose_file in ${PARTIZAN_EXTRA_COMPOSE_FILES}; do
+  if [[ ! -f "${extra_compose_file}" ]]; then
+    echo "Refusing deployment: extra compose file not found: ${extra_compose_file}" >&2
+    exit 1
+  fi
+done
 
 SSH_ARGS=()
 if [[ -n "${DEPLOY_SSH_OPTS}" ]]; then
@@ -18,7 +35,9 @@ if [[ -n "${DEPLOY_SSH_OPTS}" ]]; then
 fi
 
 ssh_remote() {
-  ssh "${SSH_ARGS[@]}" "${DEPLOY_HOST}" "$1"
+  # Expanded through the +alternate form so an empty SSH_ARGS is not an unbound variable
+  # under `set -u` on bash 3.2, which is what a macOS operator runs this with.
+  ssh ${SSH_ARGS[@]+"${SSH_ARGS[@]}"} "${DEPLOY_HOST}" "$1"
 }
 
 echo "==> Verifying remote production environment"
@@ -40,7 +59,7 @@ if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
 fi
 
 echo "==> Running fail-closed production host preflight"
-ssh_remote "cd '${DEPLOY_PATH}' && PARTIZAN_REQUIRE_PUBLIC_URL='${require_public_url}' bash tools/preflight_prod_host.sh .env.prod"
+ssh_remote "cd '${DEPLOY_PATH}' && PARTIZAN_REQUIRE_PUBLIC_URL='${require_public_url}' PARTIZAN_MANAGED_EDGE='${PARTIZAN_MANAGED_EDGE}' PARTIZAN_EXTRA_COMPOSE_FILES='${PARTIZAN_EXTRA_COMPOSE_FILES}' bash tools/preflight_prod_host.sh .env.prod"
 
 if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
   if [[ "${PARTIZAN_PUBLIC_URL}" != https://* ]]; then
@@ -56,12 +75,16 @@ if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
   fi
 fi
 
-REMOTE_COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env.prod"
+COMPOSE_FILE_ARGS="-f docker-compose.prod.yml"
 START_SERVICES="api paid-control-worker autonomous-growth-worker"
-if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
-  REMOTE_COMPOSE="docker compose -f docker-compose.prod.yml -f docker-compose.edge.yml --env-file .env.prod"
+if [[ -n "${PARTIZAN_PUBLIC_URL}" && "${PARTIZAN_MANAGED_EDGE}" == "true" ]]; then
+  COMPOSE_FILE_ARGS="${COMPOSE_FILE_ARGS} -f docker-compose.edge.yml"
   START_SERVICES="${START_SERVICES} edge"
 fi
+for extra_compose_file in ${PARTIZAN_EXTRA_COMPOSE_FILES}; do
+  COMPOSE_FILE_ARGS="${COMPOSE_FILE_ARGS} -f ${extra_compose_file}"
+done
+REMOTE_COMPOSE="docker compose ${COMPOSE_FILE_ARGS} --env-file .env.prod"
 
 echo "==> Building Partizan release image"
 ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} build"

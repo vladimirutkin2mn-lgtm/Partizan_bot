@@ -58,6 +58,7 @@ jobs:
           bash -n tools/check_prod_config.sh
           bash -n tools/preflight_prod_host.sh
           bash -n tools/bootstrap_prod_host.sh
+          bash -n tools/compose_shared_host.sh
       - name: Migrate database
         run: alembic upgrade head
       - name: Test
@@ -81,5 +82,25 @@ jobs:
             -e PARTIZAN_PUBLIC_HOST=partizan.example.com \
             -v "$PWD/Caddyfile.prod:/etc/caddy/Caddyfile:ro" \
             caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+      - name: Validate shared-host runtime
+        run: |
+          PARTIZAN_ENV_FILE=.env.example \
+          PARTIZAN_EDGE_NETWORK=example_proxy_network \
+            docker compose \
+              -f docker-compose.prod.yml \
+              -f docker-compose.shared-host.yml \
+              --env-file .env.example \
+              config --quiet
+          # The overlay must stay fail-closed: without an explicit proxy network it has no
+          # safe default to fall back on.
+          if PARTIZAN_ENV_FILE=.env.example \
+               docker compose \
+                 -f docker-compose.prod.yml \
+                 -f docker-compose.shared-host.yml \
+                 --env-file .env.example \
+                 config --quiet 2>/dev/null; then
+            echo "shared-host overlay accepted a missing PARTIZAN_EDGE_NETWORK" >&2
+            exit 1
+          fi
       - name: Build production image
         run: docker build --tag partizan-bot:ci .
