@@ -101,6 +101,19 @@ if [[ -n "${public_base_url}" ]]; then
     fail "PARTIZAN_PUBLIC_HOST must be a DNS hostname without scheme, port or path"
   [[ -f Caddyfile.prod && -f docker-compose.edge.yml ]] || \
     fail "public HTTPS edge files are missing from the release"
+
+  # The public product exposes a paid Acquisition Plan. Never publish that funnel
+  # with a checkout that is silently unconfigured.
+  for stripe_key in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET STRIPE_LAUNCH_PRICE_ID; do
+    require_value "${stripe_key}"
+    reject_placeholder "${stripe_key}"
+  done
+  stripe_secret_key="$(env_value STRIPE_SECRET_KEY)"
+  stripe_webhook_secret="$(env_value STRIPE_WEBHOOK_SECRET)"
+  stripe_launch_price_id="$(env_value STRIPE_LAUNCH_PRICE_ID)"
+  [[ "${stripe_secret_key}" == sk_* ]] || fail "STRIPE_SECRET_KEY must be a Stripe secret key"
+  [[ "${stripe_webhook_secret}" == whsec_* ]] || fail "STRIPE_WEBHOOK_SECRET must be a Stripe webhook signing secret"
+  [[ "${stripe_launch_price_id}" == price_* ]] || fail "STRIPE_LAUNCH_PRICE_ID must be a Stripe Price ID"
 elif [[ -n "${public_host}" ]]; then
   fail "PARTIZAN_PUBLIC_HOST must be empty when PARTIZAN_PUBLIC_BASE_URL is empty"
 fi

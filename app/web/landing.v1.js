@@ -32,6 +32,14 @@
   budget?.addEventListener('input', updatePlanner);
   updatePlanner();
 
+  document.querySelectorAll('a.button-primary[href="/app"]').forEach((link) => {
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      const value = budget ? Number(budget.value) : 1000;
+      window.location.assign(`/start?budget=${encodeURIComponent(value)}`);
+    });
+  });
+
   const revealNodes = [...document.querySelectorAll('.reveal')];
   if ('IntersectionObserver' in window) {
     const observer = new IntersectionObserver((entries, instance) => {

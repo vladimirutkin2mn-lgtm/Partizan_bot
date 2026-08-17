@@ -66,6 +66,11 @@ fi
 echo "==> Building Partizan release image"
 ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} build"
 
+if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
+  echo "==> Verifying live Stripe launch Price"
+  ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} run --rm --no-deps api python -m app.stripe_readiness"
+fi
+
 echo "==> Starting PostgreSQL"
 ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} up -d postgres"
 

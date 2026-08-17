@@ -40,6 +40,10 @@ _LANDING_ASSETS = {
     "landing.v1.css": "text/css; charset=utf-8",
     "landing.v1.js": "text/javascript; charset=utf-8",
 }
+_START_ASSETS = {
+    "start.v1.css": "text/css; charset=utf-8",
+    "start.v1.js": "text/javascript; charset=utf-8",
+}
 
 router = APIRouter(tags=["web"])
 router.include_router(tracking_router)
@@ -56,6 +60,20 @@ async def marketing_asset(asset_name: str) -> FileResponse:
     media_type = _LANDING_ASSETS.get(asset_name)
     if media_type is None:
         raise HTTPException(status_code=404, detail="Marketing asset not found")
+    return FileResponse(_WEB_DIR / asset_name, media_type=media_type)
+
+
+@router.get("/start", include_in_schema=False)
+async def customer_start() -> HTMLResponse:
+    html = (_WEB_DIR / "start.v1.html").read_text(encoding="utf-8")
+    return HTMLResponse(html, media_type="text/html; charset=utf-8")
+
+
+@router.get("/start/assets/{asset_name}", include_in_schema=False)
+async def customer_start_asset(asset_name: str) -> FileResponse:
+    media_type = _START_ASSETS.get(asset_name)
+    if media_type is None:
+        raise HTTPException(status_code=404, detail="Customer onboarding asset not found")
     return FileResponse(_WEB_DIR / asset_name, media_type=media_type)
 
 

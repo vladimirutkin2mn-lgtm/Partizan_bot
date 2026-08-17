@@ -56,6 +56,16 @@ OPERATOR_API_KEY=${OPERATOR_API_KEY}
 PARTIZAN_PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
 PARTIZAN_PUBLIC_HOST=${PUBLIC_HOST}
 
+# Customer billing. A public launch preflight will fail until the first three values
+# are explicitly configured. Keep secrets only in this host-local 0600 file.
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_LAUNCH_PRICE_ID=
+STRIPE_AUTOPILOT_PRICE_ID=
+PARTIZAN_LAUNCH_PRICE_USD=49
+PARTIZAN_AUTOPILOT_PRICE_USD=149
+PARTIZAN_MANAGED_SPEND_FEE_PCT=10
+
 # Owned SMTP sender is intentionally disabled until explicitly configured.
 SMTP_HOST=
 SMTP_PORT=587
@@ -77,4 +87,4 @@ chmod 600 "${ENV_FILE}"
 unset POSTGRES_PASSWORD OPERATOR_API_KEY
 
 echo "production bootstrap: created ${ENV_FILE} with generated deployment-only secrets"
-echo "production bootstrap: live providers/public URL still require explicit configuration where left blank/mock"
+echo "production bootstrap: live providers, Stripe billing and public URL still require explicit configuration where left blank/mock"

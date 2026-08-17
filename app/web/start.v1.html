@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Partizan — Find your customers</title>
+  <meta name="description" content="Run a free acquisition pre-scan, unlock the full acquisition plan, then let Partizan execute what works.">
+  <link rel="stylesheet" href="/start/assets/start.v1.css">
+</head>
+<body>
+  <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
+  <header class="top shell">
+    <a class="brand" href="/"><span class="mark">P</span><span><strong>Partizan</strong><small>Customer acquisition</small></span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+
+  <main class="shell main">
+    <div class="progress"><i class="on"></i><i id="progress-2"></i><i id="progress-3"></i></div>
+
+    <section id="stage-input" class="stage">
+      <span class="eyebrow">Free acquisition pre-scan · no card required</span>
+      <h1>Tell Partizan what you sell.<br><em>See where growth may start.</em></h1>
+      <p class="lede">Give Partizan a short description of your product, market and budget. In seconds, you’ll see which acquisition directions look most promising — and how much deeper opportunity there is to uncover.</p>
+      <form id="preview-form" class="panel form-panel">
+        <label for="brief">Product or website</label>
+        <textarea id="brief" minlength="20" required placeholder="Example: AI bookkeeping assistant for US freelancers. $19/month subscription."></textarea>
+        <div class="form-grid">
+          <div><label for="budget">Test budget</label><div class="money-input"><span>$</span><input id="budget" type="number" min="100" max="100000" step="50" value="1000" required></div></div>
+          <div><label for="market">Market</label><input id="market" value="United States" required></div>
+          <div><label for="goal">Goal</label><select id="goal"><option>Get paying customers</option><option>Get signups</option><option>Validate demand</option></select></div>
+        </div>
+        <button class="button button-primary" type="submit">Run free pre-scan →</button>
+        <p class="fine">Free. No card required. Concrete targets and deep market research unlock in the Acquisition Plan.</p>
+      </form>
+    </section>
+
+    <section id="stage-preview" class="stage hidden">
+      <span class="eyebrow">Pre-scan complete</span>
+      <h1>Your first growth paths are clear.<br><em>Now uncover exactly where to go.</em></h1>
+      <p id="preview-summary" class="lede"></p>
+      <div id="direction-grid" class="direction-grid"></div>
+
+      <div class="locked panel">
+        <div class="locked-head"><div><span class="eyebrow">Inside the Acquisition Plan</span><h2 id="scope-title">Concrete opportunities</h2></div><span class="lock">🔒</span></div>
+        <div id="masked-list" class="masked-list"></div>
+        <div class="unlock-row">
+          <div><strong id="unlock-price">Unlock Acquisition Plan — $49</strong><p>Get ranked ICPs, named communities, creators, audiences and partner surfaces — with evidence and recommended first moves.</p></div>
+          <button id="checkout-button" class="button button-primary" type="button">Unlock & research →</button>
+        </div>
+        <p class="fine">One-time purchase. Your advertising and test budget stays separate and is never charged automatically.</p>
+      </div>
+    </section>
+
+    <section id="stage-unlocked" class="stage hidden">
+      <span class="eyebrow">Acquisition Plan unlocked</span>
+      <h1>Good. Now let’s find the<br><em>exact places to win.</em></h1>
+      <p class="lede">Partizan will build your highest-value customer segments, research real distribution opportunities and rank where you should start.</p>
+      <div id="payment-status" class="status-card"><span class="status-dot"></span><div><strong>Payment confirmed</strong><small>Your Acquisition Plan is ready to build.</small></div></div>
+      <button id="research-button" class="button button-primary" type="button">Build my acquisition plan →</button>
+      <div id="research-progress" class="research-progress hidden"><span class="spinner"></span><div><strong>Partizan is mapping your market…</strong><small>Finding customer segments and concrete places where they already spend attention.</small></div></div>
+      <div id="clarification-box" class="panel clarification hidden"></div>
+      <div id="research-results" class="hidden"></div>
+    </section>
+
+    <section id="autopilot-card" class="autopilot panel hidden">
+      <div><span class="eyebrow">Next layer</span><h2>Want Partizan to execute it too?</h2><p>Autopilot turns the plan into continuous experiments, measurement and reallocation — so Partizan keeps learning where your next customers come from.</p></div>
+      <div class="autopilot-price"><strong id="autopilot-price">$149<span>/mo</span></strong><small id="spend-fee">+ 10% managed spend</small><button class="button button-disabled" type="button" disabled>Coming next</button></div>
+    </section>
+
+    <div id="notice" class="notice hidden" role="status"></div>
+  </main>
+  <script src="/start/assets/start.v1.js" defer></script>
+</body>
+</html>

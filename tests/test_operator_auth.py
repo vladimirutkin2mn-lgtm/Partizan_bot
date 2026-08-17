@@ -37,6 +37,13 @@ def test_global_control_plane_guard_is_installed() -> None:
         ("POST", "/v1/products/{product_id}/distribution-events"),
         ("POST", "/v1/products/{product_id}/distribution-events/verify"),
         ("GET", "/v1/public/creative-blobs/{blob_id}"),
+        ("POST", "/v1/customer-projects/preview"),
+        ("GET", "/v1/customer-projects/{project_id}"),
+        ("POST", "/v1/customer-projects/{project_id}/checkout"),
+        ("POST", "/v1/customer-projects/{project_id}/recover-access"),
+        ("POST", "/v1/customer-projects/{project_id}/deep-research"),
+        ("POST", "/v1/customer-projects/{project_id}/clarifications"),
+        ("POST", "/v1/billing/stripe/webhook"),
     }
 
 
@@ -167,6 +174,36 @@ def test_event_key_data_plane_remains_outside_operator_boundary() -> None:
     assert verify.status_code == 401
     assert ingest.json()["detail"] == "Distribution event authentication required"
     assert verify.json()["detail"] == "Distribution event authentication required"
+
+
+def test_customer_boundary_bypasses_operator_key_but_keeps_customer_token_auth() -> None:
+    _override(_settings(app_env="production", operator_api_key="correct-secret"))
+    preview = client.post(
+        "/v1/customer-projects/preview",
+        json={
+            "brief": "AI bookkeeping assistant for freelancers with a monthly subscription.",
+            "market": "United States",
+            "goal": "Get paying customers",
+            "budget_usd": 1000,
+        },
+    )
+
+    assert preview.status_code == 201
+    project_id = preview.json()["project_id"]
+    missing_customer_token = client.get(f"/v1/customer-projects/{project_id}")
+    allowed = client.get(
+        f"/v1/customer-projects/{project_id}",
+        headers={"X-Partizan-Customer-Token": preview.json()["customer_token"]},
+    )
+    recovery_without_billing = client.post(
+        f"/v1/customer-projects/{project_id}/recover-access",
+        json={"session_id": "cs_test_missing"},
+    )
+
+    assert missing_customer_token.status_code == 401
+    assert missing_customer_token.json()["detail"] == "Customer project token required"
+    assert allowed.status_code == 200
+    assert recovery_without_billing.status_code == 503
 
 
 def test_public_creative_blob_route_bypasses_operator_boundary() -> None:

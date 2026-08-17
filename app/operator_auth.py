@@ -11,18 +11,33 @@ from app.config import Settings, get_settings
 OPERATOR_KEY_HEADER = "X-Partizan-Operator-Key"
 
 # These are the only intentionally public /v1 endpoints. Conversion ingestion
-# enforces its own Product Event Key. Creative blobs are opaque public assets.
+# enforces its own Product Event Key. Customer routes enforce an opaque per-project
+# token, except preview creation, Stripe-verified recovery and the Stripe-signed webhook.
 PUBLIC_API_ROUTE_TEMPLATES = frozenset(
     {
         ("POST", "/v1/products/{product_id}/distribution-events"),
         ("POST", "/v1/products/{product_id}/distribution-events/verify"),
         ("GET", "/v1/public/creative-blobs/{blob_id}"),
+        ("POST", "/v1/customer-projects/preview"),
+        ("GET", "/v1/customer-projects/{project_id}"),
+        ("POST", "/v1/customer-projects/{project_id}/checkout"),
+        ("POST", "/v1/customer-projects/{project_id}/recover-access"),
+        ("POST", "/v1/customer-projects/{project_id}/deep-research"),
+        ("POST", "/v1/customer-projects/{project_id}/clarifications"),
+        ("POST", "/v1/billing/stripe/webhook"),
     }
 )
 _PUBLIC_API_PATHS = (
     ("POST", re.compile(r"^/v1/products/[^/]+/distribution-events$")),
     ("POST", re.compile(r"^/v1/products/[^/]+/distribution-events/verify$")),
     ("GET", re.compile(r"^/v1/public/creative-blobs/[^/]+$")),
+    ("POST", re.compile(r"^/v1/customer-projects/preview$")),
+    ("GET", re.compile(r"^/v1/customer-projects/[^/]+$")),
+    ("POST", re.compile(r"^/v1/customer-projects/[^/]+/checkout$")),
+    ("POST", re.compile(r"^/v1/customer-projects/[^/]+/recover-access$")),
+    ("POST", re.compile(r"^/v1/customer-projects/[^/]+/deep-research$")),
+    ("POST", re.compile(r"^/v1/customer-projects/[^/]+/clarifications$")),
+    ("POST", re.compile(r"^/v1/billing/stripe/webhook$")),
 )
 
 
@@ -68,9 +83,8 @@ async def require_control_plane_operator(
 
     Health, browser assets and tracking redirects live outside ``/v1`` and stay
     public. Inside ``/v1`` the default is fail-closed for both reads and writes;
-    only the explicit data-plane/public-asset routes above bypass operator auth.
-    This keeps a newly added GET from accidentally exposing internal state on a
-    public Partizan origin.
+    only explicit data-plane, customer-boundary and public-asset routes bypass
+    operator auth. Each customer-boundary route applies its own authentication.
     """
 
     method = request.method.upper()
