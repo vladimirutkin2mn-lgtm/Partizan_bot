@@ -115,18 +115,48 @@ if [[ -n "${public_base_url}" ]]; then
       fail "public HTTPS edge files are missing from the release"
   fi
 
-  # The public product exposes a paid Acquisition Plan. Never publish that funnel
-  # with a checkout that is silently unconfigured.
-  for stripe_key in STRIPE_SECRET_KEY STRIPE_WEBHOOK_SECRET STRIPE_LAUNCH_PRICE_ID; do
+  # The public customer funnel sells both the Acquisition Plan and Autopilot.
+  # Do not publish buttons that silently lead to unconfigured billing.
+  for stripe_key in \
+    STRIPE_SECRET_KEY \
+    STRIPE_WEBHOOK_SECRET \
+    STRIPE_LAUNCH_PRICE_ID \
+    STRIPE_AUTOPILOT_PRICE_ID; do
     require_value "${stripe_key}"
     reject_placeholder "${stripe_key}"
   done
   stripe_secret_key="$(env_value STRIPE_SECRET_KEY)"
   stripe_webhook_secret="$(env_value STRIPE_WEBHOOK_SECRET)"
   stripe_launch_price_id="$(env_value STRIPE_LAUNCH_PRICE_ID)"
+  stripe_autopilot_price_id="$(env_value STRIPE_AUTOPILOT_PRICE_ID)"
   [[ "${stripe_secret_key}" == sk_* ]] || fail "STRIPE_SECRET_KEY must be a Stripe secret key"
-  [[ "${stripe_webhook_secret}" == whsec_* ]] || fail "STRIPE_WEBHOOK_SECRET must be a Stripe webhook signing secret"
-  [[ "${stripe_launch_price_id}" == price_* ]] || fail "STRIPE_LAUNCH_PRICE_ID must be a Stripe Price ID"
+  [[ "${stripe_webhook_secret}" == whsec_* ]] || \
+    fail "STRIPE_WEBHOOK_SECRET must be a Stripe webhook signing secret"
+  [[ "${stripe_launch_price_id}" == price_* ]] || \
+    fail "STRIPE_LAUNCH_PRICE_ID must be a Stripe Price ID"
+  [[ "${stripe_autopilot_price_id}" == price_* ]] || \
+    fail "STRIPE_AUTOPILOT_PRICE_ID must be a Stripe Price ID"
+
+  # Public Autopilot exposes self-service Meta connection. Provider credentials are
+  # encrypted at rest and the OAuth app must be explicitly configured before launch.
+  for meta_key in \
+    PROVIDER_SECRET_ENCRYPTION_KEY \
+    META_OAUTH_APP_ID \
+    META_OAUTH_APP_SECRET \
+    META_OAUTH_API_VERSION; do
+    require_value "${meta_key}"
+    reject_placeholder "${meta_key}"
+  done
+  provider_secret_key="$(env_value PROVIDER_SECRET_ENCRYPTION_KEY)"
+  meta_app_id="$(env_value META_OAUTH_APP_ID)"
+  meta_app_secret="$(env_value META_OAUTH_APP_SECRET)"
+  meta_api_version="$(env_value META_OAUTH_API_VERSION)"
+  (( ${#provider_secret_key} >= 40 )) || \
+    fail "PROVIDER_SECRET_ENCRYPTION_KEY must be a strong Fernet key"
+  [[ "${meta_app_id}" =~ ^[0-9]+$ ]] || fail "META_OAUTH_APP_ID must be a numeric Meta app ID"
+  (( ${#meta_app_secret} >= 16 )) || fail "META_OAUTH_APP_SECRET is too short"
+  [[ "${meta_api_version}" =~ ^v[0-9]+\.[0-9]+$ ]] || \
+    fail "META_OAUTH_API_VERSION must look like v25.0"
 elif [[ -n "${public_host}" ]]; then
   fail "PARTIZAN_PUBLIC_HOST must be empty when PARTIZAN_PUBLIC_BASE_URL is empty"
 fi
