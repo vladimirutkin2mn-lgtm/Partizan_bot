@@ -34,6 +34,7 @@ def create_launch_checkout(
     }
     session = stripe.checkout.Session.create(
         mode="payment",
+        payment_method_types=["card"],
         line_items=[{"price": settings.stripe_launch_price_id, "quantity": 1}],
         client_reference_id=str(project_id),
         customer_creation="always",
