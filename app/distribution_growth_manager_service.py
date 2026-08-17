@@ -1,4 +1,5 @@
 import json
+from collections.abc import Collection
 from datetime import UTC, datetime
 from hashlib import sha1
 from uuid import UUID, uuid4
@@ -16,6 +17,7 @@ from app.distribution_execution_schemas import DistributionExperimentStatus
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_schemas import DistributionPlayStatus, DistributionPlayView
 from app.distribution_play_service import distribution_play_service
+from app.distribution_types import DistributionActionType, DistributionPlatform
 from app.growth_planning import growth_planning_engine
 from app.product_intake import product_intake_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
@@ -137,6 +139,8 @@ class InMemoryDistributionGrowthManagerService:
         product_id: UUID,
         *,
         max_items: int = 4,
+        allowed_platforms: Collection[DistributionPlatform] | None = None,
+        allowed_actions: Collection[DistributionActionType] | None = None,
     ) -> DistributionPortfolioView:
         product = product_intake_service.get_product(product_id)
         play_result = distribution_play_service.get(product_id)
@@ -150,6 +154,10 @@ class InMemoryDistributionGrowthManagerService:
             for play in play_result.plays
             if play.status == DistributionPlayStatus.READY
         ]
+        if allowed_platforms is not None:
+            ready = [play for play in ready if play.platform in allowed_platforms]
+        if allowed_actions is not None:
+            ready = [play for play in ready if play.action_type in allowed_actions]
         running_play_ids = {
             experiment.distribution_play_id
             for experiment in distribution_execution_service.list_experiments(product_id)
@@ -184,14 +192,11 @@ class InMemoryDistributionGrowthManagerService:
                 *planning.rationale,
             ]
             scored.append((score, play, rationale))
-        scored.sort(
-            key=lambda item: (
-                -item[0],
-                item[1].time_to_signal_days,
-                item[1].effort_hours,
-                item[1].tactic_id,
-                str(item[1].id),
-            )
+        scored.sort(key=self._portfolio_sort_key)
+        scored = self._retain_observed_tactics(
+            scored,
+            product_analytics.experiments,
+            max_items,
         )
 
         items: list[DistributionPortfolioItemView] = []
@@ -237,6 +242,72 @@ class InMemoryDistributionGrowthManagerService:
             items=items,
         )
 
+    def _portfolio_sort_key(
+        self,
+        item: tuple[float, DistributionPlayView, list[str]],
+    ) -> tuple:
+        score, play, _ = item
+        return (
+            -score,
+            play.time_to_signal_days,
+            play.effort_hours,
+            play.tactic_id,
+            str(play.id),
+        )
+
+    def _retain_observed_tactics(
+        self,
+        scored: list[tuple[float, DistributionPlayView, list[str]]],
+        experiments,
+        max_items: int,
+    ) -> list[tuple[float, DistributionPlayView, list[str]]]:
+        if len(scored) <= max_items:
+            return scored
+        selected = list(scored[:max_items])
+        observed_keys = {
+            (item.play.platform, item.play.tactic_id)
+            for item in experiments
+        }
+        if not observed_keys:
+            return selected
+
+        for observed_key in sorted(
+            observed_keys,
+            key=lambda item: (item[0].value, item[1]),
+        ):
+            if any(
+                (play.platform, play.tactic_id) == observed_key
+                for _, play, _ in selected
+            ):
+                continue
+            candidate = next(
+                (
+                    item
+                    for item in scored
+                    if (item[1].platform, item[1].tactic_id) == observed_key
+                ),
+                None,
+            )
+            if candidate is None:
+                continue
+            replace_index = next(
+                (
+                    index
+                    for index in range(len(selected) - 1, -1, -1)
+                    if (
+                        selected[index][1].platform,
+                        selected[index][1].tactic_id,
+                    )
+                    not in observed_keys
+                ),
+                None,
+            )
+            if replace_index is None:
+                break
+            selected[replace_index] = candidate
+        selected.sort(key=self._portfolio_sort_key)
+        return selected
+
     def _research_signals(self, play: DistributionPlayView) -> dict:
         try:
             opportunity = audience_intelligence_service.find_opportunity(
@@ -267,7 +338,7 @@ class InMemoryDistributionGrowthManagerService:
         if payload is None:
             raise KeyError(decision_id)
         decision = DistributionGrowthDecisionView.model_validate(payload)
-        self._decisions[decision.id] = decision
+        self._decisions[decision_id] = decision
         return decision
 
     def _persist_decision(
@@ -457,12 +528,8 @@ class InMemoryDistributionGrowthManagerService:
         if per_item_cap is not None:
             desired = min(desired, per_item_cap)
         if budget_remaining is None:
-            return round(max(play.estimated_cost_min, desired), 2)
+            return round(desired, 2)
         available = max(0.0, budget_remaining - already_allocated)
-        if available < play.estimated_cost_min:
-            return 0.0
-        desired = min(desired, available)
-        desired = max(play.estimated_cost_min, desired)
         return round(min(desired, available), 2)
 
     def _budget_remaining(
