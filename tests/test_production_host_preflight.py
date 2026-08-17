@@ -46,9 +46,14 @@ def _valid_env(**overrides: str) -> str:
         "STRIPE_SECRET_KEY": "sk_test_partizan_not_real",
         "STRIPE_WEBHOOK_SECRET": "whsec_partizan_not_real",
         "STRIPE_LAUNCH_PRICE_ID": "price_partizan_launch_not_real",
+        "STRIPE_AUTOPILOT_PRICE_ID": "price_partizan_autopilot_not_real",
         "PARTIZAN_LAUNCH_PRICE_USD": "49",
         "PARTIZAN_AUTOPILOT_PRICE_USD": "149",
         "PARTIZAN_MANAGED_SPEND_FEE_PCT": "10",
+        "PROVIDER_SECRET_ENCRYPTION_KEY": "A" * 43 + "=",
+        "META_OAUTH_APP_ID": "123456789012345",
+        "META_OAUTH_APP_SECRET": "meta_app_secret_not_real_123456",
+        "META_OAUTH_API_VERSION": "v25.0",
     }
     values.update(overrides)
     return "".join(f"{key}={value}\n" for key, value in values.items())
@@ -97,6 +102,7 @@ def test_valid_production_host_preflight_passes(tmp_path: Path) -> None:
     assert "production host preflight: ok" in result.stdout
     assert "b" * 64 not in result.stdout + result.stderr
     assert "sk_test_partizan_not_real" not in result.stdout + result.stderr
+    assert "meta_app_secret_not_real" not in result.stdout + result.stderr
 
 
 def test_internal_only_preflight_passes_without_public_edge(tmp_path: Path) -> None:
@@ -210,13 +216,41 @@ def test_public_preflight_requires_valid_stripe_checkout_config(tmp_path: Path) 
         tmp_path / "wrong-price",
         _valid_env(STRIPE_LAUNCH_PRICE_ID="prod_not_a_price"),
     )
+    missing_autopilot = _run_preflight(
+        tmp_path / "missing-autopilot",
+        _valid_env(STRIPE_AUTOPILOT_PRICE_ID=""),
+    )
 
     assert missing_secret.returncode != 0
     assert missing_webhook.returncode != 0
     assert wrong_price.returncode != 0
+    assert missing_autopilot.returncode != 0
     assert "STRIPE_SECRET_KEY" in missing_secret.stderr
     assert "STRIPE_WEBHOOK_SECRET" in missing_webhook.stderr
     assert "Stripe Price ID" in wrong_price.stderr
+    assert "STRIPE_AUTOPILOT_PRICE_ID" in missing_autopilot.stderr
+
+
+def test_public_preflight_requires_encrypted_meta_oauth_config(tmp_path: Path) -> None:
+    missing_encryption = _run_preflight(
+        tmp_path / "missing-encryption",
+        _valid_env(PROVIDER_SECRET_ENCRYPTION_KEY=""),
+    )
+    missing_app = _run_preflight(
+        tmp_path / "missing-app",
+        _valid_env(META_OAUTH_APP_ID=""),
+    )
+    bad_version = _run_preflight(
+        tmp_path / "bad-version",
+        _valid_env(META_OAUTH_API_VERSION="latest"),
+    )
+
+    assert missing_encryption.returncode != 0
+    assert missing_app.returncode != 0
+    assert bad_version.returncode != 0
+    assert "PROVIDER_SECRET_ENCRYPTION_KEY" in missing_encryption.stderr
+    assert "META_OAUTH_APP_ID" in missing_app.stderr
+    assert "META_OAUTH_API_VERSION" in bad_version.stderr
 
 
 def test_shared_host_mode_does_not_require_managed_edge_files(tmp_path: Path) -> None:
@@ -293,6 +327,7 @@ def test_bootstrap_generates_private_env_without_printing_secrets(tmp_path: Path
     assert stat.S_IMODE(env_file.stat().st_mode) == 0o600
     assert len(values["POSTGRES_PASSWORD"]) == 64
     assert len(values["OPERATOR_API_KEY"]) == 64
+    assert len(values["PROVIDER_SECRET_ENCRYPTION_KEY"]) >= 40
     assert values["APP_ENV"] == "production"
     assert values["RUNTIME_STORAGE"] == "database"
     assert values["PARTIZAN_PUBLIC_BASE_URL"] == "https://partizan.example.com"
@@ -300,11 +335,16 @@ def test_bootstrap_generates_private_env_without_printing_secrets(tmp_path: Path
     assert values["STRIPE_SECRET_KEY"] == ""
     assert values["STRIPE_WEBHOOK_SECRET"] == ""
     assert values["STRIPE_LAUNCH_PRICE_ID"] == ""
+    assert values["STRIPE_AUTOPILOT_PRICE_ID"] == ""
     assert values["PARTIZAN_LAUNCH_PRICE_USD"] == "49"
     assert values["PARTIZAN_AUTOPILOT_PRICE_USD"] == "149"
     assert values["PARTIZAN_MANAGED_SPEND_FEE_PCT"] == "10"
+    assert values["META_OAUTH_APP_ID"] == ""
+    assert values["META_OAUTH_APP_SECRET"] == ""
+    assert values["META_OAUTH_API_VERSION"] == ""
     assert values["POSTGRES_PASSWORD"] not in result.stdout + result.stderr
     assert values["OPERATOR_API_KEY"] not in result.stdout + result.stderr
+    assert values["PROVIDER_SECRET_ENCRYPTION_KEY"] not in result.stdout + result.stderr
 
 
 def test_bootstrap_refuses_to_overwrite_existing_env(tmp_path: Path) -> None:
