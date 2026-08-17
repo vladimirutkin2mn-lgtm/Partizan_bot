@@ -5,6 +5,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from app.llm import LLMMessage, LLMProvider
+from app.marketing_intelligence import MarketingTask, render_marketing_guidance
 
 
 class ClarificationCandidate(BaseModel):
@@ -131,8 +132,15 @@ class ProductIntakeAgent:
             f"Reference links (do not read or infer from them):\n{links}\n\n"
             f"Clarification history:\n{answer_text or '(none)'}"
         )
+        marketing_guidance = render_marketing_guidance(
+            MarketingTask.PRODUCT_INTAKE,
+            max_skills=2,
+        )
         return [
-            LLMMessage(role="system", content=SYSTEM_PROMPT),
+            LLMMessage(
+                role="system",
+                content=f"{SYSTEM_PROMPT}\n\n{marketing_guidance}",
+            ),
             LLMMessage(role="user", content=user_content),
         ]
 
