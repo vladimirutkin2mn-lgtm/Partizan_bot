@@ -62,6 +62,7 @@ class CustomerFunnelService:
             "id": str(project_id),
             "customer_token_hash": self._hash_token(customer_token),
             "brief": payload.brief,
+            "website_url": str(payload.website_url) if payload.website_url else None,
             "market": payload.market,
             "goal": payload.goal,
             "budget_usd": payload.budget_usd,
@@ -148,14 +149,21 @@ class CustomerFunnelService:
                 return self._needs_input(project, state.product.id, state.questions)
             return await self._finish_research(project, state.product.id)
 
-        enriched_brief = (
-            f"{project['brief']}\n\n"
-            f"Market: {project['market']}\n"
-            f"Test budget: ${project['budget_usd']}\n"
-            f"Business goal: {project['goal']}"
-        )
+        website_url = str(project.get("website_url") or "").strip()
+        enriched_brief_parts = [
+            project["brief"],
+            f"Market: {project['market']}",
+            f"Test budget: ${project['budget_usd']}",
+            f"Business goal: {project['goal']}",
+        ]
+        if website_url:
+            enriched_brief_parts.append(f"Website: {website_url}")
+        enriched_brief = "\n\n".join(enriched_brief_parts)
         intake = await product_intake_service.create_draft(
-            ProductCreateRequest(brief=enriched_brief, reference_links=[])
+            ProductCreateRequest(
+                brief=enriched_brief,
+                reference_links=[website_url] if website_url else [],
+            )
         )
         project["product_id"] = str(intake.product.id)
         if intake.clarifications:
@@ -298,12 +306,21 @@ class CustomerFunnelService:
             project_id=UUID(project["id"]),
             status=project["status"],
             brief=project["brief"],
+            website_url=project.get("website_url"),
             market=project["market"],
             goal=project["goal"],
             budget_usd=int(project["budget_usd"]),
             launch_unlocked=bool(project["launch_unlocked"]),
             research_state=project["research_state"],
             product_id=UUID(project["product_id"]) if project.get("product_id") else None,
+            autopilot_subscription_status=str(
+                project.get("autopilot_subscription_status") or "INACTIVE"
+            ),
+            autopilot_subscription_id=(
+                str(project["autopilot_subscription_id"])
+                if project.get("autopilot_subscription_id")
+                else None
+            ),
             launch_price_usd=settings.partizan_launch_price_usd,
             autopilot_price_usd=settings.partizan_autopilot_price_usd,
             managed_spend_fee_pct=settings.partizan_managed_spend_fee_pct,
