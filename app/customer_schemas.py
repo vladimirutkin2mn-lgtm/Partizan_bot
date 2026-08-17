@@ -55,6 +55,15 @@ class CheckoutResponse(BaseModel):
     already_unlocked: bool = False
 
 
+class CustomerAccessRecoveryRequest(BaseModel):
+    session_id: str = Field(min_length=8, max_length=255)
+
+
+class CustomerAccessRecoveryResponse(BaseModel):
+    project_id: UUID
+    customer_token: str
+
+
 class CustomerClarificationView(BaseModel):
     question_id: UUID
     question: str
