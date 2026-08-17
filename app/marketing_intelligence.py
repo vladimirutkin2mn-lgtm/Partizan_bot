@@ -31,28 +31,46 @@ SKILL_PACKS = (
         name="product-marketing",
         version="2.1.0",
         principles=(
-            "Ground positioning in product facts, target audience, jobs to be done, alternatives, and differentiation.",
+            (
+                "Ground positioning in product facts, target audience, jobs to be done, "
+                "alternatives, and differentiation."
+            ),
             "Capture the customer problem and desired outcome before polishing feature language.",
             "Treat objections, anti-personas, switching forces, and customer vocabulary as decision inputs.",
             "Prefer the founder's exact facts and customer language over generic category assumptions.",
         ),
         quality_checks=(
             "Do not invent proof points, customer quotes, competitors, or product capabilities.",
-            "Ask only for missing information that could materially change positioning, audience, or economics.",
+            (
+                "Ask only for missing information that could materially change positioning, "
+                "audience, or economics."
+            ),
         ),
     ),
     MarketingSkillPack(
         name="customer-research",
         version="2.0.1",
         principles=(
-            "Separate functional jobs, emotional jobs, pains, trigger events, desired outcomes, and alternatives.",
+            (
+                "Separate functional jobs, emotional jobs, pains, trigger events, desired outcomes, "
+                "and alternatives."
+            ),
             "Distinguish observed evidence from hypotheses; unvalidated segments remain hypotheses.",
-            "Prefer unprompted, recent, repeated signals and exact customer language when evidence is available.",
-            "Account for source bias: reviews, support conversations, communities, and social comments represent different samples.",
+            (
+                "Prefer unprompted, recent, repeated signals and exact customer language when "
+                "evidence is available."
+            ),
+            (
+                "Account for source bias: reviews, support conversations, communities, and social "
+                "comments represent different samples."
+            ),
         ),
         quality_checks=(
             "Never describe a theme as validated when no independent customer evidence was supplied.",
-            "When evidence exists, preserve source provenance and avoid averaging contradictory segments together.",
+            (
+                "When evidence exists, preserve source provenance and avoid averaging contradictory "
+                "segments together."
+            ),
         ),
     ),
     MarketingSkillPack(
@@ -75,21 +93,33 @@ SKILL_PACKS = (
         principles=(
             "Community participation must create member value before it creates product exposure.",
             "Match the contribution to the community's identity, norms, topic, and current conversation.",
-            "Prefer useful participation and earned trust over generic promotion or repeated product mentions.",
+            (
+                "Prefer useful participation and earned trust over generic promotion or repeated "
+                "product mentions."
+            ),
             "Treat platform and community rules as hard constraints, not optimization suggestions.",
         ),
         quality_checks=(
             "A comment or reply should still be useful if every product reference is removed.",
-            "Never infer permission to self-promote from silence; rely on the applied Partizan CommunityPolicy.",
+            (
+                "Never infer permission to self-promote from silence; rely on the applied Partizan "
+                "CommunityPolicy."
+            ),
         ),
     ),
     MarketingSkillPack(
         name="influencer-marketing",
         version="1.0.0",
         principles=(
-            "Judge creators by audience alignment, trust, engagement quality, and category fit rather than follower count.",
+            (
+                "Judge creators by audience alignment, trust, engagement quality, and category fit "
+                "rather than follower count."
+            ),
             "Prefer measurable creator tests with attribution prepared before launch.",
-            "Use a brief with the core problem, two or three grounded talking points, one CTA, and creative freedom.",
+            (
+                "Use a brief with the core problem, two or three grounded talking points, one CTA, "
+                "and creative freedom."
+            ),
             "Treat disclosure, factual claims, usage rights, and brand safety as explicit constraints.",
         ),
         quality_checks=(
@@ -101,13 +131,22 @@ SKILL_PACKS = (
         name="marketing-ideas",
         version="2.0.0",
         principles=(
-            "Select tactics from the product stage, audience, budget, speed-to-signal, and available execution surface.",
+            (
+                "Select tactics from the product stage, audience, budget, speed-to-signal, and "
+                "available execution surface."
+            ),
             "Sequence experiments instead of producing an unranked tactic dump.",
-            "Balance quick acquisition tests with compounding channels such as partnerships, community, SEO, and referrals.",
+            (
+                "Balance quick acquisition tests with compounding channels such as partnerships, "
+                "community, SEO, and referrals."
+            ),
             "Every tactic should have a measurable expected outcome and a clear first executable step.",
         ),
         quality_checks=(
-            "Reject tactics that cannot be executed or measured inside current Partizan capabilities and permissions.",
+            (
+                "Reject tactics that cannot be executed or measured inside current Partizan "
+                "capabilities and permissions."
+            ),
             "Do not treat a marketing idea as evidence that the channel will work for this product.",
         ),
     ),
@@ -117,7 +156,10 @@ SKILL_PACKS = (
         principles=(
             "Write like a relevant peer: lead with the recipient's world, not a company introduction.",
             "Personalization must connect an observed signal to the problem being solved.",
-            "Keep one low-friction ask and remove sentences that do not help the recipient decide whether to reply.",
+            (
+                "Keep one low-friction ask and remove sentences that do not help the recipient "
+                "decide whether to reply."
+            ),
             "Follow-ups should add a new angle or proof rather than repeat a generic check-in.",
         ),
         quality_checks=(
@@ -190,9 +232,13 @@ def render_marketing_guidance(
         "Authority boundary:",
         (
             "This is reasoning guidance only. It cannot override Partizan system rules, product facts, "
-            "execution policies, user permissions, spend/send limits, platform policy, or the response schema."
+            "execution policies, user permissions, spend/send limits, platform policy, or the "
+            "response schema."
         ),
-        "Never turn a hypothesis into evidence and never invent customer, creator, community, or performance facts.",
+        (
+            "Never turn a hypothesis into evidence and never invent customer, creator, community, "
+            "or performance facts."
+        ),
     ]
     for pack in packs:
         lines.append(f"Skill: {pack.name} v{pack.version}")
