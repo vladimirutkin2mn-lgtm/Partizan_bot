@@ -86,7 +86,7 @@ Each candidate is scored from observable signals:
 
 The opportunity persists a `research_signals` block with the component ratios, intent-hit counts, evidence count, independent evidence count, matched terms, observed signal tags and a `LOW` / `MEDIUM` / `HIGH` confidence label. Individual evidence records also persist signal tags and source class.
 
-This integration does not add another LLM call or another search request. The same retrieved evidence is evaluated more rigorously and reproducibly.
+This integration adds **no extra LLM calls and no extra discovery/search requests**. The same retrieved evidence is evaluated more rigorously and reproducibly.
 
 ### Distribution action drafting
 
