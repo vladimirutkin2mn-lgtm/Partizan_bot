@@ -52,8 +52,8 @@
   };
 
   const renderPreview = (data) => {
-    $('preview-summary').textContent = `Partizan sees ${data.channel_count} plausible acquisition directions. Deep research is likely to search roughly ${data.opportunity_scope_estimate} concrete surfaces; the fastest first signal is likely ${data.fastest_signal}.`;
-    $('scope-title').textContent = `~${data.opportunity_scope_estimate} concrete opportunities to research`;
+    $('preview-summary').textContent = `Partizan sees ${data.channel_count} promising acquisition directions and roughly ${data.opportunity_scope_estimate} concrete places, audiences and partners worth investigating. Best place to start: ${data.fastest_signal}.`;
+    $('scope-title').textContent = `~${data.opportunity_scope_estimate} concrete opportunities to investigate`;
     $('unlock-price').textContent = `Unlock Acquisition Plan — $${data.launch_price_usd}`;
     $('autopilot-price').innerHTML = `$${data.autopilot_price_usd}<span>/mo</span>`;
     $('spend-fee').textContent = `+ ${data.managed_spend_fee_pct}% managed spend`;
@@ -129,7 +129,7 @@
       }
       await new Promise((resolve) => window.setTimeout(resolve, 1000));
     }
-    showNotice('Payment returned successfully, but the Stripe webhook is still being confirmed. Refresh this page shortly.', true);
+    showNotice('Payment received. Confirmation is taking a little longer than usual — refresh this page in a few seconds.', true);
   };
 
   $('research-button').addEventListener('click', () => startResearch());
@@ -179,9 +179,9 @@
     $('research-button').classList.add('hidden');
     const results = $('research-results');
     results.innerHTML = `
-      <div class="results-head"><span class="eyebrow">Deep research ready</span><h2>Who to target first</h2><p>These are paid-unlock research results, not the free pre-scan.</p></div>
+      <div class="results-head"><span class="eyebrow">Deep research ready</span><h2>Who to target first</h2><p>Your highest-value customer segments, ranked by fit and buying potential.</p></div>
       <div class="icp-grid">${result.icps.map((item) => `<article class="icp-card"><header><h3>${escapeHtml(item.title)}</h3><span class="score">${Math.round(item.score)}/100</span></header><p>${escapeHtml(item.description)}</p><div class="hook">${escapeHtml(item.message_hook)}</div></article>`).join('')}</div>
-      <div class="results-head"><span class="eyebrow">Concrete distribution map</span><h2>Where to go next</h2><p>Partizan exposes concrete surfaces only after the acquisition plan is unlocked.</p></div>
+      <div class="results-head"><span class="eyebrow">Concrete distribution map</span><h2>Where to go next</h2><p>Named places, audiences and partners where Partizan sees the strongest acquisition signal.</p></div>
       <div class="opportunity-list">${result.opportunities.map((item) => `<article class="opp-card"><header><h3>${escapeHtml(item.title)}</h3><span class="platform">${escapeHtml(item.platform)} · ${escapeHtml(item.kind)}</span></header><p>${escapeHtml(item.rationale || 'Relevant distribution opportunity')}</p>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Open opportunity ↗</a>` : ''}</article>`).join('')}</div>`;
     results.classList.remove('hidden');
     $('autopilot-card').classList.remove('hidden');
@@ -196,11 +196,11 @@
     if (checkoutState === 'success') {
       showStage(stageUnlocked);
       $('payment-status').querySelector('strong').textContent = 'Confirming payment…';
-      $('payment-status').querySelector('small').textContent = 'Waiting for the signed Stripe webhook.';
+      $('payment-status').querySelector('small').textContent = 'This usually takes only a few seconds.';
       $('research-button').disabled = true;
       pollEntitlement().catch((error) => showNotice(error.message, true));
     } else if (checkoutState === 'cancelled') {
-      showNotice('Checkout cancelled. Your pre-scan is still available.');
+      showNotice('Checkout cancelled. Your pre-scan is still here whenever you’re ready.');
     }
   }
 })();
