@@ -467,6 +467,18 @@ class MetaAdsExecutionAdapter:
                 partial_provider_ids=provider_ids,
             )
 
+        metadata = {
+            "provider_ids": provider_ids,
+            "all_spend_objects_status": "PAUSED",
+            "spend_started": False,
+            "launch_mode": spec.launch_mode.value,
+            "country_codes": list(connection.country_codes),
+            "daily_budget_minor_units": daily_budget_minor_units,
+            "api_version": connection.api_version,
+        }
+        if action_image_url is not None and readiness.selected_asset is not None:
+            metadata["creative_asset_id"] = str(readiness.selected_asset.id)
+
         return ExecutionAdapterReceipt(
             action_id=action.id,
             adapter_name=self.name,
@@ -477,20 +489,7 @@ class MetaAdsExecutionAdapter:
                 "No spend has started; activation requires a separate explicit approval step."
             ),
             external_reference=f"meta:ad:{provider_ids['ad_id']}",
-            metadata={
-                "provider_ids": provider_ids,
-                "all_spend_objects_status": "PAUSED",
-                "spend_started": False,
-                "launch_mode": spec.launch_mode.value,
-                "country_codes": list(connection.country_codes),
-                "daily_budget_minor_units": daily_budget_minor_units,
-                "api_version": connection.api_version,
-                "creative_asset_id": (
-                    str(readiness.selected_asset.id)
-                    if action_image_url is not None and readiness.selected_asset is not None
-                    else None
-                ),
-            },
+            metadata=metadata,
             created_at=datetime.now(UTC),
         )
 
