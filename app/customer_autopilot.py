@@ -37,6 +37,8 @@ class CustomerAutopilotService:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         if not project.get("launch_unlocked") or project.get("research_state") != "READY":
             raise CustomerPaymentRequiredError("Complete the Acquisition Plan before starting Autopilot")
+        product_id = self._require_researched_product(project)
+        self._require_paid_destination(product_id)
         if project.get("autopilot_subscription_status") == "ACTIVE":
             raise ValueError("Autopilot subscription is already active")
         generation = int(project.get("autopilot_checkout_generation") or 0) + 1
@@ -91,7 +93,7 @@ class CustomerAutopilotService:
         if not payload.confirm_autonomous_spend:
             raise ValueError("confirm_autonomous_spend=true is required")
         product_id = self._require_researched_product(project)
-        product = product_intake_service.get_product(product_id)
+        product = self._require_paid_destination(product_id)
         distribution = audience_intelligence_service.get(product_id)
         try:
             distribution_play_service.get(product_id)
@@ -152,6 +154,7 @@ class CustomerAutopilotService:
         product_id = self._require_researched_product(project)
         if status == "ACTIVE":
             self._require_active_subscription(project)
+            self._require_paid_destination(product_id)
             if paid_provider_connection_service.get_meta(product_id) is None:
                 raise ValueError("Connect Meta before activating Autopilot")
             growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
@@ -167,6 +170,7 @@ class CustomerAutopilotService:
     def meta_connected(self, project_id: UUID, customer_token: str) -> CustomerAutopilotOverview:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         product_id = self._require_researched_product(project)
+        product = product_intake_service.get_product(product_id)
         try:
             mandate = growth_mandate_service.get(product_id)
         except KeyError:
@@ -176,6 +180,7 @@ class CustomerAutopilotService:
             and mandate.status == GrowthMandateStatus.PAUSED
             and project.get("autopilot_pause_reason") == "SETUP"
             and project.get("autopilot_subscription_status") == "ACTIVE"
+            and bool(product.reference_links)
         ):
             growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
             project["autopilot_pause_reason"] = None
@@ -185,6 +190,7 @@ class CustomerAutopilotService:
     def overview(self, project_id: UUID, customer_token: str) -> CustomerAutopilotOverview:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         product_id = self._require_researched_product(project)
+        product = product_intake_service.get_product(product_id)
         analytics = distribution_analytics_service.product_analytics(product_id)
         try:
             autonomy = autonomy_overview_service.get(product_id)
@@ -197,6 +203,8 @@ class CustomerAutopilotService:
         blockers: list[str] = []
         if subscription_status != "ACTIVE":
             blockers.append("Autopilot subscription is not active")
+        if not product.reference_links:
+            blockers.append("Website or landing page is required for paid traffic")
         if mandate is None:
             blockers.append("Marketing budget is not delegated yet")
         if connection is None:
@@ -293,6 +301,13 @@ class CustomerAutopilotService:
         if project.get("research_state") != "READY" or not product_id_raw:
             raise ValueError("Complete acquisition research before configuring Autopilot")
         return UUID(str(product_id_raw))
+
+    @staticmethod
+    def _require_paid_destination(product_id: UUID):
+        product = product_intake_service.get_product(product_id)
+        if not product.reference_links:
+            raise ValueError("Add a website or landing page before starting paid Autopilot")
+        return product
 
     @staticmethod
     def _experiment(item) -> CustomerAutopilotExperimentView:
