@@ -7,10 +7,12 @@ import stripe
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
 from app.config import Settings, get_settings
+from app.customer_access_recovery import recover_paid_customer_access
 from app.customer_billing import (
     BillingConfigurationError,
     construct_stripe_event,
     create_launch_checkout,
+    retrieve_launch_checkout,
 )
 from app.customer_funnel import (
     CUSTOMER_TOKEN_HEADER,
@@ -21,6 +23,8 @@ from app.customer_funnel import (
 )
 from app.customer_schemas import (
     CheckoutResponse,
+    CustomerAccessRecoveryRequest,
+    CustomerAccessRecoveryResponse,
     CustomerClarificationAnswerRequest,
     CustomerPreviewRequest,
     CustomerPreviewResponse,
@@ -102,6 +106,40 @@ def create_customer_checkout(
 
     customer_funnel_service.mark_checkout_pending(project_id, token, checkout.session_id)
     return CheckoutResponse(checkout_url=checkout.url)
+
+
+@router.post(
+    "/customer-projects/{project_id}/recover-access",
+    response_model=CustomerAccessRecoveryResponse,
+)
+def recover_customer_access(
+    project_id: UUID,
+    payload: CustomerAccessRecoveryRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> CustomerAccessRecoveryResponse:
+    try:
+        session = retrieve_launch_checkout(settings=settings, session_id=payload.session_id)
+    except BillingConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except stripe.StripeError as exc:
+        raise HTTPException(status_code=502, detail="Stripe payment verification is temporarily unavailable") from exc
+
+    metadata = session.get("metadata") or {}
+    verified = (
+        str(session.get("id") or "") == payload.session_id
+        and session.get("payment_status") == "paid"
+        and str(session.get("client_reference_id") or "") == str(project_id)
+        and str(metadata.get("partizan_project_id") or "") == str(project_id)
+        and metadata.get("partizan_entitlement") == "launch_plan"
+    )
+    if not verified:
+        raise HTTPException(status_code=401, detail="Paid Checkout Session could not be verified")
+
+    try:
+        customer_token = recover_paid_customer_access(project_id, payload.session_id)
+    except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
+        raise _project_error(exc) from exc
+    return CustomerAccessRecoveryResponse(project_id=project_id, customer_token=customer_token)
 
 
 @router.post(
