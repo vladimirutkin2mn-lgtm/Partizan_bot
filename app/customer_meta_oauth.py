@@ -84,8 +84,8 @@ class HttpxMetaOAuthClient:
             params={
                 "fields": "id,account_id,name,currency,account_status",
                 "limit": "50",
-                "access_token": access_token,
             },
+            bearer_token=access_token,
         )
         return [row for row in payload.get("data", []) if isinstance(row, dict)]
 
@@ -93,10 +93,8 @@ class HttpxMetaOAuthClient:
         normalized = account_id.removeprefix("act_")
         payload = self._get(
             f"act_{normalized}",
-            params={
-                "fields": "promote_pages",
-                "access_token": access_token,
-            },
+            params={"fields": "promote_pages"},
+            bearer_token=access_token,
         )
         pages = payload.get("promote_pages") or {}
         if isinstance(pages, dict):
@@ -107,13 +105,25 @@ class HttpxMetaOAuthClient:
             rows = []
         return [row for row in rows if isinstance(row, dict)]
 
-    def _get(self, path: str, *, params: dict[str, str]) -> dict:
+    def _get(
+        self,
+        path: str,
+        *,
+        params: dict[str, str],
+        bearer_token: str | None = None,
+    ) -> dict:
         version = self._settings.meta_oauth_api_version
         if not version:
             raise CustomerMetaOAuthError("META_OAUTH_API_VERSION is not configured")
         url = f"https://graph.facebook.com/{version}/{path.lstrip('/')}"
+        headers = {"Authorization": f"Bearer {bearer_token}"} if bearer_token else None
         try:
-            response = httpx.get(url, params=params, timeout=self._timeout)
+            response = httpx.get(
+                url,
+                params=params,
+                headers=headers,
+                timeout=self._timeout,
+            )
             response.raise_for_status()
             payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
@@ -207,7 +217,9 @@ class CustomerMetaOAuthService:
         accounts: list[CustomerMetaAdAccountOption] = []
         pages_by_account: dict[str, list[CustomerMetaPageOption]] = {}
         for raw in self._client.ad_accounts(access_token)[:20]:
-            account_id = str(raw.get("account_id") or raw.get("id") or "").removeprefix("act_")
+            account_id = str(raw.get("account_id") or raw.get("id") or "").removeprefix(
+                "act_"
+            )
             if not account_id:
                 continue
             option = CustomerMetaAdAccountOption(
