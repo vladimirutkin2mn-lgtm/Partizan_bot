@@ -142,7 +142,7 @@ class GrowthPlanningEngine:
         if play.estimated_cost_max <= max(5.0, budget_remaining * 0.25):
             return 2.0, (
                 "Budget fit: the full estimated test fits inside roughly one quarter of "
-                f"remaining budget; planning impact=+2.0."
+                "remaining budget; planning impact=+2.0."
             )
         if play.estimated_cost_min > 0 and play.estimated_cost_max > budget_remaining * 0.75:
             return -3.0, (
