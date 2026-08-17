@@ -12,6 +12,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl
 
+from app.creative_assets import CreativeReadinessStatus, creative_asset_service
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_schemas import (
     DistributionActionExecutionRequest,
@@ -396,6 +397,22 @@ class MetaAdsExecutionAdapter:
         if spec.launch_mode != PaidCampaignLaunchMode.CREATE_PAUSED:
             return self._failed(action, "Meta adapter only supports CREATE_PAUSED")
 
+        readiness = creative_asset_service.readiness(action.id)
+        action_image_url = None
+        if (
+            readiness.status == CreativeReadinessStatus.READY
+            and readiness.selected_asset is not None
+            and readiness.selected_asset.public_url is not None
+        ):
+            action_image_url = readiness.selected_asset.public_url
+        image_url = action_image_url or connection.default_image_url
+        if image_url is None:
+            return self._unavailable(
+                action,
+                "Meta staging requires a provider-ready action CreativeAsset with a public image URL",
+            )
+        creative_connection = connection.model_copy(update={"default_image_url": image_url})
+
         access_token = self._secret_resolver.resolve(connection.access_token_env)
         if access_token is None:
             return self._unavailable(
@@ -429,7 +446,7 @@ class MetaAdsExecutionAdapter:
                 daily_budget_minor_units=daily_budget_minor_units,
             )
             provider_ids["creative_id"] = self._client.create_ad_creative(
-                connection=connection,
+                connection=creative_connection,
                 access_token=access_token,
                 name=f"{name_prefix} creative",
                 destination_url=str(spec.destination_url),
@@ -468,6 +485,11 @@ class MetaAdsExecutionAdapter:
                 "country_codes": list(connection.country_codes),
                 "daily_budget_minor_units": daily_budget_minor_units,
                 "api_version": connection.api_version,
+                "creative_asset_id": (
+                    str(readiness.selected_asset.id)
+                    if action_image_url is not None and readiness.selected_asset is not None
+                    else None
+                ),
             },
             created_at=datetime.now(UTC),
         )
