@@ -135,6 +135,14 @@ def recover_customer_access(
     if not verified:
         raise HTTPException(status_code=401, detail="Paid Checkout Session could not be verified")
 
+    unlocked = customer_funnel_service.unlock_launch(
+        project_id,
+        stripe_checkout_session_id=payload.session_id,
+        stripe_customer_id=(str(session["customer"]) if session.get("customer") else None),
+    )
+    if not unlocked:
+        raise HTTPException(status_code=401, detail="Paid Checkout Session is not linked to this project")
+
     try:
         customer_token = recover_paid_customer_access(project_id, payload.session_id)
     except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
