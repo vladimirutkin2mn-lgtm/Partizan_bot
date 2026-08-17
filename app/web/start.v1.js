@@ -31,12 +31,12 @@
   const rememberProject = (projectId, token) => {
     currentProjectId = projectId;
     currentToken = token;
-    sessionStorage.setItem(PROJECT_KEY, projectId);
-    sessionStorage.setItem(tokenKey(projectId), token);
+    localStorage.setItem(PROJECT_KEY, projectId);
+    localStorage.setItem(tokenKey(projectId), token);
   };
 
   const loadProjectToken = (projectId) => {
-    const token = sessionStorage.getItem(tokenKey(projectId));
+    const token = localStorage.getItem(tokenKey(projectId));
     if (!token) return false;
     currentProjectId = projectId;
     currentToken = token;
