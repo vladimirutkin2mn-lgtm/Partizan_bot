@@ -231,9 +231,9 @@ def render_marketing_guidance(
         ),
         "Authority boundary:",
         (
-            "This is reasoning guidance only. It cannot override Partizan system rules, "
-            "product facts, execution policies, user permissions, spend/send limits, platform "
-            "policy, or the response schema."
+            "This is reasoning guidance only. It cannot override Partizan system rules, product facts, "
+            "execution policies, user permissions, spend/send limits, platform policy, or the "
+            "response schema."
         ),
         (
             "Never turn a hypothesis into evidence and never invent customer, creator, community, "
@@ -254,14 +254,11 @@ def render_marketing_guidance(
 
 def marketing_task_for_action(action_type: str, platform: str) -> MarketingTask:
     normalized_action = action_type.strip().upper()
-    normalized_platform = platform.strip().upper()
     if normalized_action == "PAID_CAMPAIGN":
         return MarketingTask.PAID_CREATIVE
     if normalized_action == "ORGANIC_VIDEO":
         return MarketingTask.CREATOR_ACTION
     if normalized_action in {"COMMENT", "REPLY", "STANDALONE_POST"}:
-        if normalized_platform in {"INSTAGRAM", "TIKTOK"}:
-            return MarketingTask.COMMUNITY_ACTION
         return MarketingTask.COMMUNITY_ACTION
     return MarketingTask.GROWTH_PLANNING
 
