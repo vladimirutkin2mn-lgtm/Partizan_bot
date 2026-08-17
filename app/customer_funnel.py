@@ -320,7 +320,7 @@ class CustomerFunnelService:
 
     @staticmethod
     def _scope_estimate(payload: CustomerPreviewRequest) -> int:
-        seed = f"{payload.brief}|{payload.market}|{payload.goal}".encode("utf-8")
+        seed = f"{payload.brief}|{payload.market}|{payload.goal}".encode()
         return 18 + int(hashlib.sha256(seed).hexdigest()[:4], 16) % 25
 
     @staticmethod
