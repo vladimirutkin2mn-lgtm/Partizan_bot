@@ -8,6 +8,7 @@ from app.marketing_intelligence import (
     skill_inventory,
     skill_router,
 )
+from app.outreach_briefs import OUTREACH_BRIEF_MARKETING_PROMPT
 from app.product_agent import ProductIntakeAgent
 
 
@@ -61,6 +62,25 @@ def test_icp_prompt_receives_research_and_prospecting_guidance() -> None:
     assert "Skill: customer-research v2.0.1" in system_message
     assert "Skill: prospecting v1.1.0" in system_message
     assert "A high score is a prioritization hypothesis" in system_message
+
+
+def test_audience_discovery_routing_prioritizes_evidence_and_prospecting() -> None:
+    selected = skill_router.select(MarketingTask.AUDIENCE_DISCOVERY)
+
+    assert [pack.name for pack in selected] == [
+        "customer-research",
+        "prospecting",
+        "community-marketing",
+    ]
+
+
+def test_outreach_prompt_receives_cold_email_guidance_inside_bounded_flow() -> None:
+    assert "Skill: cold-email v2.0.0" in OUTREACH_BRIEF_MARKETING_PROMPT
+    assert "Skill: prospecting v1.1.0" in OUTREACH_BRIEF_MARKETING_PROMPT
+    assert "Skill: product-marketing v2.1.0" in OUTREACH_BRIEF_MARKETING_PROMPT
+    assert "Skill: community-marketing" not in OUTREACH_BRIEF_MARKETING_PROMPT
+    assert "one initial message only" in OUTREACH_BRIEF_MARKETING_PROMPT
+    assert "Do not include any URL" in OUTREACH_BRIEF_MARKETING_PROMPT
 
 
 def test_action_routing_keeps_execution_surfaces_semantically_separate() -> None:
