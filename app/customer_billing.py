@@ -28,19 +28,23 @@ def create_launch_checkout(
         raise BillingConfigurationError("Stripe launch checkout is not configured")
 
     stripe.api_key = settings.stripe_secret_key.get_secret_value()
+    project_metadata = {
+        "partizan_project_id": str(project_id),
+        "partizan_entitlement": "launch_plan",
+    }
     session = stripe.checkout.Session.create(
         mode="payment",
         line_items=[{"price": settings.stripe_launch_price_id, "quantity": 1}],
         client_reference_id=str(project_id),
-        metadata={
-            "partizan_project_id": str(project_id),
-            "partizan_entitlement": "launch_plan",
-        },
+        customer_creation="always",
+        metadata=project_metadata,
+        payment_intent_data={"metadata": project_metadata},
         success_url=(
             f"{public_origin}/start?checkout=success&project={project_id}"
             "&session_id={CHECKOUT_SESSION_ID}"
         ),
         cancel_url=f"{public_origin}/start?checkout=cancelled&project={project_id}",
+        idempotency_key=f"partizan-launch-{project_id}",
     )
     if not session.url:
         raise BillingConfigurationError("Stripe Checkout Session did not return a URL")
