@@ -122,9 +122,11 @@ The planning adjustment uses already-persisted runtime facts:
 - estimated test cost versus the product's remaining budget;
 - a small compounding-channel bonus for community, owned-organic and partner/outreach work.
 
-A play whose `estimated_cost_min` exceeds the remaining product budget is not sequenced into the portfolio. The portfolio budget allocator also refuses to recommend a per-play budget below `estimated_cost_min`; an infeasible expensive play is skipped rather than preventing cheaper later plays from being considered.
+A play whose `estimated_cost_min` exceeds the **total remaining product budget** is not sequenced into the portfolio. The per-item portfolio cap remains a soft allocation recommendation rather than an execution authorization; exact paid budgets continue to be checked by the existing paid-campaign and mandate controls before spend can start.
 
-Observed experiment economics remain separate and stronger. Existing winner/loser adjustments from CAC, paid users and spend continue to dominate planning methodology, and the Growth Manager's `SCALE / CONTINUE / MODIFY / STOP` decisions are unchanged.
+Autonomous paid growth requests its portfolio after applying the current mandate's allowed platforms and actions. This prevents an authorized paid play from disappearing merely because unrelated organic plays occupy a global top-N list.
+
+Observed experiment economics remain separate and stronger. Existing winner/loser adjustments from CAC, paid users and spend continue to dominate planning methodology, and the Growth Manager's `SCALE / CONTINUE / MODIFY / STOP` decisions are unchanged. When top-N truncation would hide a tactic that already has observed experiment economics, the portfolio retains a representative of that tactic so the learning signal remains visible with its actual penalized or promoted score.
 
 The existing platform-diversification bonus remains in place after planning scores are calculated, so Partizan can balance fast experiments with compounding channels without collapsing the portfolio into one surface.
 
