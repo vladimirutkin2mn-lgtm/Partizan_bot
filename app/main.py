@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, HTTPException, status
 from sqlalchemy import text
 
+from app.customer_routes import router as customer_router
 from app.db import get_sync_engine
 from app.distribution_play_routes import router as distribution_play_router
 from app.distribution_routes import router as distribution_router
@@ -28,6 +29,7 @@ app = FastAPI(
     dependencies=[Depends(require_control_plane_operator)],
 )
 app.include_router(web_router)
+app.include_router(customer_router)
 app.include_router(distribution_router)
 app.include_router(distribution_play_router)
 
