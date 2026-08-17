@@ -265,6 +265,10 @@ class AudienceIntelligenceEngine:
         platform: DistributionPlatform,
     ) -> tuple[float, str, AudienceEvidenceSummary]:
         summary = self._summarize_evidence(icp, hits)
+        repeated_evidence_bonus = min(
+            12.0,
+            max(0, summary.independent_evidence_count - 1) * 3.0,
+        )
         score = round(
             min(
                 100.0,
@@ -275,7 +279,7 @@ class AudienceIntelligenceEngine:
                 + summary.alternative_ratio * 5.0
                 + min(12.0, summary.demand_intent_hits * 4.0)
                 + min(8.0, summary.commercial_intent_hits * 4.0)
-                + min(5.0, summary.independent_evidence_count * 1.5),
+                + repeated_evidence_bonus,
             ),
             1,
         )
