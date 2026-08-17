@@ -16,6 +16,7 @@ The full product vision, agent architecture, MVP scope and development roadmap a
 - [Production Runtime](docs/PRODUCTION_RUNTIME.md)
 - [Generic Growth Runner](docs/GENERIC_GROWTH_RUNNER.md)
 - [Isolated Growth Sandbox](docs/GROWTH_SANDBOX.md)
+- [Marketing Intelligence](docs/MARKETING_INTELLIGENCE.md) — curated, pinned marketing methodology used as reasoning guidance without changing execution authority.
 
 ## MVP distribution scope
 
