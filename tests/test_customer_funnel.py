@@ -177,8 +177,11 @@ def test_customer_start_page_and_assets_are_served() -> None:
     assert "--lime" in css.text
     assert javascript.status_code == 200
     assert "/v1/customer-projects/preview" in javascript.text
+    assert "/recover-access" in javascript.text
     assert "/deep-research" in javascript.text
     assert "X-Partizan-Customer-Token" in javascript.text
+    assert "localStorage" in javascript.text
+    assert "sessionStorage" not in javascript.text
 
 
 def test_landing_primary_ctas_route_to_start_funnel_via_script() -> None:
