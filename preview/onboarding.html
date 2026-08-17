@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Partizan — Customer funnel preview</title>
+  <style>html,body{margin:0;min-height:100%;background:#080a0d;color:#f4f6f8;font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}body{display:grid;place-items:center;min-height:100vh}.loading{display:flex;align-items:center;gap:10px;color:#9aa3ad;font-size:13px}.dot{width:9px;height:9px;border-radius:50%;background:#c8ff4d;box-shadow:0 0 24px rgba(200,255,77,.45);animation:p 1s ease-in-out infinite alternate}@keyframes p{to{opacity:.35;transform:scale(.72)}}</style>
+</head>
+<body>
+  <div class="loading"><span class="dot"></span><span>Loading customer funnel…</span></div>
+  <script>
+  (() => {
+    const root='https://raw.githack.com/vladimirutkin2mn-lgtm/Partizan_bot/preview/marketing-site-v1/';
+    const base=root+'app/web/';
+    const site=root+'preview/marketing-site.html';
+    const escapeHtml=(value)=>String(value).replace(/[&<>'"]/g,(char)=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[char]);
+
+    const boot=()=>{
+      const $=(id)=>document.getElementById(id);
+      const stageInput=$('stage-input'), stagePreview=$('stage-preview'), stageUnlocked=$('stage-unlocked'), notice=$('notice');
+      const showNotice=(message,error=false)=>{notice.textContent=message;notice.classList.toggle('error',error);notice.classList.remove('hidden');setTimeout(()=>notice.classList.add('hidden'),5200);};
+      const showStage=(stage)=>{[stageInput,stagePreview,stageUnlocked].forEach((node)=>node.classList.add('hidden'));stage.classList.remove('hidden');$('progress-2').classList.toggle('on',stage!==stageInput);$('progress-3').classList.toggle('on',stage===stageUnlocked);window.scrollTo({top:0,behavior:'smooth'});};
+      const params=new URLSearchParams(location.search); const initialBudget=Number(params.get('budget')); if(Number.isFinite(initialBudget)&&initialBudget>=100)$('budget').value=String(initialBudget);
+
+      const directionsFor=(brief)=>{
+        const text=brief.toLowerCase(); const b2b=['b2b','saas','business','company','founder','team'].some((x)=>text.includes(x));
+        if(b2b)return [
+          {name:'Direct outreach',potential:'HIGH',rationale:'The buyer can often be identified and reached directly.'},
+          {name:'Niche communities',potential:'HIGH',rationale:'High-intent professional conversations can validate the offer quickly.'},
+          {name:'Expert / creator partnerships',potential:'MEDIUM',rationale:'Trusted niche voices can compress the path to credibility.'},
+          {name:'Paid acquisition',potential:'MEDIUM',rationale:'Useful once the audience and message hypothesis are sharp enough to test.'}
+        ];
+        return [
+          {name:'Niche communities',potential:'HIGH',rationale:'High-intent conversations are usually the fastest low-cost signal.'},
+          {name:'Creators',potential:'HIGH',rationale:'Relevant creators can provide trust and concentrated audience access.'},
+          {name:'Paid acquisition',potential:'MEDIUM',rationale:'Bounded paid tests can validate audience and message combinations.'},
+          {name:'Direct outreach',potential:'MEDIUM',rationale:'Direct conversations can validate demand before scaling spend.'}
+        ];
+      };
+
+      $('preview-form').addEventListener('submit',(event)=>{
+        event.preventDefault(); const button=event.submitter; button.disabled=true; button.textContent='Running pre-scan…';
+        setTimeout(()=>{
+          const directions=directionsFor($('brief').value.trim());
+          const scope=27+($('brief').value.length%12);
+          $('preview-summary').textContent=`Partizan sees ${directions.length} plausible acquisition directions. The paid plan is likely to uncover roughly ${scope} concrete opportunities; the fastest first signal is likely ${directions[0].name}.`;
+          $('scope-title').textContent=`~${scope} concrete opportunities to research`;
+          $('direction-grid').innerHTML=directions.map((item)=>`<article class="direction-card"><header><h3>${escapeHtml(item.name)}</h3><span class="potential ${item.potential==='MEDIUM'?'medium':''}">${item.potential}</span></header><p>${escapeHtml(item.rationale)}</p></article>`).join('');
+          const masks={'Niche communities':'Community ••••••••','Creators':'Creator @••••••••','Expert / creator partnerships':'Expert @••••••••','Paid acquisition':'Audience ••••••••','Direct outreach':'Prospect cluster ••••••••'};
+          $('masked-list').innerHTML=directions.map((item)=>`<div class="masked-item"><strong>${masks[item.name]||'Opportunity ••••••••'}</strong><span>${escapeHtml(item.name)} · locked</span></div>`).join('');
+          showStage(stagePreview); button.disabled=false; button.textContent='Run free pre-scan →';
+        },450);
+      });
+
+      $('checkout-button').addEventListener('click',()=>{
+        const button=$('checkout-button'); button.disabled=true; button.textContent='Opening secure checkout…';
+        showNotice('Preview mode: production opens Stripe Checkout here. Simulating a successful $49 purchase.');
+        setTimeout(()=>{
+          showStage(stageUnlocked); $('autopilot-card').classList.remove('hidden');
+          $('payment-status').querySelector('strong').textContent='Payment confirmed · preview';
+          $('payment-status').querySelector('small').textContent='This static preview is simulating the paid entitlement.';
+          button.disabled=false; button.textContent='Unlock & research →';
+        },700);
+      });
+
+      $('research-button').addEventListener('click',()=>{
+        const button=$('research-button'); button.disabled=true; $('research-progress').classList.remove('hidden');
+        setTimeout(()=>{
+          $('research-progress').classList.add('hidden'); button.classList.add('hidden');
+          const results=$('research-results');
+          const icps=[
+            {title:'Independent freelancers with recurring admin pain',score:92,description:'Solo professionals already paying for tools but losing time to bookkeeping and tax prep.',hook:'Stop spending Friday nights reconciling receipts.'},
+            {title:'Growing solo consultancies',score:86,description:'Freelancers moving toward small teams and feeling the cost of manual finance operations.',hook:'Bookkeeping that grows before you need a finance hire.'}
+          ];
+          const opps=[
+            {title:'Freelancer finance community',platform:'REDDIT',kind:'COMMUNITY',rationale:'High-intent discussions around bookkeeping, taxes and admin overload.'},
+            {title:'Independent-work newsletter partner',platform:'CREATOR',kind:'NEWSLETTER',rationale:'Concentrated audience of freelancers with clear commercial intent.'},
+            {title:'Cold paid audience: self-employed professionals',platform:'META',kind:'PAID',rationale:'Suitable for a tightly capped message-validation test.'}
+          ];
+          results.innerHTML=`<div class="results-head"><span class="eyebrow">Deep research ready · preview</span><h2>Who to target first</h2><p>These illustrate the type of concrete results unlocked after payment.</p></div><div class="icp-grid">${icps.map((item)=>`<article class="icp-card"><header><h3>${escapeHtml(item.title)}</h3><span class="score">${item.score}/100</span></header><p>${escapeHtml(item.description)}</p><div class="hook">${escapeHtml(item.hook)}</div></article>`).join('')}</div><div class="results-head"><span class="eyebrow">Concrete distribution map · preview</span><h2>Where to go next</h2><p>Named surfaces stay behind the paid unlock in production.</p></div><div class="opportunity-list">${opps.map((item)=>`<article class="opp-card"><header><h3>${escapeHtml(item.title)}</h3><span class="platform">${item.platform} · ${item.kind}</span></header><p>${escapeHtml(item.rationale)}</p></article>`).join('')}</div>`;
+          results.classList.remove('hidden'); $('autopilot-card').classList.remove('hidden');
+        },1100);
+      });
+    };
+
+    fetch(base+'start.v1.html')
+      .then((response)=>{if(!response.ok)throw new Error(`Preview source returned ${response.status}`);return response.text();})
+      .then((html)=>{
+        const rendered=html
+          .replace('/start/assets/start.v1.css',base+'start.v1.css')
+          .replace(/<script[^>]*start\.v1\.js[^>]*><\/script>/,'')
+          .replaceAll('href="/"',`href="${site}"`);
+        document.open();document.write(rendered);document.close();boot();
+      })
+      .catch((error)=>{document.body.innerHTML=`<div style="max-width:560px;padding:32px;line-height:1.6"><h1 style="font-size:24px">Preview failed to load</h1><p style="color:#9aa3ad">${error.message}</p></div>`;});
+  })();
+  </script>
+</body>
+</html>
