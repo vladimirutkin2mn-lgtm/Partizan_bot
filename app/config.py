@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     operator_auth_required: bool = False
     operator_api_key: SecretStr | None = None
     partizan_public_base_url: str | None = None
+    stripe_secret_key: SecretStr | None = None
+    stripe_webhook_secret: SecretStr | None = None
+    stripe_launch_price_id: str | None = None
+    stripe_autopilot_price_id: str | None = None
+    partizan_launch_price_usd: int = 49
+    partizan_autopilot_price_usd: int = 149
+    partizan_managed_spend_fee_pct: int = 10
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None
@@ -34,7 +41,13 @@ class Settings(BaseSettings):
     smtp_reply_to: str | None = None
     smtp_starttls: bool = True
 
-    @field_validator("operator_api_key", "smtp_password", mode="before")
+    @field_validator(
+        "operator_api_key",
+        "smtp_password",
+        "stripe_secret_key",
+        "stripe_webhook_secret",
+        mode="before",
+    )
     @classmethod
     def normalize_secret(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
@@ -47,6 +60,8 @@ class Settings(BaseSettings):
         "smtp_from_email",
         "smtp_from_name",
         "smtp_reply_to",
+        "stripe_launch_price_id",
+        "stripe_autopilot_price_id",
         mode="before",
     )
     @classmethod
