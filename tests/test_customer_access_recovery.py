@@ -28,7 +28,7 @@ def _preview() -> dict:
     return response.json()
 
 
-def _paid_project() -> tuple[dict, str]:
+def _pending_checkout_project() -> tuple[dict, str]:
     preview = _preview()
     project_id = UUID(preview["project_id"])
     session_id = "cs_test_paid_partizan"
@@ -37,16 +37,11 @@ def _paid_project() -> tuple[dict, str]:
         preview["customer_token"],
         session_id,
     )
-    assert customer_funnel_service.unlock_launch(
-        project_id,
-        stripe_checkout_session_id=session_id,
-        stripe_customer_id="cus_test_partizan",
-    )
     return preview, session_id
 
 
-def test_paid_checkout_can_rotate_lost_browser_access(monkeypatch) -> None:
-    preview, session_id = _paid_project()
+def test_verified_paid_checkout_fulfills_and_rotates_lost_browser_access(monkeypatch) -> None:
+    preview, session_id = _pending_checkout_project()
     project_id = preview["project_id"]
 
     monkeypatch.setattr(
@@ -55,6 +50,7 @@ def test_paid_checkout_can_rotate_lost_browser_access(monkeypatch) -> None:
             "id": session_id,
             "payment_status": "paid",
             "client_reference_id": project_id,
+            "customer": "cus_test_partizan",
             "metadata": {
                 "partizan_project_id": project_id,
                 "partizan_entitlement": "launch_plan",
@@ -85,7 +81,7 @@ def test_paid_checkout_can_rotate_lost_browser_access(monkeypatch) -> None:
 
 
 def test_recovery_rejects_paid_session_for_another_project(monkeypatch) -> None:
-    preview, session_id = _paid_project()
+    preview, session_id = _pending_checkout_project()
     project_id = preview["project_id"]
 
     monkeypatch.setattr(
@@ -112,3 +108,4 @@ def test_recovery_rejects_paid_session_for_another_project(monkeypatch) -> None:
         headers={"X-Partizan-Customer-Token": preview["customer_token"]},
     )
     assert still_valid.status_code == 200
+    assert still_valid.json()["launch_unlocked"] is False
