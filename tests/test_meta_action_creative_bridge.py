@@ -4,6 +4,7 @@ from uuid import uuid4
 from app.creative_assets import CreativeReadinessStatus
 from app.distribution_types import DistributionActionType, DistributionPlatform
 from app.execution_adapters import AdapterExecutionOutcome, MetaAdsExecutionAdapter
+from app.paid_campaign import PaidCampaignLaunchMode
 
 
 class FakeSecretResolver:
@@ -41,7 +42,7 @@ class FakeSpecService:
     def get(self, action_id):
         return SimpleNamespace(
             platform=DistributionPlatform.INSTAGRAM,
-            launch_mode=SimpleNamespace(value="CREATE_PAUSED"),
+            launch_mode=PaidCampaignLaunchMode.CREATE_PAUSED,
             tactic_id="instagram_ads",
             budget_cap=50.0,
             creative_brief={
