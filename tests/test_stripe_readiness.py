@@ -15,47 +15,60 @@ def _settings(**overrides) -> Settings:
     return Settings(_env_file=None, **values)
 
 
+def _price(**fields) -> stripe.Price:
+    """Build the object shape `stripe.Price.retrieve` actually returns.
+
+    Deliberately not a plain dict: `stripe.Price` is not a mapping in the pinned SDK, so a
+    dict-shaped fake satisfies assertions the real object cannot and hides the production
+    failure this test exists to catch.
+    """
+    payload = {
+        "id": "price_launch_not_real",
+        "active": True,
+        "type": "one_time",
+        "currency": "usd",
+        "unit_amount": 4900,
+    }
+    payload.update(fields)
+    return stripe.Price.construct_from(payload, "sk_test_not_real")
+
+
+def test_retrieved_price_is_not_a_mapping() -> None:
+    """Anchors why the fixtures above exist: mapping access raises on the real object."""
+    with pytest.raises(AttributeError):
+        _price().get("active")
+
+
 def test_launch_price_readiness_accepts_active_49_usd_one_time(monkeypatch) -> None:
-    monkeypatch.setattr(
-        stripe.Price,
-        "retrieve",
-        lambda price_id: {
-            "id": price_id,
-            "active": True,
-            "type": "one_time",
-            "currency": "usd",
-            "unit_amount": 4900,
-        },
-    )
+    monkeypatch.setattr(stripe.Price, "retrieve", lambda price_id: _price(id=price_id))
 
     verify_launch_price(_settings())
 
 
 @pytest.mark.parametrize(
-    ("price", "message"),
+    ("fields", "message"),
     [
-        (
-            {"active": False, "type": "one_time", "currency": "usd", "unit_amount": 4900},
-            "active",
-        ),
-        (
-            {"active": True, "type": "recurring", "currency": "usd", "unit_amount": 4900},
-            "one-time",
-        ),
-        (
-            {"active": True, "type": "one_time", "currency": "eur", "unit_amount": 4900},
-            "USD",
-        ),
-        (
-            {"active": True, "type": "one_time", "currency": "usd", "unit_amount": 9900},
-            "$49 USD",
-        ),
+        ({"active": False}, "active"),
+        ({"type": "recurring"}, "one-time"),
+        ({"currency": "eur"}, "USD"),
+        ({"unit_amount": 9900}, "$49 USD"),
     ],
 )
-def test_launch_price_readiness_rejects_wrong_commercial_config(monkeypatch, price, message) -> None:
-    monkeypatch.setattr(stripe.Price, "retrieve", lambda price_id: price)
+def test_launch_price_readiness_rejects_wrong_commercial_config(
+    monkeypatch, fields, message
+) -> None:
+    monkeypatch.setattr(stripe.Price, "retrieve", lambda price_id: _price(**fields))
 
     with pytest.raises(StripeReadinessError, match=message.replace("$", r"\$")):
+        verify_launch_price(_settings())
+
+
+def test_launch_price_readiness_rejects_a_price_missing_expected_fields(monkeypatch) -> None:
+    """An unexpected payload must fail closed rather than raise AttributeError."""
+    bare = stripe.Price.construct_from({"id": "price_launch_not_real"}, "sk_test_not_real")
+    monkeypatch.setattr(stripe.Price, "retrieve", lambda price_id: bare)
+
+    with pytest.raises(StripeReadinessError, match="active"):
         verify_launch_price(_settings())
 
 
