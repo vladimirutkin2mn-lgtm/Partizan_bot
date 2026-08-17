@@ -18,6 +18,7 @@ from app.distribution_schemas import (
 )
 from app.distribution_types import DistributionActionType, DistributionPlatform
 from app.llm import LLMMessage, LLMProvider, get_llm_provider
+from app.marketing_intelligence import marketing_task_for_action, render_marketing_guidance
 from app.schemas import ProductProfileView
 
 
@@ -210,9 +211,17 @@ class DistributionActionComposer:
                 policy=policy,
             )
         template = next(item for item in TACTIC_CATALOG if item.tactic_id == play.tactic_id)
+        marketing_task = marketing_task_for_action(
+            play.action_type.value,
+            opportunity.platform.value,
+        )
+        marketing_guidance = render_marketing_guidance(marketing_task)
         return await self._provider.parse(
             messages=[
-                LLMMessage(role="system", content=ACTION_DRAFT_SYSTEM_PROMPT),
+                LLMMessage(
+                    role="system",
+                    content=f"{ACTION_DRAFT_SYSTEM_PROMPT}\n\n{marketing_guidance}",
+                ),
                 LLMMessage(
                     role="user",
                     content=(

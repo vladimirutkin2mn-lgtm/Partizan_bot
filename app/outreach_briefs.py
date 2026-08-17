@@ -21,6 +21,7 @@ from app.distribution_play_schemas import (
 from app.distribution_play_service import distribution_play_service
 from app.distribution_types import AttributionLevel, AutomationLevel, DistributionActionType
 from app.llm import LLMMessage, LLMProvider, get_llm_provider
+from app.marketing_intelligence import MarketingTask, render_marketing_guidance
 from app.models import ProductProfileStatus
 from app.outreach_targets import OutreachTargetType, OutreachTargetView, outreach_target_service
 from app.product_intake import product_intake_service
@@ -118,6 +119,13 @@ Rules:
 9. Return only the requested structured schema.
 """
 
+OUTREACH_BRIEF_MARKETING_PROMPT = "\n\n".join(
+    (
+        OUTREACH_BRIEF_SYSTEM_PROMPT,
+        render_marketing_guidance(MarketingTask.OUTREACH),
+    )
+)
+
 
 class OutreachBriefComposer:
     def __init__(self, provider: LLMProvider | None = None) -> None:
@@ -143,7 +151,7 @@ class OutreachBriefComposer:
             )
         return await self._provider.parse(
             messages=[
-                LLMMessage(role="system", content=OUTREACH_BRIEF_SYSTEM_PROMPT),
+                LLMMessage(role="system", content=OUTREACH_BRIEF_MARKETING_PROMPT),
                 LLMMessage(
                     role="user",
                     content=(
