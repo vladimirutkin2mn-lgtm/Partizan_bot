@@ -1,10 +1,8 @@
-from uuid import UUID
-
 import pytest
 
 from app.customer_funnel import CustomerFunnelService
 from app.customer_schemas import CustomerPreviewRequest
-from app.runtime_store import RuntimeStateStore
+from app.runtime_store import MemoryRuntimeStateStore
 
 
 class CapturedProductRequest(RuntimeError):
@@ -13,7 +11,7 @@ class CapturedProductRequest(RuntimeError):
 
 @pytest.mark.asyncio
 async def test_customer_website_is_persisted_and_forwarded_to_product_intake(monkeypatch) -> None:
-    store = RuntimeStateStore()
+    store = MemoryRuntimeStateStore()
     service = CustomerFunnelService(store=store)
     website = "https://example.com/landing"
     preview = service.create_preview(
