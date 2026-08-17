@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 class CustomerPreviewRequest(BaseModel):
     brief: str = Field(min_length=20, max_length=6000)
+    website_url: HttpUrl | None = None
     market: str = Field(min_length=2, max_length=160)
     goal: str = Field(min_length=2, max_length=200)
     budget_usd: int = Field(ge=100, le=100_000)
@@ -40,6 +41,7 @@ class CustomerProjectView(BaseModel):
     project_id: UUID
     status: Literal["PREVIEW", "CHECKOUT_PENDING", "UNLOCKED", "RESEARCH_READY"]
     brief: str
+    website_url: HttpUrl | None = None
     market: str
     goal: str
     budget_usd: int
