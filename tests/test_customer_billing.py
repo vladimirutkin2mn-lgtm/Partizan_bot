@@ -31,6 +31,7 @@ def test_launch_checkout_is_idempotent_and_creates_reusable_customer(monkeypatch
     assert checkout.session_id == "cs_test_partizan"
     assert checkout.url == "https://checkout.stripe.com/test"
     assert captured["mode"] == "payment"
+    assert captured["payment_method_types"] == ["card"]
     assert captured["customer_creation"] == "always"
     assert captured["line_items"] == [{"price": "price_launch_not_real", "quantity": 1}]
     assert captured["client_reference_id"] == str(project_id)
