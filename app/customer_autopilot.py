@@ -209,8 +209,16 @@ class CustomerAutopilotService:
         remaining = max(round(budget - spent, 2), 0.0)
         settings = get_settings()
         fee = round(spent * settings.partizan_managed_spend_fee_pct / 100, 2)
-        running = [] if autonomy is None else [self._experiment(item) for item in autonomy.running_experiments]
-        waiting = [] if autonomy is None else [self._experiment(item) for item in autonomy.waiting_approval]
+        running = (
+            []
+            if autonomy is None
+            else [self._experiment(item) for item in autonomy.running_experiments]
+        )
+        waiting = (
+            []
+            if autonomy is None
+            else [self._experiment(item) for item in autonomy.waiting_approval]
+        )
         decisions = [] if autonomy is None else [
             CustomerAutopilotDecisionView(
                 recorded_at=item.recorded_at,
