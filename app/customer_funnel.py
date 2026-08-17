@@ -120,7 +120,7 @@ class CustomerFunnelService:
         if project is None:
             return False
         expected_session = project.get("stripe_checkout_session_id")
-        if expected_session and expected_session != stripe_checkout_session_id:
+        if expected_session != stripe_checkout_session_id:
             return False
         project["stripe_checkout_session_id"] = stripe_checkout_session_id
         project["stripe_customer_id"] = stripe_customer_id
