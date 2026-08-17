@@ -64,8 +64,54 @@
     </section>
 
     <section id="autopilot-card" class="autopilot panel hidden">
-      <div><span class="eyebrow">Next layer</span><h2>Want Partizan to execute it too?</h2><p>Autopilot turns the plan into continuous experiments, measurement and reallocation — so Partizan keeps learning where your next customers come from.</p></div>
-      <div class="autopilot-price"><strong id="autopilot-price">$149<span>/mo</span></strong><small id="spend-fee">+ 10% managed spend</small><button class="button button-disabled" type="button" disabled>Coming next</button></div>
+      <div class="autopilot-intro">
+        <span class="eyebrow">Autonomous execution</span>
+        <h2>Let Partizan run the experiments.</h2>
+        <p>Delegate a marketing budget, connect the ad account you already pay for, and Partizan will prepare, launch, measure and stop or reallocate bounded experiments inside that budget.</p>
+      </div>
+      <div class="autopilot-price">
+        <strong id="autopilot-price">$149<span>/mo</span></strong>
+        <small id="spend-fee">+ 10% managed spend</small>
+        <span id="autopilot-subscription-status" class="subscription-pill">Not active</span>
+        <button id="autopilot-subscribe-button" class="button button-primary" type="button">Start Autopilot →</button>
+      </div>
+
+      <div id="autopilot-setup" class="autopilot-setup hidden">
+        <div class="setup-copy"><span class="eyebrow">1 · Delegate the envelope</span><h3>How much may Partizan control?</h3><p>This is a hard authorization cap, not a Partizan wallet. Meta charges your own payment method; Partizan cannot spend beyond the mandate.</p></div>
+        <form id="autopilot-config-form" class="autopilot-form">
+          <div><label for="autopilot-budget">Marketing budget</label><div class="money-input"><span>$</span><input id="autopilot-budget" type="number" min="100" max="100000" step="50" value="1000" required></div></div>
+          <div><label for="autopilot-cac">Maximum CAC</label><div class="money-input"><span>$</span><input id="autopilot-cac" type="number" min="1" max="100000" step="1" value="30" required></div></div>
+          <label class="check-row"><input id="autopilot-confirm-spend" type="checkbox" required><span>I authorize Partizan to activate paid experiments automatically inside this budget and the configured guardrails.</span></label>
+          <button class="button button-primary" type="submit">Save budget guardrails</button>
+        </form>
+
+        <div class="setup-copy meta-copy"><span class="eyebrow">2 · Connect distribution</span><h3>Connect Meta</h3><p>Partizan asks only for the permissions needed to manage and measure ads. Your access token is encrypted server-side and never returned to the browser.</p></div>
+        <div class="meta-actions">
+          <button id="meta-connect-button" class="button button-primary" type="button">Connect Meta →</button>
+          <span id="meta-connection-status" class="fine">No Meta ad account connected.</span>
+        </div>
+        <form id="meta-options-form" class="meta-options hidden">
+          <div><label for="meta-account">Ad account</label><select id="meta-account" required></select></div>
+          <div><label for="meta-page">Facebook Page</label><select id="meta-page" required></select></div>
+          <div><label for="meta-country">Target country code</label><input id="meta-country" maxlength="2" placeholder="US" required></div>
+          <button class="button button-primary" type="submit">Use this Meta account</button>
+        </form>
+      </div>
+
+      <div id="autopilot-dashboard" class="autopilot-dashboard hidden">
+        <div class="dashboard-head"><div><span class="eyebrow">Autopilot live view</span><h3 id="autopilot-live-status">Setup required</h3></div><div class="dashboard-actions"><button id="autopilot-pause-button" class="button button-secondary" type="button">Pause</button><button id="autopilot-resume-button" class="button button-primary hidden" type="button">Resume</button></div></div>
+        <div class="metric-grid">
+          <article><span>Budget</span><strong id="metric-budget">$0</strong></article>
+          <article><span>Spent</span><strong id="metric-spent">$0</strong></article>
+          <article><span>Customers</span><strong id="metric-customers">0</strong></article>
+          <article><span>CAC</span><strong id="metric-cac">—</strong></article>
+          <article><span>Revenue</span><strong id="metric-revenue">$0</strong></article>
+          <article><span>ROAS</span><strong id="metric-roas">—</strong></article>
+        </div>
+        <p id="autopilot-blockers" class="dashboard-note"></p>
+        <div class="dashboard-columns"><div><span class="eyebrow">Experiments</span><div id="autopilot-experiments" class="mini-list"></div></div><div><span class="eyebrow">What Partizan is doing</span><div id="autopilot-decisions" class="mini-list"></div></div></div>
+        <p id="managed-fee-estimate" class="fine"></p>
+      </div>
     </section>
 
     <div id="notice" class="notice hidden" role="status"></div>
