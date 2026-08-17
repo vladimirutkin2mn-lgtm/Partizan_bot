@@ -13,6 +13,7 @@ from app.autonomous_growth_worker import AutonomousGrowthWorker
 from app.config import Settings, get_settings
 from app.customer_autopilot import customer_autopilot_service
 from app.customer_funnel import customer_funnel_service
+from app.product_intake import product_intake_service
 from app.stripe_readiness import StripeReadinessError, verify_autopilot_price, verify_launch_price
 
 DOGFOOD_PROJECT_ID_ENV = "PARTIZAN_DOGFOOD_PROJECT_ID"
@@ -63,8 +64,13 @@ class AutopilotDogfoodRunner:
     def snapshot(self, project_id: UUID, customer_token: str) -> AutopilotDogfoodSnapshot:
         overview = customer_autopilot_service.overview(project_id, customer_token)
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
+        product = product_intake_service.get_product(overview.product_id)
         target_max_cac = max(0.0, float(project.get("autopilot_target_max_cac") or 0))
         blockers = [*overview.blockers, *self._runtime_blockers()]
+        if not product.reference_links:
+            blockers.append(
+                "Researched product has no website/reference link for real paid traffic"
+            )
         try:
             self._stripe_verify(self._settings)
         except (StripeReadinessError, RuntimeError, ValueError) as exc:
