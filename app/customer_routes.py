@@ -63,7 +63,14 @@ def _project_error(exc: Exception) -> HTTPException:
     if isinstance(exc, CustomerProjectAccessError):
         return HTTPException(status_code=401, detail="Customer project token is invalid")
     if isinstance(exc, CustomerPaymentRequiredError):
-        return HTTPException(status_code=402, detail=str(exc))
+        detail = str(exc)
+        try:
+            UUID(detail)
+        except ValueError:
+            pass
+        else:
+            detail = "Unlock the Acquisition Plan before starting deep research."
+        return HTTPException(status_code=402, detail=detail)
     return HTTPException(status_code=409, detail=str(exc))
 
 
