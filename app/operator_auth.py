@@ -12,7 +12,7 @@ OPERATOR_KEY_HEADER = "X-Partizan-Operator-Key"
 
 # These are the only intentionally public /v1 endpoints. Conversion ingestion
 # enforces its own Product Event Key. Customer routes enforce an opaque per-project
-# token, except preview creation and the Stripe-signed webhook.
+# token, except preview creation, Stripe-verified recovery and the Stripe-signed webhook.
 PUBLIC_API_ROUTE_TEMPLATES = frozenset(
     {
         ("POST", "/v1/products/{product_id}/distribution-events"),
@@ -21,6 +21,7 @@ PUBLIC_API_ROUTE_TEMPLATES = frozenset(
         ("POST", "/v1/customer-projects/preview"),
         ("GET", "/v1/customer-projects/{project_id}"),
         ("POST", "/v1/customer-projects/{project_id}/checkout"),
+        ("POST", "/v1/customer-projects/{project_id}/recover-access"),
         ("POST", "/v1/customer-projects/{project_id}/deep-research"),
         ("POST", "/v1/customer-projects/{project_id}/clarifications"),
         ("POST", "/v1/billing/stripe/webhook"),
@@ -33,6 +34,7 @@ _PUBLIC_API_PATHS = (
     ("POST", re.compile(r"^/v1/customer-projects/preview$")),
     ("GET", re.compile(r"^/v1/customer-projects/[^/]+$")),
     ("POST", re.compile(r"^/v1/customer-projects/[^/]+/checkout$")),
+    ("POST", re.compile(r"^/v1/customer-projects/[^/]+/recover-access$")),
     ("POST", re.compile(r"^/v1/customer-projects/[^/]+/deep-research$")),
     ("POST", re.compile(r"^/v1/customer-projects/[^/]+/clarifications$")),
     ("POST", re.compile(r"^/v1/billing/stripe/webhook$")),
