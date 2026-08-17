@@ -18,16 +18,22 @@ class LaunchCheckout:
     url: str
 
 
+def _configure_stripe(settings: Settings) -> None:
+    if settings.stripe_secret_key is None:
+        raise BillingConfigurationError("Stripe billing is not configured")
+    stripe.api_key = settings.stripe_secret_key.get_secret_value()
+
+
 def create_launch_checkout(
     *,
     settings: Settings,
     project_id: UUID,
     public_origin: str,
 ) -> LaunchCheckout:
-    if settings.stripe_secret_key is None or not settings.stripe_launch_price_id:
+    if not settings.stripe_launch_price_id:
         raise BillingConfigurationError("Stripe launch checkout is not configured")
+    _configure_stripe(settings)
 
-    stripe.api_key = settings.stripe_secret_key.get_secret_value()
     project_metadata = {
         "partizan_project_id": str(project_id),
         "partizan_entitlement": "launch_plan",
@@ -50,6 +56,11 @@ def create_launch_checkout(
     if not session.url:
         raise BillingConfigurationError("Stripe Checkout Session did not return a URL")
     return LaunchCheckout(session_id=session.id, url=session.url)
+
+
+def retrieve_launch_checkout(*, settings: Settings, session_id: str):
+    _configure_stripe(settings)
+    return stripe.checkout.Session.retrieve(session_id)
 
 
 def construct_stripe_event(
