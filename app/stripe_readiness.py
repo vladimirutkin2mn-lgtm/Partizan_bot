@@ -23,14 +23,16 @@ def verify_launch_price(settings: Settings) -> None:
     except stripe.StripeError as exc:
         raise StripeReadinessError("Stripe launch Price could not be retrieved") from exc
 
+    # `stripe.Price` is not a mapping in the pinned SDK, so read it through attributes.
+    # Absent fields default to a rejecting value, keeping the check fail-closed.
     expected_amount = settings.partizan_launch_price_usd * 100
-    if not price.get("active"):
+    if not getattr(price, "active", False):
         raise StripeReadinessError("Stripe launch Price must be active")
-    if price.get("type") != "one_time":
+    if getattr(price, "type", None) != "one_time":
         raise StripeReadinessError("Stripe launch Price must be one-time")
-    if str(price.get("currency") or "").lower() != "usd":
+    if str(getattr(price, "currency", None) or "").lower() != "usd":
         raise StripeReadinessError("Stripe launch Price must use USD")
-    if price.get("unit_amount") != expected_amount:
+    if getattr(price, "unit_amount", None) != expected_amount:
         raise StripeReadinessError(
             f"Stripe launch Price must be ${settings.partizan_launch_price_usd} USD"
         )
