@@ -1,7 +1,8 @@
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 
 class CustomerPreviewRequest(BaseModel):
@@ -45,6 +46,10 @@ class CustomerProjectView(BaseModel):
     launch_unlocked: bool
     research_state: Literal["NOT_STARTED", "NEEDS_INPUT", "READY"]
     product_id: UUID | None = None
+    autopilot_subscription_status: Literal[
+        "INACTIVE", "CHECKOUT_PENDING", "ACTIVE", "PAST_DUE", "CANCELLED"
+    ] = "INACTIVE"
+    autopilot_subscription_id: str | None = None
     launch_price_usd: int
     autopilot_price_usd: int
     managed_spend_fee_pct: int
@@ -99,3 +104,106 @@ class CustomerResearchResponse(BaseModel):
 class CustomerClarificationAnswerRequest(BaseModel):
     question_id: UUID
     answer: str = Field(min_length=1, max_length=2000)
+
+
+class CustomerAutopilotVerifyRequest(BaseModel):
+    session_id: str = Field(min_length=8, max_length=255)
+
+
+class CustomerAutopilotConfigureRequest(BaseModel):
+    marketing_budget_usd: float = Field(ge=100, le=100_000)
+    target_max_cac: float = Field(gt=0, le=100_000)
+    max_autonomous_spend_per_experiment: float | None = Field(default=None, gt=0)
+    max_autonomous_spend_per_day: float | None = Field(default=None, gt=0)
+    confirm_autonomous_spend: bool
+
+
+class CustomerAutopilotStatusRequest(BaseModel):
+    status: Literal["ACTIVE", "PAUSED"]
+
+
+class CustomerMetaConnectResponse(BaseModel):
+    authorization_url: HttpUrl
+
+
+class CustomerMetaAdAccountOption(BaseModel):
+    id: str
+    account_id: str
+    name: str
+    currency: str | None = None
+
+
+class CustomerMetaPageOption(BaseModel):
+    id: str
+    name: str
+
+
+class CustomerMetaOptionsView(BaseModel):
+    connected_to_meta: bool
+    ad_accounts: list[CustomerMetaAdAccountOption] = Field(default_factory=list)
+    pages_by_ad_account: dict[str, list[CustomerMetaPageOption]] = Field(default_factory=dict)
+
+
+class CustomerMetaConnectionRequest(BaseModel):
+    ad_account_id: str = Field(min_length=1, max_length=120)
+    page_id: str = Field(min_length=1, max_length=120)
+    instagram_actor_id: str | None = Field(default=None, max_length=120)
+    country_codes: list[str] = Field(min_length=1, max_length=10)
+
+    @field_validator("country_codes")
+    @classmethod
+    def normalize_country_codes(cls, values: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for value in values:
+            code = value.strip().upper()
+            if len(code) != 2 or not code.isalpha():
+                raise ValueError("country_codes must contain two-letter country codes")
+            if code not in normalized:
+                normalized.append(code)
+        return normalized
+
+
+class CustomerMetaConnectionView(BaseModel):
+    connected: bool
+    ad_account_id: str | None = None
+    page_id: str | None = None
+    instagram_actor_id: str | None = None
+    country_codes: list[str] = Field(default_factory=list)
+
+
+class CustomerAutopilotExperimentView(BaseModel):
+    experiment_id: UUID
+    platform: str
+    action_type: str
+    status: str
+    budget_cap: float | None = None
+
+
+class CustomerAutopilotDecisionView(BaseModel):
+    recorded_at: datetime
+    kind: str
+    outcome: str
+    decision: str | None = None
+    reasons: list[str] = Field(default_factory=list)
+
+
+class CustomerAutopilotOverview(BaseModel):
+    project_id: UUID
+    product_id: UUID
+    subscription_status: str
+    autopilot_status: str
+    setup_complete: bool
+    blockers: list[str] = Field(default_factory=list)
+    marketing_budget_usd: float = Field(ge=0)
+    spent_usd: float = Field(ge=0)
+    remaining_budget_usd: float = Field(ge=0)
+    paid_customers: int = Field(ge=0)
+    revenue_usd: float = Field(ge=0)
+    cac_usd: float | None = Field(default=None, ge=0)
+    roas: float | None = Field(default=None, ge=0)
+    managed_spend_fee_pct: int = Field(ge=0, le=100)
+    estimated_managed_fee_usd: float = Field(ge=0)
+    meta: CustomerMetaConnectionView
+    running_experiments: list[CustomerAutopilotExperimentView] = Field(default_factory=list)
+    waiting_experiments: list[CustomerAutopilotExperimentView] = Field(default_factory=list)
+    recent_decisions: list[CustomerAutopilotDecisionView] = Field(default_factory=list)
