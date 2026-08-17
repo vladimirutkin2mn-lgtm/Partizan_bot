@@ -40,6 +40,7 @@ def test_global_control_plane_guard_is_installed() -> None:
         ("POST", "/v1/customer-projects/preview"),
         ("GET", "/v1/customer-projects/{project_id}"),
         ("POST", "/v1/customer-projects/{project_id}/checkout"),
+        ("POST", "/v1/customer-projects/{project_id}/recover-access"),
         ("POST", "/v1/customer-projects/{project_id}/deep-research"),
         ("POST", "/v1/customer-projects/{project_id}/clarifications"),
         ("POST", "/v1/billing/stripe/webhook"),
@@ -194,10 +195,15 @@ def test_customer_boundary_bypasses_operator_key_but_keeps_customer_token_auth()
         f"/v1/customer-projects/{project_id}",
         headers={"X-Partizan-Customer-Token": preview.json()["customer_token"]},
     )
+    recovery_without_billing = client.post(
+        f"/v1/customer-projects/{project_id}/recover-access",
+        json={"session_id": "cs_test_missing"},
+    )
 
     assert missing_customer_token.status_code == 401
     assert missing_customer_token.json()["detail"] == "Customer project token required"
     assert allowed.status_code == 200
+    assert recovery_without_billing.status_code == 503
 
 
 def test_public_creative_blob_route_bypasses_operator_boundary() -> None:
