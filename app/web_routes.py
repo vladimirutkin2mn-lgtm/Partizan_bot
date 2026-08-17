@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 from app.tracking_routes import router as tracking_router
 
@@ -36,14 +36,27 @@ _ASSETS = {
     "outreach-autosend.v1.css": "text/css; charset=utf-8",
     "outreach-autosend.v1.js": "text/javascript; charset=utf-8",
 }
+_LANDING_ASSETS = {
+    "landing.v1.css": "text/css; charset=utf-8",
+    "landing.v1.js": "text/javascript; charset=utf-8",
+}
 
 router = APIRouter(tags=["web"])
 router.include_router(tracking_router)
 
 
 @router.get("/", include_in_schema=False)
-async def root() -> RedirectResponse:
-    return RedirectResponse(url="/app")
+async def marketing_site() -> HTMLResponse:
+    html = (_WEB_DIR / "landing.v1.html").read_text(encoding="utf-8")
+    return HTMLResponse(html, media_type="text/html; charset=utf-8")
+
+
+@router.get("/site/assets/{asset_name}", include_in_schema=False)
+async def marketing_asset(asset_name: str) -> FileResponse:
+    media_type = _LANDING_ASSETS.get(asset_name)
+    if media_type is None:
+        raise HTTPException(status_code=404, detail="Marketing asset not found")
+    return FileResponse(_WEB_DIR / asset_name, media_type=media_type)
 
 
 @router.get("/app", include_in_schema=False)

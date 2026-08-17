@@ -5,11 +5,38 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_root_redirects_to_dogfooding_workspace() -> None:
-    response = client.get("/", follow_redirects=False)
+def test_root_serves_marketing_site() -> None:
+    response = client.get("/")
 
-    assert response.status_code in {302, 307}
-    assert response.headers["location"] == "/app"
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    html = response.text
+    for anchor in (
+        "<title>Partizan — AI that finds and acquires customers</title>",
+        'href="/app"',
+        'id="budget-range"',
+        'id="how"',
+        'id="channels"',
+        'id="autonomy"',
+        "/site/assets/landing.v1.css",
+        "/site/assets/landing.v1.js",
+    ):
+        assert anchor in html
+
+
+def test_marketing_assets_are_allowlisted_and_served() -> None:
+    css = client.get("/site/assets/landing.v1.css")
+    javascript = client.get("/site/assets/landing.v1.js")
+
+    assert css.status_code == 200
+    assert "text/css" in css.headers["content-type"]
+    assert "--lime" in css.text
+    assert ".hero-console" in css.text
+
+    assert javascript.status_code == 200
+    assert "javascript" in javascript.headers["content-type"]
+    assert "budget-range" in javascript.text
+    assert "IntersectionObserver" in javascript.text
 
 
 def test_workspace_shell_contains_core_growth_and_execution_surfaces() -> None:
@@ -160,6 +187,12 @@ def test_execution_retry_ui_respects_backend_reconciliation_boundary() -> None:
 
 def test_unknown_workspace_asset_is_not_exposed() -> None:
     response = client.get("/app/assets/../../config.py")
+
+    assert response.status_code == 404
+
+
+def test_unknown_marketing_asset_is_not_exposed() -> None:
+    response = client.get("/site/assets/../../config.py")
 
     assert response.status_code == 404
 
