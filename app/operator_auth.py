@@ -12,7 +12,8 @@ OPERATOR_KEY_HEADER = "X-Partizan-Operator-Key"
 
 # These are the only intentionally public /v1 endpoints. Conversion ingestion
 # enforces its own Product Event Key. Customer routes enforce an opaque per-project
-# token, except preview creation, Stripe-verified recovery and the Stripe-signed webhook.
+# token, except preview creation, OAuth callback, Stripe-verified recovery and the
+# Stripe-signed webhook.
 PUBLIC_API_ROUTE_TEMPLATES = frozenset(
     {
         ("POST", "/v1/products/{product_id}/distribution-events"),
@@ -24,6 +25,15 @@ PUBLIC_API_ROUTE_TEMPLATES = frozenset(
         ("POST", "/v1/customer-projects/{project_id}/recover-access"),
         ("POST", "/v1/customer-projects/{project_id}/deep-research"),
         ("POST", "/v1/customer-projects/{project_id}/clarifications"),
+        ("POST", "/v1/customer-projects/{project_id}/autopilot/checkout"),
+        ("POST", "/v1/customer-projects/{project_id}/autopilot/verify"),
+        ("PUT", "/v1/customer-projects/{project_id}/autopilot"),
+        ("GET", "/v1/customer-projects/{project_id}/autopilot"),
+        ("POST", "/v1/customer-projects/{project_id}/autopilot/status"),
+        ("POST", "/v1/customer-projects/{project_id}/autopilot/meta/connect"),
+        ("GET", "/v1/customer-projects/{project_id}/autopilot/meta/options"),
+        ("POST", "/v1/customer-projects/{project_id}/autopilot/meta/connection"),
+        ("GET", "/v1/customer-meta/oauth/callback"),
         ("POST", "/v1/billing/stripe/webhook"),
     }
 )
@@ -37,6 +47,15 @@ _PUBLIC_API_PATHS = (
     ("POST", re.compile(r"^/v1/customer-projects/[^/]+/recover-access$")),
     ("POST", re.compile(r"^/v1/customer-projects/[^/]+/deep-research$")),
     ("POST", re.compile(r"^/v1/customer-projects/[^/]+/clarifications$")),
+    ("POST", re.compile(r"^/v1/customer-projects/[^/]+/autopilot/checkout$")),
+    ("POST", re.compile(r"^/v1/customer-projects/[^/]+/autopilot/verify$")),
+    ("PUT", re.compile(r"^/v1/customer-projects/[^/]+/autopilot$")),
+    ("GET", re.compile(r"^/v1/customer-projects/[^/]+/autopilot$")),
+    ("POST", re.compile(r"^/v1/customer-projects/[^/]+/autopilot/status$")),
+    ("POST", re.compile(r"^/v1/customer-projects/[^/]+/autopilot/meta/connect$")),
+    ("GET", re.compile(r"^/v1/customer-projects/[^/]+/autopilot/meta/options$")),
+    ("POST", re.compile(r"^/v1/customer-projects/[^/]+/autopilot/meta/connection$")),
+    ("GET", re.compile(r"^/v1/customer-meta/oauth/callback$")),
     ("POST", re.compile(r"^/v1/billing/stripe/webhook$")),
 )
 
