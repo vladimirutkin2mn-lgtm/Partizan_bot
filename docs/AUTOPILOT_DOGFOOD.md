@@ -4,6 +4,7 @@ This is the production proof path for the customer-facing Autopilot.
 
 The goal is not a synthetic green run. Dogfood is complete only when one real customer project has:
 
+- a real website or landing page recorded as the product's paid-traffic destination;
 - an ACTIVE Autopilot subscription;
 - a bounded ACTIVE Growth Mandate;
 - a self-service Meta connection;
@@ -25,6 +26,7 @@ The default command does not launch a campaign. It checks the existing customer 
 - `APP_ENV=production`;
 - database runtime storage;
 - public HTTPS origin;
+- a researched Product with a real `reference_links` destination for tracked traffic;
 - active and correctly configured Stripe Acquisition Plan and Autopilot Prices;
 - ACTIVE customer subscription and Growth Mandate;
 - Meta connection;
@@ -33,6 +35,12 @@ The default command does not launch a campaign. It checks the existing customer 
 - live OpenAI image creative provider.
 
 The customer token is never included in the output.
+
+## Customer destination
+
+The `/start` onboarding now asks for a required website or landing page. The customer project persists that URL and Product Intake carries it into `Product.reference_links`. The existing execution engine then uses that link as the base destination for Partizan tracking and the Meta campaign.
+
+The customer API keeps `website_url` optional for backwards compatibility with old Acquisition Plan-only projects. Such a legacy project can still view its plan, but Autopilot checkout/configuration/live activation fails closed until the researched Product has a destination URL.
 
 ## Run exactly one bounded live sweep
 
