@@ -82,6 +82,12 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           PARTIZAN_PUBLIC_URL: ${{ secrets.PARTIZAN_PUBLIC_URL }}
+          # Unset behaves exactly as before: this deployment owns the public edge.
+          # Set the variable to false on a host where another product already terminates
+          # TLS on 80/443, and name the overlay that joins that proxy's network — otherwise
+          # every deploy detaches the API from it and public routing breaks.
+          PARTIZAN_MANAGED_EDGE: ${{ vars.PARTIZAN_MANAGED_EDGE || 'true' }}
+          PARTIZAN_EXTRA_COMPOSE_FILES: ${{ vars.PARTIZAN_EXTRA_COMPOSE_FILES }}
         run: bash tools/deploy_prod_remote.sh
 
       - name: Record skipped deployment

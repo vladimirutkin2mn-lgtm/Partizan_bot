@@ -54,7 +54,13 @@ def _valid_env(**overrides: str) -> str:
     return "".join(f"{key}={value}\n" for key, value in values.items())
 
 
-def _run_preflight(tmp_path: Path, content: str, *, require_public: bool = False):
+def _run_preflight(
+    tmp_path: Path,
+    content: str,
+    *,
+    require_public: bool = False,
+    extra_env: dict[str, str] | None = None,
+):
     tmp_path.mkdir(parents=True, exist_ok=True)
     env_file = tmp_path / ".env.prod"
     env_file.write_text(content, encoding="utf-8")
@@ -62,6 +68,8 @@ def _run_preflight(tmp_path: Path, content: str, *, require_public: bool = False
     env = os.environ.copy()
     env["PATH"] = _fake_host_tools(tmp_path)
     env["PARTIZAN_REQUIRE_PUBLIC_URL"] = "true" if require_public else "false"
+    if extra_env:
+        env.update(extra_env)
     return subprocess.run(
         ["bash", str(PREFLIGHT), str(env_file)],
         cwd=ROOT,
@@ -209,6 +217,41 @@ def test_public_preflight_requires_valid_stripe_checkout_config(tmp_path: Path) 
     assert "STRIPE_SECRET_KEY" in missing_secret.stderr
     assert "STRIPE_WEBHOOK_SECRET" in missing_webhook.stderr
     assert "Stripe Price ID" in wrong_price.stderr
+
+
+def test_shared_host_mode_does_not_require_managed_edge_files(tmp_path: Path) -> None:
+    """A public origin fronted by another product's proxy needs no edge files of our own."""
+    result = _run_preflight(
+        tmp_path,
+        _valid_env(),
+        require_public=True,
+        extra_env={
+            "PARTIZAN_MANAGED_EDGE": "false",
+            "PARTIZAN_EXTRA_COMPOSE_FILES": "docker-compose.shared-host.yml",
+            "PARTIZAN_EDGE_NETWORK": "web",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "production host preflight: ok" in result.stdout
+
+
+def test_preflight_rejects_unusable_edge_mode_and_missing_overlay(tmp_path: Path) -> None:
+    bad_mode = _run_preflight(
+        tmp_path / "bad-mode",
+        _valid_env(),
+        extra_env={"PARTIZAN_MANAGED_EDGE": "maybe"},
+    )
+    missing_overlay = _run_preflight(
+        tmp_path / "missing-overlay",
+        _valid_env(),
+        extra_env={"PARTIZAN_EXTRA_COMPOSE_FILES": "docker-compose.does-not-exist.yml"},
+    )
+
+    assert bad_mode.returncode != 0
+    assert missing_overlay.returncode != 0
+    assert "PARTIZAN_MANAGED_EDGE must be true or false" in bad_mode.stderr
+    assert "docker-compose.does-not-exist.yml" in missing_overlay.stderr
 
 
 def test_live_provider_modes_require_matching_api_keys(tmp_path: Path) -> None:
