@@ -48,7 +48,7 @@ Partizan never fetches the upstream skill repository at runtime. The curated gui
 | `prospecting` | 1.1.0 | Demand signals, qualification, provenance |
 | `community-marketing` | 2.0.0 | Value-first community participation |
 | `influencer-marketing` | 1.0.0 | Creator fit and creator briefs |
-| `marketing-ideas` | 2.0.0 | Future growth-play selection and sequencing |
+| `marketing-ideas` | 2.0.0 | Growth-play selection and sequencing |
 | `cold-email` | 2.0.0 | Bounded creator/partner outreach drafting |
 | `ad-creative` | 2.8.0 | Paid creative angles and grounded claims |
 
@@ -108,11 +108,25 @@ Before the composer is reached, the existing outreach runtime still requires a c
 
 The composer still cannot invent personalization, prior relationships, traction, testimonials, audience size, performance, urgency or scarcity, and it cannot insert its own URL; Partizan adds the exact tracked destination only after experiment preparation.
 
-## Registered but not yet runtime-wired
+### Growth planning and portfolio sequencing
 
-The registry still defines `GROWTH_PLANNING` as an intentional extension point for `marketing-ideas + customer-research + prospecting`.
+`GrowthPlanningEngine` applies `marketing-ideas + customer-research + prospecting` inside the durable Distribution Growth Manager portfolio path.
 
-It should be connected only to the durable Partizan growth-planning/portfolio module, with current economics, permissions, experiment schemas and learning boundaries preserved.
+The integration is deterministic and bounded. It does not create a second planner agent, does not make another LLM call and cannot execute a play. It contributes at most ±10 points to the portfolio score and records the component rationale for every recommended item.
+
+The planning adjustment uses already-persisted runtime facts:
+
+- Audience Intelligence confidence, repeated independent evidence and demand/commercial-intent signals;
+- `time_to_signal_days` to prefer faster learning when evidence and economics are otherwise similar;
+- `effort_hours` to prefer lower-cost operational tests early;
+- estimated test cost versus the product's remaining budget;
+- a small compounding-channel bonus for community, owned-organic and partner/outreach work.
+
+A play whose `estimated_cost_min` exceeds the remaining product budget is not sequenced into the portfolio. The portfolio budget allocator also refuses to recommend a per-play budget below `estimated_cost_min`; an infeasible expensive play is skipped rather than preventing cheaper later plays from being considered.
+
+Observed experiment economics remain separate and stronger. Existing winner/loser adjustments from CAC, paid users and spend continue to dominate planning methodology, and the Growth Manager's `SCALE / CONTINUE / MODIFY / STOP` decisions are unchanged.
+
+The existing platform-diversification bonus remains in place after planning scores are calculated, so Partizan can balance fast experiments with compounding channels without collapsing the portfolio into one surface.
 
 ## Design rules
 
@@ -122,8 +136,9 @@ It should be connected only to the durable Partizan growth-planning/portfolio mo
 4. **Hypothesis is not evidence.** Marketing reasoning may propose a segment, channel or angle; only observed data can validate it.
 5. **Queries are not evidence.** Search instructions describe what Partizan asked for; source content describes what Partizan observed.
 6. **No execution authority.** Skill text cannot spend, send, publish, approve, or bypass an execution policy.
-7. **Deterministic where possible.** Evidence qualification should not require an LLM when transparent scoring is sufficient.
-8. **Dogfood before breadth.** Future skills should be added because real acquisition evidence identifies a quality gap, not merely because another skill exists upstream.
+7. **Deterministic where possible.** Evidence qualification and portfolio sequencing should not require an LLM when transparent scoring is sufficient.
+8. **Observed economics win.** Methodology can prioritize what to test next, but measured CAC, conversions, spend and revenue remain stronger than heuristic planning signals.
+9. **Dogfood before breadth.** Future skills should be added because real acquisition evidence identifies a quality gap, not merely because another skill exists upstream.
 
 ## Updating the upstream adaptation
 
