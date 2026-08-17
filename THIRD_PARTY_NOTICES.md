@@ -1,18 +1,16 @@
-# Third-Party Notices
+# Third-party notices
 
-## Marketing Skills for AI Agents
+## coreyhaines31/marketingskills
 
-Partizan contains curated marketing methodology adapted from:
+Partizan's `app/marketing_intelligence.py` contains a curated adaptation of marketing methodology from:
 
 - Project: `coreyhaines31/marketingskills`
-- Source: https://github.com/coreyhaines31/marketingskills
-- Pinned upstream commit: `7868cb9251fad80a73d26e488a5ad5f6c4a9f335`
-- Copyright: Copyright (c) 2025 Corey Haines
-- License: MIT License
+- Source revision: `7868cb9251fad80a73d26e488a5ad5f6c4a9f335`
+- License: MIT
 
-The adapted Partizan layer does not fetch or execute the upstream repository at runtime. See `docs/MARKETING_INTELLIGENCE.md` for the integration boundary.
+The adapted guidance is stored locally and is not fetched from the upstream repository at runtime.
 
-### MIT License
+MIT License
 
 Copyright (c) 2025 Corey Haines
 
