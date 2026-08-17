@@ -43,6 +43,25 @@
     return true;
   };
 
+  const recoverProjectToken = async (projectId, sessionId) => {
+    const previousProjectId = currentProjectId;
+    const previousToken = currentToken;
+    currentProjectId = projectId;
+    currentToken = null;
+    try {
+      const recovered = await api(`/v1/customer-projects/${projectId}/recover-access`, {
+        method: 'POST',
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      rememberProject(projectId, recovered.customer_token);
+      return recovered;
+    } catch (error) {
+      currentProjectId = previousProjectId;
+      currentToken = previousToken;
+      throw error;
+    }
+  };
+
   const showStage = (stage) => {
     [stageInput, stagePreview, stageUnlocked].forEach((node) => node.classList.add('hidden'));
     stage.classList.remove('hidden');
@@ -192,14 +211,30 @@
   if (Number.isFinite(initialBudget) && initialBudget >= 100) $('budget').value = String(initialBudget);
   const checkoutState = params.get('checkout');
   const projectId = params.get('project');
-  if (checkoutState && projectId && loadProjectToken(projectId)) {
+  const checkoutSessionId = params.get('session_id');
+  if (checkoutState && projectId) {
     if (checkoutState === 'success') {
+      const hadStoredAccess = loadProjectToken(projectId);
       showStage(stageUnlocked);
       $('payment-status').querySelector('strong').textContent = 'Confirming payment…';
       $('payment-status').querySelector('small').textContent = 'This usually takes only a few seconds.';
       $('research-button').disabled = true;
-      pollEntitlement().catch((error) => showNotice(error.message, true));
+
+      const resumePurchase = async () => {
+        if (checkoutSessionId) {
+          try {
+            await recoverProjectToken(projectId, checkoutSessionId);
+          } catch (error) {
+            if (!hadStoredAccess || !loadProjectToken(projectId)) throw error;
+          }
+        } else if (!hadStoredAccess) {
+          throw new Error('Purchase session is missing. Open the successful Stripe return link again.');
+        }
+        await pollEntitlement();
+      };
+      resumePurchase().catch((error) => showNotice(error.message, true));
     } else if (checkoutState === 'cancelled') {
+      loadProjectToken(projectId);
       showNotice('Checkout cancelled. Your pre-scan is still here whenever you’re ready.');
     }
   }
