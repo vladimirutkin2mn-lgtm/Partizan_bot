@@ -43,6 +43,12 @@ def _valid_env(**overrides: str) -> str:
         "OPERATOR_API_KEY": "b" * 64,
         "PARTIZAN_PUBLIC_BASE_URL": "https://partizan.example.com",
         "PARTIZAN_PUBLIC_HOST": "partizan.example.com",
+        "STRIPE_SECRET_KEY": "sk_test_partizan_not_real",
+        "STRIPE_WEBHOOK_SECRET": "whsec_partizan_not_real",
+        "STRIPE_LAUNCH_PRICE_ID": "price_partizan_launch_not_real",
+        "PARTIZAN_LAUNCH_PRICE_USD": "49",
+        "PARTIZAN_AUTOPILOT_PRICE_USD": "149",
+        "PARTIZAN_MANAGED_SPEND_FEE_PCT": "10",
     }
     values.update(overrides)
     return "".join(f"{key}={value}\n" for key, value in values.items())
@@ -82,6 +88,7 @@ def test_valid_production_host_preflight_passes(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert "production host preflight: ok" in result.stdout
     assert "b" * 64 not in result.stdout + result.stderr
+    assert "sk_test_partizan_not_real" not in result.stdout + result.stderr
 
 
 def test_internal_only_preflight_passes_without_public_edge(tmp_path: Path) -> None:
@@ -182,6 +189,28 @@ def test_preflight_rejects_public_host_mismatch_or_non_dns_host(tmp_path: Path) 
     assert "must be empty" in orphan_host.stderr
 
 
+def test_public_preflight_requires_valid_stripe_checkout_config(tmp_path: Path) -> None:
+    missing_secret = _run_preflight(
+        tmp_path / "missing-secret",
+        _valid_env(STRIPE_SECRET_KEY=""),
+    )
+    missing_webhook = _run_preflight(
+        tmp_path / "missing-webhook",
+        _valid_env(STRIPE_WEBHOOK_SECRET=""),
+    )
+    wrong_price = _run_preflight(
+        tmp_path / "wrong-price",
+        _valid_env(STRIPE_LAUNCH_PRICE_ID="prod_not_a_price"),
+    )
+
+    assert missing_secret.returncode != 0
+    assert missing_webhook.returncode != 0
+    assert wrong_price.returncode != 0
+    assert "STRIPE_SECRET_KEY" in missing_secret.stderr
+    assert "STRIPE_WEBHOOK_SECRET" in missing_webhook.stderr
+    assert "Stripe Price ID" in wrong_price.stderr
+
+
 def test_live_provider_modes_require_matching_api_keys(tmp_path: Path) -> None:
     openai_missing = _run_preflight(
         tmp_path / "openai-missing",
@@ -225,6 +254,12 @@ def test_bootstrap_generates_private_env_without_printing_secrets(tmp_path: Path
     assert values["RUNTIME_STORAGE"] == "database"
     assert values["PARTIZAN_PUBLIC_BASE_URL"] == "https://partizan.example.com"
     assert values["PARTIZAN_PUBLIC_HOST"] == "partizan.example.com"
+    assert values["STRIPE_SECRET_KEY"] == ""
+    assert values["STRIPE_WEBHOOK_SECRET"] == ""
+    assert values["STRIPE_LAUNCH_PRICE_ID"] == ""
+    assert values["PARTIZAN_LAUNCH_PRICE_USD"] == "49"
+    assert values["PARTIZAN_AUTOPILOT_PRICE_USD"] == "149"
+    assert values["PARTIZAN_MANAGED_SPEND_FEE_PCT"] == "10"
     assert values["POSTGRES_PASSWORD"] not in result.stdout + result.stderr
     assert values["OPERATOR_API_KEY"] not in result.stdout + result.stderr
 
