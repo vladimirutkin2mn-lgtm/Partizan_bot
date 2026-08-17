@@ -267,7 +267,7 @@ class InMemoryDistributionGrowthManagerService:
         if payload is None:
             raise KeyError(decision_id)
         decision = DistributionGrowthDecisionView.model_validate(payload)
-        self._decisions[decision_id] = decision
+        self._decisions[decision.id] = decision
         return decision
 
     def _persist_decision(
@@ -457,12 +457,13 @@ class InMemoryDistributionGrowthManagerService:
         if per_item_cap is not None:
             desired = min(desired, per_item_cap)
         if budget_remaining is None:
-            return round(desired, 2)
+            return round(max(play.estimated_cost_min, desired), 2)
         available = max(0.0, budget_remaining - already_allocated)
-        desired = min(desired, available)
-        if desired < play.estimated_cost_min:
+        if available < play.estimated_cost_min:
             return 0.0
-        return round(desired, 2)
+        desired = min(desired, available)
+        desired = max(play.estimated_cost_min, desired)
+        return round(min(desired, available), 2)
 
     def _budget_remaining(
         self,
