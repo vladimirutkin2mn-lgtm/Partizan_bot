@@ -27,7 +27,7 @@ class PaidProviderConnectionCreateRequest(BaseModel):
     access_token_env: str = Field(pattern=r"^[A-Z][A-Z0-9_]{2,119}$")
     api_version: str = Field(pattern=r"^v\d+\.\d+$")
     country_codes: list[str] = Field(min_length=1, max_length=50)
-    default_image_url: HttpUrl
+    default_image_url: HttpUrl | None = None
     budget_minor_unit_factor: int = Field(default=100, ge=1, le=1000)
     test_days: int = Field(default=5, ge=1, le=30)
     special_ad_categories: list[str] = Field(default_factory=list, max_length=20)
@@ -73,7 +73,7 @@ class PaidProviderConnectionView(BaseModel):
     access_token_env: str
     api_version: str
     country_codes: list[str]
-    default_image_url: HttpUrl
+    default_image_url: HttpUrl | None = None
     budget_minor_unit_factor: int
     test_days: int
     special_ad_categories: list[str] = Field(default_factory=list)
