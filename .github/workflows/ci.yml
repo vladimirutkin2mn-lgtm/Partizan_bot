@@ -39,6 +39,7 @@ jobs:
         run: ruff check .
       - name: Check browser JavaScript
         run: |
+          node --check app/web/start.v1.js
           node --check app/web/operator-auth.v1.js
           node --check app/web/partizan.v1.js
           node --check app/web/execution.v1.js
