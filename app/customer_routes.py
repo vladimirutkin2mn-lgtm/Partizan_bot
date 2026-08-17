@@ -122,7 +122,10 @@ def recover_customer_access(
     except BillingConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except stripe.StripeError as exc:
-        raise HTTPException(status_code=502, detail="Stripe payment verification is temporarily unavailable") from exc
+        raise HTTPException(
+            status_code=502,
+            detail="Stripe payment verification is temporarily unavailable",
+        ) from exc
 
     metadata = session.get("metadata") or {}
     verified = (
