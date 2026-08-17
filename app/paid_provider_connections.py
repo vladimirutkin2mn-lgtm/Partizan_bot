@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 from enum import StrEnum
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator, model_validator
 
 from app.distribution_types import DistributionPlatform
+from app.provider_secret_store import PROVIDER_SECRET_PREFIX, provider_secret_store
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 PAID_PROVIDER_CONNECTION_NAMESPACE = "paid_provider_connection"
@@ -27,7 +29,7 @@ class PaidProviderConnectionCreateRequest(BaseModel):
     access_token_env: str = Field(pattern=r"^[A-Z][A-Z0-9_]{2,119}$")
     api_version: str = Field(pattern=r"^v\d+\.\d+$")
     country_codes: list[str] = Field(min_length=1, max_length=50)
-    default_image_url: HttpUrl
+    default_image_url: HttpUrl | None = None
     budget_minor_unit_factor: int = Field(default=100, ge=1, le=1000)
     test_days: int = Field(default=5, ge=1, le=30)
     special_ad_categories: list[str] = Field(default_factory=list, max_length=20)
@@ -73,7 +75,7 @@ class PaidProviderConnectionView(BaseModel):
     access_token_env: str
     api_version: str
     country_codes: list[str]
-    default_image_url: HttpUrl
+    default_image_url: HttpUrl | None = None
     budget_minor_unit_factor: int
     test_days: int
     special_ad_categories: list[str] = Field(default_factory=list)
@@ -102,6 +104,7 @@ class PaidProviderConnectionService:
             self._key(product_id),
             connection.model_dump(mode="json"),
         )
+        self._hydrate_customer_secret(connection)
         return connection
 
     def get_meta(self, product_id: UUID) -> PaidProviderConnectionView | None:
@@ -111,7 +114,9 @@ class PaidProviderConnectionService:
         )
         if payload is None:
             return None
-        return PaidProviderConnectionView.model_validate(payload)
+        connection = PaidProviderConnectionView.model_validate(payload)
+        self._hydrate_customer_secret(connection)
+        return connection
 
     def require_active_meta(self, product_id: UUID) -> PaidProviderConnectionView:
         connection = self.get_meta(product_id)
@@ -124,6 +129,15 @@ class PaidProviderConnectionService:
     def reset(self) -> None:
         if self._store.ephemeral:
             self._store.clear_namespace(PAID_PROVIDER_CONNECTION_NAMESPACE)
+
+    @staticmethod
+    def _hydrate_customer_secret(connection: PaidProviderConnectionView) -> None:
+        reference = connection.access_token_env
+        if not reference.startswith(PROVIDER_SECRET_PREFIX):
+            return
+        token = provider_secret_store.get(reference)
+        if token is not None:
+            os.environ[reference] = token
 
     def _key(self, product_id: UUID) -> str:
         return f"{product_id}:INSTAGRAM:META_MARKETING_API"

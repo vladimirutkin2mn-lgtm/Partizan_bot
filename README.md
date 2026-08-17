@@ -17,6 +17,7 @@ The full product vision, agent architecture, MVP scope and development roadmap a
 - [Generic Growth Runner](docs/GENERIC_GROWTH_RUNNER.md)
 - [Isolated Growth Sandbox](docs/GROWTH_SANDBOX.md)
 - [Marketing Intelligence](docs/MARKETING_INTELLIGENCE.md) — pinned marketing methodology for product intake, ICPs, evidence-backed audience discovery, creative drafting and bounded outreach.
+- [Customer Autopilot Bridge](docs/CUSTOMER_AUTOPILOT.md) — recurring Autopilot billing, customer budget delegation, self-service Meta connection and customer execution dashboard.
 
 ## MVP distribution scope
 
@@ -45,13 +46,13 @@ The earlier pre-distribution `ChannelHunter → GrowthPlay → ExecutionPackage 
 
 Partizan Bot should evolve from “here is what you could do” to **“here is what I found, what I launched, what worked and what I am doing next.”**
 
-## Browser workspace
+## Browser surfaces
 
-The browser workspace is served directly by FastAPI at `/app`; `/` redirects there.
+The public marketing site is served at `/`. Customer onboarding, the `$49` Acquisition Plan and Autopilot setup live at `/start`. The advanced/operator workspace remains at `/app`.
 
-It uses the live Partizan API for the core flow and includes customer/operator surfaces for discovery, execution, results, conversion integration, integration readiness, product-specific integration code, autonomy, creative/publishing and bounded outreach.
+`/start` connects the customer project to the existing growth engine rather than implementing a parallel execution path: paid research creates the Product/ICP/Audience state, Autopilot creates a bounded Growth Mandate, and the existing workers/adapters own execution, paid control, analytics and learning.
 
-The customer workspace intentionally does not expose sensitive provider secrets. Convenience state is kept only in the current browser tab through `sessionStorage`; operator/Event Key secrets remain server/deployment scoped.
+The customer surface never exposes provider credentials or the operator key. Customer project access uses an opaque project token; Meta access tokens stay server-side and are encrypted at rest. The operator workspace keeps its existing production operator-auth boundary.
 
 ## Generic product growth run
 
@@ -99,7 +100,7 @@ make migrate
 make dev
 ```
 
-Open `http://localhost:8000/app`.
+Open `http://localhost:8000/start` for the customer funnel or `http://localhost:8000/app` for the operator workspace.
 
 Useful commands:
 

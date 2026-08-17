@@ -29,6 +29,7 @@ ENV_FILE="${DEPLOY_PATH}/.env.prod"
 umask 077
 POSTGRES_PASSWORD="$(openssl rand -hex 32)"
 OPERATOR_API_KEY="$(openssl rand -hex 32)"
+PROVIDER_SECRET_ENCRYPTION_KEY="$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '\n')"
 
 cat > "${ENV_FILE}" <<EOF
 APP_ENV=production
@@ -56,8 +57,8 @@ OPERATOR_API_KEY=${OPERATOR_API_KEY}
 PARTIZAN_PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
 PARTIZAN_PUBLIC_HOST=${PUBLIC_HOST}
 
-# Customer billing. A public launch preflight will fail until the first three values
-# are explicitly configured. Keep secrets only in this host-local 0600 file.
+# Customer billing. Public preflight will fail until Stripe credentials and both
+# commercial Price IDs are explicitly configured.
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_LAUNCH_PRICE_ID=
@@ -65,6 +66,13 @@ STRIPE_AUTOPILOT_PRICE_ID=
 PARTIZAN_LAUNCH_PRICE_USD=49
 PARTIZAN_AUTOPILOT_PRICE_USD=149
 PARTIZAN_MANAGED_SPEND_FEE_PCT=10
+
+# Self-service customer provider connections. The encryption key is generated on
+# this host and must remain stable. Meta OAuth values stay blank until configured.
+PROVIDER_SECRET_ENCRYPTION_KEY=${PROVIDER_SECRET_ENCRYPTION_KEY}
+META_OAUTH_APP_ID=
+META_OAUTH_APP_SECRET=
+META_OAUTH_API_VERSION=
 
 # Owned SMTP sender is intentionally disabled until explicitly configured.
 SMTP_HOST=
@@ -84,7 +92,7 @@ AUTONOMOUS_GROWTH_INTERVAL_SECONDS=300
 EOF
 
 chmod 600 "${ENV_FILE}"
-unset POSTGRES_PASSWORD OPERATOR_API_KEY
+unset POSTGRES_PASSWORD OPERATOR_API_KEY PROVIDER_SECRET_ENCRYPTION_KEY
 
 echo "production bootstrap: created ${ENV_FILE} with generated deployment-only secrets"
-echo "production bootstrap: live providers, Stripe billing and public URL still require explicit configuration where left blank/mock"
+echo "production bootstrap: live providers, Stripe billing, Meta OAuth and public URL still require explicit configuration where left blank/mock"

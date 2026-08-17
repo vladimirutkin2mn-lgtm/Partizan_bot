@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     partizan_launch_price_usd: int = 49
     partizan_autopilot_price_usd: int = 149
     partizan_managed_spend_fee_pct: int = 10
+    provider_secret_encryption_key: SecretStr | None = None
+    meta_oauth_app_id: str | None = None
+    meta_oauth_app_secret: SecretStr | None = None
+    meta_oauth_api_version: str | None = None
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None
@@ -46,6 +50,8 @@ class Settings(BaseSettings):
         "smtp_password",
         "stripe_secret_key",
         "stripe_webhook_secret",
+        "provider_secret_encryption_key",
+        "meta_oauth_app_secret",
         mode="before",
     )
     @classmethod
@@ -62,6 +68,8 @@ class Settings(BaseSettings):
         "smtp_reply_to",
         "stripe_launch_price_id",
         "stripe_autopilot_price_id",
+        "meta_oauth_app_id",
+        "meta_oauth_api_version",
         mode="before",
     )
     @classmethod
@@ -69,6 +77,13 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             normalized = value.strip()
             return normalized or None
+        return value
+
+    @field_validator("meta_oauth_api_version")
+    @classmethod
+    def validate_meta_oauth_api_version(cls, value: str | None) -> str | None:
+        if value is not None and (not value.startswith("v") or not value[1:].replace(".", "").isdigit()):
+            raise ValueError("META_OAUTH_API_VERSION must look like v25.0")
         return value
 
     @field_validator("creative_provider", mode="before")

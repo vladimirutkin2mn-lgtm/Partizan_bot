@@ -4,7 +4,7 @@ from uuid import uuid4
 import stripe
 
 from app.config import Settings
-from app.customer_billing import create_launch_checkout
+from app.customer_billing import create_autopilot_checkout, create_launch_checkout
 
 
 def test_launch_checkout_is_idempotent_and_creates_reusable_customer(monkeypatch) -> None:
@@ -44,3 +44,40 @@ def test_launch_checkout_is_idempotent_and_creates_reusable_customer(monkeypatch
     assert "checkout=success" in captured["success_url"]
     assert "{CHECKOUT_SESSION_ID}" in captured["success_url"]
     assert "checkout=cancelled" in captured["cancel_url"]
+
+
+def test_autopilot_checkout_is_monthly_subscription_for_existing_customer(monkeypatch) -> None:
+    project_id = uuid4()
+    captured: dict = {}
+
+    def fake_create(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(id="cs_test_autopilot", url="https://checkout.stripe.com/autopilot")
+
+    monkeypatch.setattr(stripe.checkout.Session, "create", fake_create)
+    settings = Settings(
+        _env_file=None,
+        stripe_secret_key="sk_test_not_real",
+        stripe_autopilot_price_id="price_autopilot_not_real",
+    )
+
+    checkout = create_autopilot_checkout(
+        settings=settings,
+        project_id=project_id,
+        public_origin="https://partizan.example.com",
+        checkout_generation=3,
+        stripe_customer_id="cus_existing",
+    )
+
+    assert checkout.session_id == "cs_test_autopilot"
+    assert captured["mode"] == "subscription"
+    assert captured["customer"] == "cus_existing"
+    assert captured["line_items"] == [{"price": "price_autopilot_not_real", "quantity": 1}]
+    assert captured["metadata"] == {
+        "partizan_project_id": str(project_id),
+        "partizan_entitlement": "autopilot",
+    }
+    assert captured["subscription_data"]["metadata"] == captured["metadata"]
+    assert captured["idempotency_key"] == f"partizan-autopilot-{project_id}-3"
+    assert "autopilot_checkout=success" in captured["success_url"]
+    assert "autopilot_checkout=cancelled" in captured["cancel_url"]

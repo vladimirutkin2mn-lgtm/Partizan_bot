@@ -42,6 +42,7 @@ _LANDING_ASSETS = {
 }
 _START_ASSETS = {
     "start.v1.css": "text/css; charset=utf-8",
+    "start.autopilot.v1.css": "text/css; charset=utf-8",
     "start.v1.js": "text/javascript; charset=utf-8",
 }
 
@@ -66,6 +67,11 @@ async def marketing_asset(asset_name: str) -> FileResponse:
 @router.get("/start", include_in_schema=False)
 async def customer_start() -> HTMLResponse:
     html = (_WEB_DIR / "start.v1.html").read_text(encoding="utf-8")
+    marker = '<link rel="stylesheet" href="/start/assets/start.v1.css">'
+    extra = '<link rel="stylesheet" href="/start/assets/start.autopilot.v1.css">'
+    if marker not in html:
+        raise HTTPException(status_code=500, detail="Customer onboarding style marker missing")
+    html = html.replace(marker, f"{marker}\n  {extra}", 1)
     return HTMLResponse(html, media_type="text/html; charset=utf-8")
 
 
