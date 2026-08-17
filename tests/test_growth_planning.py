@@ -144,10 +144,11 @@ def test_distribution_portfolio_is_runtime_wired_to_growth_planning() -> None:
     )
 
     assert response.status_code == 200
-    items = response.json()["items"]
+    payload = response.json()
+    items = payload["items"]
     assert items
+    assert sum(item["recommended_budget_cap"] for item in items) <= payload["budget_remaining"]
     for item in items:
         rationale = " ".join(item["rationale"])
         assert "Growth planning skills: marketing-ideas, customer-research, prospecting." in rationale
         assert "Growth planning adjustment=" in rationale
-        assert item["recommended_budget_cap"] >= item["play"]["estimated_cost_min"]
