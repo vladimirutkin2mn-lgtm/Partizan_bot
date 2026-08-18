@@ -33,10 +33,10 @@ def create_launch_checkout(
     project_id: UUID,
     public_origin: str,
 ) -> StripeCheckout:
-    _stripe_secret(settings)
     price_id = settings.stripe_launch_price_id
     if not price_id:
         raise BillingConfigurationError("Stripe launch checkout is not configured")
+    _stripe_secret(settings)
     metadata = {
         "partizan_project_id": str(project_id),
         "partizan_entitlement": "launch_plan",
@@ -67,10 +67,10 @@ def create_autopilot_checkout(
     checkout_generation: int,
     stripe_customer_id: str | None,
 ) -> StripeCheckout:
-    _stripe_secret(settings)
     price_id = settings.stripe_autopilot_price_id
     if not price_id:
         raise BillingConfigurationError("Stripe Autopilot checkout is not configured")
+    _stripe_secret(settings)
     metadata = {
         "partizan_project_id": str(project_id),
         "partizan_entitlement": "autopilot",
