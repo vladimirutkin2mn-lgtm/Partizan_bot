@@ -23,6 +23,12 @@ RETIRED_RUNTIME_FILES = {
     "app/jobs.py",
     "app/oracle_dogfood.py",
     "app/workflow.py",
+    # Customer acquisition runtime retired when Growth Balance replaced the
+    # delegated marketing-budget model. /start is now a clean v2 runtime.
+    "app/web/start.v1.html",
+    "app/web/start.v1.js",
+    "app/web/autopilot-first.v1.js",
+    "app/web/autopilot-first.v1.css",
 }
 
 RETIRED_ROUTE_FRAGMENTS = {
