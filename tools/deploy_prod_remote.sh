@@ -132,6 +132,41 @@ if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
     fi
     echo "${base}${path} 200"
   done
+
+  echo "==> Verifying customer onboarding release is live"
+  smoke_dir="$(mktemp -d)"
+  start_headers="${smoke_dir}/start.headers"
+  start_html="${smoke_dir}/start.html"
+  curl --fail --silent --show-error --max-time 15 \
+    --header 'Cache-Control: no-cache' \
+    --dump-header "${start_headers}" \
+    --output "${start_html}" \
+    "${base}/start"
+  if ! grep -Fq '/start/assets/goal-dropdown.v1.css' "${start_html}" || \
+     ! grep -Fq '/start/assets/goal-dropdown.v1.js' "${start_html}"; then
+    echo "Public smoke failed: ${base}/start is serving stale onboarding HTML" >&2
+    rm -rf "${smoke_dir}"
+    exit 1
+  fi
+  if ! grep -Eiq '^cache-control:.*no-store' "${start_headers}"; then
+    echo "Public smoke failed: ${base}/start is missing no-store cache protection" >&2
+    rm -rf "${smoke_dir}"
+    exit 1
+  fi
+
+  for asset in goal-dropdown.v1.css goal-dropdown.v1.js; do
+    curl --fail --silent --show-error --max-time 15 \
+      --header 'Cache-Control: no-cache' \
+      --output "${smoke_dir}/${asset}" \
+      "${base}/start/assets/${asset}"
+    if ! cmp -s "app/web/${asset}" "${smoke_dir}/${asset}"; then
+      echo "Public smoke failed: ${base}/start/assets/${asset} does not match the release being deployed" >&2
+      rm -rf "${smoke_dir}"
+      exit 1
+    fi
+    echo "${base}/start/assets/${asset} exact release bytes verified"
+  done
+  rm -rf "${smoke_dir}"
 fi
 
 echo "==> Partizan production deployment verified"
