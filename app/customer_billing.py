@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
@@ -113,6 +114,7 @@ def create_growth_balance_checkout(
         "partizan_project_id": str(project_id),
         "partizan_entitlement": "growth_balance_topup",
         "partizan_amount_cents": str(amount_cents),
+        "partizan_checkout_generation": str(checkout_generation),
     }
     kwargs: dict = {
         "mode": "payment",
@@ -136,6 +138,7 @@ def create_growth_balance_checkout(
         "client_reference_id": str(project_id),
         "metadata": metadata,
         "payment_intent_data": {"metadata": metadata},
+        "expires_at": int(time.time()) + (30 * 60),
         "success_url": (
             f"{public_origin}/start?growth_balance=success&project={project_id}"
             "&session_id={CHECKOUT_SESSION_ID}"
