@@ -10,7 +10,7 @@ class CustomerPreviewRequest(BaseModel):
     website_url: HttpUrl | None = None
     market: str = Field(min_length=2, max_length=160)
     goal: str = Field(min_length=2, max_length=200)
-    budget_usd: int = Field(ge=100, le=100_000)
+    budget_usd: int = Field(ge=1, le=100_000)
 
 
 class CustomerDirectionView(BaseModel):
