@@ -55,6 +55,8 @@ def test_global_control_plane_guard_is_installed() -> None:
         ("POST", "/v1/customer-projects/{project_id}/autopilot/meta/connection"),
         ("GET", "/v1/customer-meta/oauth/callback"),
         ("POST", "/v1/billing/stripe/webhook"),
+        ("POST", "/v1/billing/stripe/issuing-authorizations"),
+        ("POST", "/v1/billing/stripe/issuing-events"),
     }
 
 
