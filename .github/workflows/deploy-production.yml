@@ -21,6 +21,7 @@ jobs:
     environment: production
     permissions:
       contents: read
+      issues: write
 
     steps:
       - name: Resolve release commit
@@ -80,6 +81,7 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           PARTIZAN_PUBLIC_URL: ${{ secrets.PARTIZAN_PUBLIC_URL }}
+          PARTIZAN_RELEASE_SHA: ${{ steps.release.outputs.sha }}
           # Unset behaves exactly as before: this deployment owns the public edge.
           # Set the variable to false on a host where another product already terminates
           # TLS on 80/443, and name the overlay that joins that proxy's network — otherwise
@@ -87,3 +89,64 @@ jobs:
           PARTIZAN_MANAGED_EDGE: ${{ vars.PARTIZAN_MANAGED_EDGE || 'true' }}
           PARTIZAN_EXTRA_COMPOSE_FILES: ${{ vars.PARTIZAN_EXTRA_COMPOSE_FILES }}
         run: bash tools/deploy_prod_remote.sh
+
+      - name: Open or update production deploy incident
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        shell: bash
+        run: |
+          title='🚨 Production deploy failing'
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          body_file="${RUNNER_TEMP}/partizan-deploy-incident.md"
+          cat > "${body_file}" <<EOF
+          Production deploy is failing. The previously deployed release may still be serving traffic.
+
+          - Latest failed release: \`${RELEASE_SHA}\`
+          - Workflow run: ${run_url}
+          - Repository: \`${GITHUB_REPOSITORY}\`
+
+          This issue is maintained automatically by the production deployment workflow. It will close after a later production deploy succeeds.
+          EOF
+
+          issue_number="$(gh issue list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --state open \
+            --limit 100 \
+            --json number,title \
+            --jq '.[] | select(.title == "🚨 Production deploy failing") | .number' \
+            | head -n 1)"
+
+          if [[ -n "${issue_number}" ]]; then
+            gh issue edit "${issue_number}" --repo "${GITHUB_REPOSITORY}" --body-file "${body_file}"
+            gh issue comment "${issue_number}" --repo "${GITHUB_REPOSITORY}" \
+              --body "Deploy of \`${RELEASE_SHA}\` failed: ${run_url}"
+          else
+            gh issue create \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "${title}" \
+              --body-file "${body_file}"
+          fi
+
+      - name: Close recovered production deploy incident
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        shell: bash
+        run: |
+          issue_number="$(gh issue list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --state open \
+            --limit 100 \
+            --json number,title \
+            --jq '.[] | select(.title == "🚨 Production deploy failing") | .number' \
+            | head -n 1)"
+          if [[ -n "${issue_number}" ]]; then
+            run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            gh issue close "${issue_number}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --reason completed \
+              --comment "Production recovered on release \`${RELEASE_SHA}\`: ${run_url}"
+          fi

@@ -253,6 +253,26 @@ def test_public_preflight_requires_encrypted_meta_oauth_config(tmp_path: Path) -
     assert "META_OAUTH_API_VERSION" in bad_version.stderr
 
 
+def test_preflight_reports_all_missing_public_runtime_values_at_once(tmp_path: Path) -> None:
+    missing_keys = (
+        "PROVIDER_SECRET_ENCRYPTION_KEY",
+        "STRIPE_AUTOPILOT_PRICE_ID",
+        "META_OAUTH_APP_ID",
+        "META_OAUTH_APP_SECRET",
+        "META_OAUTH_API_VERSION",
+    )
+    result = _run_preflight(
+        tmp_path,
+        _valid_env(**{key: "" for key in missing_keys}),
+        require_public=True,
+    )
+
+    assert result.returncode != 0
+    assert "production preflight failed with 5 configuration error(s)" in result.stderr
+    for key in missing_keys:
+        assert f"{key} is required" in result.stderr
+
+
 def test_shared_host_mode_does_not_require_managed_edge_files(tmp_path: Path) -> None:
     """A public origin fronted by another product's proxy needs no edge files of our own."""
     result = _run_preflight(

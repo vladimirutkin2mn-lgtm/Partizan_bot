@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, HTTPException, status
 from sqlalchemy import text
 
+from app.config import get_settings
 from app.customer_routes import router as customer_router
 from app.db import get_sync_engine
 from app.distribution_play_routes import router as distribution_play_router
@@ -54,6 +55,18 @@ def readiness() -> dict[str, str]:
     except Exception as exc:
         raise HTTPException(status_code=503, detail="database unavailable") from exc
     return {"status": "ok", "database": "available"}
+
+
+@app.get("/version", tags=["system"])
+def version() -> dict[str, str]:
+    """Expose the exact release SHA currently served by this runtime."""
+
+    settings = get_settings()
+    return {
+        "service": "partizan",
+        "api_version": app.version,
+        "release_sha": settings.partizan_release_sha,
+    }
 
 
 @app.post(

@@ -5,6 +5,7 @@ DEPLOY_HOST="${DEPLOY_HOST:?Set DEPLOY_HOST (user@host)}"
 DEPLOY_PATH="${DEPLOY_PATH:?Set DEPLOY_PATH to an absolute remote Partizan directory}"
 DEPLOY_SSH_OPTS="${DEPLOY_SSH_OPTS:-}"
 PARTIZAN_PUBLIC_URL="${PARTIZAN_PUBLIC_URL:-}"
+PARTIZAN_RELEASE_SHA="${PARTIZAN_RELEASE_SHA:?Set PARTIZAN_RELEASE_SHA to the exact release commit}"
 # Whether this deployment owns the public HTTPS edge. Set to false on a host where another
 # product already terminates TLS on 80/443; see docker-compose.shared-host.yml.
 PARTIZAN_MANAGED_EDGE="${PARTIZAN_MANAGED_EDGE:-true}"
@@ -13,6 +14,11 @@ PARTIZAN_EXTRA_COMPOSE_FILES="${PARTIZAN_EXTRA_COMPOSE_FILES:-}"
 
 if [[ "${DEPLOY_PATH}" != /* ]]; then
   echo "Refusing deployment: DEPLOY_PATH must be absolute" >&2
+  exit 1
+fi
+
+if [[ ! "${PARTIZAN_RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "Refusing deployment: PARTIZAN_RELEASE_SHA must be an exact 40-character Git commit SHA" >&2
   exit 1
 fi
 
@@ -40,6 +46,7 @@ ssh_remote() {
   ssh ${SSH_ARGS[@]+"${SSH_ARGS[@]}"} "${DEPLOY_HOST}" "$1"
 }
 
+echo "==> Deploying release ${PARTIZAN_RELEASE_SHA}"
 echo "==> Verifying remote production environment"
 ssh_remote "test -f '${DEPLOY_PATH}/.env.prod' || { echo 'Missing ${DEPLOY_PATH}/.env.prod' >&2; exit 1; }"
 
@@ -85,32 +92,33 @@ for extra_compose_file in ${PARTIZAN_EXTRA_COMPOSE_FILES}; do
   COMPOSE_FILE_ARGS="${COMPOSE_FILE_ARGS} -f ${extra_compose_file}"
 done
 REMOTE_COMPOSE="docker compose ${COMPOSE_FILE_ARGS} --env-file .env.prod"
+RELEASE_ENV="PARTIZAN_RELEASE_SHA='${PARTIZAN_RELEASE_SHA}'"
 
 echo "==> Building Partizan release image"
-ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} build"
+ssh_remote "cd '${DEPLOY_PATH}' && ${RELEASE_ENV} ${REMOTE_COMPOSE} build"
 
 if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
   echo "==> Verifying live Stripe launch Price"
-  ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} run --rm --no-deps api python -m app.stripe_readiness"
+  ssh_remote "cd '${DEPLOY_PATH}' && ${RELEASE_ENV} ${REMOTE_COMPOSE} run --rm --no-deps api python -m app.stripe_readiness"
 fi
 
 echo "==> Starting PostgreSQL"
-ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} up -d postgres"
+ssh_remote "cd '${DEPLOY_PATH}' && ${RELEASE_ENV} ${REMOTE_COMPOSE} up -d postgres"
 
 echo "==> Applying migrations"
-ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} run --rm migrate"
+ssh_remote "cd '${DEPLOY_PATH}' && ${RELEASE_ENV} ${REMOTE_COMPOSE} run --rm migrate"
 
 echo "==> Starting API, workers and configured edge"
-ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} up -d --remove-orphans ${START_SERVICES}"
+ssh_remote "cd '${DEPLOY_PATH}' && ${RELEASE_ENV} ${REMOTE_COMPOSE} up -d --remove-orphans ${START_SERVICES}"
 
 echo "==> Waiting for API readiness"
-ssh_remote "cd '${DEPLOY_PATH}' && for i in \$(seq 1 30); do if ${REMOTE_COMPOSE} exec -T api python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)\" >/dev/null 2>&1; then exit 0; fi; sleep 2; done; ${REMOTE_COMPOSE} ps; exit 1"
+ssh_remote "cd '${DEPLOY_PATH}' && for i in \$(seq 1 30); do if ${RELEASE_ENV} ${REMOTE_COMPOSE} exec -T api python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)\" >/dev/null 2>&1; then exit 0; fi; sleep 2; done; ${RELEASE_ENV} ${REMOTE_COMPOSE} ps; exit 1"
 
 echo "==> Waiting for successful post-start worker sweeps"
-ssh_remote "cd '${DEPLOY_PATH}' && for i in \$(seq 1 90); do if ${REMOTE_COMPOSE} exec -T api python -m app.worker_health_probe >/dev/null 2>&1; then ${REMOTE_COMPOSE} exec -T api python -m app.worker_health_probe; exit 0; fi; sleep 2; done; ${REMOTE_COMPOSE} exec -T api python -m app.worker_health_probe || true; ${REMOTE_COMPOSE} ps; exit 1"
+ssh_remote "cd '${DEPLOY_PATH}' && for i in \$(seq 1 90); do if ${RELEASE_ENV} ${REMOTE_COMPOSE} exec -T api python -m app.worker_health_probe >/dev/null 2>&1; then ${RELEASE_ENV} ${REMOTE_COMPOSE} exec -T api python -m app.worker_health_probe; exit 0; fi; sleep 2; done; ${RELEASE_ENV} ${REMOTE_COMPOSE} exec -T api python -m app.worker_health_probe || true; ${RELEASE_ENV} ${REMOTE_COMPOSE} ps; exit 1"
 
 echo "==> Internal production smoke"
-ssh_remote "cd '${DEPLOY_PATH}' && ${REMOTE_COMPOSE} exec -T api python -c \"
+ssh_remote "cd '${DEPLOY_PATH}' && ${RELEASE_ENV} ${REMOTE_COMPOSE} exec -T api python -c \"
 import json
 import urllib.request
 for path in ('/health/live', '/health/ready'):
@@ -119,6 +127,11 @@ for path in ('/health/live', '/health/ready'):
         assert response.status == 200, (path, response.status)
         assert payload.get('status') == 'ok', (path, payload)
         print(path, response.status)
+with urllib.request.urlopen('http://127.0.0.1:8000/version', timeout=5) as response:
+    payload = json.loads(response.read().decode('utf-8'))
+    assert response.status == 200, response.status
+    assert payload.get('release_sha') == '${PARTIZAN_RELEASE_SHA}', payload
+    print('/version', payload.get('release_sha'))
 \""
 
 if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
@@ -132,6 +145,13 @@ if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
     fi
     echo "${base}${path} 200"
   done
+
+  served_release_sha="$(curl --fail --silent --show-error --max-time 15 "${base}/version" | python -c 'import json,sys; print(json.load(sys.stdin).get("release_sha", ""))')"
+  if [[ "${served_release_sha}" != "${PARTIZAN_RELEASE_SHA}" ]]; then
+    echo "Public smoke failed: expected release ${PARTIZAN_RELEASE_SHA}, but production serves ${served_release_sha:-unknown}" >&2
+    exit 1
+  fi
+  echo "${base}/version release ${served_release_sha} verified"
 
   echo "==> Verifying customer onboarding release is live"
   smoke_dir="$(mktemp -d)"
@@ -169,4 +189,4 @@ if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
   rm -rf "${smoke_dir}"
 fi
 
-echo "==> Partizan production deployment verified"
+echo "==> Partizan production deployment verified at ${PARTIZAN_RELEASE_SHA}"
