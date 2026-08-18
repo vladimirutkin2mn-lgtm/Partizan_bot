@@ -43,7 +43,9 @@ _LANDING_ASSETS = {
 _START_ASSETS = {
     "start.v1.css": "text/css; charset=utf-8",
     "start.autopilot.v1.css": "text/css; charset=utf-8",
+    "goal-dropdown.v1.css": "text/css; charset=utf-8",
     "start.v1.js": "text/javascript; charset=utf-8",
+    "goal-dropdown.v1.js": "text/javascript; charset=utf-8",
 }
 
 router = APIRouter(tags=["web"])
