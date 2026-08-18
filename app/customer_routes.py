@@ -370,7 +370,8 @@ def verify_growth_balance_topup(
             and str(session.get("client_reference_id") or "") == str(project_id)
             and str(metadata.get("partizan_project_id") or "") == str(project_id)
             and metadata.get("partizan_entitlement") == "growth_balance_topup"
-            and int(metadata.get("partizan_amount_cents") or 0) == int(pending.get("amount_cents") or 0)
+            and int(metadata.get("partizan_amount_cents") or 0)
+            == int(pending.get("amount_cents") or 0)
             and session.get("mode") == "payment"
             and session.get("payment_status") == "paid"
             and amount_total == int(pending.get("amount_cents") or 0)
@@ -386,7 +387,10 @@ def verify_growth_balance_topup(
             stripe_customer_id=(str(session["customer"]) if session.get("customer") else None),
         )
         if not credited:
-            raise HTTPException(status_code=401, detail="Growth Balance payment is not linked to this project")
+            raise HTTPException(
+                status_code=401,
+                detail="Growth Balance payment is not linked to this project",
+            )
         return customer_autopilot_service.overview(project_id, token)
     except HTTPException:
         raise
