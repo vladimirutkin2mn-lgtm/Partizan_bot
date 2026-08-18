@@ -167,10 +167,11 @@ def test_signed_webhook_cannot_unlock_project_without_matching_pending_checkout(
 def test_customer_start_page_and_assets_are_served() -> None:
     page = client.get("/start")
     css = client.get("/start/assets/start.v1.css")
-    javascript = client.get("/start/assets/start.v1.js")
+    javascript = client.get("/start/assets/start.v2.js")
 
     assert page.status_code == 200
     assert "Unlock Acquisition Plan — $49" in page.text
+    assert "Growth Balance" in page.text
     assert 'id="preview-form"' in page.text
     assert 'id="checkout-button"' in page.text
     assert css.status_code == 200
@@ -179,6 +180,7 @@ def test_customer_start_page_and_assets_are_served() -> None:
     assert "/v1/customer-projects/preview" in javascript.text
     assert "/recover-access" in javascript.text
     assert "/deep-research" in javascript.text
+    assert "/growth-balance/checkout" in javascript.text
     assert "X-Partizan-Customer-Token" in javascript.text
     assert "localStorage" in javascript.text
     assert "sessionStorage" not in javascript.text

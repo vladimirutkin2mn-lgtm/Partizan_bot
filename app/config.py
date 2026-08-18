@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     partizan_launch_price_usd: int = 49
     partizan_autopilot_price_usd: int = 149
     partizan_managed_spend_fee_pct: int = 10
+    growth_balance_settlement_provider: str = "unavailable"
+    stripe_issuing_cardholder_id: str | None = None
+    stripe_issuing_currency: str = "usd"
+    stripe_issuing_authorization_webhook_secret: SecretStr | None = None
+    stripe_issuing_events_webhook_secret: SecretStr | None = None
+    stripe_issuing_webhook_api_version: str = "2025-03-31.basil"
     provider_secret_encryption_key: SecretStr | None = None
     meta_oauth_app_id: str | None = None
     meta_oauth_app_secret: SecretStr | None = None
@@ -50,6 +56,8 @@ class Settings(BaseSettings):
         "smtp_password",
         "stripe_secret_key",
         "stripe_webhook_secret",
+        "stripe_issuing_authorization_webhook_secret",
+        "stripe_issuing_events_webhook_secret",
         "provider_secret_encryption_key",
         "meta_oauth_app_secret",
         mode="before",
@@ -68,6 +76,8 @@ class Settings(BaseSettings):
         "smtp_reply_to",
         "stripe_launch_price_id",
         "stripe_autopilot_price_id",
+        "stripe_issuing_cardholder_id",
+        "stripe_issuing_webhook_api_version",
         "meta_oauth_app_id",
         "meta_oauth_api_version",
         mode="before",
@@ -85,6 +95,28 @@ class Settings(BaseSettings):
         if value is not None and (not value.startswith("v") or not value[1:].replace(".", "").isdigit()):
             raise ValueError("META_OAUTH_API_VERSION must look like v25.0")
         return value
+
+    @field_validator("growth_balance_settlement_provider", mode="before")
+    @classmethod
+    def normalize_growth_balance_settlement_provider(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if normalized not in {"unavailable", "stripe_issuing"}:
+            raise ValueError(
+                "GROWTH_BALANCE_SETTLEMENT_PROVIDER must be 'unavailable' or 'stripe_issuing'"
+            )
+        return normalized
+
+    @field_validator("stripe_issuing_currency", mode="before")
+    @classmethod
+    def normalize_stripe_issuing_currency(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if normalized != "usd":
+            raise ValueError("STRIPE_ISSUING_CURRENCY must currently be usd")
+        return normalized
 
     @field_validator("creative_provider", mode="before")
     @classmethod

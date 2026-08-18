@@ -67,6 +67,15 @@ PARTIZAN_LAUNCH_PRICE_USD=49
 PARTIZAN_AUTOPILOT_PRICE_USD=149
 PARTIZAN_MANAGED_SPEND_FEE_PCT=10
 
+# Partizan-funded Growth Balance settlement. Keep unavailable until Stripe Issuing
+# is enabled, its balance is prefunded, and both signed webhook endpoints exist.
+GROWTH_BALANCE_SETTLEMENT_PROVIDER=unavailable
+STRIPE_ISSUING_CARDHOLDER_ID=
+STRIPE_ISSUING_CURRENCY=usd
+STRIPE_ISSUING_AUTHORIZATION_WEBHOOK_SECRET=
+STRIPE_ISSUING_EVENTS_WEBHOOK_SECRET=
+STRIPE_ISSUING_WEBHOOK_API_VERSION=2025-03-31.basil
+
 # Self-service customer provider connections. The encryption key is generated on
 # this host and must remain stable. Meta OAuth values stay blank until configured.
 PROVIDER_SECRET_ENCRYPTION_KEY=${PROVIDER_SECRET_ENCRYPTION_KEY}
@@ -95,4 +104,4 @@ chmod 600 "${ENV_FILE}"
 unset POSTGRES_PASSWORD OPERATOR_API_KEY PROVIDER_SECRET_ENCRYPTION_KEY
 
 echo "production bootstrap: created ${ENV_FILE} with generated deployment-only secrets"
-echo "production bootstrap: live providers, Stripe billing, Meta OAuth and public URL still require explicit configuration where left blank/mock"
+echo "production bootstrap: live providers, Stripe billing/Issuing, Meta OAuth and public URL still require explicit configuration where left blank/mock"

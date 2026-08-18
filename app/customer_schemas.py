@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 
 class CustomerPreviewRequest(BaseModel):
@@ -112,11 +112,18 @@ class CustomerAutopilotVerifyRequest(BaseModel):
     session_id: str = Field(min_length=8, max_length=255)
 
 
+class CustomerGrowthBalanceTopUpRequest(BaseModel):
+    amount_usd: float = Field(ge=1, le=100_000)
+
+
+class CustomerGrowthBalanceVerifyRequest(BaseModel):
+    session_id: str = Field(min_length=8, max_length=255)
+
+
 class CustomerAutopilotConfigureRequest(BaseModel):
-    marketing_budget_usd: float = Field(ge=100, le=100_000)
+    model_config = ConfigDict(extra="forbid")
+
     target_max_cac: float = Field(gt=0, le=100_000)
-    max_autonomous_spend_per_experiment: float | None = Field(default=None, gt=0)
-    max_autonomous_spend_per_day: float | None = Field(default=None, gt=0)
     confirm_autonomous_spend: bool
 
 
@@ -173,6 +180,19 @@ class CustomerMetaConnectionView(BaseModel):
     country_codes: list[str] = Field(default_factory=list)
 
 
+class CustomerGrowthBalanceView(BaseModel):
+    funded_usd: float = Field(ge=0)
+    acquisition_spend_usd: float = Field(ge=0)
+    management_fee_pct: int = Field(ge=0, le=100)
+    management_fee_usd: float = Field(ge=0)
+    used_usd: float = Field(ge=0)
+    available_usd: float = Field(ge=0)
+    acquisition_capacity_usd: float = Field(ge=0)
+    remaining_acquisition_capacity_usd: float = Field(ge=0)
+    settlement_ready: bool
+    settlement_status: str
+
+
 class CustomerAutopilotExperimentView(BaseModel):
     experiment_id: UUID
     platform: str
@@ -191,20 +211,16 @@ class CustomerAutopilotDecisionView(BaseModel):
 
 class CustomerAutopilotOverview(BaseModel):
     project_id: UUID
-    product_id: UUID
+    product_id: UUID | None = None
     subscription_status: str
     autopilot_status: str
     setup_complete: bool
     blockers: list[str] = Field(default_factory=list)
-    marketing_budget_usd: float = Field(ge=0)
-    spent_usd: float = Field(ge=0)
-    remaining_budget_usd: float = Field(ge=0)
+    growth_balance: CustomerGrowthBalanceView
     paid_customers: int = Field(ge=0)
     revenue_usd: float = Field(ge=0)
     cac_usd: float | None = Field(default=None, ge=0)
     roas: float | None = Field(default=None, ge=0)
-    managed_spend_fee_pct: int = Field(ge=0, le=100)
-    estimated_managed_fee_usd: float = Field(ge=0)
     meta: CustomerMetaConnectionView
     running_experiments: list[CustomerAutopilotExperimentView] = Field(default_factory=list)
     waiting_experiments: list[CustomerAutopilotExperimentView] = Field(default_factory=list)

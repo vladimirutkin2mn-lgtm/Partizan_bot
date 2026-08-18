@@ -9,6 +9,7 @@
   let currentProjectId = null;
   let currentToken = null;
   let metaOptions = null;
+  let managementFeePct = 10;
 
   const showNotice = (message, error = false) => {
     notice.textContent = message;
@@ -71,26 +72,42 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
+  })[char]);
+
+  const money = (value) => `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+
+  const updateGrowthBalanceBreakdown = () => {
+    const amount = Number($('growth-balance-amount').value || 0);
+    const box = $('growth-balance-breakdown');
+    if (!Number.isFinite(amount) || amount <= 0) {
+      box.innerHTML = '<strong>Enter an amount</strong>Partizan will show how much acquisition spend that all-in balance can support.';
+      return;
+    }
+    const capacity = amount / (1 + (managementFeePct / 100));
+    const feeAtFullUse = amount - capacity;
+    box.innerHTML = `<strong>Up to ${money(capacity)} acquisition spend</strong>At full use, up to ${money(feeAtFullUse)} is the ${managementFeePct}% Partizan fee. If Partizan spends less, the unused money stays in Growth Balance.`;
+  };
+
   const renderPreview = (data) => {
+    managementFeePct = Number(data.managed_spend_fee_pct || 10);
     $('preview-summary').textContent = `Partizan sees ${data.channel_count} promising acquisition directions and roughly ${data.opportunity_scope_estimate} concrete places, audiences and partners worth investigating. Best place to start: ${data.fastest_signal}.`;
     $('scope-title').textContent = `~${data.opportunity_scope_estimate} concrete opportunities to investigate`;
     $('unlock-price').textContent = `Unlock Acquisition Plan — $${data.launch_price_usd}`;
+    $('autopilot-direct-price').textContent = `$${data.autopilot_price_usd}/mo`;
+    $('autopilot-direct-fee').textContent = `${managementFeePct}% of acquisition spend from Growth Balance`;
     $('autopilot-price').innerHTML = `$${data.autopilot_price_usd}<span>/mo</span>`;
-    $('spend-fee').textContent = `+ ${data.managed_spend_fee_pct}% managed spend`;
+    $('spend-fee').textContent = `${managementFeePct}% of acquisition spend`;
     $('direction-grid').innerHTML = data.directions.map((item) => `
       <article class="direction-card"><header><h3>${escapeHtml(item.name)}</h3><span class="potential ${item.potential === 'MEDIUM' ? 'medium' : ''}">${item.potential}</span></header><p>${escapeHtml(item.rationale)}</p></article>
     `).join('');
     $('masked-list').innerHTML = data.masked_opportunities.map((item) => `
       <div class="masked-item"><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.category)} · locked</span></div>
     `).join('');
+    updateGrowthBalanceBreakdown();
     showStage(stagePreview);
   };
-
-  const escapeHtml = (value) => String(value).replace(/[&<>'"]/g, (char) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
-  })[char]);
-
-  const money = (value) => `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
   $('preview-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -117,6 +134,25 @@
       button.textContent = 'Run free pre-scan →';
     }
   });
+
+  const beginAutopilotCheckout = async (button) => {
+    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the pre-scan again.', true);
+    button.disabled = true;
+    const original = button.textContent;
+    button.textContent = 'Opening secure checkout…';
+    try {
+      const data = await api(`/v1/customer-projects/${currentProjectId}/autopilot/checkout`, { method: 'POST' });
+      window.location.assign(data.checkout_url);
+    } catch (error) {
+      showNotice(error.message, true);
+      button.disabled = false;
+      button.textContent = original;
+    }
+  };
+
+  $('autopilot-direct-button').addEventListener('click', () => beginAutopilotCheckout($('autopilot-direct-button')));
+  $('autopilot-subscribe-button').addEventListener('click', () => beginAutopilotCheckout($('autopilot-subscribe-button')));
+  $('inspect-first-button').addEventListener('click', () => $('acquisition-plan-card').scrollIntoView({ behavior: 'smooth', block: 'start' }));
 
   $('checkout-button').addEventListener('click', async () => {
     if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the pre-scan again.', true);
@@ -147,7 +183,7 @@
       const project = await api(`/v1/customer-projects/${currentProjectId}`);
       if (project.launch_unlocked) {
         showUnlocked();
-        if (project.research_state === 'READY') await startResearch();
+        if (project.research_state === 'READY') await startResearch(true);
         return;
       }
       await new Promise((resolve) => window.setTimeout(resolve, 1000));
@@ -155,16 +191,16 @@
     showNotice('Payment received. Confirmation is taking a little longer than usual — refresh this page in a few seconds.', true);
   };
 
-  $('research-button').addEventListener('click', () => startResearch());
+  $('research-button').addEventListener('click', () => startResearch(true));
 
-  const startResearch = async () => {
+  const startResearch = async (reveal = false) => {
     const button = $('research-button');
     button.disabled = true;
     $('research-progress').classList.remove('hidden');
     $('clarification-box').classList.add('hidden');
     try {
       const result = await api(`/v1/customer-projects/${currentProjectId}/deep-research`, { method: 'POST' });
-      renderResearch(result);
+      renderResearch(result, reveal);
     } catch (error) {
       showNotice(error.message, true);
       button.disabled = false;
@@ -173,13 +209,15 @@
     }
   };
 
-  const renderResearch = (result) => {
+  const renderResearch = (result, reveal = false) => {
     if (result.state === 'NEEDS_INPUT') {
       $('research-button').disabled = true;
       const question = result.clarifications[0];
       const box = $('clarification-box');
-      box.innerHTML = `<span class="eyebrow">One useful clarification</span><h3>${escapeHtml(question.question)}</h3><p>${escapeHtml(question.rationale)}</p><form id="clarification-form"><input id="clarification-answer" required placeholder="Your answer"><button class="button button-primary" type="submit">Continue research →</button></form>`;
+      box.innerHTML = `<span class="eyebrow">One useful clarification</span><h3>${escapeHtml(question.question)}</h3><p>${escapeHtml(question.rationale)}</p><form id="clarification-form"><input id="clarification-answer" required placeholder="Your answer"><button class="button button-primary" type="submit">Continue →</button></form>`;
       box.classList.remove('hidden');
+      $('payment-status').querySelector('strong').textContent = 'One detail needed';
+      $('payment-status').querySelector('small').textContent = 'Answer once; you still do not need to inspect the strategy.';
       $('clarification-form').addEventListener('submit', async (event) => {
         event.preventDefault();
         const submit = event.submitter;
@@ -189,7 +227,7 @@
             method: 'POST',
             body: JSON.stringify({ question_id: question.question_id, answer: $('clarification-answer').value.trim() }),
           });
-          renderResearch(next);
+          renderResearch(next, reveal);
         } catch (error) {
           showNotice(error.message, true);
           submit.disabled = false;
@@ -202,13 +240,42 @@
     $('research-button').classList.add('hidden');
     const results = $('research-results');
     results.innerHTML = `
-      <div class="results-head"><span class="eyebrow">Deep research ready</span><h2>Who to target first</h2><p>Your highest-value customer segments, ranked by fit and buying potential.</p></div>
+      <div class="results-head"><span class="eyebrow">Strategy ready</span><h2>Who Partizan will target first</h2><p>Your highest-value customer segments, ranked by fit and buying potential.</p></div>
       <div class="icp-grid">${result.icps.map((item) => `<article class="icp-card"><header><h3>${escapeHtml(item.title)}</h3><span class="score">${Math.round(item.score)}/100</span></header><p>${escapeHtml(item.description)}</p><div class="hook">${escapeHtml(item.message_hook)}</div></article>`).join('')}</div>
-      <div class="results-head"><span class="eyebrow">Concrete distribution map</span><h2>Where to go next</h2><p>Named places, audiences and partners where Partizan sees the strongest acquisition signal.</p></div>
+      <div class="results-head"><span class="eyebrow">Distribution map</span><h2>Where Partizan sees opportunity</h2><p>Named places, audiences and partners behind the execution engine.</p></div>
       <div class="opportunity-list">${result.opportunities.map((item) => `<article class="opp-card"><header><h3>${escapeHtml(item.title)}</h3><span class="platform">${escapeHtml(item.platform)} · ${escapeHtml(item.kind)}</span></header><p>${escapeHtml(item.rationale || 'Relevant distribution opportunity')}</p>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Open opportunity ↗</a>` : ''}</article>`).join('')}</div>`;
-    results.classList.remove('hidden');
+    results.classList.toggle('hidden', !reveal);
+    const toggle = $('view-strategy-button');
+    toggle.classList.remove('hidden');
+    toggle.textContent = reveal ? 'Hide strategy & audience' : 'View strategy & audience';
+    $('payment-status').querySelector('strong').textContent = 'Strategy mapped';
+    $('payment-status').querySelector('small').textContent = 'Partizan has the audience and acquisition map it needs.';
     $('autopilot-card').classList.remove('hidden');
     loadAutopilot().catch(() => {});
+  };
+
+  $('view-strategy-button').addEventListener('click', () => {
+    const results = $('research-results');
+    if (!results.children.length) return;
+    const opening = results.classList.contains('hidden');
+    results.classList.toggle('hidden', !opening);
+    $('view-strategy-button').textContent = opening ? 'Hide strategy & audience' : 'View strategy & audience';
+    if (opening) results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  const ensureUnderHoodResearch = async () => {
+    try {
+      const project = await api(`/v1/customer-projects/${currentProjectId}`);
+      if (project.research_state === 'READY') {
+        await startResearch(false);
+      } else {
+        $('payment-status').querySelector('strong').textContent = 'Autopilot active';
+        $('payment-status').querySelector('small').textContent = 'Partizan is mapping the audience and deciding where to start.';
+        await startResearch(false);
+      }
+    } catch (error) {
+      showNotice(error.message, true);
+    }
   };
 
   const loadAutopilot = async () => {
@@ -219,28 +286,41 @@
 
   const renderAutopilot = (overview) => {
     const activeSubscription = overview.subscription_status === 'ACTIVE';
+    const researching = overview.autopilot_status === 'RESEARCHING';
     $('autopilot-subscription-status').textContent = activeSubscription ? 'Subscription active' : overview.subscription_status.replaceAll('_', ' ').toLowerCase();
     $('autopilot-subscription-status').classList.toggle('active', activeSubscription);
     $('autopilot-subscribe-button').classList.toggle('hidden', activeSubscription);
-    $('autopilot-setup').classList.toggle('hidden', !activeSubscription);
-    $('autopilot-dashboard').classList.toggle('hidden', !activeSubscription);
+    $('autopilot-setup').classList.toggle('hidden', !activeSubscription || researching);
+    $('autopilot-dashboard').classList.toggle('hidden', !activeSubscription || researching);
+
+    const balance = overview.growth_balance;
+    managementFeePct = Number(balance.management_fee_pct || managementFeePct);
+    $('spend-fee').textContent = `${managementFeePct}% of acquisition spend`;
+    updateGrowthBalanceBreakdown();
 
     if (!activeSubscription) return;
-    if (overview.marketing_budget_usd > 0) $('autopilot-budget').value = String(overview.marketing_budget_usd);
     $('meta-connection-status').textContent = overview.meta.connected
       ? `Connected: ad account ${overview.meta.ad_account_id}`
       : 'No Meta ad account connected.';
     $('meta-connect-button').textContent = overview.meta.connected ? 'Reconnect Meta' : 'Connect Meta →';
 
-    $('metric-budget').textContent = money(overview.marketing_budget_usd);
-    $('metric-spent').textContent = money(overview.spent_usd);
+    $('growth-balance-status').textContent = balance.settlement_ready
+      ? `${money(balance.funded_usd)} funded · ${money(balance.remaining_acquisition_capacity_usd)} acquisition capacity remains.`
+      : 'Growth Balance top-ups are intentionally blocked until the Partizan-funded provider payment rail is configured. Your Meta account will not be charged separately.';
+    $('growth-balance-status').classList.toggle('settlement-warning', !balance.settlement_ready);
+    $('growth-balance-button').disabled = !balance.settlement_ready;
+    $('growth-balance-button').textContent = balance.settlement_ready ? 'Fund Growth Balance →' : 'Funding rail setup required';
+    $('autopilot-config-button').disabled = !balance.settlement_ready || balance.remaining_acquisition_capacity_usd <= 0;
+
+    if (researching) return;
+    $('metric-balance').textContent = money(balance.available_usd);
+    $('metric-spent').textContent = money(balance.acquisition_spend_usd);
+    $('metric-fee').textContent = money(balance.management_fee_usd);
     $('metric-customers').textContent = String(overview.paid_customers);
     $('metric-cac').textContent = overview.cac_usd == null ? '—' : money(overview.cac_usd);
     $('metric-revenue').textContent = money(overview.revenue_usd);
-    $('metric-roas').textContent = overview.roas == null ? '—' : `${Number(overview.roas).toFixed(2)}×`;
     $('autopilot-live-status').textContent = overview.setup_complete ? 'Autopilot active' : overview.autopilot_status.replaceAll('_', ' ').toLowerCase();
-    $('autopilot-blockers').textContent = overview.blockers.length ? overview.blockers.join(' · ') : `Remaining delegated budget: ${money(overview.remaining_budget_usd)}.`;
-    $('managed-fee-estimate').textContent = `Managed-spend fee (${overview.managed_spend_fee_pct}%): ${money(overview.estimated_managed_fee_usd)} based on recorded spend.`;
+    $('autopilot-blockers').textContent = overview.blockers.length ? overview.blockers.join(' · ') : `Growth Balance available: ${money(balance.available_usd)}.`;
 
     const paused = overview.autopilot_status === 'PAUSED';
     $('autopilot-pause-button').classList.toggle('hidden', paused || overview.autopilot_status === 'NOT_CONFIGURED');
@@ -248,23 +328,29 @@
     const experiments = [...overview.running_experiments, ...overview.waiting_experiments];
     $('autopilot-experiments').innerHTML = experiments.length
       ? experiments.slice(0, 8).map((item) => `<div><strong>${escapeHtml(item.platform)} · ${escapeHtml(item.action_type)}</strong><span>${escapeHtml(item.status)}${item.budget_cap == null ? '' : ` · ${money(item.budget_cap)}`}</span></div>`).join('')
-      : '<div><strong>No experiment yet</strong><span>Partizan will create the first eligible test after setup is complete.</span></div>';
+      : '<div><strong>No experiment yet</strong><span>Partizan will create the first eligible test after funding and setup are complete.</span></div>';
     $('autopilot-decisions').innerHTML = overview.recent_decisions.length
       ? overview.recent_decisions.slice(0, 8).map((item) => `<div><strong>${escapeHtml(item.decision || item.outcome)}</strong><span>${escapeHtml(item.reasons[0] || item.kind)}</span></div>`).join('')
       : '<div><strong>Waiting for first signal</strong><span>Launch and learning decisions will appear here.</span></div>';
   };
 
-  $('autopilot-subscribe-button').addEventListener('click', async () => {
-    const button = $('autopilot-subscribe-button');
+  $('growth-balance-amount').addEventListener('input', updateGrowthBalanceBreakdown);
+  $('growth-balance-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = $('growth-balance-button');
     button.disabled = true;
+    const original = button.textContent;
     button.textContent = 'Opening secure checkout…';
     try {
-      const data = await api(`/v1/customer-projects/${currentProjectId}/autopilot/checkout`, { method: 'POST' });
+      const data = await api(`/v1/customer-projects/${currentProjectId}/growth-balance/checkout`, {
+        method: 'POST',
+        body: JSON.stringify({ amount_usd: Number($('growth-balance-amount').value) }),
+      });
       window.location.assign(data.checkout_url);
     } catch (error) {
       showNotice(error.message, true);
       button.disabled = false;
-      button.textContent = 'Start Autopilot →';
+      button.textContent = original;
     }
   });
 
@@ -276,13 +362,12 @@
       const overview = await api(`/v1/customer-projects/${currentProjectId}/autopilot`, {
         method: 'PUT',
         body: JSON.stringify({
-          marketing_budget_usd: Number($('autopilot-budget').value),
           target_max_cac: Number($('autopilot-cac').value),
           confirm_autonomous_spend: $('autopilot-confirm-spend').checked,
         }),
       });
       renderAutopilot(overview);
-      showNotice(overview.meta.connected ? 'Autopilot guardrails saved.' : 'Guardrails saved. Connect Meta to activate execution.');
+      showNotice(overview.setup_complete ? 'Autopilot guardrails saved.' : 'Guardrails saved. Remaining setup is shown below.');
     } catch (error) {
       showNotice(error.message, true);
     } finally {
@@ -336,7 +421,7 @@
       });
       $('meta-options-form').classList.add('hidden');
       renderAutopilot(overview);
-      showNotice('Meta connected. Partizan can now execute inside your mandate.');
+      showNotice('Meta connected. The account stays yours; Partizan now has scoped execution access.');
     } catch (error) {
       showNotice(error.message, true);
     } finally {
@@ -361,21 +446,21 @@
 
   const params = new URLSearchParams(window.location.search);
   const initialBudget = Number(params.get('budget'));
-  if (Number.isFinite(initialBudget) && initialBudget >= 100) {
+  if (Number.isFinite(initialBudget) && initialBudget >= 1) {
     $('budget').value = String(initialBudget);
-    $('autopilot-budget').value = String(initialBudget);
+    $('growth-balance-amount').value = String(initialBudget);
+    updateGrowthBalanceBreakdown();
   }
+
   const checkoutState = params.get('checkout');
   const projectId = params.get('project');
   const checkoutSessionId = params.get('session_id');
   if (checkoutState && projectId) {
     if (checkoutState === 'success') {
       const hadStoredAccess = loadProjectToken(projectId);
-      showStage(stageUnlocked);
+      showUnlocked();
       $('payment-status').querySelector('strong').textContent = 'Confirming payment…';
-      $('payment-status').querySelector('small').textContent = 'This usually takes only a few seconds.';
       $('research-button').disabled = true;
-
       const resumePurchase = async () => {
         if (checkoutSessionId) {
           try {
@@ -405,12 +490,34 @@
         api(`/v1/customer-projects/${projectId}/autopilot/verify`, {
           method: 'POST',
           body: JSON.stringify({ session_id: checkoutSessionId }),
-        }).then((overview) => {
+        }).then(async (overview) => {
           renderAutopilot(overview);
-          showNotice('Autopilot subscription active. Set the budget and connect Meta.');
+          showNotice('Autopilot subscription active. Partizan is mapping the market under the hood.');
+          await ensureUnderHoodResearch();
         }).catch((error) => showNotice(error.message, true));
       } else if (autopilotCheckout === 'cancelled') {
-        showNotice('Autopilot checkout cancelled. Your Acquisition Plan is unchanged.');
+        showNotice('Autopilot checkout cancelled. Your project is unchanged.');
+        loadAutopilot().catch(() => {});
+      }
+    }
+  }
+
+  const growthBalanceState = params.get('growth_balance');
+  if (growthBalanceState && projectId) {
+    if (!loadProjectToken(projectId)) {
+      showNotice('This browser no longer has access to the customer project.', true);
+    } else {
+      showUnlocked();
+      if (growthBalanceState === 'success' && checkoutSessionId) {
+        api(`/v1/customer-projects/${projectId}/growth-balance/verify`, {
+          method: 'POST',
+          body: JSON.stringify({ session_id: checkoutSessionId }),
+        }).then((overview) => {
+          renderAutopilot(overview);
+          showNotice(`Growth Balance funded. Available: ${money(overview.growth_balance.available_usd)}.`);
+        }).catch((error) => showNotice(error.message, true));
+      } else if (growthBalanceState === 'cancelled') {
+        showNotice('Growth Balance checkout cancelled. No funds were added.');
         loadAutopilot().catch(() => {});
       }
     }
@@ -418,28 +525,15 @@
 
   const metaState = params.get('meta');
   if (metaState && projectId) {
-    if (loadProjectToken(projectId)) {
+    if (!loadProjectToken(projectId)) {
+      showNotice('This browser no longer has access to the customer project.', true);
+    } else {
       showUnlocked();
-      api(`/v1/customer-projects/${projectId}`).then((project) => {
-        if (project.research_state === 'READY') return startResearch();
-        return null;
-      }).then(() => loadAutopilot()).then(() => {
-        if (metaState === 'connected') return loadMetaOptions();
+      if (metaState === 'connected') {
+        loadAutopilot().then(() => loadMetaOptions()).catch((error) => showNotice(error.message, true));
+      } else if (metaState === 'error') {
         showNotice('Meta connection was not completed.', true);
-        return null;
-      }).catch((error) => showNotice(error.message, true));
-    }
-  }
-
-  if (!checkoutState && !autopilotCheckout && !metaState) {
-    const remembered = localStorage.getItem(PROJECT_KEY);
-    if (remembered && loadProjectToken(remembered)) {
-      api(`/v1/customer-projects/${remembered}`).then((project) => {
-        if (!project.launch_unlocked) return;
-        showUnlocked();
-        if (project.research_state === 'READY') return startResearch();
-        return null;
-      }).catch(() => {});
+      }
     }
   }
 })();

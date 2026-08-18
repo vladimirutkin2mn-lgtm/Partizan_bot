@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from uuid import UUID
 
 import stripe
@@ -12,16 +14,18 @@ class BillingConfigurationError(RuntimeError):
     pass
 
 
-@dataclass(frozen=True, slots=True)
-class LaunchCheckout:
+@dataclass(frozen=True)
+class StripeCheckout:
     session_id: str
     url: str
 
 
-def _configure_stripe(settings: Settings) -> None:
+def _stripe_secret(settings: Settings) -> str:
     if settings.stripe_secret_key is None:
-        raise BillingConfigurationError("Stripe billing is not configured")
-    stripe.api_key = settings.stripe_secret_key.get_secret_value()
+        raise BillingConfigurationError("Stripe Checkout is not configured")
+    secret = settings.stripe_secret_key.get_secret_value()
+    stripe.api_key = secret
+    return secret
 
 
 def create_launch_checkout(
@@ -29,23 +33,23 @@ def create_launch_checkout(
     settings: Settings,
     project_id: UUID,
     public_origin: str,
-) -> LaunchCheckout:
-    if not settings.stripe_launch_price_id:
+) -> StripeCheckout:
+    price_id = settings.stripe_launch_price_id
+    if not price_id:
         raise BillingConfigurationError("Stripe launch checkout is not configured")
-    _configure_stripe(settings)
-
-    project_metadata = {
+    _stripe_secret(settings)
+    metadata = {
         "partizan_project_id": str(project_id),
         "partizan_entitlement": "launch_plan",
     }
     session = stripe.checkout.Session.create(
         mode="payment",
         payment_method_types=["card"],
-        line_items=[{"price": settings.stripe_launch_price_id, "quantity": 1}],
-        client_reference_id=str(project_id),
         customer_creation="always",
-        metadata=project_metadata,
-        payment_intent_data={"metadata": project_metadata},
+        line_items=[{"price": price_id, "quantity": 1}],
+        client_reference_id=str(project_id),
+        metadata=metadata,
+        payment_intent_data={"metadata": metadata},
         success_url=(
             f"{public_origin}/start?checkout=success&project={project_id}"
             "&session_id={CHECKOUT_SESSION_ID}"
@@ -53,9 +57,7 @@ def create_launch_checkout(
         cancel_url=f"{public_origin}/start?checkout=cancelled&project={project_id}",
         idempotency_key=f"partizan-launch-{project_id}",
     )
-    if not session.url:
-        raise BillingConfigurationError("Stripe Checkout Session did not return a URL")
-    return LaunchCheckout(session_id=session.id, url=session.url)
+    return StripeCheckout(session_id=str(session.id), url=str(session.url))
 
 
 def create_autopilot_checkout(
@@ -65,10 +67,11 @@ def create_autopilot_checkout(
     public_origin: str,
     checkout_generation: int,
     stripe_customer_id: str | None,
-) -> LaunchCheckout:
-    if not settings.stripe_autopilot_price_id:
+) -> StripeCheckout:
+    price_id = settings.stripe_autopilot_price_id
+    if not price_id:
         raise BillingConfigurationError("Stripe Autopilot checkout is not configured")
-    _configure_stripe(settings)
+    _stripe_secret(settings)
     metadata = {
         "partizan_project_id": str(project_id),
         "partizan_entitlement": "autopilot",
@@ -76,7 +79,7 @@ def create_autopilot_checkout(
     kwargs: dict = {
         "mode": "subscription",
         "payment_method_types": ["card"],
-        "line_items": [{"price": settings.stripe_autopilot_price_id, "quantity": 1}],
+        "line_items": [{"price": price_id, "quantity": 1}],
         "client_reference_id": str(project_id),
         "metadata": metadata,
         "subscription_data": {"metadata": metadata},
@@ -89,32 +92,92 @@ def create_autopilot_checkout(
     }
     if stripe_customer_id:
         kwargs["customer"] = stripe_customer_id
+    else:
+        kwargs["customer_creation"] = "always"
     session = stripe.checkout.Session.create(**kwargs)
-    if not session.url:
-        raise BillingConfigurationError("Stripe Autopilot Checkout Session did not return a URL")
-    return LaunchCheckout(session_id=session.id, url=session.url)
+    return StripeCheckout(session_id=str(session.id), url=str(session.url))
+
+
+def create_growth_balance_checkout(
+    *,
+    settings: Settings,
+    project_id: UUID,
+    public_origin: str,
+    checkout_generation: int,
+    amount_cents: int,
+    stripe_customer_id: str | None,
+) -> StripeCheckout:
+    _stripe_secret(settings)
+    if amount_cents <= 0:
+        raise ValueError("Growth Balance amount must be positive")
+    metadata = {
+        "partizan_project_id": str(project_id),
+        "partizan_entitlement": "growth_balance_topup",
+        "partizan_amount_cents": str(amount_cents),
+        "partizan_checkout_generation": str(checkout_generation),
+    }
+    kwargs: dict = {
+        "mode": "payment",
+        "payment_method_types": ["card"],
+        "line_items": [
+            {
+                "price_data": {
+                    "currency": "usd",
+                    "unit_amount": amount_cents,
+                    "product_data": {
+                        "name": "Partizan Growth Balance",
+                        "description": (
+                            "Prepaid all-in growth budget for acquisition spend and "
+                            "Partizan management fees."
+                        ),
+                    },
+                },
+                "quantity": 1,
+            }
+        ],
+        "client_reference_id": str(project_id),
+        "metadata": metadata,
+        "payment_intent_data": {"metadata": metadata},
+        "expires_at": int(time.time()) + (30 * 60),
+        "success_url": (
+            f"{public_origin}/start?growth_balance=success&project={project_id}"
+            "&session_id={CHECKOUT_SESSION_ID}"
+        ),
+        "cancel_url": f"{public_origin}/start?growth_balance=cancelled&project={project_id}",
+        "idempotency_key": (
+            f"partizan-growth-balance-{project_id}-{checkout_generation}-{amount_cents}"
+        ),
+    }
+    if stripe_customer_id:
+        kwargs["customer"] = stripe_customer_id
+    else:
+        kwargs["customer_creation"] = "always"
+    session = stripe.checkout.Session.create(**kwargs)
+    return StripeCheckout(session_id=str(session.id), url=str(session.url))
 
 
 def retrieve_launch_checkout(*, settings: Settings, session_id: str):
-    _configure_stripe(settings)
+    _stripe_secret(settings)
     return stripe.checkout.Session.retrieve(session_id)
 
 
 def retrieve_subscription(*, settings: Settings, subscription_id: str):
-    _configure_stripe(settings)
+    _stripe_secret(settings)
     return stripe.Subscription.retrieve(subscription_id)
 
 
-def construct_stripe_event(
-    *,
-    settings: Settings,
-    payload: bytes,
-    signature: str,
-):
+def construct_stripe_event(*, settings: Settings, payload: bytes, signature: str):
     if settings.stripe_webhook_secret is None:
-        raise BillingConfigurationError("Stripe webhook verification is not configured")
+        raise BillingConfigurationError("Stripe webhook is not configured")
     return stripe.Webhook.construct_event(
         payload,
         signature,
         settings.stripe_webhook_secret.get_secret_value(),
+    )
+
+
+def usd_to_cents(amount_usd: float) -> int:
+    return int(
+        Decimal(str(amount_usd)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        * 100
     )
