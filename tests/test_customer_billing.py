@@ -96,6 +96,7 @@ def test_growth_balance_checkout_uses_exact_dynamic_usd_amount(monkeypatch) -> N
         return SimpleNamespace(id="cs_growth_balance", url="https://checkout.stripe.com/growth")
 
     monkeypatch.setattr(stripe.checkout.Session, "create", fake_create)
+    monkeypatch.setattr("app.customer_billing.time.time", lambda: 1_000_000)
     settings = Settings(_env_file=None, stripe_secret_key="sk_test_not_real")
 
     checkout = create_growth_balance_checkout(
@@ -117,8 +118,10 @@ def test_growth_balance_checkout_uses_exact_dynamic_usd_amount(monkeypatch) -> N
         "partizan_project_id": str(project_id),
         "partizan_entitlement": "growth_balance_topup",
         "partizan_amount_cents": "100000",
+        "partizan_checkout_generation": "2",
     }
     assert captured["payment_intent_data"]["metadata"] == captured["metadata"]
+    assert captured["expires_at"] == 1_001_800
     assert captured["idempotency_key"] == f"partizan-growth-balance-{project_id}-2-100000"
     assert "growth_balance=success" in captured["success_url"]
     assert "growth_balance=cancelled" in captured["cancel_url"]
