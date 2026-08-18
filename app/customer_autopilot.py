@@ -148,6 +148,7 @@ class CustomerAutopilotService:
             pause_reason = "FUNDING"
         if pause_reason is not None and mandate.status == GrowthMandateStatus.ACTIVE:
             growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
+            self._balance.pause_rail(project_id, pause_reason)
         project["autopilot_pause_reason"] = pause_reason
         self._persist(project)
         return self.overview(project_id, customer_token)
@@ -173,11 +174,15 @@ class CustomerAutopilotService:
                 )
             if paid_provider_connection_service.get_meta(product_id) is None:
                 raise ValueError("Connect Meta before activating Autopilot")
+            self._balance.activate_rail(project_id)
             growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
             project["autopilot_pause_reason"] = None
         elif status == "PAUSED":
             growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
             project["autopilot_pause_reason"] = "CUSTOMER"
+            self._persist(project)
+            self._balance.pause_rail(project_id, "CUSTOMER")
+            return self.overview(project_id, customer_token)
         else:
             raise ValueError("Unsupported Autopilot status")
         self._persist(project)
@@ -203,6 +208,7 @@ class CustomerAutopilotService:
             and paid_provider_connection_service.get_meta(product_id) is not None
         )
         if can_activate:
+            self._balance.activate_rail(project_id)
             growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
             project["autopilot_pause_reason"] = None
             self._persist(project)
@@ -320,18 +326,19 @@ class CustomerAutopilotService:
         )
 
     def _pause_for_billing(self, project: dict) -> None:
+        project_id = UUID(str(project["id"]))
         product_id_raw = project.get("product_id")
-        if not product_id_raw:
-            return
-        product_id = UUID(str(product_id_raw))
-        try:
-            mandate = growth_mandate_service.get(product_id)
-        except KeyError:
-            return
-        if mandate.status == GrowthMandateStatus.ACTIVE:
-            growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
-            project["autopilot_pause_reason"] = "BILLING"
-            self._persist(project)
+        if product_id_raw:
+            product_id = UUID(str(product_id_raw))
+            try:
+                mandate = growth_mandate_service.get(product_id)
+            except KeyError:
+                mandate = None
+            if mandate is not None and mandate.status == GrowthMandateStatus.ACTIVE:
+                growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
+        project["autopilot_pause_reason"] = "BILLING"
+        self._persist(project)
+        self._balance.pause_rail(project_id, "BILLING")
 
     @staticmethod
     def _subscription_state(stripe_status: str) -> str:
