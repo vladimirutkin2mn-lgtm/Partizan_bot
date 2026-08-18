@@ -74,7 +74,14 @@ async def customer_start() -> HTMLResponse:
     if marker not in html:
         raise HTTPException(status_code=500, detail="Customer onboarding style marker missing")
     html = html.replace(marker, f"{marker}\n  {extra}", 1)
-    return HTMLResponse(html, media_type="text/html; charset=utf-8")
+    return HTMLResponse(
+        html,
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Cache-Control": "no-store, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @router.get("/start/assets/{asset_name}", include_in_schema=False)
