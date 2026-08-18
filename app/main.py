@@ -7,6 +7,7 @@ from app.customer_routes import router as customer_router
 from app.db import get_sync_engine
 from app.distribution_play_routes import router as distribution_play_router
 from app.distribution_routes import router as distribution_router
+from app.growth_balance_rail_routes import router as growth_balance_rail_router
 from app.icp_service import icp_service
 from app.logging import configure_logging
 from app.operator_auth import require_control_plane_operator
@@ -30,6 +31,7 @@ app = FastAPI(
 )
 app.include_router(web_router)
 app.include_router(customer_router)
+app.include_router(growth_balance_rail_router)
 app.include_router(distribution_router)
 app.include_router(distribution_play_router)
 
