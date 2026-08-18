@@ -39,8 +39,7 @@ jobs:
         run: ruff check .
       - name: Check browser JavaScript
         run: |
-          node --check app/web/start.v1.js
-          node --check app/web/autopilot-first.v1.js
+          node --check app/web/start.v2.js
           node --check app/web/goal-dropdown.v1.js
           node --check app/web/operator-auth.v1.js
           node --check app/web/partizan.v1.js
@@ -94,8 +93,6 @@ jobs:
               -f docker-compose.shared-host.yml \
               --env-file .env.example \
               config --quiet
-          # The overlay must stay fail-closed: without an explicit proxy network it has no
-          # safe default to fall back on.
           if PARTIZAN_ENV_FILE=.env.example \
                docker compose \
                  -f docker-compose.prod.yml \

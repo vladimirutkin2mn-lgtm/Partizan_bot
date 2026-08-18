@@ -27,9 +27,11 @@ class AutopilotDogfoodSnapshot(BaseModel):
     subscription_status: str
     autopilot_status: str
     meta_connected: bool
-    marketing_budget_usd: float = Field(ge=0)
-    spent_usd: float = Field(ge=0)
-    remaining_budget_usd: float = Field(ge=0)
+    growth_balance_available_usd: float = Field(ge=0)
+    acquisition_spend_usd: float = Field(ge=0)
+    remaining_acquisition_capacity_usd: float = Field(ge=0)
+    management_fee_usd: float = Field(ge=0)
+    settlement_ready: bool
     target_max_cac: float = Field(ge=0)
     paid_customers: int = Field(ge=0)
     revenue_usd: float = Field(ge=0)
@@ -42,12 +44,11 @@ class AutopilotDogfoodSnapshot(BaseModel):
 
 
 class AutopilotDogfoodRunner:
-    """Production-only harness around the existing customer Autopilot and growth worker.
+    """Production-only harness around customer Autopilot and the growth worker.
 
-    Readiness is side-effect free apart from Stripe Price retrieval. A live growth sweep is
-    reachable only after an exact, explicit confirmation phrase and all production gates pass.
-    The runner never creates its own actions, approvals or provider calls; it delegates to the
-    already-bounded AutonomousGrowthWorker for exactly one product-scoped sweep.
+    A live sweep is fail-closed until the customer has a funded Growth Balance and the
+    Partizan-funded provider payment rail is ready. The harness never falls back to a
+    customer's provider billing method.
     """
 
     def __init__(
@@ -63,28 +64,31 @@ class AutopilotDogfoodRunner:
 
     def snapshot(self, project_id: UUID, customer_token: str) -> AutopilotDogfoodSnapshot:
         overview = customer_autopilot_service.overview(project_id, customer_token)
+        if overview.product_id is None:
+            raise ValueError("Autopilot dogfood requires completed internal acquisition research")
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         product = product_intake_service.get_product(overview.product_id)
         target_max_cac = max(0.0, float(project.get("autopilot_target_max_cac") or 0))
         blockers = [*overview.blockers, *self._runtime_blockers()]
         if not product.reference_links:
-            blockers.append(
-                "Researched product has no website/reference link for real paid traffic"
-            )
+            blockers.append("Researched product has no website/reference link for real paid traffic")
         try:
             self._stripe_verify(self._settings)
         except (StripeReadinessError, RuntimeError, ValueError) as exc:
             blockers.append(str(exc))
         blockers = self._dedupe(blockers)
+        balance = overview.growth_balance
         return AutopilotDogfoodSnapshot(
             project_id=project_id,
             product_id=overview.product_id,
             subscription_status=overview.subscription_status,
             autopilot_status=overview.autopilot_status,
             meta_connected=overview.meta.connected,
-            marketing_budget_usd=overview.marketing_budget_usd,
-            spent_usd=overview.spent_usd,
-            remaining_budget_usd=overview.remaining_budget_usd,
+            growth_balance_available_usd=balance.available_usd,
+            acquisition_spend_usd=balance.acquisition_spend_usd,
+            remaining_acquisition_capacity_usd=balance.remaining_acquisition_capacity_usd,
+            management_fee_usd=balance.management_fee_usd,
+            settlement_ready=balance.settlement_ready,
             target_max_cac=target_max_cac,
             paid_customers=overview.paid_customers,
             revenue_usd=overview.revenue_usd,
@@ -130,9 +134,7 @@ class AutopilotDogfoodRunner:
         if not public_origin.startswith("https://"):
             blockers.append("Dogfood live sweep requires a public HTTPS Partizan origin")
         if self._settings.creative_provider != "openai" or not self._settings.openai_api_key:
-            blockers.append(
-                "Dogfood Meta Autopilot requires CREATIVE_PROVIDER=openai and OPENAI_API_KEY"
-            )
+            blockers.append("Dogfood Meta Autopilot requires CREATIVE_PROVIDER=openai and OPENAI_API_KEY")
         return blockers
 
     @staticmethod
@@ -153,8 +155,10 @@ class AutopilotDogfoodRunner:
             raise ValueError("Growth Mandate is not ACTIVE")
         if not snapshot.meta_connected:
             raise ValueError("Meta is not connected")
-        if snapshot.remaining_budget_usd <= 0:
-            raise ValueError("No delegated marketing budget remains")
+        if not snapshot.settlement_ready:
+            raise ValueError("Partizan-funded provider payment rail is not ready")
+        if snapshot.remaining_acquisition_capacity_usd <= 0:
+            raise ValueError("Growth Balance has no acquisition capacity remaining")
         if snapshot.target_max_cac <= 0:
             raise ValueError("A positive target max CAC is required")
 
@@ -195,10 +199,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--confirm-live-spend",
         default="",
-        help=(
-            "Required only with --run-one-sweep. Exact value: "
-            f"{LIVE_SPEND_CONFIRMATION}"
-        ),
+        help=("Required only with --run-one-sweep. Exact value: " f"{LIVE_SPEND_CONFIRMATION}"),
     )
     parser.add_argument(
         "--require-paid-conversion",

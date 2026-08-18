@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.customer_autopilot import customer_autopilot_service
 from app.customer_funnel import CustomerPaymentRequiredError, customer_funnel_service
 from app.customer_schemas import CustomerPreviewRequest
+from app.growth_balance import growth_balance_service
 from app.main import app
 
 client = TestClient(app)
@@ -14,6 +15,7 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def reset_customer_projects() -> None:
     customer_funnel_service.reset()
+    growth_balance_service.reset()
 
 
 def _preview(*, website: bool = True):
@@ -78,23 +80,28 @@ def test_active_autopilot_bundles_research_entitlement_before_research_runs() ->
     assert overview.subscription_status == "ACTIVE"
     assert overview.autopilot_status == "RESEARCHING"
     assert overview.setup_complete is False
+    assert overview.growth_balance.funded_usd == 0
+    assert overview.growth_balance.settlement_ready is False
     assert any("mapping" in blocker.lower() for blocker in overview.blockers)
 
 
-def test_start_page_loads_autopilot_first_progressive_disclosure_layer() -> None:
+def test_start_page_is_clean_v2_autopilot_first_flow() -> None:
     page = client.get("/start")
-    css = client.get("/start/assets/autopilot-first.v1.css")
-    javascript = client.get("/start/assets/autopilot-first.v1.js")
+    css = client.get("/start/assets/start.v2.css")
+    javascript = client.get("/start/assets/start.v2.js")
 
     assert page.status_code == 200
-    assert '/start/assets/autopilot-first.v1.css' in page.text
-    assert '/start/assets/autopilot-first.v1.js' in page.text
+    assert '/start/assets/start.v2.css' in page.text
+    assert '/start/assets/start.v2.js' in page.text
+    assert 'id="autopilot-direct-button"' in page.text
+    assert 'id="growth-balance-form"' in page.text
+    assert 'id="view-strategy-button"' in page.text
+    assert 'id="autopilot-budget"' not in page.text
     assert css.status_code == 200
     assert ".autopilot-first-launch" in css.text
-    assert ".strategy-open #research-results" in css.text
+    assert ".growth-balance-form" in css.text
     assert javascript.status_code == 200
-    assert "Want customers, not another report?" in javascript.text
-    assert "Launch Partizan" in javascript.text
     assert "View strategy & audience" in javascript.text
-    assert "researchButton.click()" in javascript.text
     assert "/autopilot/checkout" in javascript.text
+    assert "/growth-balance/checkout" in javascript.text
+    assert "marketing_budget_usd" not in javascript.text

@@ -17,9 +17,11 @@ def _snapshot(**overrides) -> AutopilotDogfoodSnapshot:
         "subscription_status": "ACTIVE",
         "autopilot_status": "ACTIVE",
         "meta_connected": True,
-        "marketing_budget_usd": 200.0,
-        "spent_usd": 20.0,
-        "remaining_budget_usd": 180.0,
+        "growth_balance_available_usd": 180.0,
+        "acquisition_spend_usd": 20.0,
+        "remaining_acquisition_capacity_usd": 160.0,
+        "management_fee_usd": 2.0,
+        "settlement_ready": True,
         "target_max_cac": 15.0,
         "paid_customers": 0,
         "revenue_usd": 0.0,
@@ -44,15 +46,20 @@ def test_live_sweep_requires_exact_confirmation_phrase() -> None:
     )
 
 
-def test_live_sweep_fails_closed_on_readiness_or_budget() -> None:
+def test_live_sweep_fails_closed_on_readiness_or_growth_balance() -> None:
     with pytest.raises(ValueError, match="blocked"):
         AutopilotDogfoodRunner._assert_live_authorization(
             _snapshot(readiness_blockers=["Meta config missing"]),
             LIVE_SPEND_CONFIRMATION,
         )
-    with pytest.raises(ValueError, match="budget"):
+    with pytest.raises(ValueError, match="Growth Balance"):
         AutopilotDogfoodRunner._assert_live_authorization(
-            _snapshot(remaining_budget_usd=0),
+            _snapshot(remaining_acquisition_capacity_usd=0),
+            LIVE_SPEND_CONFIRMATION,
+        )
+    with pytest.raises(ValueError, match="payment rail"):
+        AutopilotDogfoodRunner._assert_live_authorization(
+            _snapshot(settlement_ready=False),
             LIVE_SPEND_CONFIRMATION,
         )
 

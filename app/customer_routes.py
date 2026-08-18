@@ -15,6 +15,7 @@ from app.customer_billing import (
     BillingConfigurationError,
     construct_stripe_event,
     create_autopilot_checkout,
+    create_growth_balance_checkout,
     create_launch_checkout,
     retrieve_launch_checkout,
     retrieve_subscription,
@@ -36,6 +37,8 @@ from app.customer_schemas import (
     CustomerAutopilotStatusRequest,
     CustomerAutopilotVerifyRequest,
     CustomerClarificationAnswerRequest,
+    CustomerGrowthBalanceTopUpRequest,
+    CustomerGrowthBalanceVerifyRequest,
     CustomerMetaConnectionRequest,
     CustomerMetaConnectResponse,
     CustomerMetaOptionsView,
@@ -44,6 +47,7 @@ from app.customer_schemas import (
     CustomerProjectView,
     CustomerResearchResponse,
 )
+from app.growth_balance import growth_balance_service
 
 router = APIRouter(prefix="/v1", tags=["customer"])
 
@@ -297,6 +301,103 @@ def verify_customer_autopilot_checkout(
         raise HTTPException(status_code=502, detail="Stripe subscription verification failed") from exc
 
 
+@router.post(
+    "/customer-projects/{project_id}/growth-balance/checkout",
+    response_model=CheckoutResponse,
+)
+def create_growth_balance_topup_checkout(
+    project_id: UUID,
+    payload: CustomerGrowthBalanceTopUpRequest,
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    customer_token: Annotated[str | None, Header(alias=CUSTOMER_TOKEN_HEADER)] = None,
+) -> CheckoutResponse:
+    token = _require_customer_token(customer_token)
+    try:
+        generation, stripe_customer_id, amount_cents = growth_balance_service.prepare_checkout(
+            project_id,
+            token,
+            payload.amount_usd,
+        )
+        public_origin = settings.partizan_public_base_url or str(request.base_url).rstrip("/")
+        checkout = create_growth_balance_checkout(
+            settings=settings,
+            project_id=project_id,
+            public_origin=public_origin,
+            checkout_generation=generation,
+            amount_cents=amount_cents,
+            stripe_customer_id=stripe_customer_id,
+        )
+        growth_balance_service.mark_checkout_pending(
+            project_id,
+            token,
+            session_id=checkout.session_id,
+            amount_cents=amount_cents,
+        )
+        return CheckoutResponse(checkout_url=checkout.url)
+    except (CustomerProjectNotFoundError, CustomerProjectAccessError, CustomerPaymentRequiredError) as exc:
+        raise _project_error(exc) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except BillingConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except stripe.StripeError as exc:
+        raise HTTPException(status_code=502, detail="Stripe Growth Balance checkout is unavailable") from exc
+
+
+@router.post(
+    "/customer-projects/{project_id}/growth-balance/verify",
+    response_model=CustomerAutopilotOverview,
+)
+def verify_growth_balance_topup(
+    project_id: UUID,
+    payload: CustomerGrowthBalanceVerifyRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+    customer_token: Annotated[str | None, Header(alias=CUSTOMER_TOKEN_HEADER)] = None,
+) -> CustomerAutopilotOverview:
+    token = _require_customer_token(customer_token)
+    try:
+        customer_funnel_service.get_project_payload(project_id, token)
+        pending = growth_balance_service.pending(payload.session_id)
+        if pending is None:
+            raise HTTPException(status_code=401, detail="Growth Balance Checkout Session is not pending")
+        session = retrieve_launch_checkout(settings=settings, session_id=payload.session_id)
+        metadata = session.get("metadata") or {}
+        amount_total = int(session.get("amount_total") or 0)
+        currency = str(session.get("currency") or "").lower()
+        verified = (
+            str(session.get("id") or "") == payload.session_id
+            and str(session.get("client_reference_id") or "") == str(project_id)
+            and str(metadata.get("partizan_project_id") or "") == str(project_id)
+            and metadata.get("partizan_entitlement") == "growth_balance_topup"
+            and int(metadata.get("partizan_amount_cents") or 0) == int(pending.get("amount_cents") or 0)
+            and session.get("mode") == "payment"
+            and session.get("payment_status") == "paid"
+            and amount_total == int(pending.get("amount_cents") or 0)
+            and currency == "usd"
+        )
+        if not verified:
+            raise HTTPException(status_code=401, detail="Growth Balance payment could not be verified")
+        credited = growth_balance_service.credit_paid_checkout(
+            project_id,
+            session_id=payload.session_id,
+            amount_cents=amount_total,
+            currency=currency,
+            stripe_customer_id=(str(session["customer"]) if session.get("customer") else None),
+        )
+        if not credited:
+            raise HTTPException(status_code=401, detail="Growth Balance payment is not linked to this project")
+        return customer_autopilot_service.overview(project_id, token)
+    except HTTPException:
+        raise
+    except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
+        raise _project_error(exc) from exc
+    except BillingConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except stripe.StripeError as exc:
+        raise HTTPException(status_code=502, detail="Stripe Growth Balance verification failed") from exc
+
+
 @router.put(
     "/customer-projects/{project_id}/autopilot",
     response_model=CustomerAutopilotOverview,
@@ -414,10 +515,10 @@ def save_customer_meta_connection(
     token = _require_customer_token(customer_token)
     try:
         customer_meta_oauth_service.connect(project_id, token, payload)
-        return customer_autopilot_service.overview(project_id, token)
+        return customer_autopilot_service.meta_connected(project_id, token)
     except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
         raise _project_error(exc) from exc
-    except CustomerMetaOAuthError as exc:
+    except (CustomerMetaOAuthError, KeyError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
@@ -456,6 +557,18 @@ async def stripe_webhook(
             customer_funnel_service.unlock_launch(
                 project_id,
                 stripe_checkout_session_id=str(obj["id"]),
+                stripe_customer_id=(str(obj["customer"]) if obj.get("customer") else None),
+            )
+        elif (
+            project_id is not None
+            and entitlement == "growth_balance_topup"
+            and obj.get("payment_status") == "paid"
+        ):
+            growth_balance_service.credit_paid_checkout(
+                project_id,
+                session_id=str(obj["id"]),
+                amount_cents=int(obj.get("amount_total") or 0),
+                currency=str(obj.get("currency") or ""),
                 stripe_customer_id=(str(obj["customer"]) if obj.get("customer") else None),
             )
         elif project_id is not None and entitlement == "autopilot" and obj.get("subscription"):

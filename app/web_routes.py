@@ -43,10 +43,9 @@ _LANDING_ASSETS = {
 _START_ASSETS = {
     "start.v1.css": "text/css; charset=utf-8",
     "start.autopilot.v1.css": "text/css; charset=utf-8",
-    "autopilot-first.v1.css": "text/css; charset=utf-8",
+    "start.v2.css": "text/css; charset=utf-8",
+    "start.v2.js": "text/javascript; charset=utf-8",
     "goal-dropdown.v1.css": "text/css; charset=utf-8",
-    "start.v1.js": "text/javascript; charset=utf-8",
-    "autopilot-first.v1.js": "text/javascript; charset=utf-8",
     "goal-dropdown.v1.js": "text/javascript; charset=utf-8",
 }
 
@@ -70,22 +69,7 @@ async def marketing_asset(asset_name: str) -> FileResponse:
 
 @router.get("/start", include_in_schema=False)
 async def customer_start() -> HTMLResponse:
-    html = (_WEB_DIR / "start.v1.html").read_text(encoding="utf-8")
-    style_marker = '<link rel="stylesheet" href="/start/assets/start.v1.css">'
-    style_extra = "\n  ".join(
-        (
-            '<link rel="stylesheet" href="/start/assets/start.autopilot.v1.css">',
-            '<link rel="stylesheet" href="/start/assets/autopilot-first.v1.css">',
-        )
-    )
-    script_marker = '<script src="/start/assets/start.v1.js" defer></script>'
-    script_extra = '<script src="/start/assets/autopilot-first.v1.js" defer></script>'
-    if style_marker not in html:
-        raise HTTPException(status_code=500, detail="Customer onboarding style marker missing")
-    if script_marker not in html:
-        raise HTTPException(status_code=500, detail="Customer onboarding script marker missing")
-    html = html.replace(style_marker, f"{style_marker}\n  {style_extra}", 1)
-    html = html.replace(script_marker, f"{script_marker}\n  {script_extra}", 1)
+    html = (_WEB_DIR / "start.v2.html").read_text(encoding="utf-8")
     return HTMLResponse(
         html,
         media_type="text/html; charset=utf-8",

@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Partizan — Find your customers</title>
+  <meta name="description" content="Tell Partizan what you sell, fund one Growth Balance, and let the autonomous acquisition engine find customers.">
+  <link rel="stylesheet" href="/start/assets/start.v1.css">
+  <link rel="stylesheet" href="/start/assets/start.autopilot.v1.css">
+  <link rel="stylesheet" href="/start/assets/start.v2.css">
+  <link rel="stylesheet" href="/start/assets/goal-dropdown.v1.css">
+</head>
+<body>
+  <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
+  <header class="top shell">
+    <a class="brand" href="/"><span class="mark">P</span><span><strong>Partizan</strong><small>Customer acquisition</small></span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+
+  <main class="shell main">
+    <div class="progress"><i class="on"></i><i id="progress-2"></i><i id="progress-3"></i></div>
+
+    <section id="stage-input" class="stage">
+      <span class="eyebrow">Free acquisition pre-scan · no card required</span>
+      <h1>Tell Partizan what you sell.<br><em>See where growth may start.</em></h1>
+      <p class="lede">Give Partizan a short description of your product, market and test budget. In seconds, you’ll see which acquisition directions look most promising.</p>
+      <form id="preview-form" class="panel form-panel">
+        <label for="website">Website or landing page</label>
+        <input id="website" type="url" inputmode="url" required placeholder="https://yourproduct.com">
+        <p class="fine">Partizan uses this destination for tracked acquisition if you later activate Autopilot.</p>
+        <label for="brief">What do you sell?</label>
+        <textarea id="brief" minlength="20" required placeholder="Example: AI bookkeeping assistant for US freelancers. $19/month subscription."></textarea>
+        <div class="form-grid">
+          <div><label for="budget">Test budget</label><div class="money-input"><span>$</span><input id="budget" type="number" min="1" max="100000" step="1" value="1000" required></div></div>
+          <div><label for="market">Market</label><input id="market" value="United States" required></div>
+          <div><label for="goal">Goal</label><select id="goal"><option>Get paying customers</option><option>Get signups</option><option>Validate demand</option></select></div>
+        </div>
+        <button class="button button-primary" type="submit">Run free pre-scan →</button>
+        <p class="fine">Free. No card required.</p>
+      </form>
+    </section>
+
+    <section id="stage-preview" class="stage hidden">
+      <span class="eyebrow">Pre-scan complete</span>
+      <h1>Partizan found where to start.<br><em>You choose how much to see.</em></h1>
+      <p id="preview-summary" class="lede"></p>
+      <div id="direction-grid" class="direction-grid"></div>
+
+      <section class="panel autopilot-first-launch">
+        <div>
+          <span class="eyebrow">Recommended · autonomous execution</span>
+          <h2>Want customers, not another report?</h2>
+          <p>Partizan can keep the audience and channel analysis under the hood, choose the first experiments and surface only the decisions that matter. The full strategy stays available whenever you want it.</p>
+          <small class="autopilot-first-note">The Acquisition Plan is included with Autopilot. Acquisition spend and the Partizan management fee come from one prepaid Growth Balance.</small>
+        </div>
+        <div class="autopilot-first-actions">
+          <div class="autopilot-first-price"><strong id="autopilot-direct-price">$149/mo</strong><span id="autopilot-direct-fee">10% of acquisition spend from Growth Balance</span></div>
+          <button id="autopilot-direct-button" class="button button-primary" type="button">Launch Partizan →</button>
+          <button id="inspect-first-button" class="autopilot-first-link" type="button">I want to inspect the strategy first</button>
+        </div>
+      </section>
+
+      <div id="acquisition-plan-card" class="locked panel">
+        <div class="locked-head"><div><span class="eyebrow">Acquisition Plan only</span><h2 id="scope-title">Concrete opportunities</h2></div><span class="lock">🔒</span></div>
+        <div id="masked-list" class="masked-list"></div>
+        <div class="unlock-row">
+          <div><strong id="unlock-price">Unlock Acquisition Plan — $49</strong><p>Get ranked customer segments, named communities, creators, audiences and partner surfaces without activating Autopilot.</p></div>
+          <button id="checkout-button" class="button button-primary" type="button">Unlock & research →</button>
+        </div>
+        <p class="fine">One-time purchase. Included automatically if you choose Autopilot.</p>
+      </div>
+    </section>
+
+    <section id="stage-unlocked" class="stage hidden">
+      <span class="eyebrow">Partizan workspace</span>
+      <h1>Partizan is building the engine.<br><em>You can stay above the machinery.</em></h1>
+      <p class="lede">Audience research and channel selection run under the hood. If Partizan needs one material product detail, it will ask.</p>
+      <div id="payment-status" class="status-card"><span class="status-dot"></span><div><strong>Ready</strong><small>Your project is available.</small></div></div>
+      <button id="research-button" class="button button-primary" type="button">Build acquisition plan →</button>
+      <div id="research-progress" class="research-progress hidden"><span class="spinner"></span><div><strong>Partizan is mapping your market…</strong><small>Finding customer segments and concrete distribution opportunities.</small></div></div>
+      <div id="clarification-box" class="panel clarification hidden"></div>
+      <button id="view-strategy-button" class="button button-secondary strategy-toggle hidden" type="button">View strategy & audience</button>
+      <div id="research-results" class="strategy-results hidden"></div>
+    </section>
+
+    <section id="autopilot-card" class="autopilot panel hidden">
+      <div class="autopilot-intro">
+        <span class="eyebrow">Autonomous execution</span>
+        <h2>One Growth Balance. Partizan allocates it.</h2>
+        <p>Connect your distribution accounts. Partizan chooses experiments, pays acquisition costs from the prepaid Growth Balance and takes its management fee from the same balance as spend occurs.</p>
+      </div>
+      <div class="autopilot-price">
+        <strong id="autopilot-price">$149<span>/mo</span></strong>
+        <small id="spend-fee">10% of acquisition spend</small>
+        <span id="autopilot-subscription-status" class="subscription-pill">Not active</span>
+        <button id="autopilot-subscribe-button" class="button button-primary" type="button">Start Autopilot →</button>
+      </div>
+
+      <div id="autopilot-setup" class="autopilot-setup hidden">
+        <div class="setup-step">
+          <div class="setup-copy"><span class="eyebrow">1 · Connect distribution</span><h3>Connect Meta</h3><p>Your ad account, Page and campaign history remain yours. Partizan receives scoped access to operate them; passwords are never shared.</p></div>
+          <div class="meta-actions">
+            <button id="meta-connect-button" class="button button-primary" type="button">Connect Meta →</button>
+            <span id="meta-connection-status" class="fine">No Meta ad account connected.</span>
+          </div>
+          <form id="meta-options-form" class="meta-options hidden">
+            <div><label for="meta-account">Ad account</label><select id="meta-account" required></select></div>
+            <div><label for="meta-page">Facebook Page</label><select id="meta-page" required></select></div>
+            <div><label for="meta-country">Target country code</label><input id="meta-country" maxlength="2" placeholder="US" required></div>
+            <button class="button button-primary" type="submit">Use this Meta account</button>
+          </form>
+        </div>
+
+        <div class="setup-step growth-balance-step">
+          <div class="setup-copy"><span class="eyebrow">2 · Fund growth</span><h3>Add to Growth Balance</h3><p>This is the all-in acquisition budget Partizan may use. The management fee is earned only when acquisition money is actually spent; unused funds remain in the Growth Balance.</p></div>
+          <form id="growth-balance-form" class="growth-balance-form">
+            <div><label for="growth-balance-amount">Amount to add</label><div class="money-input"><span>$</span><input id="growth-balance-amount" type="number" min="1" max="100000" step="1" value="1000" required></div></div>
+            <div id="growth-balance-breakdown" class="balance-breakdown"></div>
+            <button id="growth-balance-button" class="button button-primary" type="submit">Fund Growth Balance →</button>
+          </form>
+          <p id="growth-balance-status" class="dashboard-note"></p>
+        </div>
+
+        <div class="setup-step">
+          <div class="setup-copy"><span class="eyebrow">3 · Guardrail</span><h3>What is the most Partizan should pay for a customer?</h3><p>The Growth Balance is the hard money boundary. Maximum CAC is the performance boundary.</p></div>
+          <form id="autopilot-config-form" class="autopilot-form autopilot-guardrail-form">
+            <div><label for="autopilot-cac">Maximum CAC</label><div class="money-input"><span>$</span><input id="autopilot-cac" type="number" min="1" max="100000" step="1" value="30" required></div></div>
+            <label class="check-row"><input id="autopilot-confirm-spend" type="checkbox" required><span>I authorize Partizan to run paid experiments autonomously, but never beyond the funded Growth Balance and configured guardrails.</span></label>
+            <button id="autopilot-config-button" class="button button-primary" type="submit">Save guardrails</button>
+          </form>
+        </div>
+      </div>
+
+      <div id="autopilot-dashboard" class="autopilot-dashboard hidden">
+        <div class="dashboard-head"><div><span class="eyebrow">Autopilot live view</span><h3 id="autopilot-live-status">Setup required</h3></div><div class="dashboard-actions"><button id="autopilot-pause-button" class="button button-secondary" type="button">Pause</button><button id="autopilot-resume-button" class="button button-primary hidden" type="button">Resume</button></div></div>
+        <div class="metric-grid">
+          <article><span>Growth Balance</span><strong id="metric-balance">$0</strong></article>
+          <article><span>Acquisition spend</span><strong id="metric-spent">$0</strong></article>
+          <article><span>Partizan fee</span><strong id="metric-fee">$0</strong></article>
+          <article><span>Customers</span><strong id="metric-customers">0</strong></article>
+          <article><span>CAC</span><strong id="metric-cac">—</strong></article>
+          <article><span>Revenue</span><strong id="metric-revenue">$0</strong></article>
+        </div>
+        <p id="autopilot-blockers" class="dashboard-note"></p>
+        <div class="dashboard-columns"><div><span class="eyebrow">Experiments</span><div id="autopilot-experiments" class="mini-list"></div></div><div><span class="eyebrow">What Partizan is doing</span><div id="autopilot-decisions" class="mini-list"></div></div></div>
+      </div>
+    </section>
+
+    <div id="notice" class="notice hidden" role="status"></div>
+  </main>
+  <script src="/start/assets/goal-dropdown.v1.js" defer></script>
+  <script src="/start/assets/start.v2.js" defer></script>
+</body>
+</html>
