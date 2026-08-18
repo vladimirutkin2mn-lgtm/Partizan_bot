@@ -37,8 +37,7 @@ jobs:
         with:
           ref: ${{ steps.release.outputs.sha }}
 
-      - name: Decide whether deployment is configured
-        id: configured
+      - name: Require deployment configuration
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -46,21 +45,22 @@ jobs:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         shell: bash
         run: |
-          if [[ -z "${DEPLOY_HOST}" || -z "${DEPLOY_SSH_KEY}" || -z "${DEPLOY_SSH_KNOWN_HOSTS}" || -z "${DEPLOY_PATH}" ]]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Partizan production deployment is not configured; set DEPLOY_HOST, DEPLOY_SSH_KEY, DEPLOY_SSH_KNOWN_HOSTS and DEPLOY_PATH in the production environment."
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
+          missing=()
+          [[ -z "${DEPLOY_HOST}" ]] && missing+=(DEPLOY_HOST)
+          [[ -z "${DEPLOY_SSH_KEY}" ]] && missing+=(DEPLOY_SSH_KEY)
+          [[ -z "${DEPLOY_SSH_KNOWN_HOSTS}" ]] && missing+=(DEPLOY_SSH_KNOWN_HOSTS)
+          [[ -z "${DEPLOY_PATH}" ]] && missing+=(DEPLOY_PATH)
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Partizan production deployment is not configured. Missing production environment secrets: ${missing[*]}"
+            exit 1
           fi
 
       - name: Start SSH agent
-        if: steps.configured.outputs.configured == 'true'
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
 
       - name: Pin production host key
-        if: steps.configured.outputs.configured == 'true'
         env:
           DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
         shell: bash
@@ -71,13 +71,11 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
       - name: Verify host before mutation
-        if: steps.configured.outputs.configured == 'true'
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: ssh -o BatchMode=yes "${DEPLOY_HOST}" 'echo partizan-remote-ok'
 
       - name: Deploy, migrate and smoke Partizan
-        if: steps.configured.outputs.configured == 'true'
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
@@ -89,7 +87,3 @@ jobs:
           PARTIZAN_MANAGED_EDGE: ${{ vars.PARTIZAN_MANAGED_EDGE || 'true' }}
           PARTIZAN_EXTRA_COMPOSE_FILES: ${{ vars.PARTIZAN_EXTRA_COMPOSE_FILES }}
         run: bash tools/deploy_prod_remote.sh
-
-      - name: Record skipped deployment
-        if: steps.configured.outputs.configured != 'true'
-        run: echo "Partizan production deploy skipped because the production environment is not configured."
