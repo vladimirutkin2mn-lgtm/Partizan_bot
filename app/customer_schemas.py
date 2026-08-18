@@ -191,7 +191,7 @@ class CustomerAutopilotDecisionView(BaseModel):
 
 class CustomerAutopilotOverview(BaseModel):
     project_id: UUID
-    product_id: UUID
+    product_id: UUID | None = None
     subscription_status: str
     autopilot_status: str
     setup_complete: bool
