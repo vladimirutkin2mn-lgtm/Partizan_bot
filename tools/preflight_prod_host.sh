@@ -61,7 +61,9 @@ reject_placeholder() {
   local key="$1"
   local value
   value="$(env_value "${key}")"
-  [[ -n "${value}" ]] || return
+  if [[ -z "${value}" ]]; then
+    return 0
+  fi
   case "${value,,}" in
     partizan|change-me|changeme|replace-me|replace_me|example|secret|password)
       config_error "${key} still uses a default placeholder value"
