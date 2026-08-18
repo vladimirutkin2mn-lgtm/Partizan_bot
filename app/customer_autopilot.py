@@ -35,10 +35,10 @@ class CustomerAutopilotService:
 
     def prepare_checkout(self, project_id: UUID, customer_token: str) -> tuple[int, str | None]:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
-        if not project.get("launch_unlocked") or project.get("research_state") != "READY":
-            raise CustomerPaymentRequiredError("Complete the Acquisition Plan before starting Autopilot")
-        product_id = self._require_researched_product(project)
-        self._require_paid_destination(product_id)
+        if not str(project.get("website_url") or "").strip():
+            raise CustomerPaymentRequiredError(
+                "Add a website or landing page before starting Autopilot"
+            )
         if project.get("autopilot_subscription_status") == "ACTIVE":
             raise ValueError("Autopilot subscription is already active")
         generation = int(project.get("autopilot_checkout_generation") or 0) + 1
@@ -77,6 +77,12 @@ class CustomerAutopilotService:
         if checkout_session_id:
             project["autopilot_checkout_session_id"] = checkout_session_id
         project["autopilot_subscription_synced_at"] = datetime.now(UTC).isoformat()
+        if normalized == "ACTIVE" and not project.get("launch_unlocked"):
+            project["launch_unlocked"] = True
+            project["launch_unlocked_at"] = datetime.now(UTC).isoformat()
+            project["launch_unlock_source"] = "AUTOPILOT"
+            if project.get("status") in {"PREVIEW", "CHECKOUT_PENDING"}:
+                project["status"] = "UNLOCKED"
         self._persist(project)
         if normalized != "ACTIVE":
             self._pause_for_billing(project)
@@ -189,7 +195,42 @@ class CustomerAutopilotService:
 
     def overview(self, project_id: UUID, customer_token: str) -> CustomerAutopilotOverview:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
-        product_id = self._require_researched_product(project)
+        subscription_status = str(project.get("autopilot_subscription_status") or "INACTIVE")
+        settings = get_settings()
+        product_id_raw = project.get("product_id")
+        research_state = str(project.get("research_state") or "NOT_STARTED")
+        if research_state != "READY" or not product_id_raw:
+            blockers: list[str] = []
+            if subscription_status != "ACTIVE":
+                blockers.append("Autopilot subscription is not active")
+            if not project.get("website_url"):
+                blockers.append("Website or landing page is required for paid traffic")
+            if research_state == "NEEDS_INPUT":
+                blockers.append("One product clarification is needed before Partizan can launch")
+            elif subscription_status == "ACTIVE":
+                blockers.append("Partizan is mapping the audience and acquisition strategy")
+            else:
+                blockers.append("Acquisition research has not started")
+            return CustomerAutopilotOverview(
+                project_id=project_id,
+                product_id=UUID(str(product_id_raw)) if product_id_raw else None,
+                subscription_status=subscription_status,
+                autopilot_status=("RESEARCHING" if subscription_status == "ACTIVE" else "NOT_CONFIGURED"),
+                setup_complete=False,
+                blockers=blockers,
+                marketing_budget_usd=0.0,
+                spent_usd=0.0,
+                remaining_budget_usd=0.0,
+                paid_customers=0,
+                revenue_usd=0.0,
+                cac_usd=None,
+                roas=None,
+                managed_spend_fee_pct=settings.partizan_managed_spend_fee_pct,
+                estimated_managed_fee_usd=0.0,
+                meta=CustomerMetaConnectionView(connected=False),
+            )
+
+        product_id = UUID(str(product_id_raw))
         product = product_intake_service.get_product(product_id)
         analytics = distribution_analytics_service.product_analytics(product_id)
         try:
@@ -199,8 +240,7 @@ class CustomerAutopilotService:
             autonomy = None
             mandate = None
         connection = paid_provider_connection_service.get_meta(product_id)
-        subscription_status = str(project.get("autopilot_subscription_status") or "INACTIVE")
-        blockers: list[str] = []
+        blockers = []
         if subscription_status != "ACTIVE":
             blockers.append("Autopilot subscription is not active")
         if not product.reference_links:
@@ -215,7 +255,6 @@ class CustomerAutopilotService:
         budget = round(mandate.total_budget_cap, 2) if mandate is not None else 0.0
         spent = round(analytics.total_spend, 2)
         remaining = max(round(budget - spent, 2), 0.0)
-        settings = get_settings()
         fee = round(spent * settings.partizan_managed_spend_fee_pct / 100, 2)
         running = (
             []
