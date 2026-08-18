@@ -1,8 +1,11 @@
+from types import SimpleNamespace
 from uuid import UUID
 
 import stripe
 
+from app.autonomy_schemas import GrowthMandateStatus
 from app.config import Settings
+from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
 from app.growth_balance import (
     ADVERTISING_MERCHANT_CATEGORY,
     GROWTH_BALANCE_RAIL_NAMESPACE,
@@ -11,6 +14,7 @@ from app.growth_balance import (
 from app.runtime_store import MemoryRuntimeStateStore
 
 PROJECT_ID = UUID("22222222-2222-2222-2222-222222222222")
+PRODUCT_ID = UUID("33333333-3333-3333-3333-333333333333")
 
 
 def _settings() -> Settings:
@@ -165,6 +169,56 @@ def test_capture_and_refund_transactions_drive_settled_growth_spend() -> None:
         }
     )
     assert service.settled_spend_cents(PROJECT_ID) == 50_000
+
+
+def test_real_time_authorization_requires_active_project_and_remaining_ad_capacity(monkeypatch) -> None:
+    import app.autonomy_service as autonomy_service
+
+    store = MemoryRuntimeStateStore()
+    service = FakeIssuingSettlement(store)
+    _bound_rail(store)
+    store.put(
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(PROJECT_ID),
+        {
+            "id": str(PROJECT_ID),
+            "product_id": str(PRODUCT_ID),
+            "autopilot_subscription_status": "ACTIVE",
+        },
+    )
+    monkeypatch.setattr(
+        autonomy_service.growth_mandate_service,
+        "get",
+        lambda product_id: SimpleNamespace(status=GrowthMandateStatus.ACTIVE),
+    )
+    request = {
+        "card": "ic_partizan_project",
+        "pending_request": {"amount": 30_000, "currency": "usd"},
+        "merchant_data": {"category": ADVERTISING_MERCHANT_CATEGORY},
+    }
+
+    assert service.authorize_request(request) is True
+    assert service.authorize_request(
+        {**request, "merchant_data": {"category": "restaurants"}}
+    ) is False
+    assert service.authorize_request(
+        {**request, "pending_request": {"amount": 100_000, "currency": "usd"}}
+    ) is False
+
+    service.record_transaction(
+        {
+            "id": "ipi_prior_capture",
+            "card": "ic_partizan_project",
+            "amount": -70_000,
+            "currency": "usd",
+            "type": "capture",
+            "merchant_data": {
+                "category": ADVERTISING_MERCHANT_CATEGORY,
+                "name": "META ADS",
+            },
+        }
+    )
+    assert service.authorize_request(request) is False
 
 
 def test_unexpected_merchant_capture_immediately_pauses_partizan_card() -> None:
