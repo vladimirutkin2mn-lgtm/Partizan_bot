@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import stripe
 
@@ -19,8 +19,11 @@ from app.runtime_store import RuntimeStateStore, get_runtime_store
 GROWTH_BALANCE_TOPUP_NAMESPACE = "customer_growth_balance_topups"
 GROWTH_BALANCE_RAIL_NAMESPACE = "customer_growth_balance_rails"
 GROWTH_BALANCE_TRANSACTION_NAMESPACE = "customer_growth_balance_transactions"
+GROWTH_BALANCE_LOCK_NAMESPACE = "customer_growth_balance_locks"
 ADVERTISING_MERCHANT_CATEGORY = "advertising_services"
 _PENDING_LIQUIDITY_HOLD = timedelta(minutes=30)
+_LIQUIDITY_LOCK_TTL = timedelta(seconds=60)
+_LIQUIDITY_LOCK_KEY = "stripe_issuing_liquidity"
 _CENT = Decimal("0.01")
 
 
@@ -240,8 +243,7 @@ class GrowthBalanceSettlementService:
 
     def record_transaction(self, transaction: dict) -> bool:
         transaction_id = str(transaction.get("id") or "").strip()
-        card = transaction.get("card")
-        card_id = str(card.get("id") if isinstance(card, dict) else card or "").strip()
+        card_id = self._object_id(transaction.get("card"))
         if not transaction_id or not card_id:
             return False
         rail = self._rail_for_card(card_id)
@@ -408,8 +410,9 @@ class GrowthBalanceSettlementService:
 
     @staticmethod
     def _object_id(value: object) -> str:
-        if isinstance(value, dict):
-            return str(value.get("id") or "")
+        getter = getattr(value, "get", None)
+        if callable(getter):
+            return str(getter("id") or "")
         return str(value or "")
 
 
@@ -432,34 +435,54 @@ class GrowthBalanceService:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         if project.get("autopilot_subscription_status") != "ACTIVE":
             raise CustomerPaymentRequiredError("Activate the Autopilot subscription first")
-        if self._has_active_pending_checkout(project_id):
-            raise ValueError("A Growth Balance checkout is already pending for this project")
         amount_cents = self._usd_to_cents(amount_usd)
-        fee_pct = int(get_settings().partizan_managed_spend_fee_pct)
-        existing_funded = self._funded_cents(project_id)
-        incremental_capacity = max(
-            self._max_acquisition_cents(existing_funded + amount_cents, fee_pct)
-            - self._max_acquisition_cents(existing_funded, fee_pct),
-            0,
-        )
-        required_liquidity = self._outstanding_acquisition_cents() + incremental_capacity
-        funding_readiness = getattr(self._settlement, "funding_readiness", None)
-        if funding_readiness is None:
-            ready, status = self._settlement.readiness(project_id)
-        else:
-            ready, status = funding_readiness(
-                project_id,
-                required_liquidity_cents=required_liquidity,
+        lock_token = self._acquire_liquidity_lock()
+        try:
+            if self._has_active_pending_checkout(project_id):
+                raise ValueError("A Growth Balance checkout is already pending for this project")
+            fee_pct = int(get_settings().partizan_managed_spend_fee_pct)
+            existing_funded = self._funded_cents(project_id)
+            incremental_capacity = max(
+                self._max_acquisition_cents(existing_funded + amount_cents, fee_pct)
+                - self._max_acquisition_cents(existing_funded, fee_pct),
+                0,
             )
-        if not ready:
-            raise ValueError(
-                "Growth Balance funding is disabled until the Partizan-funded provider "
-                f"payment rail is ready ({status})"
-            )
-        generation = int(project.get("growth_balance_checkout_generation") or 0) + 1
-        project["growth_balance_checkout_generation"] = generation
-        self._persist_project(project)
-        return generation, project.get("stripe_customer_id"), amount_cents
+            required_liquidity = self._outstanding_acquisition_cents() + incremental_capacity
+            funding_readiness = getattr(self._settlement, "funding_readiness", None)
+            if funding_readiness is None:
+                ready, status = self._settlement.readiness(project_id)
+            else:
+                ready, status = funding_readiness(
+                    project_id,
+                    required_liquidity_cents=required_liquidity,
+                )
+            if not ready:
+                raise ValueError(
+                    "Growth Balance funding is disabled until the Partizan-funded provider "
+                    f"payment rail is ready ({status})"
+                )
+            generation = int(project.get("growth_balance_checkout_generation") or 0) + 1
+            reservation_key = self._reservation_key(project_id, generation)
+            reservation = {
+                "reservation_key": reservation_key,
+                "project_id": str(project_id),
+                "checkout_generation": generation,
+                "amount_cents": amount_cents,
+                "currency": "usd",
+                "state": "RESERVED",
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+            if not self._store.put_if_absent(
+                GROWTH_BALANCE_TOPUP_NAMESPACE,
+                reservation_key,
+                reservation,
+            ):
+                raise ValueError("Growth Balance liquidity reservation already exists")
+            project["growth_balance_checkout_generation"] = generation
+            self._persist_project(project)
+            return generation, project.get("stripe_customer_id"), amount_cents
+        finally:
+            self._release_liquidity_lock(lock_token)
 
     def mark_checkout_pending(
         self,
@@ -468,27 +491,44 @@ class GrowthBalanceService:
         *,
         session_id: str,
         amount_cents: int,
+        checkout_generation: int,
     ) -> None:
         customer_funnel_service.get_project_payload(project_id, customer_token)
+        reservation_key = self._reservation_key(project_id, checkout_generation)
+        reservation = self._store.get(GROWTH_BALANCE_TOPUP_NAMESPACE, reservation_key)
+        if reservation is None or reservation.get("state") != "RESERVED":
+            raise ValueError("Growth Balance liquidity reservation is missing")
+        if (
+            int(reservation.get("amount_cents") or 0) != int(amount_cents)
+            or str(reservation.get("project_id") or "") != str(project_id)
+        ):
+            raise ValueError("Growth Balance liquidity reservation does not match Checkout")
         payload = {
             "session_id": session_id,
             "project_id": str(project_id),
+            "checkout_generation": int(checkout_generation),
             "amount_cents": int(amount_cents),
             "currency": "usd",
             "state": "PENDING",
-            "created_at": datetime.now(UTC).isoformat(),
+            "created_at": str(reservation["created_at"]),
         }
-        existing = self._store.put_if_absent(
+        created = self._store.put_if_absent(
             GROWTH_BALANCE_TOPUP_NAMESPACE,
             session_id,
             payload,
         )
-        if existing is not None:
-            if (
+        if not created:
+            existing = self._store.get(GROWTH_BALANCE_TOPUP_NAMESPACE, session_id)
+            if existing is None or (
                 str(existing.get("project_id")) != str(project_id)
                 or int(existing.get("amount_cents") or 0) != int(amount_cents)
+                or int(existing.get("checkout_generation") or 0) != int(checkout_generation)
             ):
                 raise ValueError("Growth Balance Checkout Session is already bound differently")
+        reservation["state"] = "CHECKOUT_CREATED"
+        reservation["session_id"] = session_id
+        reservation["updated_at"] = datetime.now(UTC).isoformat()
+        self._store.put(GROWTH_BALANCE_TOPUP_NAMESPACE, reservation_key, reservation)
 
     def pending(self, session_id: str) -> dict | None:
         return self._store.get(GROWTH_BALANCE_TOPUP_NAMESPACE, session_id)
@@ -535,11 +575,7 @@ class GrowthBalanceService:
         )
         if uses_ledger:
             spend_cents = max(
-                int(
-                    getattr(self._settlement, "settled_spend_cents")(
-                        project_id
-                    )
-                ),
+                int(getattr(self._settlement, "settled_spend_cents")(project_id)),
                 0,
             )
         else:
@@ -616,6 +652,7 @@ class GrowthBalanceService:
             self._store.clear_namespace(GROWTH_BALANCE_TOPUP_NAMESPACE)
             self._store.clear_namespace(GROWTH_BALANCE_RAIL_NAMESPACE)
             self._store.clear_namespace(GROWTH_BALANCE_TRANSACTION_NAMESPACE)
+            self._store.clear_namespace(GROWTH_BALANCE_LOCK_NAMESPACE)
 
     def _sync_project_rail(self, project_id: UUID) -> None:
         provision = getattr(self._settlement, "provision_or_update", None)
@@ -643,9 +680,10 @@ class GrowthBalanceService:
             amount = int(item.get("amount_cents") or 0)
             if not project_id or amount <= 0:
                 continue
-            if item.get("state") == "PAID":
+            state = item.get("state")
+            if state == "PAID":
                 funded_by_project[project_id] = funded_by_project.get(project_id, 0) + amount
-            elif item.get("state") == "PENDING" and self._pending_is_active(item, now):
+            elif state in {"RESERVED", "PENDING"} and self._pending_is_active(item, now):
                 pending_capacity += self._max_acquisition_cents(amount, fee_pct)
         outstanding = pending_capacity
         for project_id, funded_cents in funded_by_project.items():
@@ -665,10 +703,53 @@ class GrowthBalanceService:
         now = datetime.now(UTC)
         return any(
             str(item.get("project_id")) == str(project_id)
-            and item.get("state") == "PENDING"
+            and item.get("state") in {"RESERVED", "PENDING"}
             and self._pending_is_active(item, now)
             for item in self._store.list_namespace(GROWTH_BALANCE_TOPUP_NAMESPACE)
         )
+
+    def _acquire_liquidity_lock(self) -> str:
+        now = datetime.now(UTC)
+        token = uuid4().hex
+        payload = {"token": token, "created_at": now.isoformat()}
+        if self._store.put_if_absent(
+            GROWTH_BALANCE_LOCK_NAMESPACE,
+            _LIQUIDITY_LOCK_KEY,
+            payload,
+        ):
+            return token
+        existing = self._store.get(GROWTH_BALANCE_LOCK_NAMESPACE, _LIQUIDITY_LOCK_KEY)
+        if existing is not None and self._lock_is_stale(existing, now):
+            self._store.delete(GROWTH_BALANCE_LOCK_NAMESPACE, _LIQUIDITY_LOCK_KEY)
+            if self._store.put_if_absent(
+                GROWTH_BALANCE_LOCK_NAMESPACE,
+                _LIQUIDITY_LOCK_KEY,
+                payload,
+            ):
+                return token
+        raise ValueError("Growth Balance liquidity allocation is busy; retry shortly")
+
+    def _release_liquidity_lock(self, token: str) -> None:
+        existing = self._store.get(GROWTH_BALANCE_LOCK_NAMESPACE, _LIQUIDITY_LOCK_KEY)
+        if existing is not None and existing.get("token") == token:
+            self._store.delete(GROWTH_BALANCE_LOCK_NAMESPACE, _LIQUIDITY_LOCK_KEY)
+
+    @staticmethod
+    def _lock_is_stale(item: dict, now: datetime) -> bool:
+        created_raw = item.get("created_at")
+        if not created_raw:
+            return True
+        try:
+            created = datetime.fromisoformat(str(created_raw))
+        except ValueError:
+            return True
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=UTC)
+        return now - created > _LIQUIDITY_LOCK_TTL
+
+    @staticmethod
+    def _reservation_key(project_id: UUID, checkout_generation: int) -> str:
+        return f"reservation:{project_id}:{checkout_generation}"
 
     @staticmethod
     def _pending_is_active(item: dict, now: datetime) -> bool:
