@@ -38,6 +38,14 @@ RETIRED_ROUTE_FRAGMENTS = {
     "/mock-workflow",
 }
 
+RETIRED_CUSTOMER_BUDGET_TERMS = {
+    "marketing_budget_usd",
+    "remaining_budget_usd",
+    "estimated_managed_fee_usd",
+    'id="autopilot-budget"',
+    "Meta charges your own payment method",
+}
+
 
 def test_retired_runtime_files_stay_absent() -> None:
     root = Path(__file__).resolve().parents[1]
@@ -68,3 +76,17 @@ def test_retired_http_paths_are_not_served_locally() -> None:
     )
 
     assert all(client.post(path).status_code == 404 for path in retired_paths)
+
+
+def test_customer_runtime_does_not_restore_delegated_budget_contract() -> None:
+    root = Path(__file__).resolve().parents[1]
+    runtime_paths = (
+        root / "app/customer_autopilot.py",
+        root / "app/customer_schemas.py",
+        root / "app/web/start.v2.html",
+        root / "app/web/start.v2.js",
+    )
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in runtime_paths)
+
+    for term in RETIRED_CUSTOMER_BUDGET_TERMS:
+        assert term not in combined
