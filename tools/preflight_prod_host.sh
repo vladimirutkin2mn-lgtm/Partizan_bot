@@ -161,6 +161,39 @@ elif [[ -n "${public_host}" ]]; then
   fail "PARTIZAN_PUBLIC_HOST must be empty when PARTIZAN_PUBLIC_BASE_URL is empty"
 fi
 
+settlement_provider="$(env_value GROWTH_BALANCE_SETTLEMENT_PROVIDER)"
+settlement_provider="${settlement_provider:-unavailable}"
+[[ "${settlement_provider}" == "unavailable" || "${settlement_provider}" == "stripe_issuing" ]] || \
+  fail "GROWTH_BALANCE_SETTLEMENT_PROVIDER must be unavailable or stripe_issuing"
+if [[ "${settlement_provider}" == "stripe_issuing" ]]; then
+  [[ -n "${public_base_url}" ]] || \
+    fail "PARTIZAN_PUBLIC_BASE_URL is required for Stripe Issuing authorization webhooks"
+  for issuing_key in \
+    STRIPE_SECRET_KEY \
+    STRIPE_ISSUING_CARDHOLDER_ID \
+    STRIPE_ISSUING_AUTHORIZATION_WEBHOOK_SECRET \
+    STRIPE_ISSUING_EVENTS_WEBHOOK_SECRET \
+    STRIPE_ISSUING_WEBHOOK_API_VERSION; do
+    require_value "${issuing_key}"
+    reject_placeholder "${issuing_key}"
+  done
+  issuing_cardholder_id="$(env_value STRIPE_ISSUING_CARDHOLDER_ID)"
+  issuing_currency="$(env_value STRIPE_ISSUING_CURRENCY)"
+  issuing_auth_webhook_secret="$(env_value STRIPE_ISSUING_AUTHORIZATION_WEBHOOK_SECRET)"
+  issuing_events_webhook_secret="$(env_value STRIPE_ISSUING_EVENTS_WEBHOOK_SECRET)"
+  issuing_webhook_api_version="$(env_value STRIPE_ISSUING_WEBHOOK_API_VERSION)"
+  [[ "${issuing_cardholder_id}" == ich_* ]] || \
+    fail "STRIPE_ISSUING_CARDHOLDER_ID must be a Stripe Issuing Cardholder ID"
+  [[ "${issuing_currency:-usd}" == "usd" ]] || \
+    fail "STRIPE_ISSUING_CURRENCY must currently be usd"
+  [[ "${issuing_auth_webhook_secret}" == whsec_* ]] || \
+    fail "STRIPE_ISSUING_AUTHORIZATION_WEBHOOK_SECRET must be a Stripe webhook signing secret"
+  [[ "${issuing_events_webhook_secret}" == whsec_* ]] || \
+    fail "STRIPE_ISSUING_EVENTS_WEBHOOK_SECRET must be a Stripe webhook signing secret"
+  [[ "${issuing_webhook_api_version}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\.[A-Za-z0-9_-]+$ ]] || \
+    fail "STRIPE_ISSUING_WEBHOOK_API_VERSION must be an explicit Stripe API version"
+fi
+
 openai_required=false
 for provider_key in LLM_PROVIDER SEARCH_PROVIDER CREATIVE_PROVIDER; do
   if [[ "$(env_value "${provider_key}")" == "openai" ]]; then
