@@ -21,7 +21,7 @@ GROWTH_BALANCE_RAIL_NAMESPACE = "customer_growth_balance_rails"
 GROWTH_BALANCE_TRANSACTION_NAMESPACE = "customer_growth_balance_transactions"
 GROWTH_BALANCE_LOCK_NAMESPACE = "customer_growth_balance_locks"
 ADVERTISING_MERCHANT_CATEGORY = "advertising_services"
-_PENDING_LIQUIDITY_HOLD = timedelta(minutes=30)
+_PENDING_LIQUIDITY_HOLD = timedelta(minutes=31)
 _LIQUIDITY_LOCK_TTL = timedelta(seconds=60)
 _LIQUIDITY_LOCK_KEY = "stripe_issuing_liquidity"
 _CENT = Decimal("0.01")
@@ -491,10 +491,17 @@ class GrowthBalanceService:
         *,
         session_id: str,
         amount_cents: int,
-        checkout_generation: int,
+        checkout_generation: int | None = None,
     ) -> None:
-        customer_funnel_service.get_project_payload(project_id, customer_token)
-        reservation_key = self._reservation_key(project_id, checkout_generation)
+        project = customer_funnel_service.get_project_payload(project_id, customer_token)
+        generation = (
+            int(checkout_generation)
+            if checkout_generation is not None
+            else int(project.get("growth_balance_checkout_generation") or 0)
+        )
+        if generation <= 0:
+            raise ValueError("Growth Balance Checkout generation is missing")
+        reservation_key = self._reservation_key(project_id, generation)
         reservation = self._store.get(GROWTH_BALANCE_TOPUP_NAMESPACE, reservation_key)
         if reservation is None or reservation.get("state") != "RESERVED":
             raise ValueError("Growth Balance liquidity reservation is missing")
@@ -506,7 +513,7 @@ class GrowthBalanceService:
         payload = {
             "session_id": session_id,
             "project_id": str(project_id),
-            "checkout_generation": int(checkout_generation),
+            "checkout_generation": generation,
             "amount_cents": int(amount_cents),
             "currency": "usd",
             "state": "PENDING",
@@ -522,7 +529,7 @@ class GrowthBalanceService:
             if existing is None or (
                 str(existing.get("project_id")) != str(project_id)
                 or int(existing.get("amount_cents") or 0) != int(amount_cents)
-                or int(existing.get("checkout_generation") or 0) != int(checkout_generation)
+                or int(existing.get("checkout_generation") or 0) != generation
             ):
                 raise ValueError("Growth Balance Checkout Session is already bound differently")
         reservation["state"] = "CHECKOUT_CREATED"
@@ -575,7 +582,7 @@ class GrowthBalanceService:
         )
         if uses_ledger:
             spend_cents = max(
-                int(getattr(self._settlement, "settled_spend_cents")(project_id)),
+                int(self._settlement.settled_spend_cents(project_id)),
                 0,
             )
         else:
@@ -693,9 +700,7 @@ class GrowthBalanceService:
                 UUID(project_id)
             )
             if uses_ledger:
-                settled = int(
-                    getattr(self._settlement, "settled_spend_cents")(UUID(project_id))
-                )
+                settled = int(self._settlement.settled_spend_cents(UUID(project_id)))
             outstanding += max(capacity - settled, 0)
         return outstanding
 
