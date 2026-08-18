@@ -551,6 +551,13 @@ class GrowthBalanceService:
     ) -> bool:
         record = self.pending(session_id)
         if record is None:
+            record = self._recover_paid_checkout_record(
+                project_id,
+                session_id=session_id,
+                amount_cents=amount_cents,
+                currency=currency,
+            )
+        if record is None:
             return False
         if str(record.get("project_id")) != str(project_id):
             return False
@@ -572,6 +579,68 @@ class GrowthBalanceService:
             self._persist_project(project)
         self._sync_project_rail(project_id)
         return True
+
+    def _recover_paid_checkout_record(
+        self,
+        project_id: UUID,
+        *,
+        session_id: str,
+        amount_cents: int,
+        currency: str,
+    ) -> dict | None:
+        """Recover a Stripe-paid checkout when session persistence lost a race.
+
+        The liquidity reservation is written before Stripe Checkout is created. If the
+        Checkout creation succeeds but the following session-id write fails, Stripe's
+        signed completion webhook can safely reconnect the paid session to that exact
+        project/amount reservation instead of accepting money without customer credit.
+        """
+
+        candidates = [
+            item
+            for item in self._store.list_namespace(GROWTH_BALANCE_TOPUP_NAMESPACE)
+            if item.get("reservation_key")
+            and item.get("state") in {"RESERVED", "CHECKOUT_CREATED"}
+            and str(item.get("project_id") or "") == str(project_id)
+            and int(item.get("amount_cents") or 0) == int(amount_cents)
+            and str(item.get("currency") or "").lower() == currency.lower()
+            and (not item.get("session_id") or str(item.get("session_id")) == session_id)
+        ]
+        if not candidates:
+            return None
+        reservation = max(
+            candidates,
+            key=lambda item: int(item.get("checkout_generation") or 0),
+        )
+        generation = int(reservation.get("checkout_generation") or 0)
+        if generation <= 0:
+            return None
+        record = {
+            "session_id": session_id,
+            "project_id": str(project_id),
+            "checkout_generation": generation,
+            "amount_cents": int(amount_cents),
+            "currency": currency.lower(),
+            "state": "PENDING",
+            "created_at": str(reservation.get("created_at") or datetime.now(UTC).isoformat()),
+            "recovered_from_reservation": True,
+        }
+        created = self._store.put_if_absent(
+            GROWTH_BALANCE_TOPUP_NAMESPACE,
+            session_id,
+            record,
+        )
+        if not created:
+            return self._store.get(GROWTH_BALANCE_TOPUP_NAMESPACE, session_id)
+        reservation["state"] = "CHECKOUT_CREATED"
+        reservation["session_id"] = session_id
+        reservation["recovered_at"] = datetime.now(UTC).isoformat()
+        self._store.put(
+            GROWTH_BALANCE_TOPUP_NAMESPACE,
+            str(reservation["reservation_key"]),
+            reservation,
+        )
+        return record
 
     def summary(self, project_id: UUID, acquisition_spend_usd: float) -> GrowthBalanceSummary:
         settings = get_settings()
