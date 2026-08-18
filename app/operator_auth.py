@@ -12,8 +12,8 @@ OPERATOR_KEY_HEADER = "X-Partizan-Operator-Key"
 
 # These are the only intentionally public /v1 endpoints. Conversion ingestion
 # enforces its own Product Event Key. Customer routes enforce an opaque per-project
-# token, except preview creation, OAuth callback, Stripe-verified recovery and the
-# Stripe-signed webhook.
+# token, except preview creation, OAuth callback, Stripe-verified recovery and
+# Stripe-signed webhooks.
 PUBLIC_API_ROUTE_TEMPLATES = frozenset(
     {
         ("POST", "/v1/products/{product_id}/distribution-events"),
@@ -37,6 +37,8 @@ PUBLIC_API_ROUTE_TEMPLATES = frozenset(
         ("POST", "/v1/customer-projects/{project_id}/autopilot/meta/connection"),
         ("GET", "/v1/customer-meta/oauth/callback"),
         ("POST", "/v1/billing/stripe/webhook"),
+        ("POST", "/v1/billing/stripe/issuing-authorizations"),
+        ("POST", "/v1/billing/stripe/issuing-events"),
     }
 )
 _PUBLIC_API_PATHS = (
@@ -61,6 +63,8 @@ _PUBLIC_API_PATHS = (
     ("POST", re.compile(r"^/v1/customer-projects/[^/]+/autopilot/meta/connection$")),
     ("GET", re.compile(r"^/v1/customer-meta/oauth/callback$")),
     ("POST", re.compile(r"^/v1/billing/stripe/webhook$")),
+    ("POST", re.compile(r"^/v1/billing/stripe/issuing-authorizations$")),
+    ("POST", re.compile(r"^/v1/billing/stripe/issuing-events$")),
 )
 
 
