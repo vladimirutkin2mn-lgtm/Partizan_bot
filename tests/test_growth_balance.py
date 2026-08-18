@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
@@ -5,7 +6,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.customer_autopilot import customer_autopilot_service
-from app.customer_funnel import customer_funnel_service
+from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE, customer_funnel_service
 from app.customer_schemas import CustomerAutopilotConfigureRequest, CustomerPreviewRequest
 from app.growth_balance import GROWTH_BALANCE_TOPUP_NAMESPACE, GrowthBalanceService, growth_balance_service
 from app.main import app
@@ -58,6 +59,53 @@ def test_all_in_growth_balance_charges_fee_only_on_actual_acquisition_spend() ->
 def test_all_in_capacity_uses_fee_on_media_spend_not_ten_percent_of_deposit() -> None:
     assert GrowthBalanceService._max_acquisition_cents(100_000, 10) == 90_909
     assert GrowthBalanceService._fee_cents(90_909, 10) == 9_091
+
+
+def test_paid_checkout_recovers_from_pre_stripe_liquidity_reservation() -> None:
+    store = MemoryRuntimeStateStore()
+    store.put(
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(PROJECT_ID),
+        {"id": str(PROJECT_ID), "autopilot_subscription_status": "ACTIVE"},
+    )
+    reservation_key = f"reservation:{PROJECT_ID}:7"
+    store.put(
+        GROWTH_BALANCE_TOPUP_NAMESPACE,
+        reservation_key,
+        {
+            "reservation_key": reservation_key,
+            "project_id": str(PROJECT_ID),
+            "checkout_generation": 7,
+            "amount_cents": 100_000,
+            "currency": "usd",
+            "state": "RESERVED",
+            "created_at": datetime.now(UTC).isoformat(),
+        },
+    )
+    service = GrowthBalanceService(store, settlement_service=ReadySettlement())
+
+    credited = service.credit_paid_checkout(
+        PROJECT_ID,
+        session_id="cs_paid_after_db_gap",
+        amount_cents=100_000,
+        currency="usd",
+        stripe_customer_id="cus_recovered",
+    )
+
+    assert credited is True
+    recovered = service.pending("cs_paid_after_db_gap")
+    assert recovered is not None
+    assert recovered["state"] == "PAID"
+    assert recovered["checkout_generation"] == 7
+    assert recovered["recovered_from_reservation"] is True
+    reservation = store.get(GROWTH_BALANCE_TOPUP_NAMESPACE, reservation_key)
+    assert reservation is not None
+    assert reservation["state"] == "CHECKOUT_CREATED"
+    assert reservation["session_id"] == "cs_paid_after_db_gap"
+    project = store.get(CUSTOMER_PROJECT_NAMESPACE, str(PROJECT_ID))
+    assert project is not None
+    assert project["stripe_customer_id"] == "cus_recovered"
+    assert service.summary(PROJECT_ID, 0.0).funded_usd == 1000.0
 
 
 def test_legacy_delegated_marketing_budget_payload_is_rejected() -> None:
