@@ -1,5 +1,7 @@
 from uuid import UUID
 
+import stripe
+
 from app.config import Settings
 from app.growth_balance import (
     ADVERTISING_MERCHANT_CATEGORY,
@@ -73,6 +75,17 @@ def _bound_rail(store: MemoryRuntimeStateStore) -> dict:
     }
     store.put(GROWTH_BALANCE_RAIL_NAMESPACE, str(PROJECT_ID), rail)
     return rail
+
+
+def test_pinned_stripe_sdk_exposes_required_issuing_resources() -> None:
+    assert hasattr(stripe, "issuing")
+    assert hasattr(stripe.issuing, "Card")
+    assert hasattr(stripe.issuing.Card, "create")
+    assert hasattr(stripe.issuing.Card, "modify")
+    assert hasattr(stripe.issuing, "Cardholder")
+    assert hasattr(stripe.issuing.Cardholder, "retrieve")
+    assert hasattr(stripe, "Balance")
+    assert hasattr(stripe.Balance, "retrieve")
 
 
 def test_funding_readiness_requires_prefunded_issuing_liquidity() -> None:
