@@ -9,6 +9,7 @@ x-partizan-service: &partizan-service
     APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
     DATABASE_URL: ${CONTAINER_DATABASE_URL:?Set CONTAINER_DATABASE_URL in .env.prod}
     RUNTIME_STORAGE: database
+    PARTIZAN_RELEASE_SHA: ${PARTIZAN_RELEASE_SHA:-unknown}
   restart: unless-stopped
 
 services:
