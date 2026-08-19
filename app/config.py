@@ -29,9 +29,7 @@ class Settings(BaseSettings):
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None
     stripe_launch_price_id: str | None = None
-    stripe_autopilot_price_id: str | None = None
     partizan_launch_price_usd: int = 49
-    partizan_autopilot_price_usd: int = 149
     partizan_managed_spend_fee_pct: int = 10
     growth_balance_settlement_provider: str = "unavailable"
     stripe_issuing_cardholder_id: str | None = None
@@ -76,7 +74,6 @@ class Settings(BaseSettings):
         "smtp_from_name",
         "smtp_reply_to",
         "stripe_launch_price_id",
-        "stripe_autopilot_price_id",
         "stripe_issuing_cardholder_id",
         "stripe_issuing_webhook_api_version",
         "meta_oauth_app_id",
