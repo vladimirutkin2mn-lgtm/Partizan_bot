@@ -7,11 +7,7 @@ from app.audience_intelligence_service import audience_intelligence_service
 from app.autonomy_overview import autonomy_overview_service
 from app.autonomy_schemas import GrowthMandateStatus, GrowthMandateUpsertRequest
 from app.autonomy_service import growth_mandate_service
-from app.customer_funnel import (
-    CUSTOMER_PROJECT_NAMESPACE,
-    CustomerProjectNotFoundError,
-    customer_funnel_service,
-)
+from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE, customer_funnel_service
 from app.customer_schemas import (
     CustomerAutopilotConfigureRequest,
     CustomerAutopilotDecisionView,
