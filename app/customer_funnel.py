@@ -45,8 +45,8 @@ class CustomerFunnelService:
     """Public customer funnel with a zero-token preview and paid deep research.
 
     The free preview is deterministic and never calls the LLM/search providers. The
-    expensive Product Intake -> ICP -> Distribution chain is reachable only after a
-    Stripe webhook has granted the launch entitlement.
+    expensive Product Intake -> ICP -> Distribution chain becomes available after
+    either the $49 Acquisition Plan is purchased or Growth Balance is actually funded.
     """
 
     def __init__(self, store: RuntimeStateStore | None = None) -> None:
@@ -91,7 +91,6 @@ class CustomerFunnelService:
             directions=directions,
             masked_opportunities=self._masked_opportunities(directions),
             launch_price_usd=settings.partizan_launch_price_usd,
-            autopilot_price_usd=settings.partizan_autopilot_price_usd,
             managed_spend_fee_pct=settings.partizan_managed_spend_fee_pct,
         )
 
@@ -127,7 +126,28 @@ class CustomerFunnelService:
         project["stripe_customer_id"] = stripe_customer_id
         project["launch_unlocked"] = True
         project["status"] = "UNLOCKED"
+        project["launch_entitlement_source"] = "ACQUISITION_PLAN"
         project["launch_unlocked_at"] = datetime.now(UTC).isoformat()
+        self._persist(project)
+        return True
+
+    def unlock_from_growth_balance(
+        self,
+        project_id: UUID,
+        *,
+        stripe_customer_id: str | None = None,
+    ) -> bool:
+        project = self._load(project_id)
+        if project is None:
+            return False
+        if stripe_customer_id:
+            project["stripe_customer_id"] = stripe_customer_id
+        if not project.get("launch_unlocked"):
+            project["launch_unlocked"] = True
+            project["launch_entitlement_source"] = "GROWTH_BALANCE"
+            project["launch_unlocked_at"] = datetime.now(UTC).isoformat()
+            if project.get("status") in {"PREVIEW", "CHECKOUT_PENDING"}:
+                project["status"] = "UNLOCKED"
         self._persist(project)
         return True
 
@@ -313,16 +333,7 @@ class CustomerFunnelService:
             launch_unlocked=bool(project["launch_unlocked"]),
             research_state=project["research_state"],
             product_id=UUID(project["product_id"]) if project.get("product_id") else None,
-            autopilot_subscription_status=str(
-                project.get("autopilot_subscription_status") or "INACTIVE"
-            ),
-            autopilot_subscription_id=(
-                str(project["autopilot_subscription_id"])
-                if project.get("autopilot_subscription_id")
-                else None
-            ),
             launch_price_usd=settings.partizan_launch_price_usd,
-            autopilot_price_usd=settings.partizan_autopilot_price_usd,
             managed_spend_fee_pct=settings.partizan_managed_spend_fee_pct,
         )
 
