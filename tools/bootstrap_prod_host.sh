@@ -57,14 +57,13 @@ OPERATOR_API_KEY=${OPERATOR_API_KEY}
 PARTIZAN_PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
 PARTIZAN_PUBLIC_HOST=${PUBLIC_HOST}
 
-# Customer billing. Public preflight will fail until Stripe credentials and both
-# commercial Price IDs are explicitly configured.
+# Customer billing. Public preflight will fail until Stripe credentials and the
+# optional one-time Acquisition Plan Price are explicitly configured. Autonomous
+# execution has no monthly subscription and is monetized from Growth Balance spend.
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 STRIPE_LAUNCH_PRICE_ID=
-STRIPE_AUTOPILOT_PRICE_ID=
 PARTIZAN_LAUNCH_PRICE_USD=49
-PARTIZAN_AUTOPILOT_PRICE_USD=149
 PARTIZAN_MANAGED_SPEND_FEE_PCT=10
 
 # Partizan-funded Growth Balance settlement. Keep unavailable until Stripe Issuing
