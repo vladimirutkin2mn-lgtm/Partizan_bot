@@ -17,7 +17,7 @@ The full product vision, agent architecture, MVP scope and development roadmap a
 - [Generic Growth Runner](docs/GENERIC_GROWTH_RUNNER.md)
 - [Isolated Growth Sandbox](docs/GROWTH_SANDBOX.md)
 - [Marketing Intelligence](docs/MARKETING_INTELLIGENCE.md) — pinned marketing methodology for product intake, ICPs, evidence-backed audience discovery, creative drafting and bounded outreach.
-- [Customer Autopilot Bridge](docs/CUSTOMER_AUTOPILOT.md) — recurring Autopilot billing, customer budget delegation, self-service Meta connection and customer execution dashboard.
+- [Customer Autopilot Bridge](docs/CUSTOMER_AUTOPILOT.md) — optional `$49` Acquisition Plan, prepaid Growth Balance execution, self-service Meta connection and customer execution dashboard.
 
 ## MVP distribution scope
 
@@ -48,9 +48,14 @@ Partizan Bot should evolve from “here is what you could do” to **“here is 
 
 ## Browser surfaces
 
-The public marketing site is served at `/`. Customer onboarding, the `$49` Acquisition Plan and Autopilot setup live at `/start`. The advanced/operator workspace remains at `/app`.
+The public marketing site is served at `/`. Customer onboarding, the optional `$49` Acquisition Plan and Growth Balance execution setup live at `/start`. The advanced/operator workspace remains at `/app`.
 
-`/start` connects the customer project to the existing growth engine rather than implementing a parallel execution path: paid research creates the Product/ICP/Audience state, Autopilot creates a bounded Growth Mandate, and the existing workers/adapters own execution, paid control, analytics and learning.
+The customer has two monetization paths after the free pre-scan:
+
+- pay `$49` once for the Acquisition Plan only; or
+- fund Growth Balance and let Partizan execute autonomously. There is no monthly execution subscription. Partizan earns a 10% management fee only on actual acquisition spend, taken from the same prepaid Growth Balance.
+
+Funding Growth Balance includes the same Product/ICP/Audience research Partizan needs for execution, so an execution customer does not also pay `$49`. `/start` connects that customer project to the existing growth engine rather than implementing a parallel execution path: paid entitlement creates the Product/ICP/Audience state, guardrails create a bounded Growth Mandate, and the existing workers/adapters own execution, paid control, analytics and learning.
 
 The customer surface never exposes provider credentials or the operator key. Customer project access uses an opaque project token; Meta access tokens stay server-side and are encrypted at rest. The operator workspace keeps its existing production operator-auth boundary.
 
