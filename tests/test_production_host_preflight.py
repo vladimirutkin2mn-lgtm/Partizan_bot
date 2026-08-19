@@ -46,9 +46,7 @@ def _valid_env(**overrides: str) -> str:
         "STRIPE_SECRET_KEY": "sk_test_partizan_not_real",
         "STRIPE_WEBHOOK_SECRET": "whsec_partizan_not_real",
         "STRIPE_LAUNCH_PRICE_ID": "price_partizan_launch_not_real",
-        "STRIPE_AUTOPILOT_PRICE_ID": "price_partizan_autopilot_not_real",
         "PARTIZAN_LAUNCH_PRICE_USD": "49",
-        "PARTIZAN_AUTOPILOT_PRICE_USD": "149",
         "PARTIZAN_MANAGED_SPEND_FEE_PCT": "10",
         "PROVIDER_SECRET_ENCRYPTION_KEY": "A" * 43 + "=",
         "META_OAUTH_APP_ID": "123456789012345",
@@ -216,19 +214,22 @@ def test_public_preflight_requires_valid_stripe_checkout_config(tmp_path: Path) 
         tmp_path / "wrong-price",
         _valid_env(STRIPE_LAUNCH_PRICE_ID="prod_not_a_price"),
     )
-    missing_autopilot = _run_preflight(
-        tmp_path / "missing-autopilot",
-        _valid_env(STRIPE_AUTOPILOT_PRICE_ID=""),
-    )
 
     assert missing_secret.returncode != 0
     assert missing_webhook.returncode != 0
     assert wrong_price.returncode != 0
-    assert missing_autopilot.returncode != 0
     assert "STRIPE_SECRET_KEY" in missing_secret.stderr
     assert "STRIPE_WEBHOOK_SECRET" in missing_webhook.stderr
     assert "Stripe Price ID" in wrong_price.stderr
-    assert "STRIPE_AUTOPILOT_PRICE_ID" in missing_autopilot.stderr
+
+
+def test_public_preflight_does_not_require_recurring_autopilot_price(tmp_path: Path) -> None:
+    content = _valid_env() + "STRIPE_AUTOPILOT_PRICE_ID=\nPARTIZAN_AUTOPILOT_PRICE_USD=\n"
+
+    result = _run_preflight(tmp_path, content, require_public=True)
+
+    assert result.returncode == 0, result.stderr
+    assert "STRIPE_AUTOPILOT_PRICE_ID" not in result.stderr
 
 
 def test_public_preflight_requires_encrypted_meta_oauth_config(tmp_path: Path) -> None:
@@ -256,7 +257,6 @@ def test_public_preflight_requires_encrypted_meta_oauth_config(tmp_path: Path) -
 def test_preflight_reports_all_missing_public_runtime_values_at_once(tmp_path: Path) -> None:
     missing_keys = (
         "PROVIDER_SECRET_ENCRYPTION_KEY",
-        "STRIPE_AUTOPILOT_PRICE_ID",
         "META_OAUTH_APP_ID",
         "META_OAUTH_APP_SECRET",
         "META_OAUTH_API_VERSION",
@@ -268,13 +268,12 @@ def test_preflight_reports_all_missing_public_runtime_values_at_once(tmp_path: P
     )
 
     assert result.returncode != 0
-    assert "production preflight failed with 5 configuration error(s)" in result.stderr
+    assert "production preflight failed with 4 configuration error(s)" in result.stderr
     for key in missing_keys:
         assert f"{key} is required" in result.stderr
 
 
 def test_shared_host_mode_does_not_require_managed_edge_files(tmp_path: Path) -> None:
-    """A public origin fronted by another product's proxy needs no edge files of our own."""
     result = _run_preflight(
         tmp_path,
         _valid_env(),
@@ -355,9 +354,9 @@ def test_bootstrap_generates_private_env_without_printing_secrets(tmp_path: Path
     assert values["STRIPE_SECRET_KEY"] == ""
     assert values["STRIPE_WEBHOOK_SECRET"] == ""
     assert values["STRIPE_LAUNCH_PRICE_ID"] == ""
-    assert values["STRIPE_AUTOPILOT_PRICE_ID"] == ""
+    assert "STRIPE_AUTOPILOT_PRICE_ID" not in values
     assert values["PARTIZAN_LAUNCH_PRICE_USD"] == "49"
-    assert values["PARTIZAN_AUTOPILOT_PRICE_USD"] == "149"
+    assert "PARTIZAN_AUTOPILOT_PRICE_USD" not in values
     assert values["PARTIZAN_MANAGED_SPEND_FEE_PCT"] == "10"
     assert values["META_OAUTH_APP_ID"] == ""
     assert values["META_OAUTH_APP_SECRET"] == ""
