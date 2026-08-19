@@ -39,41 +39,14 @@ def verify_launch_price(settings: Settings) -> None:
         )
 
 
-def verify_autopilot_price(settings: Settings) -> None:
-    _configure(settings)
-    if not settings.stripe_autopilot_price_id:
-        raise StripeReadinessError("STRIPE_AUTOPILOT_PRICE_ID is not configured")
-    try:
-        price = stripe.Price.retrieve(settings.stripe_autopilot_price_id)
-    except stripe.StripeError as exc:
-        raise StripeReadinessError("Stripe Autopilot Price could not be retrieved") from exc
-
-    expected_amount = settings.partizan_autopilot_price_usd * 100
-    recurring = getattr(price, "recurring", None)
-    interval = getattr(recurring, "interval", None) if recurring is not None else None
-    if not getattr(price, "active", False):
-        raise StripeReadinessError("Stripe Autopilot Price must be active")
-    if getattr(price, "type", None) != "recurring":
-        raise StripeReadinessError("Stripe Autopilot Price must be recurring")
-    if interval != "month":
-        raise StripeReadinessError("Stripe Autopilot Price must recur monthly")
-    if str(getattr(price, "currency", None) or "").lower() != "usd":
-        raise StripeReadinessError("Stripe Autopilot Price must use USD")
-    if getattr(price, "unit_amount", None) != expected_amount:
-        raise StripeReadinessError(
-            f"Stripe Autopilot Price must be ${settings.partizan_autopilot_price_usd} USD"
-        )
-
-
 def main() -> None:
     settings = get_settings()
     try:
         verify_launch_price(settings)
-        verify_autopilot_price(settings)
     except StripeReadinessError as exc:
         print(f"stripe readiness: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
-    print("stripe readiness: launch and Autopilot Prices verified")
+    print("stripe readiness: Acquisition Plan Price verified")
 
 
 if __name__ == "__main__":
