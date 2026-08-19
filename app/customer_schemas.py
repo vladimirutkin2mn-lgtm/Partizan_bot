@@ -33,7 +33,6 @@ class CustomerPreviewResponse(BaseModel):
     directions: list[CustomerDirectionView]
     masked_opportunities: list[MaskedOpportunityView]
     launch_price_usd: int = Field(ge=1)
-    autopilot_price_usd: int = Field(ge=1)
     managed_spend_fee_pct: int = Field(ge=0, le=100)
 
 
@@ -48,12 +47,7 @@ class CustomerProjectView(BaseModel):
     launch_unlocked: bool
     research_state: Literal["NOT_STARTED", "NEEDS_INPUT", "READY"]
     product_id: UUID | None = None
-    autopilot_subscription_status: Literal[
-        "INACTIVE", "CHECKOUT_PENDING", "ACTIVE", "PAST_DUE", "CANCELLED"
-    ] = "INACTIVE"
-    autopilot_subscription_id: str | None = None
     launch_price_usd: int
-    autopilot_price_usd: int
     managed_spend_fee_pct: int
 
 
@@ -106,10 +100,6 @@ class CustomerResearchResponse(BaseModel):
 class CustomerClarificationAnswerRequest(BaseModel):
     question_id: UUID
     answer: str = Field(min_length=1, max_length=2000)
-
-
-class CustomerAutopilotVerifyRequest(BaseModel):
-    session_id: str = Field(min_length=8, max_length=255)
 
 
 class CustomerGrowthBalanceTopUpRequest(BaseModel):
@@ -212,7 +202,6 @@ class CustomerAutopilotDecisionView(BaseModel):
 class CustomerAutopilotOverview(BaseModel):
     project_id: UUID
     product_id: UUID | None = None
-    subscription_status: str
     autopilot_status: str
     setup_complete: bool
     blockers: list[str] = Field(default_factory=list)
