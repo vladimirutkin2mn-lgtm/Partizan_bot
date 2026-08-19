@@ -9,7 +9,6 @@ from app.autonomy_schemas import GrowthMandateStatus, GrowthMandateUpsertRequest
 from app.autonomy_service import growth_mandate_service
 from app.customer_funnel import (
     CUSTOMER_PROJECT_NAMESPACE,
-    CustomerPaymentRequiredError,
     CustomerProjectNotFoundError,
     customer_funnel_service,
 )
@@ -35,62 +34,6 @@ class CustomerAutopilotService:
         self._store = store or get_runtime_store()
         self._balance = GrowthBalanceService(self._store)
 
-    def prepare_checkout(self, project_id: UUID, customer_token: str) -> tuple[int, str | None]:
-        project = customer_funnel_service.get_project_payload(project_id, customer_token)
-        website_url = str(project.get("website_url") or "").strip()
-        if not website_url:
-            raise CustomerPaymentRequiredError(
-                "Add a website or landing page before starting Autopilot"
-            )
-        if project.get("autopilot_subscription_status") == "ACTIVE":
-            raise ValueError("Autopilot subscription is already active")
-        generation = int(project.get("autopilot_checkout_generation") or 0) + 1
-        project["autopilot_checkout_generation"] = generation
-        self._persist(project)
-        return generation, project.get("stripe_customer_id")
-
-    def mark_checkout_pending(
-        self,
-        project_id: UUID,
-        customer_token: str,
-        session_id: str,
-    ) -> None:
-        project = customer_funnel_service.get_project_payload(project_id, customer_token)
-        project["autopilot_checkout_session_id"] = session_id
-        project["autopilot_subscription_status"] = "CHECKOUT_PENDING"
-        self._persist(project)
-
-    def sync_subscription(
-        self,
-        project_id: UUID,
-        *,
-        subscription_id: str,
-        stripe_status: str,
-        stripe_customer_id: str | None = None,
-        checkout_session_id: str | None = None,
-    ) -> str:
-        project = self._load(project_id)
-        if project is None:
-            raise CustomerProjectNotFoundError(project_id)
-        normalized = self._subscription_state(stripe_status)
-        project["autopilot_subscription_id"] = subscription_id
-        project["autopilot_subscription_status"] = normalized
-        if stripe_customer_id:
-            project["stripe_customer_id"] = stripe_customer_id
-        if checkout_session_id:
-            project["autopilot_checkout_session_id"] = checkout_session_id
-        project["autopilot_subscription_synced_at"] = datetime.now(UTC).isoformat()
-        if normalized == "ACTIVE" and not project.get("launch_unlocked"):
-            project["launch_unlocked"] = True
-            project["launch_entitlement_source"] = "AUTOPILOT"
-            project["launch_unlocked_at"] = datetime.now(UTC).isoformat()
-            if project.get("status") in {"PREVIEW", "CHECKOUT_PENDING"}:
-                project["status"] = "UNLOCKED"
-        self._persist(project)
-        if normalized != "ACTIVE":
-            self._pause_for_billing(project)
-        return normalized
-
     def configure(
         self,
         project_id: UUID,
@@ -98,7 +41,6 @@ class CustomerAutopilotService:
         payload: CustomerAutopilotConfigureRequest,
     ) -> CustomerAutopilotOverview:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
-        self._require_active_subscription(project)
         if not payload.confirm_autonomous_spend:
             raise ValueError("confirm_autonomous_spend=true is required")
         product_id = self._require_researched_product(project)
@@ -162,7 +104,6 @@ class CustomerAutopilotService:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         product_id = self._require_researched_product(project)
         if status == "ACTIVE":
-            self._require_active_subscription(project)
             self._require_paid_destination(product_id)
             analytics = distribution_analytics_service.product_analytics(product_id)
             balance = self._balance.summary(project_id, analytics.total_spend)
@@ -201,7 +142,6 @@ class CustomerAutopilotService:
         can_activate = (
             mandate is not None
             and mandate.status == GrowthMandateStatus.PAUSED
-            and project.get("autopilot_subscription_status") == "ACTIVE"
             and bool(product.reference_links)
             and balance.remaining_acquisition_capacity_usd > 0
             and balance.settlement_ready
@@ -219,16 +159,12 @@ class CustomerAutopilotService:
 
     def overview(self, project_id: UUID, customer_token: str) -> CustomerAutopilotOverview:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
-        subscription_status = str(project.get("autopilot_subscription_status") or "INACTIVE")
         product_id_raw = project.get("product_id")
         research_ready = project.get("research_state") == "READY" and bool(product_id_raw)
 
         if not research_ready:
             balance = self._balance.summary(project_id, 0.0)
-            blockers: list[str] = []
-            if subscription_status != "ACTIVE":
-                blockers.append("Autopilot subscription is not active")
-            blockers.append("Partizan is mapping the audience and acquisition strategy")
+            blockers: list[str] = ["Partizan is mapping the audience and acquisition strategy"]
             if balance.funded_usd <= 0:
                 blockers.append("Growth Balance is not funded")
             if not balance.settlement_ready:
@@ -236,7 +172,6 @@ class CustomerAutopilotService:
             return CustomerAutopilotOverview(
                 project_id=project_id,
                 product_id=None,
-                subscription_status=subscription_status,
                 autopilot_status="RESEARCHING",
                 setup_complete=False,
                 blockers=blockers,
@@ -264,8 +199,6 @@ class CustomerAutopilotService:
         connection = paid_provider_connection_service.get_meta(product_id)
 
         blockers = []
-        if subscription_status != "ACTIVE":
-            blockers.append("Autopilot subscription is not active")
         if not product.reference_links:
             blockers.append("Website or landing page is required for paid traffic")
         if balance.funded_usd <= 0:
@@ -304,7 +237,6 @@ class CustomerAutopilotService:
         return CustomerAutopilotOverview(
             project_id=project_id,
             product_id=product_id,
-            subscription_status=subscription_status,
             autopilot_status=mandate.status.value if mandate is not None else "NOT_CONFIGURED",
             setup_complete=not blockers,
             blockers=blockers,
@@ -324,37 +256,6 @@ class CustomerAutopilotService:
             waiting_experiments=waiting,
             recent_decisions=decisions,
         )
-
-    def _pause_for_billing(self, project: dict) -> None:
-        project_id = UUID(str(project["id"]))
-        product_id_raw = project.get("product_id")
-        if product_id_raw:
-            product_id = UUID(str(product_id_raw))
-            try:
-                mandate = growth_mandate_service.get(product_id)
-            except KeyError:
-                mandate = None
-            if mandate is not None and mandate.status == GrowthMandateStatus.ACTIVE:
-                growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
-        project["autopilot_pause_reason"] = "BILLING"
-        self._persist(project)
-        self._balance.pause_rail(project_id, "BILLING")
-
-    @staticmethod
-    def _subscription_state(stripe_status: str) -> str:
-        normalized = stripe_status.strip().lower()
-        if normalized in {"active", "trialing"}:
-            return "ACTIVE"
-        if normalized in {"past_due", "unpaid", "paused"}:
-            return "PAST_DUE"
-        if normalized in {"canceled", "cancelled"}:
-            return "CANCELLED"
-        return "CHECKOUT_PENDING"
-
-    @staticmethod
-    def _require_active_subscription(project: dict) -> None:
-        if project.get("autopilot_subscription_status") != "ACTIVE":
-            raise CustomerPaymentRequiredError("Activate the Autopilot subscription first")
 
     @staticmethod
     def _require_researched_product(project: dict) -> UUID:
