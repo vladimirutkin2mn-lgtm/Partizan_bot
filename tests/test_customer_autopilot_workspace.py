@@ -10,13 +10,15 @@ START_JS = ROOT / "app" / "web" / "start.v2.js"
 client = TestClient(app)
 
 
-def test_start_page_exposes_growth_balance_autopilot_setup_and_dashboard() -> None:
+def test_start_page_exposes_growth_balance_execution_setup_and_dashboard() -> None:
     response = client.get("/start")
 
     assert response.status_code == 200
     assert "/start/assets/start.autopilot.v1.css" in response.text
     assert "/start/assets/start.v2.css" in response.text
-    assert 'id="autopilot-subscribe-button"' in response.text
+    assert 'id="autopilot-subscribe-button"' not in response.text
+    assert "$149" not in response.text
+    assert "No monthly subscription" in response.text
     assert 'id="growth-balance-form"' in response.text
     assert 'id="autopilot-config-form"' in response.text
     assert 'id="meta-connect-button"' in response.text
@@ -29,12 +31,10 @@ def test_start_page_exposes_growth_balance_autopilot_setup_and_dashboard() -> No
     assert ".autopilot-dashboard" in stylesheet.text
 
 
-def test_customer_browser_calls_only_customer_autopilot_boundary() -> None:
+def test_customer_browser_calls_only_customer_execution_boundary() -> None:
     source = START_JS.read_text(encoding="utf-8")
 
     expected_paths = (
-        "/autopilot/checkout",
-        "/autopilot/verify",
         "/growth-balance/checkout",
         "/growth-balance/verify",
         "/autopilot/meta/connect",
@@ -45,6 +45,9 @@ def test_customer_browser_calls_only_customer_autopilot_boundary() -> None:
     for path in expected_paths:
         assert path in source
 
+    assert "/autopilot/checkout" not in source
+    assert "/autopilot/verify" not in source
+    assert "subscription_status" not in source
     assert "marketing_budget_usd" not in source
     assert "remaining_budget_usd" not in source
     assert "X-Partizan-Customer-Token" in source
