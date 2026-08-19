@@ -95,9 +95,8 @@
     $('preview-summary').textContent = `Partizan sees ${data.channel_count} promising acquisition directions and roughly ${data.opportunity_scope_estimate} concrete places, audiences and partners worth investigating. Best place to start: ${data.fastest_signal}.`;
     $('scope-title').textContent = `~${data.opportunity_scope_estimate} concrete opportunities to investigate`;
     $('unlock-price').textContent = `Unlock Acquisition Plan — $${data.launch_price_usd}`;
-    $('autopilot-direct-price').textContent = `$${data.autopilot_price_usd}/mo`;
-    $('autopilot-direct-fee').textContent = `${managementFeePct}% of acquisition spend from Growth Balance`;
-    $('autopilot-price').innerHTML = `$${data.autopilot_price_usd}<span>/mo</span>`;
+    $('autopilot-direct-price').textContent = `${managementFeePct}% of acquisition spend`;
+    $('autopilot-direct-fee').textContent = 'from Growth Balance · no monthly fee';
     $('spend-fee').textContent = `${managementFeePct}% of acquisition spend`;
     $('direction-grid').innerHTML = data.directions.map((item) => `
       <article class="direction-card"><header><h3>${escapeHtml(item.name)}</h3><span class="potential ${item.potential === 'MEDIUM' ? 'medium' : ''}">${item.potential}</span></header><p>${escapeHtml(item.rationale)}</p></article>
@@ -135,23 +134,21 @@
     }
   });
 
-  const beginAutopilotCheckout = async (button) => {
-    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the pre-scan again.', true);
-    button.disabled = true;
-    const original = button.textContent;
-    button.textContent = 'Opening secure checkout…';
+  const openExecutionSetup = async () => {
+    if (!currentProjectId || !currentToken) {
+      showNotice('Project session is missing. Run the pre-scan again.', true);
+      return;
+    }
+    $('autopilot-card').classList.remove('hidden');
     try {
-      const data = await api(`/v1/customer-projects/${currentProjectId}/autopilot/checkout`, { method: 'POST' });
-      window.location.assign(data.checkout_url);
+      await loadAutopilot();
     } catch (error) {
       showNotice(error.message, true);
-      button.disabled = false;
-      button.textContent = original;
     }
+    $('autopilot-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  $('autopilot-direct-button').addEventListener('click', () => beginAutopilotCheckout($('autopilot-direct-button')));
-  $('autopilot-subscribe-button').addEventListener('click', () => beginAutopilotCheckout($('autopilot-subscribe-button')));
+  $('autopilot-direct-button').addEventListener('click', openExecutionSetup);
   $('inspect-first-button').addEventListener('click', () => $('acquisition-plan-card').scrollIntoView({ behavior: 'smooth', block: 'start' }));
 
   $('checkout-button').addEventListener('click', async () => {
@@ -266,13 +263,11 @@
   const ensureUnderHoodResearch = async () => {
     try {
       const project = await api(`/v1/customer-projects/${currentProjectId}`);
-      if (project.research_state === 'READY') {
-        await startResearch(false);
-      } else {
-        $('payment-status').querySelector('strong').textContent = 'Autopilot active';
-        $('payment-status').querySelector('small').textContent = 'Partizan is mapping the audience and deciding where to start.';
-        await startResearch(false);
-      }
+      showUnlocked();
+      $('payment-status').querySelector('strong').textContent = 'Growth Balance funded';
+      $('payment-status').querySelector('small').textContent = 'Partizan is mapping the audience and deciding where to start.';
+      await startResearch(false);
+      if (project.research_state === 'READY') await loadAutopilot();
     } catch (error) {
       showNotice(error.message, true);
     }
@@ -285,32 +280,47 @@
   };
 
   const renderAutopilot = (overview) => {
-    const activeSubscription = overview.subscription_status === 'ACTIVE';
     const researching = overview.autopilot_status === 'RESEARCHING';
-    $('autopilot-subscription-status').textContent = activeSubscription ? 'Subscription active' : overview.subscription_status.replaceAll('_', ' ').toLowerCase();
-    $('autopilot-subscription-status').classList.toggle('active', activeSubscription);
-    $('autopilot-subscribe-button').classList.toggle('hidden', activeSubscription);
-    $('autopilot-setup').classList.toggle('hidden', !activeSubscription || researching);
-    $('autopilot-dashboard').classList.toggle('hidden', !activeSubscription || researching);
-
     const balance = overview.growth_balance;
+    const researchReady = Boolean(overview.product_id);
     managementFeePct = Number(balance.management_fee_pct || managementFeePct);
     $('spend-fee').textContent = `${managementFeePct}% of acquisition spend`;
     updateGrowthBalanceBreakdown();
+    $('autopilot-setup').classList.remove('hidden');
+    $('autopilot-dashboard').classList.toggle('hidden', researching);
 
-    if (!activeSubscription) return;
-    $('meta-connection-status').textContent = overview.meta.connected
-      ? `Connected: ad account ${overview.meta.ad_account_id}`
-      : 'No Meta ad account connected.';
-    $('meta-connect-button').textContent = overview.meta.connected ? 'Reconnect Meta' : 'Connect Meta →';
+    if (overview.meta.connected) {
+      $('meta-connection-status').textContent = `Connected: ad account ${overview.meta.ad_account_id}`;
+      $('meta-connect-button').textContent = 'Reconnect Meta';
+      $('meta-connect-button').disabled = false;
+    } else if (!researchReady) {
+      $('meta-connection-status').textContent = balance.funded_usd > 0
+        ? 'Partizan is mapping the audience. Meta connection unlocks when research is ready.'
+        : 'Fund Growth Balance first; Partizan will map the audience before Meta setup.';
+      $('meta-connect-button').textContent = 'Connect Meta →';
+      $('meta-connect-button').disabled = true;
+    } else {
+      $('meta-connection-status').textContent = 'No Meta ad account connected.';
+      $('meta-connect-button').textContent = 'Connect Meta →';
+      $('meta-connect-button').disabled = false;
+    }
 
-    $('growth-balance-status').textContent = balance.settlement_ready
-      ? `${money(balance.funded_usd)} funded · ${money(balance.remaining_acquisition_capacity_usd)} acquisition capacity remains.`
-      : 'Growth Balance top-ups are intentionally blocked until the Partizan-funded provider payment rail is configured. Your Meta account will not be charged separately.';
-    $('growth-balance-status').classList.toggle('settlement-warning', !balance.settlement_ready);
-    $('growth-balance-button').disabled = !balance.settlement_ready;
-    $('growth-balance-button').textContent = balance.settlement_ready ? 'Fund Growth Balance →' : 'Funding rail setup required';
-    $('autopilot-config-button').disabled = !balance.settlement_ready || balance.remaining_acquisition_capacity_usd <= 0;
+    const configurationBlocked = [
+      'PARTIZAN_FUNDED_PAYMENT_RAIL_NOT_CONFIGURED',
+      'STRIPE_NOT_CONFIGURED',
+      'STRIPE_ISSUING_CARDHOLDER_NOT_CONFIGURED',
+    ].includes(balance.settlement_status);
+    if (balance.funded_usd > 0) {
+      $('growth-balance-status').textContent = `${money(balance.funded_usd)} funded · ${money(balance.remaining_acquisition_capacity_usd)} acquisition capacity remains.${balance.settlement_ready ? '' : ' Provider billing setup is still being completed.'}`;
+    } else if (configurationBlocked) {
+      $('growth-balance-status').textContent = 'Growth Balance funding is temporarily unavailable until the Partizan-funded payment rail is configured. No monthly subscription is required.';
+    } else {
+      $('growth-balance-status').textContent = 'Ready to fund. Partizan checks provider-payment liquidity before accepting money.';
+    }
+    $('growth-balance-status').classList.toggle('settlement-warning', configurationBlocked || (balance.funded_usd > 0 && !balance.settlement_ready));
+    $('growth-balance-button').disabled = configurationBlocked;
+    $('growth-balance-button').textContent = configurationBlocked ? 'Funding rail setup required' : (balance.funded_usd > 0 ? 'Add to Growth Balance →' : 'Fund Growth Balance →');
+    $('autopilot-config-button').disabled = balance.funded_usd <= 0 || !researchReady;
 
     if (researching) return;
     $('metric-balance').textContent = money(balance.available_usd);
@@ -337,6 +347,7 @@
   $('growth-balance-amount').addEventListener('input', updateGrowthBalanceBreakdown);
   $('growth-balance-form').addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the pre-scan again.', true);
     const button = $('growth-balance-button');
     button.disabled = true;
     const original = button.textContent;
@@ -480,28 +491,6 @@
     }
   }
 
-  const autopilotCheckout = params.get('autopilot_checkout');
-  if (autopilotCheckout && projectId) {
-    if (!loadProjectToken(projectId)) {
-      showNotice('This browser no longer has access to the customer project.', true);
-    } else {
-      showUnlocked();
-      if (autopilotCheckout === 'success' && checkoutSessionId) {
-        api(`/v1/customer-projects/${projectId}/autopilot/verify`, {
-          method: 'POST',
-          body: JSON.stringify({ session_id: checkoutSessionId }),
-        }).then(async (overview) => {
-          renderAutopilot(overview);
-          showNotice('Autopilot subscription active. Partizan is mapping the market under the hood.');
-          await ensureUnderHoodResearch();
-        }).catch((error) => showNotice(error.message, true));
-      } else if (autopilotCheckout === 'cancelled') {
-        showNotice('Autopilot checkout cancelled. Your project is unchanged.');
-        loadAutopilot().catch(() => {});
-      }
-    }
-  }
-
   const growthBalanceState = params.get('growth_balance');
   if (growthBalanceState && projectId) {
     if (!loadProjectToken(projectId)) {
@@ -512,9 +501,10 @@
         api(`/v1/customer-projects/${projectId}/growth-balance/verify`, {
           method: 'POST',
           body: JSON.stringify({ session_id: checkoutSessionId }),
-        }).then((overview) => {
+        }).then(async (overview) => {
           renderAutopilot(overview);
           showNotice(`Growth Balance funded. Available: ${money(overview.growth_balance.available_usd)}.`);
+          await ensureUnderHoodResearch();
         }).catch((error) => showNotice(error.message, true));
       } else if (growthBalanceState === 'cancelled') {
         showNotice('Growth Balance checkout cancelled. No funds were added.');
