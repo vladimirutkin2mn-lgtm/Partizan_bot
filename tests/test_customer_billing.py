@@ -4,11 +4,7 @@ from uuid import uuid4
 import stripe
 
 from app.config import Settings
-from app.customer_billing import (
-    create_autopilot_checkout,
-    create_growth_balance_checkout,
-    create_launch_checkout,
-)
+from app.customer_billing import create_growth_balance_checkout, create_launch_checkout
 
 
 def test_launch_checkout_is_idempotent_and_creates_reusable_customer(monkeypatch) -> None:
@@ -50,43 +46,6 @@ def test_launch_checkout_is_idempotent_and_creates_reusable_customer(monkeypatch
     assert "checkout=cancelled" in captured["cancel_url"]
 
 
-def test_autopilot_checkout_is_monthly_subscription_for_existing_customer(monkeypatch) -> None:
-    project_id = uuid4()
-    captured: dict = {}
-
-    def fake_create(**kwargs):
-        captured.update(kwargs)
-        return SimpleNamespace(id="cs_test_autopilot", url="https://checkout.stripe.com/autopilot")
-
-    monkeypatch.setattr(stripe.checkout.Session, "create", fake_create)
-    settings = Settings(
-        _env_file=None,
-        stripe_secret_key="sk_test_not_real",
-        stripe_autopilot_price_id="price_autopilot_not_real",
-    )
-
-    checkout = create_autopilot_checkout(
-        settings=settings,
-        project_id=project_id,
-        public_origin="https://partizan.example.com",
-        checkout_generation=3,
-        stripe_customer_id="cus_existing",
-    )
-
-    assert checkout.session_id == "cs_test_autopilot"
-    assert captured["mode"] == "subscription"
-    assert captured["customer"] == "cus_existing"
-    assert captured["line_items"] == [{"price": "price_autopilot_not_real", "quantity": 1}]
-    assert captured["metadata"] == {
-        "partizan_project_id": str(project_id),
-        "partizan_entitlement": "autopilot",
-    }
-    assert captured["subscription_data"]["metadata"] == captured["metadata"]
-    assert captured["idempotency_key"] == f"partizan-autopilot-{project_id}-3"
-    assert "autopilot_checkout=success" in captured["success_url"]
-    assert "autopilot_checkout=cancelled" in captured["cancel_url"]
-
-
 def test_growth_balance_checkout_uses_exact_dynamic_usd_amount(monkeypatch) -> None:
     project_id = uuid4()
     captured: dict = {}
@@ -125,3 +84,10 @@ def test_growth_balance_checkout_uses_exact_dynamic_usd_amount(monkeypatch) -> N
     assert captured["idempotency_key"] == f"partizan-growth-balance-{project_id}-2-100000"
     assert "growth_balance=success" in captured["success_url"]
     assert "growth_balance=cancelled" in captured["cancel_url"]
+
+
+def test_billing_module_has_no_recurring_autopilot_checkout() -> None:
+    import app.customer_billing as billing
+
+    assert not hasattr(billing, "create_autopilot_checkout")
+    assert not hasattr(billing, "retrieve_subscription")
