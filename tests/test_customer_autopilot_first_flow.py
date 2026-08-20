@@ -169,7 +169,7 @@ def test_start_page_is_channel_first_growth_balance_execution_flow() -> None:
     assert "No monthly subscription" in page.text
     assert 'id="autopilot-budget"' not in page.text
     assert "Channels Partizan can use" in page.text
-    for channel in ("Instagram &amp; Facebook", "TikTok", "Reddit", "Telegram"):
+    for channel in ("Instagram & Facebook", "TikTok", "Reddit", "Telegram"):
         assert channel in page.text
     assert page.text.index("1 · Connect access") < page.text.index("2 · Guardrails")
     assert page.text.index("2 · Guardrails") < page.text.index("3 · Fund growth")
