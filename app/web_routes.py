@@ -45,6 +45,7 @@ _START_ASSETS = {
     "start.autopilot.v1.css": "text/css; charset=utf-8",
     "start.v2.css": "text/css; charset=utf-8",
     "start.v2.js": "text/javascript; charset=utf-8",
+    "start.channels.v1.js": "text/javascript; charset=utf-8",
     "goal-dropdown.v1.css": "text/css; charset=utf-8",
     "goal-dropdown.v1.js": "text/javascript; charset=utf-8",
 }

@@ -12,7 +12,7 @@ from app.growth_balance import (
     growth_balance_service,
 )
 from app.main import app
-from app.runtime_store import MemoryRuntimeStateStore
+from app.runtime_store import MemoryRuntimeStateStore, get_runtime_store
 
 client = TestClient(app)
 PROJECT_ID = UUID("11111111-1111-1111-1111-111111111111")
@@ -70,6 +70,27 @@ def test_retired_autopilot_subscription_checkout_routes_are_gone() -> None:
         headers=headers,
         json={"session_id": "cs_retired"},
     ).status_code == 404
+
+
+def test_guardrails_can_be_saved_before_research_or_growth_balance() -> None:
+    preview = _preview()
+    headers = {"X-Partizan-Customer-Token": preview.customer_token}
+
+    response = client.put(
+        f"/v1/customer-projects/{preview.project_id}/autopilot",
+        headers=headers,
+        json={"target_max_cac": 30, "confirm_autonomous_spend": True},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["autopilot_status"] == "RESEARCHING"
+    assert payload["growth_balance"]["funded_usd"] == 0
+    assert not any("guardrails are not saved" in item for item in payload["blockers"])
+    project = get_runtime_store().get(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id))
+    assert project is not None
+    assert project["autopilot_target_max_cac"] == 30
+    assert project["autopilot_spend_confirmed"] is True
 
 
 def test_paid_growth_balance_unlocks_research_without_buying_49_plan() -> None:
@@ -131,25 +152,37 @@ def test_paid_growth_balance_unlocks_research_without_buying_49_plan() -> None:
     assert service.summary(PROJECT_ID, 0.0).funded_usd == 1000.0
 
 
-def test_start_page_is_subscription_free_growth_balance_first_flow() -> None:
+def test_start_page_is_channel_first_growth_balance_execution_flow() -> None:
     page = client.get("/start")
     css = client.get("/start/assets/start.v2.css")
     javascript = client.get("/start/assets/start.v2.js")
+    channel_javascript = client.get("/start/assets/start.channels.v1.js")
 
     assert page.status_code == 200
     assert '/start/assets/start.v2.css' in page.text
     assert '/start/assets/start.v2.js' in page.text
+    assert '/start/assets/start.channels.v1.js' in page.text
     assert 'id="autopilot-direct-button"' in page.text
     assert 'id="growth-balance-form"' in page.text
     assert 'id="view-strategy-button"' in page.text
     assert "$149" not in page.text
     assert "No monthly subscription" in page.text
     assert 'id="autopilot-budget"' not in page.text
+    assert "Channels Partizan can use" in page.text
+    for channel in ("Instagram & Facebook", "TikTok", "Reddit", "Telegram"):
+        assert channel in page.text
+    assert page.text.index("1 · Connect access") < page.text.index("2 · Guardrails")
+    assert page.text.index("2 · Guardrails") < page.text.index("3 · Fund growth")
     assert css.status_code == 200
     assert ".autopilot-first-launch" in css.text
+    assert ".channel-grid" in css.text
     assert ".growth-balance-form" in css.text
     assert javascript.status_code == 200
     assert "View strategy & audience" in javascript.text
     assert "/autopilot/checkout" not in javascript.text
     assert "/growth-balance/checkout" in javascript.text
     assert "marketing_budget_usd" not in javascript.text
+    assert channel_javascript.status_code == 200
+    assert "Growth Balance is being enabled" in channel_javascript.text
+    assert "meta-connect-button" in channel_javascript.text
+    assert "autopilot-config-button" in channel_javascript.text

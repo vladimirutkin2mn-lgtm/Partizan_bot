@@ -20,9 +20,14 @@ from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_play_service import distribution_play_service
 from app.distribution_types import DistributionActionType, DistributionPlatform
 from app.growth_balance import GrowthBalanceService, GrowthBalanceSummary
-from app.paid_provider_connections import paid_provider_connection_service
+from app.paid_provider_connections import (
+    PaidProviderConnectionCreateRequest,
+    paid_provider_connection_service,
+)
 from app.product_intake import product_intake_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+
+STAGED_META_CONNECTION_KEY = "meta_connection_staged"
 
 
 class CustomerAutopilotService:
@@ -39,56 +44,23 @@ class CustomerAutopilotService:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         if not payload.confirm_autonomous_spend:
             raise ValueError("confirm_autonomous_spend=true is required")
-        product_id = self._require_researched_product(project)
-        product = self._require_paid_destination(product_id)
-        analytics = distribution_analytics_service.product_analytics(product_id)
-        balance = self._balance.summary(project_id, analytics.total_spend)
-        if balance.funded_usd <= 0:
-            raise ValueError("Fund the Growth Balance before configuring Autopilot")
-        if balance.remaining_acquisition_capacity_usd <= 0:
-            raise ValueError("Growth Balance has no acquisition capacity remaining")
 
-        distribution = audience_intelligence_service.get(product_id)
-        try:
-            distribution_play_service.get(product_id)
-        except KeyError:
-            distribution_play_service.generate(product, distribution)
-
-        total_cap = round(balance.acquisition_capacity_usd, 2)
-        remaining = round(balance.remaining_acquisition_capacity_usd, 2)
-        per_experiment = round(min(remaining, max(1.0, total_cap * 0.20)), 2)
-        daily = round(min(remaining, max(per_experiment, total_cap / 7)), 2)
-
-        mandate = growth_mandate_service.upsert(
-            product_id,
-            GrowthMandateUpsertRequest(
-                total_budget_cap=total_cap,
-                target_max_cac=payload.target_max_cac,
-                max_autonomous_spend_per_experiment=per_experiment,
-                max_autonomous_spend_per_day=daily,
-                max_concurrent_running_experiments=2,
-                allowed_platforms=[DistributionPlatform.INSTAGRAM],
-                allowed_actions=[DistributionActionType.PAID_CAMPAIGN],
-                autonomous_prepare=True,
-                autonomous_approve=True,
-                autonomous_paid_activation=True,
-                approval_threshold=None,
-            ),
-        )
         project["autopilot_target_max_cac"] = round(payload.target_max_cac, 2)
+        project["autopilot_spend_confirmed"] = True
         project["autopilot_configured_at"] = datetime.now(UTC).isoformat()
-
-        meta_connected = paid_provider_connection_service.get_meta(product_id) is not None
-        pause_reason: str | None = None
-        if not meta_connected:
-            pause_reason = "SETUP"
-        elif not balance.settlement_ready:
-            pause_reason = "FUNDING"
-        if pause_reason is not None and mandate.status == GrowthMandateStatus.ACTIVE:
-            growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
-            self._balance.pause_rail(project_id, pause_reason)
-        project["autopilot_pause_reason"] = pause_reason
         self._persist(project)
+
+        product_id_raw = project.get("product_id")
+        research_ready = project.get("research_state") == "READY" and bool(product_id_raw)
+        if research_ready:
+            product_id = UUID(str(product_id_raw))
+            self._materialize_staged_meta(project, product_id)
+            self._ensure_mandate_if_ready(
+                project_id,
+                project,
+                product_id,
+                force_update=True,
+            )
         return self.overview(project_id, customer_token)
 
     def set_status(
@@ -99,6 +71,8 @@ class CustomerAutopilotService:
     ) -> CustomerAutopilotOverview:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         product_id = self._require_researched_product(project)
+        self._materialize_staged_meta(project, product_id)
+        self._ensure_mandate_if_ready(project_id, project, product_id)
         if status == "ACTIVE":
             self._require_paid_destination(product_id)
             analytics = distribution_analytics_service.product_analytics(product_id)
@@ -106,11 +80,9 @@ class CustomerAutopilotService:
             if balance.remaining_acquisition_capacity_usd <= 0:
                 raise ValueError("Fund the Growth Balance before activating Autopilot")
             if not balance.settlement_ready:
-                raise ValueError(
-                    "Partizan-funded provider payment rail is not configured; paid activation stays blocked"
-                )
+                raise ValueError("Growth Balance funding is not available for paid activation yet")
             if paid_provider_connection_service.get_meta(product_id) is None:
-                raise ValueError("Connect Meta before activating Autopilot")
+                raise ValueError("Connect Meta before activating paid acquisition")
             self._balance.activate_rail(project_id)
             growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
             project["autopilot_pause_reason"] = None
@@ -127,7 +99,14 @@ class CustomerAutopilotService:
 
     def meta_connected(self, project_id: UUID, customer_token: str) -> CustomerAutopilotOverview:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
-        product_id = self._require_researched_product(project)
+        product_id_raw = project.get("product_id")
+        research_ready = project.get("research_state") == "READY" and bool(product_id_raw)
+        if not research_ready:
+            return self.overview(project_id, customer_token)
+
+        product_id = UUID(str(product_id_raw))
+        self._materialize_staged_meta(project, product_id)
+        self._ensure_mandate_if_ready(project_id, project, product_id)
         product = product_intake_service.get_product(product_id)
         analytics = distribution_analytics_service.product_analytics(product_id)
         balance = self._balance.summary(project_id, analytics.total_spend)
@@ -157,14 +136,28 @@ class CustomerAutopilotService:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         product_id_raw = project.get("product_id")
         research_ready = project.get("research_state") == "READY" and bool(product_id_raw)
+        guardrails_saved = bool(
+            project.get("autopilot_spend_confirmed")
+            and project.get("autopilot_target_max_cac")
+        )
 
         if not research_ready:
             balance = self._balance.summary(project_id, 0.0)
-            blockers: list[str] = ["Partizan is mapping the audience and acquisition strategy"]
+            staged_meta = self._staged_meta_view(project)
+            blockers: list[str] = []
+            if not staged_meta.connected:
+                blockers.append("Meta access is not connected")
+            if not guardrails_saved:
+                blockers.append("Maximum CAC and autonomous-spend guardrails are not saved")
             if balance.funded_usd <= 0:
                 blockers.append("Growth Balance is not funded")
             if not balance.settlement_ready:
-                blockers.append("Partizan-funded provider payment rail is not configured")
+                blockers.append("Growth Balance funding is not available yet")
+            blockers.append(
+                "Acquisition research starts automatically after Growth Balance funding"
+                if balance.funded_usd <= 0
+                else "Partizan is mapping the audience and acquisition strategy"
+            )
             return CustomerAutopilotOverview(
                 project_id=project_id,
                 product_id=None,
@@ -176,13 +169,15 @@ class CustomerAutopilotService:
                 revenue_usd=0.0,
                 cac_usd=None,
                 roas=None,
-                meta=CustomerMetaConnectionView(connected=False),
+                meta=staged_meta,
                 running_experiments=[],
                 waiting_experiments=[],
                 recent_decisions=[],
             )
 
         product_id = UUID(str(product_id_raw))
+        self._materialize_staged_meta(project, product_id)
+        self._ensure_mandate_if_ready(project_id, project, product_id)
         product = product_intake_service.get_product(product_id)
         analytics = distribution_analytics_service.product_analytics(product_id)
         balance = self._balance.summary(project_id, analytics.total_spend)
@@ -202,11 +197,13 @@ class CustomerAutopilotService:
         elif balance.remaining_acquisition_capacity_usd <= 0:
             blockers.append("Growth Balance has no acquisition capacity remaining")
         if not balance.settlement_ready:
-            blockers.append("Partizan-funded provider payment rail is not configured")
-        if mandate is None:
-            blockers.append("Autopilot guardrails are not configured")
+            blockers.append("Growth Balance funding is not available yet")
+        if not guardrails_saved:
+            blockers.append("Maximum CAC and autonomous-spend guardrails are not saved")
+        elif mandate is None and balance.funded_usd > 0:
+            blockers.append("Partizan is applying the saved guardrails")
         if connection is None:
-            blockers.append("Meta is not connected")
+            blockers.append("Meta access is not connected")
         if mandate is not None and mandate.status != GrowthMandateStatus.ACTIVE:
             blockers.append(f"Autopilot is {mandate.status.value.lower()}")
 
@@ -251,6 +248,115 @@ class CustomerAutopilotService:
             running_experiments=running,
             waiting_experiments=waiting,
             recent_decisions=decisions,
+        )
+
+    def _ensure_mandate_if_ready(
+        self,
+        project_id: UUID,
+        project: dict,
+        product_id: UUID,
+        *,
+        force_update: bool = False,
+    ):
+        if not project.get("autopilot_spend_confirmed"):
+            return None
+        target_max_cac = project.get("autopilot_target_max_cac")
+        if target_max_cac is None:
+            return None
+        try:
+            existing = growth_mandate_service.get(product_id)
+        except KeyError:
+            existing = None
+        if existing is not None and not force_update:
+            return existing
+
+        product = product_intake_service.get_product(product_id)
+        if not product.reference_links:
+            return existing
+        analytics = distribution_analytics_service.product_analytics(product_id)
+        balance = self._balance.summary(project_id, analytics.total_spend)
+        if balance.funded_usd <= 0 or balance.remaining_acquisition_capacity_usd <= 0:
+            return existing
+
+        distribution = audience_intelligence_service.get(product_id)
+        try:
+            distribution_play_service.get(product_id)
+        except KeyError:
+            distribution_play_service.generate(product, distribution)
+
+        total_cap = round(balance.acquisition_capacity_usd, 2)
+        remaining = round(balance.remaining_acquisition_capacity_usd, 2)
+        per_experiment = round(min(remaining, max(1.0, total_cap * 0.20)), 2)
+        daily = round(min(remaining, max(per_experiment, total_cap / 7)), 2)
+        mandate = growth_mandate_service.upsert(
+            product_id,
+            GrowthMandateUpsertRequest(
+                total_budget_cap=total_cap,
+                target_max_cac=float(target_max_cac),
+                max_autonomous_spend_per_experiment=per_experiment,
+                max_autonomous_spend_per_day=daily,
+                max_concurrent_running_experiments=2,
+                allowed_platforms=[DistributionPlatform.INSTAGRAM],
+                allowed_actions=[DistributionActionType.PAID_CAMPAIGN],
+                autonomous_prepare=True,
+                autonomous_approve=True,
+                autonomous_paid_activation=True,
+                approval_threshold=None,
+            ),
+        )
+
+        meta_connected = paid_provider_connection_service.get_meta(product_id) is not None
+        pause_reason: str | None = None
+        if not meta_connected:
+            pause_reason = "SETUP"
+        elif not balance.settlement_ready:
+            pause_reason = "FUNDING"
+        if pause_reason is not None and mandate.status == GrowthMandateStatus.ACTIVE:
+            growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
+            self._balance.pause_rail(project_id, pause_reason)
+        project["autopilot_pause_reason"] = pause_reason
+        self._persist(project)
+        return mandate
+
+    def _materialize_staged_meta(self, project: dict, product_id: UUID):
+        staged = project.get(STAGED_META_CONNECTION_KEY)
+        if not isinstance(staged, dict):
+            return paid_provider_connection_service.get_meta(product_id)
+        connection = paid_provider_connection_service.upsert_meta(
+            product_id,
+            PaidProviderConnectionCreateRequest(
+                ad_account_id=str(staged["ad_account_id"]),
+                page_id=str(staged["page_id"]),
+                instagram_actor_id=(
+                    str(staged["instagram_actor_id"])
+                    if staged.get("instagram_actor_id")
+                    else None
+                ),
+                access_token_env=str(staged["access_token_env"]),
+                api_version=str(staged["api_version"]),
+                country_codes=[str(code) for code in staged.get("country_codes", [])],
+                default_image_url=None,
+            ),
+        )
+        project.pop(STAGED_META_CONNECTION_KEY, None)
+        self._persist(project)
+        return connection
+
+    @staticmethod
+    def _staged_meta_view(project: dict) -> CustomerMetaConnectionView:
+        staged = project.get(STAGED_META_CONNECTION_KEY)
+        if not isinstance(staged, dict):
+            return CustomerMetaConnectionView(connected=False)
+        return CustomerMetaConnectionView(
+            connected=True,
+            ad_account_id=str(staged.get("ad_account_id") or "") or None,
+            page_id=str(staged.get("page_id") or "") or None,
+            instagram_actor_id=(
+                str(staged.get("instagram_actor_id"))
+                if staged.get("instagram_actor_id")
+                else None
+            ),
+            country_codes=[str(code) for code in staged.get("country_codes", [])],
         )
 
     @staticmethod
