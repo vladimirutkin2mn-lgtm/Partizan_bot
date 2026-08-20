@@ -10,8 +10,8 @@ from uuid import UUID
 import httpx
 
 from app.config import Settings, get_settings
-from app.customer_autopilot import customer_autopilot_service
-from app.customer_funnel import customer_funnel_service
+from app.customer_autopilot import STAGED_META_CONNECTION_KEY, customer_autopilot_service
+from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE, customer_funnel_service
 from app.customer_schemas import (
     CustomerMetaAdAccountOption,
     CustomerMetaConnectionRequest,
@@ -160,9 +160,7 @@ class CustomerMetaOAuthService:
         self._secret_store = secret_store or provider_secret_store
 
     def begin(self, project_id: UUID, customer_token: str) -> str:
-        project = customer_funnel_service.get_project_payload(project_id, customer_token)
-        if project.get("research_state") != "READY" or not project.get("product_id"):
-            raise CustomerMetaOAuthError("Complete acquisition research before connecting Meta")
+        customer_funnel_service.get_project_payload(project_id, customer_token)
         redirect_uri = self._redirect_uri()
         app_id = self._settings.meta_oauth_app_id
         version = self._settings.meta_oauth_api_version
@@ -256,13 +254,15 @@ class CustomerMetaOAuthService:
         return project_id
 
     def options(self, project_id: UUID, customer_token: str) -> CustomerMetaOptionsView:
-        customer_funnel_service.get_project_payload(project_id, customer_token)
+        project = customer_funnel_service.get_project_payload(project_id, customer_token)
         pending = self._store.get(CUSTOMER_META_PENDING_NAMESPACE, str(project_id))
         connection = self._connection_for_project(project_id)
+        staged = project.get(STAGED_META_CONNECTION_KEY)
+        connected = connection is not None or isinstance(staged, dict)
         if pending is None:
-            return CustomerMetaOptionsView(connected_to_meta=connection is not None)
+            return CustomerMetaOptionsView(connected_to_meta=connected)
         return CustomerMetaOptionsView(
-            connected_to_meta=connection is not None,
+            connected_to_meta=connected,
             ad_accounts=[
                 CustomerMetaAdAccountOption.model_validate(item)
                 for item in pending.get("ad_accounts", [])
@@ -280,9 +280,6 @@ class CustomerMetaOAuthService:
         payload: CustomerMetaConnectionRequest,
     ) -> None:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
-        product_id_raw = project.get("product_id")
-        if not product_id_raw:
-            raise CustomerMetaOAuthError("Customer project has no researched product")
         pending = self._store.get(CUSTOMER_META_PENDING_NAMESPACE, str(project_id))
         if pending is None:
             raise CustomerMetaOAuthError("Connect Meta first to load available ad accounts")
@@ -307,33 +304,69 @@ class CustomerMetaOAuthService:
         if not version:
             raise CustomerMetaOAuthError("META_OAUTH_API_VERSION is not configured")
 
-        product_id = UUID(str(product_id_raw))
-        previous = paid_provider_connection_service.get_meta(product_id)
-        paid_provider_connection_service.upsert_meta(
-            product_id,
-            PaidProviderConnectionCreateRequest(
-                ad_account_id=payload.ad_account_id,
-                page_id=payload.page_id,
-                instagram_actor_id=payload.instagram_actor_id,
-                access_token_env=secret_reference,
-                api_version=version,
-                country_codes=payload.country_codes,
-                default_image_url=None,
-            ),
+        staged_payload = {
+            "ad_account_id": payload.ad_account_id,
+            "page_id": payload.page_id,
+            "instagram_actor_id": payload.instagram_actor_id,
+            "access_token_env": secret_reference,
+            "api_version": version,
+            "country_codes": list(payload.country_codes),
+            "connected_at": datetime.now(UTC).isoformat(),
+        }
+        product_id_raw = project.get("product_id")
+        research_ready = project.get("research_state") == "READY" and bool(product_id_raw)
+        previous_staged = project.get(STAGED_META_CONNECTION_KEY)
+        previous_staged_ref = (
+            str(previous_staged.get("access_token_env") or "")
+            if isinstance(previous_staged, dict)
+            else ""
         )
-        if previous is not None and previous.access_token_env != secret_reference:
-            try:
-                self._secret_store.delete(previous.access_token_env)
-            except Exception:
-                pass
+
+        if research_ready:
+            product_id = UUID(str(product_id_raw))
+            previous = paid_provider_connection_service.get_meta(product_id)
+            paid_provider_connection_service.upsert_meta(
+                product_id,
+                PaidProviderConnectionCreateRequest(
+                    ad_account_id=payload.ad_account_id,
+                    page_id=payload.page_id,
+                    instagram_actor_id=payload.instagram_actor_id,
+                    access_token_env=secret_reference,
+                    api_version=version,
+                    country_codes=payload.country_codes,
+                    default_image_url=None,
+                ),
+            )
+            project.pop(STAGED_META_CONNECTION_KEY, None)
+            self._persist_project(project)
+            if previous is not None and previous.access_token_env != secret_reference:
+                self._safe_delete_secret(previous.access_token_env)
+        else:
+            project[STAGED_META_CONNECTION_KEY] = staged_payload
+            self._persist_project(project)
+
+        if previous_staged_ref and previous_staged_ref != secret_reference:
+            self._safe_delete_secret(previous_staged_ref)
         self._store.delete(CUSTOMER_META_PENDING_NAMESPACE, str(project_id))
         customer_autopilot_service.meta_connected(project_id, customer_token)
 
     def _connection_for_project(self, project_id: UUID):
-        project = self._store.get("customer_acquisition_projects", str(project_id))
+        project = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
         if project is None or not project.get("product_id"):
             return None
+        if project.get("research_state") != "READY":
+            return None
         return paid_provider_connection_service.get_meta(UUID(str(project["product_id"])))
+
+    def _persist_project(self, project: dict) -> None:
+        project["updated_at"] = datetime.now(UTC).isoformat()
+        self._store.put(CUSTOMER_PROJECT_NAMESPACE, project["id"], project)
+
+    def _safe_delete_secret(self, reference: str) -> None:
+        try:
+            self._secret_store.delete(reference)
+        except Exception:
+            pass
 
     def _redirect_uri(self) -> str:
         origin = self._settings.partizan_public_base_url
