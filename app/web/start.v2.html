@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>Partizan — Find your customers</title>
-  <meta name="description" content="Tell Partizan what you sell, fund one Growth Balance, and let the autonomous acquisition engine find customers.">
+  <meta name="description" content="Tell Partizan what you sell, connect your channels, fund one Growth Balance, and let the autonomous acquisition engine find customers.">
   <link rel="stylesheet" href="/start/assets/start.v1.css">
   <link rel="stylesheet" href="/start/assets/start.autopilot.v1.css">
   <link rel="stylesheet" href="/start/assets/start.v2.css">
@@ -51,8 +51,8 @@
         <div>
           <span class="eyebrow">Recommended · autonomous execution</span>
           <h2>Want customers, not another report?</h2>
-          <p>Fund one Growth Balance and Partizan does the audience research, channel selection and experiments under the hood. Connect your channels, set the maximum CAC, and keep control through hard spend guardrails.</p>
-          <small class="autopilot-first-note">No monthly subscription. The strategy is included when you fund Growth Balance. Partizan earns only when acquisition money is actually spent.</small>
+          <p>Connect the channels you already use, set a maximum CAC, then fund one Growth Balance. Partizan does the audience research, channel selection and experiments under the hood.</p>
+          <small class="autopilot-first-note">No monthly subscription. The strategy is included in execution. Partizan earns only when acquisition money is actually spent.</small>
         </div>
         <div class="autopilot-first-actions">
           <div class="autopilot-first-price"><strong id="autopilot-direct-price">10% of acquisition spend</strong><span id="autopilot-direct-fee">from Growth Balance · no monthly fee</span></div>
@@ -68,7 +68,7 @@
           <div><strong id="unlock-price">Unlock Acquisition Plan — $49</strong><p>Get ranked customer segments, named communities, creators, audiences and partner surfaces without launching autonomous acquisition.</p></div>
           <button id="checkout-button" class="button button-primary" type="button">Unlock & research →</button>
         </div>
-        <p class="fine">One-time purchase. If you choose execution instead, the same research is included after funding Growth Balance.</p>
+        <p class="fine">One-time purchase. If you choose execution instead, the same research runs under the hood as part of execution.</p>
       </div>
     </section>
 
@@ -87,8 +87,8 @@
     <section id="autopilot-card" class="autopilot panel hidden">
       <div class="autopilot-intro">
         <span class="eyebrow">Autonomous execution</span>
-        <h2>One Growth Balance. Partizan allocates it.</h2>
-        <p>No subscription. Your Growth Balance covers acquisition spend plus the Partizan management fee. The fee is 10% of actual acquisition spend, so unused money stays available.</p>
+        <h2>Connect access. Set limits. Fund growth.</h2>
+        <p>You do not need to choose channels manually. Partizan maps the audience, decides where to start, and asks for access only where it needs to act. Growth Balance remains the hard spend boundary.</p>
       </div>
       <div class="autopilot-price">
         <strong id="spend-fee">10% of acquisition spend</strong>
@@ -96,21 +96,32 @@
       </div>
 
       <div id="autopilot-setup" class="autopilot-setup">
-        <div class="setup-step growth-balance-step">
-          <div class="setup-copy"><span class="eyebrow">1 · Fund growth</span><h3>Add to Growth Balance</h3><p>This is the all-in acquisition budget Partizan may use. Funding it also unlocks the audience and channel research Partizan needs to execute. The management fee is earned only when acquisition money is actually spent.</p></div>
-          <form id="growth-balance-form" class="growth-balance-form">
-            <div><label for="growth-balance-amount">Amount to add</label><div class="money-input"><span>$</span><input id="growth-balance-amount" type="number" min="1" max="100000" step="1" value="1000" required></div></div>
-            <div id="growth-balance-breakdown" class="balance-breakdown"></div>
-            <button id="growth-balance-button" class="button button-primary" type="submit">Fund Growth Balance →</button>
-          </form>
-          <p id="growth-balance-status" class="dashboard-note"></p>
-        </div>
-
-        <div class="setup-step">
-          <div class="setup-copy"><span class="eyebrow">2 · Connect distribution</span><h3>Connect Meta</h3><p>After Partizan maps the audience, connect your ad account and Page. They remain yours; Partizan receives scoped access to operate them and never receives your password.</p></div>
-          <div class="meta-actions">
-            <button id="meta-connect-button" class="button button-primary" type="button">Connect Meta →</button>
-            <span id="meta-connection-status" class="fine">Fund Growth Balance first; Partizan will map the audience before Meta setup.</span>
+        <div class="setup-step channels-step">
+          <div class="setup-copy"><span class="eyebrow">1 · Connect access</span><h3>Channels Partizan can use</h3><p>Connect what you already have. Partizan will decide which channels fit the audience and will only use access that is actually needed.</p></div>
+          <div class="channel-grid">
+            <article class="channel-card channel-card-live">
+              <div class="channel-card-head"><div><span class="channel-kicker">Paid + social</span><h4>Instagram & Facebook</h4></div><span class="channel-badge ready">Connect now</span></div>
+              <p>Connect your Meta ad account and Facebook Page. They remain yours; Partizan receives scoped access and never receives your password.</p>
+              <div class="meta-actions">
+                <button id="meta-connect-button" class="button button-primary" type="button">Connect Meta →</button>
+                <span id="meta-connection-status" class="fine">You can connect Meta before funding Growth Balance.</span>
+              </div>
+            </article>
+            <article class="channel-card">
+              <div class="channel-card-head"><div><span class="channel-kicker">Organic + paid</span><h4>TikTok</h4></div><span class="channel-badge">Available to Partizan</span></div>
+              <p>Partizan can research TikTok audiences and creative angles. If TikTok is selected for execution, Partizan will request the required account access.</p>
+              <span class="channel-footnote">No access needed yet</span>
+            </article>
+            <article class="channel-card">
+              <div class="channel-card-head"><div><span class="channel-kicker">Communities</span><h4>Reddit</h4></div><span class="channel-badge">Available to Partizan</span></div>
+              <p>Partizan can discover relevant subreddits, conversations and paid opportunities. Connection will be requested only if Reddit is selected.</p>
+              <span class="channel-footnote">No access needed yet</span>
+            </article>
+            <article class="channel-card">
+              <div class="channel-card-head"><div><span class="channel-kicker">Communities + outreach</span><h4>Telegram</h4></div><span class="channel-badge">Available to Partizan</span></div>
+              <p>Partizan can map channels and groups and prepare distribution actions. Account or bot access will be requested only when execution requires it.</p>
+              <span class="channel-footnote">No access needed yet</span>
+            </article>
           </div>
           <form id="meta-options-form" class="meta-options hidden">
             <div><label for="meta-account">Ad account</label><select id="meta-account" required></select></div>
@@ -121,12 +132,22 @@
         </div>
 
         <div class="setup-step">
-          <div class="setup-copy"><span class="eyebrow">3 · Guardrail</span><h3>What is the most Partizan should pay for a customer?</h3><p>The Growth Balance is the hard money boundary. Maximum CAC is the performance boundary.</p></div>
+          <div class="setup-copy"><span class="eyebrow">2 · Guardrails</span><h3>What is the most Partizan should pay for a customer?</h3><p>Save this before funding if you want. Maximum CAC is the performance boundary; Growth Balance will become the hard money boundary once funded.</p></div>
           <form id="autopilot-config-form" class="autopilot-form autopilot-guardrail-form">
             <div><label for="autopilot-cac">Maximum CAC</label><div class="money-input"><span>$</span><input id="autopilot-cac" type="number" min="1" max="100000" step="1" value="30" required></div></div>
             <label class="check-row"><input id="autopilot-confirm-spend" type="checkbox" required><span>I authorize Partizan to run paid experiments autonomously, but never beyond the funded Growth Balance and configured guardrails.</span></label>
             <button id="autopilot-config-button" class="button button-primary" type="submit">Save guardrails</button>
           </form>
+        </div>
+
+        <div class="setup-step growth-balance-step">
+          <div class="setup-copy"><span class="eyebrow">3 · Fund growth</span><h3>Add to Growth Balance</h3><p>This is the all-in acquisition budget Partizan may use. Once funded, Partizan starts the included audience research, chooses the first eligible channel and prepares execution. The management fee is earned only when acquisition money is actually spent.</p></div>
+          <form id="growth-balance-form" class="growth-balance-form">
+            <div><label for="growth-balance-amount">Amount to add</label><div class="money-input"><span>$</span><input id="growth-balance-amount" type="number" min="1" max="100000" step="1" value="1000" required></div></div>
+            <div id="growth-balance-breakdown" class="balance-breakdown"></div>
+            <button id="growth-balance-button" class="button button-primary" type="submit">Fund Growth Balance →</button>
+          </form>
+          <p id="growth-balance-status" class="dashboard-note"></p>
         </div>
       </div>
 
@@ -149,5 +170,6 @@
   </main>
   <script src="/start/assets/goal-dropdown.v1.js" defer></script>
   <script src="/start/assets/start.v2.js" defer></script>
+  <script src="/start/assets/start.channels.v1.js" defer></script>
 </body>
 </html>
