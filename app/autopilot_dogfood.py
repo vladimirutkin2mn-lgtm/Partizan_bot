@@ -14,7 +14,7 @@ from app.config import Settings, get_settings
 from app.customer_autopilot import customer_autopilot_service
 from app.customer_funnel import customer_funnel_service
 from app.product_intake import product_intake_service
-from app.stripe_readiness import StripeReadinessError, verify_autopilot_price, verify_launch_price
+from app.stripe_readiness import StripeReadinessError, verify_launch_price
 
 DOGFOOD_PROJECT_ID_ENV = "PARTIZAN_DOGFOOD_PROJECT_ID"
 DOGFOOD_CUSTOMER_TOKEN_ENV = "PARTIZAN_DOGFOOD_CUSTOMER_TOKEN"
@@ -24,7 +24,6 @@ LIVE_SPEND_CONFIRMATION = "RUN_ONE_LIVE_PAID_SWEEP"
 class AutopilotDogfoodSnapshot(BaseModel):
     project_id: UUID
     product_id: UUID
-    subscription_status: str
     autopilot_status: str
     meta_connected: bool
     growth_balance_available_usd: float = Field(ge=0)
@@ -47,8 +46,8 @@ class AutopilotDogfoodRunner:
     """Production-only harness around customer Autopilot and the growth worker.
 
     A live sweep is fail-closed until the customer has a funded Growth Balance and the
-    Partizan-funded provider payment rail is ready. The harness never falls back to a
-    customer's provider billing method.
+    Partizan-funded provider payment rail is ready. No recurring subscription is part
+    of the execution authorization boundary.
     """
 
     def __init__(
@@ -81,7 +80,6 @@ class AutopilotDogfoodRunner:
         return AutopilotDogfoodSnapshot(
             project_id=project_id,
             product_id=overview.product_id,
-            subscription_status=overview.subscription_status,
             autopilot_status=overview.autopilot_status,
             meta_connected=overview.meta.connected,
             growth_balance_available_usd=balance.available_usd,
@@ -149,8 +147,6 @@ class AutopilotDogfoodRunner:
             )
         if snapshot.readiness_blockers:
             raise ValueError("Live paid sweep is blocked: " + "; ".join(snapshot.readiness_blockers))
-        if snapshot.subscription_status != "ACTIVE":
-            raise ValueError("Autopilot subscription is not ACTIVE")
         if snapshot.autopilot_status != "ACTIVE":
             raise ValueError("Growth Mandate is not ACTIVE")
         if not snapshot.meta_connected:
@@ -165,7 +161,6 @@ class AutopilotDogfoodRunner:
     @staticmethod
     def _verify_stripe(settings: Settings) -> None:
         verify_launch_price(settings)
-        verify_autopilot_price(settings)
 
     @staticmethod
     def _safe_json(value: str) -> Any:

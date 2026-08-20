@@ -161,8 +161,6 @@ class CustomerMetaOAuthService:
 
     def begin(self, project_id: UUID, customer_token: str) -> str:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
-        if project.get("autopilot_subscription_status") != "ACTIVE":
-            raise CustomerMetaOAuthError("Activate Autopilot before connecting Meta")
         if project.get("research_state") != "READY" or not project.get("product_id"):
             raise CustomerMetaOAuthError("Complete acquisition research before connecting Meta")
         redirect_uri = self._redirect_uri()
@@ -282,8 +280,6 @@ class CustomerMetaOAuthService:
         payload: CustomerMetaConnectionRequest,
     ) -> None:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
-        if project.get("autopilot_subscription_status") != "ACTIVE":
-            raise CustomerMetaOAuthError("Autopilot subscription is not active")
         product_id_raw = project.get("product_id")
         if not product_id_raw:
             raise CustomerMetaOAuthError("Customer project has no researched product")

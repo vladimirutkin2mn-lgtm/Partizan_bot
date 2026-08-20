@@ -14,11 +14,9 @@ from app.customer_autopilot import customer_autopilot_service
 from app.customer_billing import (
     BillingConfigurationError,
     construct_stripe_event,
-    create_autopilot_checkout,
     create_growth_balance_checkout,
     create_launch_checkout,
     retrieve_launch_checkout,
-    retrieve_subscription,
 )
 from app.customer_funnel import (
     CUSTOMER_TOKEN_HEADER,
@@ -35,7 +33,6 @@ from app.customer_schemas import (
     CustomerAutopilotConfigureRequest,
     CustomerAutopilotOverview,
     CustomerAutopilotStatusRequest,
-    CustomerAutopilotVerifyRequest,
     CustomerClarificationAnswerRequest,
     CustomerGrowthBalanceTopUpRequest,
     CustomerGrowthBalanceVerifyRequest,
@@ -73,7 +70,7 @@ def _project_error(exc: Exception) -> HTTPException:
         except ValueError:
             pass
         else:
-            detail = "Unlock the Acquisition Plan before starting deep research."
+            detail = "Unlock the Acquisition Plan or fund Growth Balance before starting deep research."
         return HTTPException(status_code=402, detail=detail)
     return HTTPException(status_code=409, detail=str(exc))
 
@@ -224,81 +221,6 @@ async def answer_customer_clarification(
         raise _project_error(exc) from exc
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
-@router.post(
-    "/customer-projects/{project_id}/autopilot/checkout",
-    response_model=CheckoutResponse,
-)
-def create_customer_autopilot_checkout(
-    project_id: UUID,
-    request: Request,
-    settings: Annotated[Settings, Depends(get_settings)],
-    customer_token: Annotated[str | None, Header(alias=CUSTOMER_TOKEN_HEADER)] = None,
-) -> CheckoutResponse:
-    token = _require_customer_token(customer_token)
-    try:
-        generation, stripe_customer_id = customer_autopilot_service.prepare_checkout(project_id, token)
-        public_origin = settings.partizan_public_base_url or str(request.base_url).rstrip("/")
-        checkout = create_autopilot_checkout(
-            settings=settings,
-            project_id=project_id,
-            public_origin=public_origin,
-            checkout_generation=generation,
-            stripe_customer_id=stripe_customer_id,
-        )
-        customer_autopilot_service.mark_checkout_pending(project_id, token, checkout.session_id)
-    except (CustomerProjectNotFoundError, CustomerProjectAccessError, CustomerPaymentRequiredError) as exc:
-        raise _project_error(exc) from exc
-    except BillingConfigurationError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except stripe.StripeError as exc:
-        raise HTTPException(status_code=502, detail="Stripe Autopilot checkout is unavailable") from exc
-    return CheckoutResponse(checkout_url=checkout.url)
-
-
-@router.post(
-    "/customer-projects/{project_id}/autopilot/verify",
-    response_model=CustomerAutopilotOverview,
-)
-def verify_customer_autopilot_checkout(
-    project_id: UUID,
-    payload: CustomerAutopilotVerifyRequest,
-    settings: Annotated[Settings, Depends(get_settings)],
-    customer_token: Annotated[str | None, Header(alias=CUSTOMER_TOKEN_HEADER)] = None,
-) -> CustomerAutopilotOverview:
-    token = _require_customer_token(customer_token)
-    try:
-        session = retrieve_launch_checkout(settings=settings, session_id=payload.session_id)
-        metadata = session.get("metadata") or {}
-        subscription_id = str(session.get("subscription") or "")
-        verified = (
-            str(session.get("id") or "") == payload.session_id
-            and str(session.get("client_reference_id") or "") == str(project_id)
-            and str(metadata.get("partizan_project_id") or "") == str(project_id)
-            and metadata.get("partizan_entitlement") == "autopilot"
-            and session.get("mode") == "subscription"
-            and bool(subscription_id)
-        )
-        if not verified:
-            raise HTTPException(status_code=401, detail="Autopilot Checkout Session could not be verified")
-        subscription = retrieve_subscription(settings=settings, subscription_id=subscription_id)
-        customer_autopilot_service.sync_subscription(
-            project_id,
-            subscription_id=subscription_id,
-            stripe_status=str(subscription.get("status") or ""),
-            stripe_customer_id=(str(session["customer"]) if session.get("customer") else None),
-            checkout_session_id=payload.session_id,
-        )
-        return customer_autopilot_service.overview(project_id, token)
-    except HTTPException:
-        raise
-    except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
-        raise _project_error(exc) from exc
-    except BillingConfigurationError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except stripe.StripeError as exc:
-        raise HTTPException(status_code=502, detail="Stripe subscription verification failed") from exc
 
 
 @router.post(
@@ -575,34 +497,5 @@ async def stripe_webhook(
                 currency=str(obj.get("currency") or ""),
                 stripe_customer_id=(str(obj["customer"]) if obj.get("customer") else None),
             )
-        elif project_id is not None and entitlement == "autopilot" and obj.get("subscription"):
-            subscription_id = str(obj["subscription"])
-            try:
-                subscription = retrieve_subscription(settings=settings, subscription_id=subscription_id)
-            except stripe.StripeError as exc:
-                raise HTTPException(status_code=502, detail="Stripe subscription sync failed") from exc
-            customer_autopilot_service.sync_subscription(
-                project_id,
-                subscription_id=subscription_id,
-                stripe_status=str(subscription.get("status") or ""),
-                stripe_customer_id=(str(obj["customer"]) if obj.get("customer") else None),
-                checkout_session_id=str(obj["id"]),
-            )
-
-    if event_type in {"customer.subscription.updated", "customer.subscription.deleted"}:
-        subscription_metadata = obj.get("metadata") or {}
-        project_id_raw = subscription_metadata.get("partizan_project_id")
-        if project_id_raw and subscription_metadata.get("partizan_entitlement") == "autopilot":
-            try:
-                project_id = UUID(str(project_id_raw))
-            except ValueError:
-                project_id = None
-            if project_id is not None:
-                customer_autopilot_service.sync_subscription(
-                    project_id,
-                    subscription_id=str(obj["id"]),
-                    stripe_status=str(obj.get("status") or "canceled"),
-                    stripe_customer_id=(str(obj["customer"]) if obj.get("customer") else None),
-                )
 
     return {"received": True}

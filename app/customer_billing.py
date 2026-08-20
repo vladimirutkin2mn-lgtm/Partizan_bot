@@ -60,44 +60,6 @@ def create_launch_checkout(
     return StripeCheckout(session_id=str(session.id), url=str(session.url))
 
 
-def create_autopilot_checkout(
-    *,
-    settings: Settings,
-    project_id: UUID,
-    public_origin: str,
-    checkout_generation: int,
-    stripe_customer_id: str | None,
-) -> StripeCheckout:
-    price_id = settings.stripe_autopilot_price_id
-    if not price_id:
-        raise BillingConfigurationError("Stripe Autopilot checkout is not configured")
-    _stripe_secret(settings)
-    metadata = {
-        "partizan_project_id": str(project_id),
-        "partizan_entitlement": "autopilot",
-    }
-    kwargs: dict = {
-        "mode": "subscription",
-        "payment_method_types": ["card"],
-        "line_items": [{"price": price_id, "quantity": 1}],
-        "client_reference_id": str(project_id),
-        "metadata": metadata,
-        "subscription_data": {"metadata": metadata},
-        "success_url": (
-            f"{public_origin}/start?autopilot_checkout=success&project={project_id}"
-            "&session_id={CHECKOUT_SESSION_ID}"
-        ),
-        "cancel_url": f"{public_origin}/start?autopilot_checkout=cancelled&project={project_id}",
-        "idempotency_key": f"partizan-autopilot-{project_id}-{checkout_generation}",
-    }
-    if stripe_customer_id:
-        kwargs["customer"] = stripe_customer_id
-    else:
-        kwargs["customer_creation"] = "always"
-    session = stripe.checkout.Session.create(**kwargs)
-    return StripeCheckout(session_id=str(session.id), url=str(session.url))
-
-
 def create_growth_balance_checkout(
     *,
     settings: Settings,
@@ -159,11 +121,6 @@ def create_growth_balance_checkout(
 def retrieve_launch_checkout(*, settings: Settings, session_id: str):
     _stripe_secret(settings)
     return stripe.checkout.Session.retrieve(session_id)
-
-
-def retrieve_subscription(*, settings: Settings, subscription_id: str):
-    _stripe_secret(settings)
-    return stripe.Subscription.retrieve(subscription_id)
 
 
 def construct_stripe_event(*, settings: Settings, payload: bytes, signature: str):

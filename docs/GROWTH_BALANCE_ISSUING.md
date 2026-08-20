@@ -5,9 +5,10 @@ This runbook enables the Partizan-funded acquisition rail behind Growth Balance.
 The product contract is:
 
 - the customer funds one prepaid Growth Balance;
-- the $149/month Autopilot subscription remains separate;
+- autonomous execution has no monthly subscription;
 - Growth Balance pays actual acquisition/media spend plus Partizan's variable fee;
 - the variable fee is 10% of actual acquisition spend;
+- funding Growth Balance includes the acquisition research required for execution;
 - the customer does not provide a billing card for Partizan-managed Meta spend;
 - Partizan never stores or returns Issuing PAN/CVC.
 
@@ -56,8 +57,9 @@ The existing Stripe settings are still required:
 STRIPE_SECRET_KEY=sk_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_LAUNCH_PRICE_ID=price_...
-STRIPE_AUTOPILOT_PRICE_ID=price_...
 ```
+
+`STRIPE_LAUNCH_PRICE_ID` is only the optional `$49` Acquisition Plan Price. Growth Balance has no recurring Autopilot Price.
 
 Do not copy card numbers, CVCs, or card expiry values into Partizan environment variables, logs, the database, GitHub, or this runbook.
 
@@ -85,7 +87,6 @@ Partizan returns a direct approve/decline decision. Approval requires all of the
 - currency is USD;
 - merchant category is `advertising_services`;
 - the request fits inside remaining project acquisition capacity;
-- the customer's Autopilot subscription is ACTIVE;
 - the Product has an ACTIVE Growth Mandate.
 
 The card-level Stripe MCC and all-time amount controls are a second independent boundary.
@@ -127,7 +128,7 @@ Do not bypass preflight to test a partially configured money-moving rail.
 
 ## 6. Customer funds Growth Balance
 
-After an ACTIVE Autopilot subscription, the customer can fund Growth Balance from `/start`.
+The customer can choose autonomous execution directly after the free pre-scan. No subscription purchase is required.
 
 Before Stripe Checkout opens, Partizan:
 
@@ -139,7 +140,7 @@ Before Stripe Checkout opens, Partizan:
 
 Growth Balance Checkout expires after 30 minutes. The Partizan liquidity reservation is held for 31 minutes to cover delivery/timing skew.
 
-When payment completes, Partizan credits the exact paid amount and provisions or raises the project virtual-card limit. If Checkout was created but the following session-id persistence write failed, the signed paid event can recover the payment from the pre-Stripe liquidity reservation instead of accepting customer money without crediting Growth Balance.
+When payment completes, Partizan credits the exact paid amount, grants the internal acquisition-research entitlement, and provisions or raises the project virtual-card limit. If Checkout was created but the following session-id persistence write failed, the signed paid event can recover the payment from the pre-Stripe liquidity reservation instead of accepting customer money without crediting Growth Balance.
 
 ## 7. Bind the Partizan card to the exact Meta ad account
 
@@ -167,14 +168,16 @@ Do not confirm the binding while the customer-owned payment method can still be 
 
 ## 8. Activate Autopilot
 
-A customer Resume / activation succeeds only when all existing product safety gates pass and:
+A customer Resume / activation succeeds only when all product safety gates pass and:
 
 - Growth Balance has acquisition capacity;
+- acquisition research is complete;
 - Stripe Issuing settlement is ready;
 - Meta is connected;
-- the project card is bound to that Meta account.
+- the project card is bound to that Meta account;
+- the customer has explicitly authorized autonomous paid experiments inside the configured guardrails.
 
-On Pause, subscription billing failure, or another Partizan safety stop, the Growth Mandate is closed first and the Issuing card is then set inactive. The real-time Issuing authorization endpoint also checks current subscription + mandate state, so the software guardrail remains fail-closed even if a card status API call temporarily fails.
+On customer Pause or another Partizan safety stop, the Growth Mandate is closed first and the Issuing card is then set inactive. The real-time Issuing authorization endpoint independently checks the ACTIVE mandate, so the software guardrail remains fail-closed even if a card status API call temporarily fails.
 
 ## 9. Reconciliation
 
@@ -198,7 +201,6 @@ Before the first live sweep verify:
 - Stripe Issuing is enabled and pre-funded;
 - the project card exists and is advertising-only;
 - the exact Meta ad account is bound;
-- Autopilot subscription is ACTIVE;
 - Growth Mandate is ACTIVE;
 - Growth Balance is positive;
 - destination URL is real;

@@ -146,20 +146,19 @@ if [[ -n "${public_base_url}" ]]; then
     config_error "public HTTPS edge files are missing from the release"
   fi
 
-  # The public customer funnel sells both the Acquisition Plan and Autopilot.
-  # Do not publish buttons that silently lead to unconfigured billing.
+  # The public customer funnel sells the optional Acquisition Plan and accepts
+  # Growth Balance funding for autonomous acquisition. There is no Autopilot
+  # subscription Price in the customer contract.
   for stripe_key in \
     STRIPE_SECRET_KEY \
     STRIPE_WEBHOOK_SECRET \
-    STRIPE_LAUNCH_PRICE_ID \
-    STRIPE_AUTOPILOT_PRICE_ID; do
+    STRIPE_LAUNCH_PRICE_ID; do
     require_value "${stripe_key}"
     reject_placeholder "${stripe_key}"
   done
   stripe_secret_key="$(env_value STRIPE_SECRET_KEY)"
   stripe_webhook_secret="$(env_value STRIPE_WEBHOOK_SECRET)"
   stripe_launch_price_id="$(env_value STRIPE_LAUNCH_PRICE_ID)"
-  stripe_autopilot_price_id="$(env_value STRIPE_AUTOPILOT_PRICE_ID)"
   if [[ -n "${stripe_secret_key}" && "${stripe_secret_key}" != sk_* ]]; then
     config_error "STRIPE_SECRET_KEY must be a Stripe secret key"
   fi
@@ -169,12 +168,9 @@ if [[ -n "${public_base_url}" ]]; then
   if [[ -n "${stripe_launch_price_id}" && "${stripe_launch_price_id}" != price_* ]]; then
     config_error "STRIPE_LAUNCH_PRICE_ID must be a Stripe Price ID"
   fi
-  if [[ -n "${stripe_autopilot_price_id}" && "${stripe_autopilot_price_id}" != price_* ]]; then
-    config_error "STRIPE_AUTOPILOT_PRICE_ID must be a Stripe Price ID"
-  fi
 
-  # Public Autopilot exposes self-service Meta connection. Provider credentials are
-  # encrypted at rest and the OAuth app must be explicitly configured before launch.
+  # Public autonomous acquisition exposes self-service Meta connection. Provider
+  # credentials are encrypted at rest and OAuth must be explicitly configured.
   for meta_key in \
     PROVIDER_SECRET_ENCRYPTION_KEY \
     META_OAUTH_APP_ID \

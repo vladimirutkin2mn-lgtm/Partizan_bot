@@ -171,7 +171,7 @@ def test_capture_and_refund_transactions_drive_settled_growth_spend() -> None:
     assert service.settled_spend_cents(PROJECT_ID) == 50_000
 
 
-def test_real_time_authorization_requires_active_project_and_remaining_ad_capacity(monkeypatch) -> None:
+def test_real_time_authorization_requires_active_mandate_and_remaining_ad_capacity(monkeypatch) -> None:
     import app.autonomy_service as autonomy_service
 
     store = MemoryRuntimeStateStore()
@@ -183,7 +183,6 @@ def test_real_time_authorization_requires_active_project_and_remaining_ad_capaci
         {
             "id": str(PROJECT_ID),
             "product_id": str(PRODUCT_ID),
-            "autopilot_subscription_status": "ACTIVE",
         },
     )
     monkeypatch.setattr(

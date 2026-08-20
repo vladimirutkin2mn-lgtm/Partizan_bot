@@ -28,7 +28,7 @@
       <form id="preview-form" class="panel form-panel">
         <label for="website">Website or landing page</label>
         <input id="website" type="url" inputmode="url" required placeholder="https://yourproduct.com">
-        <p class="fine">Partizan uses this destination for tracked acquisition if you later activate Autopilot.</p>
+        <p class="fine">Partizan uses this destination for tracked acquisition if you later launch autonomous acquisition.</p>
         <label for="brief">What do you sell?</label>
         <textarea id="brief" minlength="20" required placeholder="Example: AI bookkeeping assistant for US freelancers. $19/month subscription."></textarea>
         <div class="form-grid">
@@ -43,7 +43,7 @@
 
     <section id="stage-preview" class="stage hidden">
       <span class="eyebrow">Pre-scan complete</span>
-      <h1>Partizan found where to start.<br><em>You choose how much to see.</em></h1>
+      <h1>Partizan found where to start.<br><em>Choose insight or execution.</em></h1>
       <p id="preview-summary" class="lede"></p>
       <div id="direction-grid" class="direction-grid"></div>
 
@@ -51,13 +51,13 @@
         <div>
           <span class="eyebrow">Recommended · autonomous execution</span>
           <h2>Want customers, not another report?</h2>
-          <p>Partizan can keep the audience and channel analysis under the hood, choose the first experiments and surface only the decisions that matter. The full strategy stays available whenever you want it.</p>
-          <small class="autopilot-first-note">The Acquisition Plan is included with Autopilot. Acquisition spend and the Partizan management fee come from one prepaid Growth Balance.</small>
+          <p>Fund one Growth Balance and Partizan does the audience research, channel selection and experiments under the hood. Connect your channels, set the maximum CAC, and keep control through hard spend guardrails.</p>
+          <small class="autopilot-first-note">No monthly subscription. The strategy is included when you fund Growth Balance. Partizan earns only when acquisition money is actually spent.</small>
         </div>
         <div class="autopilot-first-actions">
-          <div class="autopilot-first-price"><strong id="autopilot-direct-price">$149/mo</strong><span id="autopilot-direct-fee">10% of acquisition spend from Growth Balance</span></div>
+          <div class="autopilot-first-price"><strong id="autopilot-direct-price">10% of acquisition spend</strong><span id="autopilot-direct-fee">from Growth Balance · no monthly fee</span></div>
           <button id="autopilot-direct-button" class="button button-primary" type="button">Launch Partizan →</button>
-          <button id="inspect-first-button" class="autopilot-first-link" type="button">I want to inspect the strategy first</button>
+          <button id="inspect-first-button" class="autopilot-first-link" type="button">I only want the Acquisition Plan</button>
         </div>
       </section>
 
@@ -65,10 +65,10 @@
         <div class="locked-head"><div><span class="eyebrow">Acquisition Plan only</span><h2 id="scope-title">Concrete opportunities</h2></div><span class="lock">🔒</span></div>
         <div id="masked-list" class="masked-list"></div>
         <div class="unlock-row">
-          <div><strong id="unlock-price">Unlock Acquisition Plan — $49</strong><p>Get ranked customer segments, named communities, creators, audiences and partner surfaces without activating Autopilot.</p></div>
+          <div><strong id="unlock-price">Unlock Acquisition Plan — $49</strong><p>Get ranked customer segments, named communities, creators, audiences and partner surfaces without launching autonomous acquisition.</p></div>
           <button id="checkout-button" class="button button-primary" type="button">Unlock & research →</button>
         </div>
-        <p class="fine">One-time purchase. Included automatically if you choose Autopilot.</p>
+        <p class="fine">One-time purchase. If you choose execution instead, the same research is included after funding Growth Balance.</p>
       </div>
     </section>
 
@@ -88,21 +88,29 @@
       <div class="autopilot-intro">
         <span class="eyebrow">Autonomous execution</span>
         <h2>One Growth Balance. Partizan allocates it.</h2>
-        <p>Connect your distribution accounts. Partizan chooses experiments, pays acquisition costs from the prepaid Growth Balance and takes its management fee from the same balance as spend occurs.</p>
+        <p>No subscription. Your Growth Balance covers acquisition spend plus the Partizan management fee. The fee is 10% of actual acquisition spend, so unused money stays available.</p>
       </div>
       <div class="autopilot-price">
-        <strong id="autopilot-price">$149<span>/mo</span></strong>
-        <small id="spend-fee">10% of acquisition spend</small>
-        <span id="autopilot-subscription-status" class="subscription-pill">Not active</span>
-        <button id="autopilot-subscribe-button" class="button button-primary" type="button">Start Autopilot →</button>
+        <strong id="spend-fee">10% of acquisition spend</strong>
+        <small>No monthly subscription · no separate $49 charge for the strategy</small>
       </div>
 
-      <div id="autopilot-setup" class="autopilot-setup hidden">
+      <div id="autopilot-setup" class="autopilot-setup">
+        <div class="setup-step growth-balance-step">
+          <div class="setup-copy"><span class="eyebrow">1 · Fund growth</span><h3>Add to Growth Balance</h3><p>This is the all-in acquisition budget Partizan may use. Funding it also unlocks the audience and channel research Partizan needs to execute. The management fee is earned only when acquisition money is actually spent.</p></div>
+          <form id="growth-balance-form" class="growth-balance-form">
+            <div><label for="growth-balance-amount">Amount to add</label><div class="money-input"><span>$</span><input id="growth-balance-amount" type="number" min="1" max="100000" step="1" value="1000" required></div></div>
+            <div id="growth-balance-breakdown" class="balance-breakdown"></div>
+            <button id="growth-balance-button" class="button button-primary" type="submit">Fund Growth Balance →</button>
+          </form>
+          <p id="growth-balance-status" class="dashboard-note"></p>
+        </div>
+
         <div class="setup-step">
-          <div class="setup-copy"><span class="eyebrow">1 · Connect distribution</span><h3>Connect Meta</h3><p>Your ad account, Page and campaign history remain yours. Partizan receives scoped access to operate them; passwords are never shared.</p></div>
+          <div class="setup-copy"><span class="eyebrow">2 · Connect distribution</span><h3>Connect Meta</h3><p>After Partizan maps the audience, connect your ad account and Page. They remain yours; Partizan receives scoped access to operate them and never receives your password.</p></div>
           <div class="meta-actions">
             <button id="meta-connect-button" class="button button-primary" type="button">Connect Meta →</button>
-            <span id="meta-connection-status" class="fine">No Meta ad account connected.</span>
+            <span id="meta-connection-status" class="fine">Fund Growth Balance first; Partizan will map the audience before Meta setup.</span>
           </div>
           <form id="meta-options-form" class="meta-options hidden">
             <div><label for="meta-account">Ad account</label><select id="meta-account" required></select></div>
@@ -110,16 +118,6 @@
             <div><label for="meta-country">Target country code</label><input id="meta-country" maxlength="2" placeholder="US" required></div>
             <button class="button button-primary" type="submit">Use this Meta account</button>
           </form>
-        </div>
-
-        <div class="setup-step growth-balance-step">
-          <div class="setup-copy"><span class="eyebrow">2 · Fund growth</span><h3>Add to Growth Balance</h3><p>This is the all-in acquisition budget Partizan may use. The management fee is earned only when acquisition money is actually spent; unused funds remain in the Growth Balance.</p></div>
-          <form id="growth-balance-form" class="growth-balance-form">
-            <div><label for="growth-balance-amount">Amount to add</label><div class="money-input"><span>$</span><input id="growth-balance-amount" type="number" min="1" max="100000" step="1" value="1000" required></div></div>
-            <div id="growth-balance-breakdown" class="balance-breakdown"></div>
-            <button id="growth-balance-button" class="button button-primary" type="submit">Fund Growth Balance →</button>
-          </form>
-          <p id="growth-balance-status" class="dashboard-note"></p>
         </div>
 
         <div class="setup-step">

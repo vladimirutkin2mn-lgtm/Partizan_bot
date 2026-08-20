@@ -14,7 +14,6 @@ def _snapshot(**overrides) -> AutopilotDogfoodSnapshot:
     values = {
         "project_id": UUID("11111111-1111-1111-1111-111111111111"),
         "product_id": UUID("22222222-2222-2222-2222-222222222222"),
-        "subscription_status": "ACTIVE",
         "autopilot_status": "ACTIVE",
         "meta_connected": True,
         "growth_balance_available_usd": 180.0,
@@ -102,6 +101,13 @@ def test_runtime_gate_accepts_live_provider_shape_without_exposing_api_key() -> 
 
     assert blockers == []
     assert secret not in " ".join(blockers)
+
+
+def test_live_authorization_has_no_subscription_requirement() -> None:
+    snapshot = _snapshot()
+
+    assert "subscription_status" not in snapshot.model_dump()
+    AutopilotDogfoodRunner._assert_live_authorization(snapshot, LIVE_SPEND_CONFIRMATION)
 
 
 def test_dogfood_completion_requires_paid_conversion_and_cac() -> None:

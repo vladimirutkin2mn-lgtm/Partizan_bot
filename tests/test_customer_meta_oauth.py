@@ -64,7 +64,7 @@ def test_meta_resource_requests_keep_user_token_in_bearer_header(monkeypatch) ->
         assert headers == {"Authorization": f"Bearer {token}"}
 
 
-def test_meta_oauth_state_is_one_time_random_and_stored_only_as_digest() -> None:
+def test_meta_oauth_state_is_one_time_random_and_stored_only_as_digest_without_subscription() -> None:
     store = get_runtime_store()
     preview = customer_funnel_service.create_preview(
         CustomerPreviewRequest(
@@ -78,7 +78,6 @@ def test_meta_oauth_state_is_one_time_random_and_stored_only_as_digest() -> None
     assert project is not None
     project["research_state"] = "READY"
     project["product_id"] = str(uuid4())
-    project["autopilot_subscription_status"] = "ACTIVE"
     store.put(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id), project)
 
     service = CustomerMetaOAuthService(store=store, settings=_settings())

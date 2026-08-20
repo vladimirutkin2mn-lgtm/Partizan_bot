@@ -10,7 +10,6 @@ import stripe
 from app.config import Settings, get_settings
 from app.customer_funnel import (
     CUSTOMER_PROJECT_NAMESPACE,
-    CustomerPaymentRequiredError,
     CustomerProjectNotFoundError,
     customer_funnel_service,
 )
@@ -302,7 +301,7 @@ class GrowthBalanceSettlementService:
         if amount_cents > remaining:
             return False
         project = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(rail["project_id"]))
-        if project is None or project.get("autopilot_subscription_status") != "ACTIVE":
+        if project is None:
             return False
         product_id_raw = project.get("product_id")
         if not product_id_raw:
@@ -433,8 +432,6 @@ class GrowthBalanceService:
         amount_usd: float,
     ) -> tuple[int, str | None, int]:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
-        if project.get("autopilot_subscription_status") != "ACTIVE":
-            raise CustomerPaymentRequiredError("Activate the Autopilot subscription first")
         amount_cents = self._usd_to_cents(amount_usd)
         lock_token = self._acquire_liquidity_lock()
         try:
@@ -576,6 +573,12 @@ class GrowthBalanceService:
             if stripe_customer_id:
                 project["stripe_customer_id"] = stripe_customer_id
             project["growth_balance_last_funded_at"] = datetime.now(UTC).isoformat()
+            if not project.get("launch_unlocked"):
+                project["launch_unlocked"] = True
+                project["launch_entitlement_source"] = "GROWTH_BALANCE"
+                project["launch_unlocked_at"] = datetime.now(UTC).isoformat()
+                if project.get("status") in {"PREVIEW", "CHECKOUT_PENDING"}:
+                    project["status"] = "UNLOCKED"
             self._persist_project(project)
         self._sync_project_rail(project_id)
         return True

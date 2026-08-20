@@ -2,20 +2,14 @@ import pytest
 import stripe
 
 from app.config import Settings
-from app.stripe_readiness import (
-    StripeReadinessError,
-    verify_autopilot_price,
-    verify_launch_price,
-)
+from app.stripe_readiness import StripeReadinessError, verify_launch_price
 
 
 def _settings(**overrides) -> Settings:
     values = {
         "stripe_secret_key": "sk_test_not_real",
         "stripe_launch_price_id": "price_launch_not_real",
-        "stripe_autopilot_price_id": "price_autopilot_not_real",
         "partizan_launch_price_usd": 49,
-        "partizan_autopilot_price_usd": 149,
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)
@@ -29,19 +23,6 @@ def _price(**fields) -> stripe.Price:
         "type": "one_time",
         "currency": "usd",
         "unit_amount": 4900,
-    }
-    payload.update(fields)
-    return stripe.Price.construct_from(payload, "sk_test_not_real")
-
-
-def _recurring_price(**fields) -> stripe.Price:
-    payload = {
-        "id": "price_autopilot_not_real",
-        "active": True,
-        "type": "recurring",
-        "currency": "usd",
-        "unit_amount": 14900,
-        "recurring": {"interval": "month"},
     }
     payload.update(fields)
     return stripe.Price.construct_from(payload, "sk_test_not_real")
@@ -76,35 +57,6 @@ def test_launch_price_readiness_rejects_wrong_commercial_config(
         verify_launch_price(_settings())
 
 
-def test_autopilot_price_readiness_accepts_active_149_usd_monthly(monkeypatch) -> None:
-    monkeypatch.setattr(
-        stripe.Price,
-        "retrieve",
-        lambda price_id: _recurring_price(id=price_id),
-    )
-
-    verify_autopilot_price(_settings())
-
-
-@pytest.mark.parametrize(
-    ("fields", "message"),
-    [
-        ({"active": False}, "active"),
-        ({"type": "one_time"}, "recurring"),
-        ({"recurring": {"interval": "year"}}, "monthly"),
-        ({"currency": "eur"}, "USD"),
-        ({"unit_amount": 9900}, "$149 USD"),
-    ],
-)
-def test_autopilot_price_readiness_rejects_wrong_commercial_config(
-    monkeypatch, fields, message
-) -> None:
-    monkeypatch.setattr(stripe.Price, "retrieve", lambda price_id: _recurring_price(**fields))
-
-    with pytest.raises(StripeReadinessError, match=message.replace("$", r"\$")):
-        verify_autopilot_price(_settings())
-
-
 def test_launch_price_readiness_rejects_a_price_missing_expected_fields(monkeypatch) -> None:
     bare = stripe.Price.construct_from({"id": "price_launch_not_real"}, "sk_test_not_real")
     monkeypatch.setattr(stripe.Price, "retrieve", lambda price_id: bare)
@@ -121,6 +73,7 @@ def test_launch_price_readiness_fails_closed_without_billing_config() -> None:
         verify_launch_price(_settings(stripe_launch_price_id=None))
 
 
-def test_autopilot_price_readiness_fails_closed_without_price() -> None:
-    with pytest.raises(StripeReadinessError, match="STRIPE_AUTOPILOT_PRICE_ID"):
-        verify_autopilot_price(_settings(stripe_autopilot_price_id=None))
+def test_readiness_module_has_no_autopilot_subscription_price_contract() -> None:
+    import app.stripe_readiness as readiness
+
+    assert not hasattr(readiness, "verify_autopilot_price")
