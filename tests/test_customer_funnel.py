@@ -186,9 +186,19 @@ def test_customer_start_page_and_assets_are_served() -> None:
     assert "sessionStorage" not in javascript.text
 
 
-def test_landing_primary_ctas_route_to_start_funnel_via_script() -> None:
+def test_landing_all_customer_ctas_route_to_start_not_internal_app() -> None:
+    page = client.get("/")
     javascript = client.get("/site/assets/landing.v1.js")
 
+    assert page.status_code == 200
+    assert 'href="/app"' not in page.text
+    assert page.text.count('href="/start"') >= 5
+    assert "Acquisition Plan: $49 once." in page.text
+    assert "10% of actual acquisition spend" in page.text
+    assert "Customers at $24 CAC" in page.text
+    assert "not a forecast" in page.text
+
     assert javascript.status_code == 200
-    assert 'a.button-primary[href="/app"]' in javascript.text
+    assert 'a[href="/start"]' in javascript.text
     assert "/start?budget=" in javascript.text
+    assert 'a.button-primary[href="/app"]' not in javascript.text
