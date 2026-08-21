@@ -48,6 +48,11 @@ _START_ASSETS = {
     "start.channels.v1.js": "text/javascript; charset=utf-8",
     "goal-dropdown.v1.css": "text/css; charset=utf-8",
     "goal-dropdown.v1.js": "text/javascript; charset=utf-8",
+    "customer-account.v1.css": "text/css; charset=utf-8",
+}
+_CUSTOMER_WORKSPACE_ASSETS = {
+    "workspace.v1.css": "text/css; charset=utf-8",
+    "workspace.v1.js": "text/javascript; charset=utf-8",
 }
 
 router = APIRouter(tags=["web"])
@@ -86,6 +91,27 @@ async def customer_start_asset(asset_name: str) -> FileResponse:
     media_type = _START_ASSETS.get(asset_name)
     if media_type is None:
         raise HTTPException(status_code=404, detail="Customer onboarding asset not found")
+    return FileResponse(_WEB_DIR / asset_name, media_type=media_type)
+
+
+@router.get("/workspace", include_in_schema=False)
+async def customer_workspace() -> HTMLResponse:
+    html = (_WEB_DIR / "workspace.v1.html").read_text(encoding="utf-8")
+    return HTMLResponse(
+        html,
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Cache-Control": "no-store, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
+
+
+@router.get("/workspace/assets/{asset_name}", include_in_schema=False)
+async def customer_workspace_asset(asset_name: str) -> FileResponse:
+    media_type = _CUSTOMER_WORKSPACE_ASSETS.get(asset_name)
+    if media_type is None:
+        raise HTTPException(status_code=404, detail="Customer workspace asset not found")
     return FileResponse(_WEB_DIR / asset_name, media_type=media_type)
 
 

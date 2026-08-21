@@ -5,17 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>Partizan — Find your customers</title>
-  <meta name="description" content="Tell Partizan what you sell, set the limits, and let it research where customers can be reached before asking for any channel access.">
+  <meta name="description" content="Tell Partizan what you sell, see the first acquisition hypotheses, then choose research only or autonomous customer acquisition.">
   <link rel="stylesheet" href="/start/assets/start.v1.css">
-  <link rel="stylesheet" href="/start/assets/start.autopilot.v1.css">
   <link rel="stylesheet" href="/start/assets/start.v2.css">
   <link rel="stylesheet" href="/start/assets/goal-dropdown.v1.css">
+  <link rel="stylesheet" href="/start/assets/customer-account.v1.css">
 </head>
 <body>
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
   <header class="top shell">
     <a class="brand" href="/"><span class="mark">P</span><span><strong>Partizan</strong><small>Customer acquisition</small></span></a>
-    <a class="back" href="/">← Back to site</a>
+    <div class="start-nav"><a class="back" href="/">← Back to site</a><a class="workspace-link" href="/workspace">Open workspace</a></div>
   </header>
 
   <main class="shell main">
@@ -43,27 +43,52 @@
 
     <section id="stage-preview" class="stage hidden">
       <span class="eyebrow">Initial acquisition hypotheses</span>
-      <h1>Partizan has a place to start.<br><em>Now verify the hypothesis.</em></h1>
+      <h1>Partizan has a place to start.<br><em>Choose how far it should go.</em></h1>
       <p id="preview-summary" class="lede"></p>
       <div id="direction-grid" class="direction-grid"></div>
 
-      <section class="panel autopilot-first-launch">
+      <section class="panel autonomous-choice">
         <div>
-          <span class="eyebrow">Recommended · autonomous execution</span>
+          <span class="eyebrow">Recommended · autonomous customer acquisition</span>
           <h2>Want customers, not another report?</h2>
-          <p>Set the economic limits and fund one Growth Balance. Partizan starts the deeper audience and channel research itself, then asks for account access only when a real execution path needs it.</p>
-          <small class="autopilot-first-note">No monthly subscription. The research is included in execution. Partizan earns only when acquisition money is actually spent.</small>
+          <p>Create your Partizan workspace. There you set the economic limits, fund Growth Balance, connect only the integrations Partizan actually needs, and see what it is doing and what results it gets.</p>
+          <small>No monthly subscription. Deep research is included. Partizan earns only when acquisition money is actually spent.</small>
         </div>
-        <div class="autopilot-first-actions">
-          <div class="autopilot-first-price"><strong id="autopilot-direct-price">10% of acquisition spend</strong><span id="autopilot-direct-fee">from Growth Balance · no monthly fee</span></div>
-          <button id="autopilot-direct-button" class="button button-primary" type="button">Set limits & start →</button>
-          <button id="inspect-first-button" class="autopilot-first-link" type="button">I only want the Acquisition Plan</button>
+        <div class="autonomous-choice-actions">
+          <div><strong id="autonomous-price">10% of acquisition spend</strong><span>from Growth Balance · no monthly fee</span></div>
+          <button id="autonomous-button" class="button button-primary" type="button">Create workspace →</button>
+          <button id="research-only-link" class="text-button" type="button">I only want the Acquisition Plan</button>
         </div>
       </section>
 
-      <div id="acquisition-plan-card" class="locked panel">
+      <section id="account-gate" class="panel account-gate hidden">
+        <div class="account-gate-copy">
+          <span class="eyebrow">Your Partizan workspace</span>
+          <h2>Keep your balance, integrations and results in one place.</h2>
+          <p>Autonomous acquisition is an ongoing relationship, so Partizan asks you to create an account before money or integrations are connected.</p>
+          <div class="account-benefits"><span>Growth Balance</span><span>Current work</span><span>Results</span><span>Integrations</span><span>Guardrails</span></div>
+        </div>
+        <div class="account-auth">
+          <form id="register-form" class="account-form">
+            <span class="form-title">Create account</span>
+            <label for="register-email">Email</label><input id="register-email" type="email" autocomplete="email" required placeholder="you@company.com">
+            <label for="register-password">Password</label><input id="register-password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required placeholder="At least 8 characters">
+            <button class="button button-primary" type="submit">Create workspace →</button>
+            <button id="show-login" class="text-button" type="button">Already have an account? Sign in</button>
+          </form>
+          <form id="login-form" class="account-form hidden">
+            <span class="form-title">Sign in</span>
+            <label for="login-email">Email</label><input id="login-email" type="email" autocomplete="email" required placeholder="you@company.com">
+            <label for="login-password">Password</label><input id="login-password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required>
+            <button class="button button-primary" type="submit">Sign in & continue →</button>
+            <button id="show-register" class="text-button" type="button">Create a new account instead</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="acquisition-plan-card" class="locked panel">
         <div class="locked-head"><div><span class="eyebrow">Acquisition Plan only</span><h2 id="scope-title">Deep research, without execution</h2></div><span class="lock">⌁</span></div>
-        <div id="masked-list" class="research-value-grid">
+        <div class="research-value-grid">
           <article><strong>Ranked customer segments</strong><span>Who is most likely to buy and why.</span></article>
           <article><strong>Named acquisition opportunities</strong><span>Actual communities, creators, audiences and partner surfaces when evidence exists.</span></article>
           <article><strong>Evidence behind the recommendation</strong><span>The free hypotheses are checked before you treat them as a plan.</span></article>
@@ -72,98 +97,19 @@
           <div><strong id="unlock-price">Unlock Acquisition Plan — $49</strong><p>One paid research pass for customers who want the intelligence but do not want Partizan to execute autonomously.</p></div>
           <button id="checkout-button" class="button button-primary" type="button">Unlock & research →</button>
         </div>
-        <p class="fine">One-time purchase. If you choose execution instead, the same research runs under the hood and there is no separate $49 charge.</p>
-      </div>
+        <p class="fine">One-time purchase. If you choose autonomous execution instead, the same research runs inside your workspace and there is no separate $49 charge.</p>
+      </section>
     </section>
 
     <section id="stage-unlocked" class="stage hidden">
-      <span class="eyebrow">Partizan workspace</span>
-      <h1>Partizan is mapping the market.<br><em>You stay above the machinery.</em></h1>
-      <p class="lede">Partizan researches the audience and acquisition surfaces first. If it needs one material product detail or a specific account connection, it will ask at that moment.</p>
-      <div id="payment-status" class="status-card"><span class="status-dot"></span><div><strong>Ready</strong><small>Your project is available.</small></div></div>
+      <span class="eyebrow">Acquisition Plan</span>
+      <h1>Partizan is mapping the market.<br><em>Your research stays focused.</em></h1>
+      <p class="lede">This is the research-only path. No Growth Balance, autonomous spend or integrations are required.</p>
+      <div id="payment-status" class="status-card"><span class="status-dot"></span><div><strong>Ready</strong><small>Your Acquisition Plan is available.</small></div></div>
       <button id="research-button" class="button button-primary" type="button">Build acquisition plan →</button>
       <div id="research-progress" class="research-progress hidden"><span class="spinner"></span><div><strong>Partizan is mapping your market…</strong><small>Finding customer segments and concrete distribution opportunities.</small></div></div>
       <div id="clarification-box" class="panel clarification hidden"></div>
-      <button id="view-strategy-button" class="button button-secondary strategy-toggle hidden" type="button">View strategy & audience</button>
       <div id="research-results" class="strategy-results hidden"></div>
-    </section>
-
-    <section id="autopilot-card" class="autopilot panel hidden">
-      <div class="autopilot-intro">
-        <span class="eyebrow">Autonomous execution</span>
-        <h2>Set the limits. Partizan handles the search.</h2>
-        <p>You do not need to connect a catalogue of channels up front. Partizan researches broadly, compares the evidence and asks for access only when a supported execution path actually needs it.</p>
-      </div>
-      <div class="autopilot-price">
-        <strong id="spend-fee">10% of acquisition spend</strong>
-        <small>No monthly subscription · research included</small>
-      </div>
-
-      <div class="research-scope" aria-label="Places Partizan can research">
-        <div><span class="eyebrow">Where Partizan can research</span><p>Public research does not require your login.</p></div>
-        <div class="research-scope-pills">
-          <span>Meta</span><span>TikTok</span><span>Reddit</span><span>Telegram</span><span>Creators</span><span>Newsletters</span><span>Podcasts</span><span>Partnerships</span><span>Search & SEO</span><span>Directories</span><span>Discord & forums</span>
-        </div>
-        <small><strong>Research is not execution.</strong> A surface shown here is not a promise of automatic posting or spend.</small>
-      </div>
-
-      <div id="autopilot-setup" class="autopilot-setup">
-        <div class="setup-step guardrail-step">
-          <div class="setup-copy"><span class="eyebrow">1 · Set the limits</span><h3>What is the most Partizan should pay for a customer?</h3><p>Maximum CAC is the performance boundary. Save it before funding so Partizan knows what “good” must look like while it researches.</p></div>
-          <form id="autopilot-config-form" class="autopilot-form autopilot-guardrail-form">
-            <div><label for="autopilot-cac">Maximum cost per customer</label><div class="money-input"><span>$</span><input id="autopilot-cac" type="number" min="1" max="100000" step="1" value="30" required></div></div>
-            <label class="check-row"><input id="autopilot-confirm-spend" type="checkbox" required><span>I authorize Partizan to run eligible paid experiments autonomously, never beyond the funded Growth Balance and these limits.</span></label>
-            <button id="autopilot-config-button" class="button button-primary" type="submit">Save limits</button>
-          </form>
-        </div>
-
-        <div class="setup-step growth-balance-step">
-          <div class="setup-copy"><span class="eyebrow">2 · Fund the learning loop</span><h3>Add to Growth Balance</h3><p>This is the all-in amount Partizan may use for acquisition spend and its management fee. Funding unlocks the included deep research immediately.</p></div>
-          <form id="growth-balance-form" class="growth-balance-form">
-            <div><label for="growth-balance-amount">Amount to add</label><div class="money-input"><span>$</span><input id="growth-balance-amount" type="number" min="1" max="100000" step="1" value="1000" required></div></div>
-            <div id="growth-balance-breakdown" class="balance-breakdown"></div>
-            <button id="growth-balance-button" class="button button-primary" type="submit">Fund Growth Balance →</button>
-          </form>
-          <p id="growth-balance-status" class="dashboard-note"></p>
-        </div>
-
-        <div id="execution-access-step" class="setup-step channels-step hidden">
-          <div class="setup-copy"><span class="eyebrow">3 · Access, only when needed</span><h3>Partizan has researched before asking for access</h3><p>The current self-service paid adapter is Meta. Other surfaces can still be research or manual-handoff opportunities; Partizan does not pretend they are automatically executable.</p></div>
-          <div class="selected-access-card">
-            <div class="selected-access-copy">
-              <span class="channel-kicker">First-class paid execution</span>
-              <h4>Instagram & Facebook</h4>
-              <p>Connect a Meta ad account only if you want Partizan to be able to run an eligible Meta paid test. Your account remains yours and Partizan receives scoped access.</p>
-            </div>
-            <div class="meta-actions">
-              <button id="meta-connect-button" class="button button-primary" type="button">Connect Meta →</button>
-              <span id="meta-connection-status" class="fine">Research is ready. Connect only if Meta execution is useful.</span>
-            </div>
-          </div>
-          <div class="access-secondary"><span>TikTok</span><span>Reddit</span><span>Telegram</span><small>Research-first surfaces. Access is not requested here unless a supported execution action actually requires it.</small></div>
-          <form id="meta-options-form" class="meta-options hidden">
-            <div><label for="meta-account">Ad account</label><select id="meta-account" required></select></div>
-            <div><label for="meta-page">Facebook Page</label><select id="meta-page" required></select></div>
-            <div><label for="meta-country">Target country code</label><input id="meta-country" maxlength="2" placeholder="US" required></div>
-            <button class="button button-primary" type="submit">Use this Meta account</button>
-          </form>
-          <p class="channel-boundary-note"><strong>Before paid traffic starts:</strong> Partizan also needs a live website or landing page and a production-ready ad-spend rail. Missing prerequisites keep paid execution paused.</p>
-        </div>
-      </div>
-
-      <div id="autopilot-dashboard" class="autopilot-dashboard hidden">
-        <div class="dashboard-head"><div><span class="eyebrow">Autopilot live view</span><h3 id="autopilot-live-status">Setup required</h3></div><div class="dashboard-actions"><button id="autopilot-pause-button" class="button button-secondary" type="button">Pause</button><button id="autopilot-resume-button" class="button button-primary hidden" type="button">Resume</button></div></div>
-        <div class="metric-grid">
-          <article><span>Growth Balance</span><strong id="metric-balance">$0</strong></article>
-          <article><span>Acquisition spend</span><strong id="metric-spent">$0</strong></article>
-          <article><span>Partizan fee</span><strong id="metric-fee">$0</strong></article>
-          <article><span>Customers</span><strong id="metric-customers">0</strong></article>
-          <article><span>CAC</span><strong id="metric-cac">—</strong></article>
-          <article><span>Revenue</span><strong id="metric-revenue">$0</strong></article>
-        </div>
-        <p id="autopilot-blockers" class="dashboard-note"></p>
-        <div class="dashboard-columns"><div><span class="eyebrow">Experiments</span><div id="autopilot-experiments" class="mini-list"></div></div><div><span class="eyebrow">What Partizan is doing</span><div id="autopilot-decisions" class="mini-list"></div></div></div>
-      </div>
     </section>
 
     <div id="notice" class="notice hidden" role="status"></div>

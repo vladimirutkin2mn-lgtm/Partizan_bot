@@ -164,26 +164,40 @@ def test_signed_webhook_cannot_unlock_project_without_matching_pending_checkout(
     assert project.json()["status"] == "PREVIEW"
 
 
-def test_customer_start_page_and_assets_are_served() -> None:
-    page = client.get("/start")
-    css = client.get("/start/assets/start.v1.css")
-    javascript = client.get("/start/assets/start.v2.js")
+def test_customer_start_and_workspace_assets_are_served_on_separate_boundaries() -> None:
+    start = client.get("/start")
+    start_css = client.get("/start/assets/start.v1.css")
+    start_javascript = client.get("/start/assets/start.v2.js")
+    workspace = client.get("/workspace")
+    workspace_javascript = client.get("/workspace/assets/workspace.v1.js")
 
-    assert page.status_code == 200
-    assert "Unlock Acquisition Plan — $49" in page.text
-    assert "Growth Balance" in page.text
-    assert 'id="preview-form"' in page.text
-    assert 'id="checkout-button"' in page.text
-    assert css.status_code == 200
-    assert "--lime" in css.text
-    assert javascript.status_code == 200
-    assert "/v1/customer-projects/preview" in javascript.text
-    assert "/recover-access" in javascript.text
-    assert "/deep-research" in javascript.text
-    assert "/growth-balance/checkout" in javascript.text
-    assert "X-Partizan-Customer-Token" in javascript.text
-    assert "localStorage" in javascript.text
-    assert "sessionStorage" not in javascript.text
+    assert start.status_code == 200
+    assert "Unlock Acquisition Plan — $49" in start.text
+    assert "Growth Balance" in start.text
+    assert 'id="preview-form"' in start.text
+    assert 'id="checkout-button"' in start.text
+    assert 'id="autonomous-button"' in start.text
+    assert 'id="growth-balance-form"' not in start.text
+    assert start_css.status_code == 200
+    assert "--lime" in start_css.text
+    assert start_javascript.status_code == 200
+    assert "/v1/customer-projects/preview" in start_javascript.text
+    assert "/recover-access" in start_javascript.text
+    assert "/deep-research" in start_javascript.text
+    assert "/customer/account/register" in start_javascript.text
+    assert "/growth-balance/checkout" not in start_javascript.text
+    assert "X-Partizan-Customer-Token" in start_javascript.text
+    assert "localStorage" in start_javascript.text
+    assert "sessionStorage" not in start_javascript.text
+
+    assert workspace.status_code == 200
+    assert 'id="fund-form"' in workspace.text
+    assert 'id="guardrail-form"' in workspace.text
+    assert workspace_javascript.status_code == 200
+    assert "/growth-balance/checkout" in workspace_javascript.text
+    assert "/customer/workspace/" in workspace_javascript.text
+    assert "X-Partizan-Customer-Token" not in workspace_javascript.text
+    assert "localStorage" not in workspace_javascript.text
 
 
 def test_landing_all_customer_ctas_route_to_start_not_internal_app() -> None:

@@ -152,48 +152,41 @@ def test_paid_growth_balance_unlocks_research_without_buying_49_plan() -> None:
     assert service.summary(PROJECT_ID, 0.0).funded_usd == 1000.0
 
 
-def test_start_page_is_limits_first_research_then_access_flow() -> None:
+def test_start_page_routes_autonomous_execution_into_customer_workspace() -> None:
     page = client.get("/start")
-    css = client.get("/start/assets/start.v2.css")
-    javascript = client.get("/start/assets/start.v2.js")
+    start_javascript = client.get("/start/assets/start.v2.js")
+    workspace = client.get("/workspace")
+    workspace_javascript = client.get("/workspace/assets/workspace.v1.js")
 
     assert page.status_code == 200
     assert '/start/assets/start.v2.css' in page.text
     assert '/start/assets/start.v2.js' in page.text
     assert '/start/assets/start.channels.v1.js' not in page.text
-    assert 'id="autopilot-direct-button"' in page.text
-    assert 'id="growth-balance-form"' in page.text
-    assert 'id="view-strategy-button"' in page.text
-    assert 'id="execution-access-step"' in page.text
+    assert 'id="autonomous-button"' in page.text
+    assert 'id="register-form"' in page.text
+    assert 'id="login-form"' in page.text
+    assert 'id="growth-balance-form"' not in page.text
+    assert 'id="execution-access-step"' not in page.text
     assert "$149" not in page.text
     assert "No monthly subscription" in page.text
-    assert 'id="autopilot-budget"' not in page.text
-    assert "Where Partizan can research" in page.text
-    assert "Research is not execution." in page.text
-    assert "Channels Partizan can use" not in page.text
-    for research_surface in (
-        "Creators",
-        "Newsletters",
-        "Podcasts",
-        "Partnerships",
-        "Search & SEO",
-        "Directories",
-        "Discord & forums",
-    ):
-        assert research_surface in page.text
-    assert page.text.index("1 · Set the limits") < page.text.index("2 · Fund the learning loop")
-    assert page.text.index("2 · Fund the learning loop") < page.text.index("3 · Access, only when needed")
-    assert 'id="execution-access-step" class="setup-step channels-step hidden"' in page.text
-    assert css.status_code == 200
-    assert ".autopilot-first-launch" in css.text
-    assert ".research-scope-pills" in css.text
-    assert ".selected-access-card" in css.text
-    assert ".growth-balance-form" in css.text
-    assert javascript.status_code == 200
-    assert "View strategy & audience" in javascript.text
-    assert "/autopilot/checkout" not in javascript.text
-    assert "/growth-balance/checkout" in javascript.text
-    assert "marketing_budget_usd" not in javascript.text
-    assert "execution-access-step" in javascript.text
-    assert "Fund securely with Stripe" in javascript.text
-    assert "paid experiments stay paused" in javascript.text.lower()
+    assert "10% of acquisition spend" in page.text
+    assert "Growth Balance" in page.text
+    assert "Current work" in page.text
+    assert "Results" in page.text
+    assert "Integrations" in page.text
+    assert "Guardrails" in page.text
+
+    assert start_javascript.status_code == 200
+    assert "/autopilot/checkout" not in start_javascript.text
+    assert "/customer/account/register" in start_javascript.text
+    assert "/customer/account/projects/claim" in start_javascript.text
+    assert "marketing_budget_usd" not in start_javascript.text
+
+    assert workspace.status_code == 200
+    assert "Fund the learning loop" in workspace.text
+    assert "Access only when useful" in workspace.text
+    assert "Market research" in workspace.text
+    assert workspace_javascript.status_code == 200
+    assert "/growth-balance/checkout" in workspace_javascript.text
+    assert "/meta/connect" in workspace_javascript.text
+    assert "Paid spend is paused until Partizan’s ad-spend rail is ready" in workspace_javascript.text

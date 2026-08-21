@@ -13,6 +13,7 @@ def test_customer_start_is_no_store_and_references_custom_goal_assets() -> None:
     assert response.headers["pragma"] == "no-cache"
     assert '/start/assets/goal-dropdown.v1.css' in response.text
     assert '/start/assets/goal-dropdown.v1.js' in response.text
+    assert '/start/assets/customer-account.v1.css' in response.text
     assert '<select id="goal">' in response.text
 
 
@@ -47,41 +48,43 @@ def test_customer_start_is_honest_about_hypotheses_and_optional_website() -> Non
     assert "Creator @••" not in page.text
 
 
-def test_customer_start_separates_research_scope_from_execution_access() -> None:
+def test_customer_start_sends_autonomous_customers_to_persistent_workspace() -> None:
     page = client.get("/start")
-    css = client.get("/start/assets/start.v2.css")
+    css = client.get("/start/assets/customer-account.v1.css")
     javascript = client.get("/start/assets/start.v2.js")
 
     assert page.status_code == 200
-    assert "Where Partizan can research" in page.text
-    assert "Research is not execution." in page.text
+    assert "10% of acquisition spend" in page.text
+    assert "Create workspace" in page.text
+    assert "Growth Balance" in page.text
+    assert "Current work" in page.text
+    assert "Results" in page.text
+    assert "Integrations" in page.text
+    assert "Guardrails" in page.text
+    assert 'id="register-form"' in page.text
+    assert 'id="login-form"' in page.text
+    assert 'href="/workspace"' in page.text
+    assert 'id="growth-balance-form"' not in page.text
+    assert 'id="execution-access-step"' not in page.text
     assert "Channels Partizan can use" not in page.text
-    for surface in (
-        "Creators",
-        "Newsletters",
-        "Podcasts",
-        "Partnerships",
-        "Search & SEO",
-        "Directories",
-        "Discord & forums",
-    ):
-        assert surface in page.text
-    assert 'id="execution-access-step" class="setup-step channels-step hidden"' in page.text
-    assert "First-class paid execution" in page.text
-    assert "Instagram & Facebook" in page.text
 
     assert css.status_code == 200
-    assert ".research-scope-pills" in css.text
-    assert ".selected-access-card" in css.text
-    assert ".channel-boundary-note" in css.text
-    assert "classList.toggle('hidden', !researchReady)" in javascript.text
+    assert ".account-gate" in css.text
+    assert ".autonomous-choice" in css.text
+    assert javascript.status_code == 200
+    assert "/customer/account/register" in javascript.text
+    assert "/customer/account/login" in javascript.text
+    assert "/customer/account/projects/claim" in javascript.text
+    assert "redirectWorkspace" in javascript.text
 
 
-def test_customer_start_can_restore_same_browser_project() -> None:
+def test_customer_start_keeps_same_browser_recovery_for_pre_account_and_research_only() -> None:
     javascript = client.get("/start/assets/start.v2.js")
 
     assert javascript.status_code == 200
     assert "partizan.customer.preview." in javascript.text
     assert "resumeStoredProject" in javascript.text
     assert "localStorage.getItem(PROJECT_KEY)" in javascript.text
-    assert "Welcome back. Your Partizan project is restored." in javascript.text
+    assert "Your Acquisition Plan is restored" in javascript.text
+    assert "accountOwnsProject" in javascript.text
+    assert "window.location.replace(`/workspace?project=" in javascript.text
