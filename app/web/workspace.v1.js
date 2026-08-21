@@ -138,6 +138,7 @@
   };
 
   const renderResearchStatus = (project, overview) => {
+    $('research-state').classList.remove('good', 'warn');
     if (project.research_state === 'READY') {
       $('research-state').textContent = 'Ready';
       $('research-state').classList.add('good');
@@ -156,15 +157,19 @@
     }
     $('research-state').textContent = overview.growth_balance.funded_usd > 0 ? 'Ready to start' : 'Not started';
     $('research-title').textContent = overview.growth_balance.funded_usd > 0 ? 'Partizan can start mapping the market now' : 'Partizan will map the market after funding';
+    $('research-copy').textContent = 'Funding Growth Balance includes the deep research. There is no separate $49 charge for autonomous execution.';
     $('research-button').classList.toggle('hidden', overview.growth_balance.funded_usd <= 0);
   };
 
   const loadWorkspace = async () => {
     const data = await api(`/customer/workspace/${projectId}`);
     renderWorkspace(data);
-    if (data.project.launch_unlocked && data.project.research_state !== 'NOT_STARTED') {
-      await loadResearch(false);
-    }
+    return data;
+  };
+
+  const refreshWorkspaceWithoutResearch = async () => {
+    const data = await api(`/customer/workspace/${projectId}`);
+    renderWorkspace(data);
     return data;
   };
 
@@ -174,7 +179,7 @@
     try {
       const result = await api(`/customer/workspace/${projectId}/deep-research`, { method: 'POST' });
       renderResearch(result);
-      await loadWorkspace();
+      await refreshWorkspaceWithoutResearch();
       return result;
     } catch (error) {
       showNotice(error.message, true);
@@ -202,7 +207,7 @@
             body: JSON.stringify({ question_id: question.question_id, answer: $('clarification-answer').value.trim() }),
           });
           renderResearch(next);
-          await loadWorkspace();
+          await refreshWorkspaceWithoutResearch();
         } catch (error) {
           showNotice(error.message, true);
         } finally {
@@ -352,7 +357,7 @@
       return;
     }
     $('account-email').textContent = account.email;
-    await loadWorkspace();
+    const initial = await loadWorkspace();
 
     const growthState = params.get('growth_balance');
     const sessionId = params.get('session_id');
@@ -372,6 +377,8 @@
     } else if (growthState === 'cancelled') {
       showNotice('Growth Balance checkout cancelled. No funds were added.');
       window.history.replaceState({}, '', `/workspace?project=${encodeURIComponent(projectId)}`);
+    } else if (initial.project.launch_unlocked && initial.project.research_state !== 'NOT_STARTED') {
+      loadResearch(false).catch(() => {});
     }
 
     const metaState = params.get('meta');
