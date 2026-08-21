@@ -48,9 +48,6 @@ class CustomerAccountService:
         customer_token: str,
     ) -> tuple[CustomerAccountView, str]:
         normalized_email = self._normalize_email(email)
-        if self._store.get(CUSTOMER_ACCOUNT_EMAIL_NAMESPACE, normalized_email) is not None:
-            raise CustomerAccountConflictError("An account with this email already exists. Sign in instead.")
-
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         owner = project.get("customer_account_id")
         if owner:
@@ -70,16 +67,23 @@ class CustomerAccountService:
             "updated_at": now.isoformat(),
         }
         self._store.put(CUSTOMER_ACCOUNT_NAMESPACE, str(account_id), account)
-        self._store.put(
+        email_reserved = self._store.put_if_absent(
             CUSTOMER_ACCOUNT_EMAIL_NAMESPACE,
             normalized_email,
             {"account_id": str(account_id)},
         )
+        if not email_reserved:
+            self._store.delete(CUSTOMER_ACCOUNT_NAMESPACE, str(account_id))
+            raise CustomerAccountConflictError(
+                "An account with this email already exists. Sign in instead."
+            )
         try:
             self._claim_project(account_id, project_id, customer_token)
         except Exception:
             self._store.delete(CUSTOMER_ACCOUNT_NAMESPACE, str(account_id))
-            self._store.delete(CUSTOMER_ACCOUNT_EMAIL_NAMESPACE, normalized_email)
+            email_index = self._store.get(CUSTOMER_ACCOUNT_EMAIL_NAMESPACE, normalized_email)
+            if email_index and str(email_index.get("account_id")) == str(account_id):
+                self._store.delete(CUSTOMER_ACCOUNT_EMAIL_NAMESPACE, normalized_email)
             raise
         session_token = self._create_session(account_id)
         return self.view(account_id), session_token
