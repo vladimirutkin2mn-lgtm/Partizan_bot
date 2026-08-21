@@ -68,10 +68,13 @@ def create_growth_balance_checkout(
     checkout_generation: int,
     amount_cents: int,
     stripe_customer_id: str | None,
+    return_path: str = "/start",
 ) -> StripeCheckout:
     _stripe_secret(settings)
     if amount_cents <= 0:
         raise ValueError("Growth Balance amount must be positive")
+    if not return_path.startswith("/") or return_path.startswith("//") or "?" in return_path:
+        raise ValueError("Growth Balance return_path must be a local path without a query")
     metadata = {
         "partizan_project_id": str(project_id),
         "partizan_entitlement": "growth_balance_topup",
@@ -102,10 +105,12 @@ def create_growth_balance_checkout(
         "payment_intent_data": {"metadata": metadata},
         "expires_at": int(time.time()) + (30 * 60),
         "success_url": (
-            f"{public_origin}/start?growth_balance=success&project={project_id}"
+            f"{public_origin}{return_path}?growth_balance=success&project={project_id}"
             "&session_id={CHECKOUT_SESSION_ID}"
         ),
-        "cancel_url": f"{public_origin}/start?growth_balance=cancelled&project={project_id}",
+        "cancel_url": (
+            f"{public_origin}{return_path}?growth_balance=cancelled&project={project_id}"
+        ),
         "idempotency_key": (
             f"partizan-growth-balance-{project_id}-{checkout_generation}-{amount_cents}"
         ),
