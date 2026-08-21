@@ -147,7 +147,7 @@ Research and other non-spend setup may proceed after funding. Autonomous paid ac
 
 ## 7. Bind the future Partizan card to provider billing
 
-The current MVP **does not** automate adding the Partizan Issuing card to Meta billing. When Issuing is enabled, use an approved secure Stripe card-detail surface and provider billing UI/process. Never copy PAN/CVC through Partizan APIs or persistence.
+The current MVP does **not** automate adding the Partizan Issuing card to Meta billing. When Issuing is enabled, use an approved secure Stripe card-detail surface and provider billing UI/process. Never copy PAN/CVC through Partizan APIs or persistence.
 
 After provider-side attachment, record only the non-sensitive binding fact through the protected operator endpoint:
 
