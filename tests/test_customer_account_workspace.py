@@ -4,13 +4,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.customer_account import (
+    CUSTOMER_ACCOUNT_PROJECT_CLAIM_NAMESPACE,
     CUSTOMER_ACCOUNT_SESSION_COOKIE,
     customer_account_service,
 )
-from app.customer_funnel import customer_funnel_service
+from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE, customer_funnel_service
 from app.customer_schemas import CustomerPreviewRequest
 from app.growth_balance import growth_balance_service
 from app.main import app
+from app.runtime_store import get_runtime_store
 
 
 @pytest.fixture(autouse=True)
@@ -128,6 +130,41 @@ def test_project_cannot_be_claimed_by_a_second_account() -> None:
         },
     )
     assert claim.status_code in {403, 409}
+
+
+def test_project_claim_reservation_blocks_competing_account_before_token_rotation() -> None:
+    owner = TestClient(app)
+    _, created = _register(owner)
+    assert created.status_code == 200
+    candidate = _preview()
+    store = get_runtime_store()
+    store.put(
+        CUSTOMER_ACCOUNT_PROJECT_CLAIM_NAMESPACE,
+        str(candidate.project_id),
+        {
+            "account_id": "competing-account",
+            "project_id": str(candidate.project_id),
+        },
+    )
+
+    claim = owner.post(
+        "/customer/account/projects/claim",
+        json={
+            "project_id": str(candidate.project_id),
+            "customer_token": candidate.customer_token,
+        },
+    )
+
+    assert claim.status_code == 409
+    assert "already being claimed" in claim.json()["detail"]
+    project = store.get(CUSTOMER_PROJECT_NAMESPACE, str(candidate.project_id))
+    assert project is not None
+    assert not project.get("customer_account_id")
+    still_browser_owned = owner.get(
+        f"/v1/customer-projects/{candidate.project_id}",
+        headers={"X-Partizan-Customer-Token": candidate.customer_token},
+    )
+    assert still_browser_owned.status_code == 200
 
 
 def test_logout_revokes_current_session() -> None:
