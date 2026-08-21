@@ -179,6 +179,7 @@
       const data = await api(`/v1/customer-projects/${currentProjectId}/checkout`, { method: 'POST' });
       if (data.already_unlocked) {
         showUnlocked();
+        await startResearch(true);
         return;
       }
       window.location.assign(data.checkout_url);
@@ -191,6 +192,7 @@
 
   const showUnlocked = () => {
     showStage(stageUnlocked);
+    $('research-button').disabled = false;
     $('autopilot-card').classList.remove('hidden');
   };
 
@@ -199,7 +201,7 @@
       const project = await api(`/v1/customer-projects/${currentProjectId}`);
       if (project.launch_unlocked) {
         showUnlocked();
-        if (project.research_state === 'READY') await startResearch(true);
+        await startResearch(true);
         return;
       }
       await new Promise((resolve) => window.setTimeout(resolve, 1000));
