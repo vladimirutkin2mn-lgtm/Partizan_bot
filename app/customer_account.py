@@ -23,6 +23,7 @@ CUSTOMER_ACCOUNT_NAMESPACE = "customer_accounts"
 CUSTOMER_ACCOUNT_EMAIL_NAMESPACE = "customer_account_email_index"
 CUSTOMER_ACCOUNT_SESSION_NAMESPACE = "customer_account_sessions"
 CUSTOMER_ACCOUNT_PROJECT_ACCESS_NAMESPACE = "customer_account_project_access"
+CUSTOMER_ACCOUNT_PROJECT_CLAIM_NAMESPACE = "customer_account_project_claims"
 CUSTOMER_ACCOUNT_SESSION_COOKIE = "partizan_customer_session"
 CUSTOMER_ACCOUNT_SESSION_DAYS = 30
 
@@ -187,6 +188,7 @@ class CustomerAccountService:
             self._store.clear_namespace(CUSTOMER_ACCOUNT_EMAIL_NAMESPACE)
             self._store.clear_namespace(CUSTOMER_ACCOUNT_SESSION_NAMESPACE)
             self._store.clear_namespace(CUSTOMER_ACCOUNT_PROJECT_ACCESS_NAMESPACE)
+            self._store.clear_namespace(CUSTOMER_ACCOUNT_PROJECT_CLAIM_NAMESPACE)
 
     def _claim_project(self, account_id: UUID, project_id: UUID, customer_token: str) -> None:
         project = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
@@ -194,42 +196,92 @@ class CustomerAccountService:
             raise CustomerProjectNotFoundError(project_id)
         existing_owner = str(project.get("customer_account_id") or "")
         if existing_owner:
-            if existing_owner != str(account_id):
-                raise CustomerAccountConflictError("This project already belongs to another account")
-            access = self._store.get(
-                CUSTOMER_ACCOUNT_PROJECT_ACCESS_NAMESPACE,
-                self._project_access_key(account_id, project_id),
-            )
-            if access is None:
-                raise CustomerProjectAccessError(project_id)
+            self._require_existing_project_access(account_id, project_id, existing_owner)
             return
 
         customer_funnel_service.get_project_payload(project_id, customer_token)
-        service_token = secrets.token_urlsafe(32)
-        project["customer_token_hash"] = hashlib.sha256(service_token.encode("utf-8")).hexdigest()
-        project["customer_account_id"] = str(account_id)
-        project["customer_account_claimed_at"] = datetime.now(UTC).isoformat()
-        project["updated_at"] = datetime.now(UTC).isoformat()
-        self._store.put(CUSTOMER_PROJECT_NAMESPACE, str(project_id), project)
-        self._store.put(
-            CUSTOMER_ACCOUNT_PROJECT_ACCESS_NAMESPACE,
-            self._project_access_key(account_id, project_id),
+        claim_key = str(project_id)
+        now = datetime.now(UTC)
+        claimed = self._store.put_if_absent(
+            CUSTOMER_ACCOUNT_PROJECT_CLAIM_NAMESPACE,
+            claim_key,
             {
                 "account_id": str(account_id),
                 "project_id": str(project_id),
-                "customer_token": service_token,
-                "created_at": datetime.now(UTC).isoformat(),
+                "created_at": now.isoformat(),
             },
         )
+        if not claimed:
+            current = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
+            current_owner = str((current or {}).get("customer_account_id") or "")
+            if current_owner:
+                self._require_existing_project_access(account_id, project_id, current_owner)
+                return
+            raise CustomerAccountConflictError("This project is already being claimed")
+
+        try:
+            project = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
+            if project is None:
+                raise CustomerProjectNotFoundError(project_id)
+            existing_owner = str(project.get("customer_account_id") or "")
+            if existing_owner:
+                self._require_existing_project_access(account_id, project_id, existing_owner)
+                return
+
+            service_token = secrets.token_urlsafe(32)
+            project["customer_token_hash"] = hashlib.sha256(
+                service_token.encode("utf-8")
+            ).hexdigest()
+            project["customer_account_id"] = str(account_id)
+            project["customer_account_claimed_at"] = datetime.now(UTC).isoformat()
+            project["updated_at"] = datetime.now(UTC).isoformat()
+            self._store.put(CUSTOMER_PROJECT_NAMESPACE, str(project_id), project)
+            self._store.put(
+                CUSTOMER_ACCOUNT_PROJECT_ACCESS_NAMESPACE,
+                self._project_access_key(account_id, project_id),
+                {
+                    "account_id": str(account_id),
+                    "project_id": str(project_id),
+                    "customer_token": service_token,
+                    "created_at": datetime.now(UTC).isoformat(),
+                },
+            )
+            self._attach_project_to_account(account_id, project_id)
+        except Exception:
+            current = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
+            current_owner = str((current or {}).get("customer_account_id") or "")
+            if current_owner != str(account_id):
+                reservation = self._store.get(CUSTOMER_ACCOUNT_PROJECT_CLAIM_NAMESPACE, claim_key)
+                if reservation and str(reservation.get("account_id")) == str(account_id):
+                    self._store.delete(CUSTOMER_ACCOUNT_PROJECT_CLAIM_NAMESPACE, claim_key)
+            raise
+
+    def _require_existing_project_access(
+        self,
+        account_id: UUID,
+        project_id: UUID,
+        existing_owner: str,
+    ) -> None:
+        if existing_owner != str(account_id):
+            raise CustomerAccountConflictError("This project already belongs to another account")
+        access = self._store.get(
+            CUSTOMER_ACCOUNT_PROJECT_ACCESS_NAMESPACE,
+            self._project_access_key(account_id, project_id),
+        )
+        if access is None:
+            raise CustomerProjectAccessError(project_id)
+        self._attach_project_to_account(account_id, project_id)
+
+    def _attach_project_to_account(self, account_id: UUID, project_id: UUID) -> None:
         account = self._store.get(CUSTOMER_ACCOUNT_NAMESPACE, str(account_id))
         if account is None:
             raise CustomerAccountAuthenticationError("Partizan account no longer exists")
         project_ids = [str(item) for item in account.get("project_ids", [])]
         if str(project_id) not in project_ids:
             project_ids.append(str(project_id))
-        account["project_ids"] = project_ids
-        account["updated_at"] = datetime.now(UTC).isoformat()
-        self._store.put(CUSTOMER_ACCOUNT_NAMESPACE, str(account_id), account)
+            account["project_ids"] = project_ids
+            account["updated_at"] = datetime.now(UTC).isoformat()
+            self._store.put(CUSTOMER_ACCOUNT_NAMESPACE, str(account_id), account)
 
     def _create_session(self, account_id: UUID) -> str:
         token = secrets.token_urlsafe(32)
