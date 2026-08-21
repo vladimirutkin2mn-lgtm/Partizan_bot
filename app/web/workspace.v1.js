@@ -51,6 +51,31 @@
     return 'Fund the learning loop to start.';
   };
 
+  const renderAccountNav = () => {
+    $('account-email').textContent = account.email;
+    $('account-nav').classList.remove('hidden');
+    const switcher = $('project-switcher');
+    switcher.innerHTML = account.projects.map((item) => {
+      const brief = item.brief.length > 42 ? `${item.brief.slice(0, 42)}…` : item.brief;
+      return `<option value="${escapeHtml(item.project_id)}">${escapeHtml(brief)}</option>`;
+    }).join('');
+    switcher.value = projectId || '';
+    switcher.classList.toggle('hidden', account.projects.length < 2);
+  };
+
+  const showLoginGate = (message = '') => {
+    $('loading').classList.add('hidden');
+    $('workspace').classList.add('hidden');
+    $('account-nav').classList.add('hidden');
+    $('login-gate').classList.remove('hidden');
+    if (message) showNotice(message, true);
+  };
+
+  const hideLoginGate = () => {
+    $('login-gate').classList.add('hidden');
+    $('loading').classList.remove('hidden');
+  };
+
   const renderActivity = (overview) => {
     const work = [];
     overview.running_experiments.slice(0, 5).forEach((item) => work.push({
@@ -78,6 +103,30 @@
       : '<div><strong>Waiting for the first signal</strong><span>Acquisition and learning decisions will appear here.</span></div>';
   };
 
+  const renderResearchStatus = (project, overview) => {
+    $('research-state').classList.remove('good', 'warn');
+    if (project.research_state === 'READY') {
+      $('research-state').textContent = 'Ready';
+      $('research-state').classList.add('good');
+      $('research-title').textContent = 'Market mapped';
+      $('research-copy').textContent = 'Partizan has mapped the current customer segments and acquisition opportunities. The plan can keep evolving as experiments produce evidence.';
+      $('research-button').classList.add('hidden');
+      return;
+    }
+    if (project.research_state === 'NEEDS_INPUT') {
+      $('research-state').textContent = 'Needs one detail';
+      $('research-state').classList.add('warn');
+      $('research-title').textContent = 'One useful clarification is needed';
+      $('research-copy').textContent = 'Partizan asks only when one product detail materially changes the acquisition plan.';
+      $('research-button').classList.remove('hidden');
+      return;
+    }
+    $('research-state').textContent = overview.growth_balance.funded_usd > 0 ? 'Ready to start' : 'Not started';
+    $('research-title').textContent = overview.growth_balance.funded_usd > 0 ? 'Partizan can start mapping the market now' : 'Partizan will map the market after funding';
+    $('research-copy').textContent = 'Funding Growth Balance includes the deep research. There is no separate $49 charge for autonomous execution.';
+    $('research-button').classList.toggle('hidden', overview.growth_balance.funded_usd <= 0);
+  };
+
   const renderWorkspace = (data) => {
     workspace = data;
     account = data.account;
@@ -85,7 +134,7 @@
     const overview = data.autopilot;
     const balance = overview.growth_balance;
 
-    $('account-email').textContent = account.email;
+    renderAccountNav();
     $('workspace-status').textContent = statusText(overview);
     $('workspace-summary').textContent = project.brief;
     $('project-market').textContent = project.market;
@@ -134,31 +183,8 @@
 
     renderResearchStatus(project, overview);
     $('loading').classList.add('hidden');
+    $('login-gate').classList.add('hidden');
     $('workspace').classList.remove('hidden');
-  };
-
-  const renderResearchStatus = (project, overview) => {
-    $('research-state').classList.remove('good', 'warn');
-    if (project.research_state === 'READY') {
-      $('research-state').textContent = 'Ready';
-      $('research-state').classList.add('good');
-      $('research-title').textContent = 'Market mapped';
-      $('research-copy').textContent = 'Partizan has mapped the current customer segments and acquisition opportunities. The plan can keep evolving as experiments produce evidence.';
-      $('research-button').classList.add('hidden');
-      return;
-    }
-    if (project.research_state === 'NEEDS_INPUT') {
-      $('research-state').textContent = 'Needs one detail';
-      $('research-state').classList.add('warn');
-      $('research-title').textContent = 'One useful clarification is needed';
-      $('research-copy').textContent = 'Partizan asks only when one product detail materially changes the acquisition plan.';
-      $('research-button').classList.remove('hidden');
-      return;
-    }
-    $('research-state').textContent = overview.growth_balance.funded_usd > 0 ? 'Ready to start' : 'Not started';
-    $('research-title').textContent = overview.growth_balance.funded_usd > 0 ? 'Partizan can start mapping the market now' : 'Partizan will map the market after funding';
-    $('research-copy').textContent = 'Funding Growth Balance includes the deep research. There is no separate $49 charge for autonomous execution.';
-    $('research-button').classList.toggle('hidden', overview.growth_balance.funded_usd <= 0);
   };
 
   const loadWorkspace = async () => {
@@ -171,23 +197,6 @@
     const data = await api(`/customer/workspace/${projectId}`);
     renderWorkspace(data);
     return data;
-  };
-
-  const loadResearch = async (showProgress = true) => {
-    if (showProgress) $('research-progress').classList.remove('hidden');
-    $('research-button').disabled = true;
-    try {
-      const result = await api(`/customer/workspace/${projectId}/deep-research`, { method: 'POST' });
-      renderResearch(result);
-      await refreshWorkspaceWithoutResearch();
-      return result;
-    } catch (error) {
-      showNotice(error.message, true);
-      throw error;
-    } finally {
-      $('research-progress').classList.add('hidden');
-      $('research-button').disabled = false;
-    }
   };
 
   const renderResearch = (result) => {
@@ -222,6 +231,104 @@
     results.innerHTML = `<div><h3>Who Partizan will target first</h3><div class="result-grid">${result.icps.map((item) => `<article class="result-card"><strong>${escapeHtml(item.title)}</strong><span>${Math.round(item.score)}/100 fit</span><p>${escapeHtml(item.description)}</p></article>`).join('')}</div></div><div><h3>Where Partizan sees opportunity</h3><div class="result-grid">${result.opportunities.slice(0, 12).map((item) => `<article class="result-card"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.platform)} · ${escapeHtml(item.kind)}</span><p>${escapeHtml(item.rationale || 'Relevant acquisition opportunity')}</p>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Open ↗</a>` : ''}</article>`).join('')}</div></div>`;
     results.classList.remove('hidden');
   };
+
+  const loadResearch = async (showProgress = true) => {
+    if (showProgress) $('research-progress').classList.remove('hidden');
+    $('research-button').disabled = true;
+    try {
+      const result = await api(`/customer/workspace/${projectId}/deep-research`, { method: 'POST' });
+      renderResearch(result);
+      await refreshWorkspaceWithoutResearch();
+      return result;
+    } catch (error) {
+      showNotice(error.message, true);
+      throw error;
+    } finally {
+      $('research-progress').classList.add('hidden');
+      $('research-button').disabled = false;
+    }
+  };
+
+  const handleCallbacks = async (initial) => {
+    const growthState = params.get('growth_balance');
+    const sessionId = params.get('session_id');
+    if (growthState === 'success' && sessionId) {
+      try {
+        const overview = await api(`/customer/workspace/${projectId}/growth-balance/verify`, {
+          method: 'POST',
+          body: JSON.stringify({ session_id: sessionId }),
+        });
+        showNotice(`Growth Balance funded. Available: ${money(overview.growth_balance.available_usd)}.`);
+        await loadWorkspace();
+        await loadResearch(true);
+        window.history.replaceState({}, '', `/workspace?project=${encodeURIComponent(projectId)}`);
+      } catch (error) {
+        showNotice(error.message, true);
+      }
+    } else if (growthState === 'cancelled') {
+      showNotice('Growth Balance checkout cancelled. No funds were added.');
+      window.history.replaceState({}, '', `/workspace?project=${encodeURIComponent(projectId)}`);
+    } else if (initial.project.launch_unlocked && initial.project.research_state !== 'NOT_STARTED') {
+      loadResearch(false).catch(() => {});
+    }
+
+    const metaState = params.get('meta');
+    if (metaState === 'connected') {
+      try {
+        await loadMetaOptions();
+        showNotice('Meta authorized. Choose the ad account Partizan should use.');
+      } catch (error) {
+        showNotice(error.message, true);
+      }
+    } else if (metaState === 'error') {
+      showNotice('Meta connection was not completed.', true);
+    }
+  };
+
+  const openAccount = async (accountData) => {
+    account = accountData;
+    if (!account.projects.length) {
+      window.location.replace('/start');
+      return;
+    }
+    if (!projectId) projectId = account.projects[0].project_id;
+    if (!account.projects.some((item) => item.project_id === projectId)) {
+      projectId = account.projects[0].project_id;
+    }
+    hideLoginGate();
+    renderAccountNav();
+    window.history.replaceState({}, '', `/workspace?project=${encodeURIComponent(projectId)}${window.location.search.includes('growth_balance=') || window.location.search.includes('meta=') ? `&${window.location.search.slice(1).replace(/^project=[^&]*&?/, '')}` : ''}`);
+    const initial = await loadWorkspace();
+    await handleCallbacks(initial);
+  };
+
+  $('workspace-login-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = event.submitter;
+    button.disabled = true;
+    button.textContent = 'Signing in…';
+    try {
+      const accountData = await api('/customer/account/login', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: $('workspace-login-email').value.trim(),
+          password: $('workspace-login-password').value,
+        }),
+      });
+      await openAccount(accountData);
+    } catch (error) {
+      showNotice(error.message, true);
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Sign in →';
+    }
+  });
+
+  $('project-switcher').addEventListener('change', (event) => {
+    const nextProject = event.target.value;
+    if (!nextProject || nextProject === projectId) return;
+    window.location.assign(`/workspace?project=${encodeURIComponent(nextProject)}`);
+  });
 
   $('fund-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -333,66 +440,25 @@
 
   $('logout-button').addEventListener('click', async () => {
     try { await api('/customer/account/logout', { method: 'POST' }); } catch (_) { /* ignore */ }
-    window.location.assign('/start');
+    account = null;
+    workspace = null;
+    projectId = null;
+    window.history.replaceState({}, '', '/workspace');
+    showLoginGate();
   });
 
   const bootstrap = async () => {
     try {
-      account = await api('/customer/account/me');
+      const accountData = await api('/customer/account/me');
+      await openAccount(accountData);
     } catch (error) {
       if (error.status === 401) {
-        window.location.replace('/start?login=required');
+        showLoginGate();
         return;
       }
-      showNotice(error.message, true);
-      return;
-    }
-    if (!projectId) projectId = account.projects[0]?.project_id || null;
-    if (!projectId) {
-      window.location.replace('/start');
-      return;
-    }
-    if (!account.projects.some((item) => item.project_id === projectId)) {
-      showNotice('This project does not belong to your Partizan account.', true);
-      return;
-    }
-    $('account-email').textContent = account.email;
-    const initial = await loadWorkspace();
-
-    const growthState = params.get('growth_balance');
-    const sessionId = params.get('session_id');
-    if (growthState === 'success' && sessionId) {
-      try {
-        const overview = await api(`/customer/workspace/${projectId}/growth-balance/verify`, {
-          method: 'POST',
-          body: JSON.stringify({ session_id: sessionId }),
-        });
-        showNotice(`Growth Balance funded. Available: ${money(overview.growth_balance.available_usd)}.`);
-        await loadWorkspace();
-        await loadResearch(true);
-        window.history.replaceState({}, '', `/workspace?project=${encodeURIComponent(projectId)}`);
-      } catch (error) {
-        showNotice(error.message, true);
-      }
-    } else if (growthState === 'cancelled') {
-      showNotice('Growth Balance checkout cancelled. No funds were added.');
-      window.history.replaceState({}, '', `/workspace?project=${encodeURIComponent(projectId)}`);
-    } else if (initial.project.launch_unlocked && initial.project.research_state !== 'NOT_STARTED') {
-      loadResearch(false).catch(() => {});
-    }
-
-    const metaState = params.get('meta');
-    if (metaState === 'connected') {
-      try {
-        await loadMetaOptions();
-        showNotice('Meta authorized. Choose the ad account Partizan should use.');
-      } catch (error) {
-        showNotice(error.message, true);
-      }
-    } else if (metaState === 'error') {
-      showNotice('Meta connection was not completed.', true);
+      showLoginGate(error.message);
     }
   };
 
-  bootstrap().catch((error) => showNotice(error.message, true));
+  bootstrap().catch((error) => showLoginGate(error.message));
 })();
