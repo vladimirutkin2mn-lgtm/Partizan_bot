@@ -31,11 +31,15 @@ def test_preview_budget_still_requires_positive_amount() -> None:
         _payload(0)
 
 
-def test_start_form_keeps_preview_budget_flexible_and_removes_delegated_budget() -> None:
-    html = Path("app/web/start.v2.html").read_text(encoding="utf-8")
-    assert 'id="budget" type="number" min="1" max="100000" step="1"' in html
-    assert 'id="growth-balance-amount" type="number" min="1" max="100000" step="1"' in html
-    assert 'id="autopilot-budget"' not in html
+def test_budget_inputs_follow_funnel_and_workspace_ownership() -> None:
+    start_html = Path("app/web/start.v2.html").read_text(encoding="utf-8")
+    workspace_html = Path("app/web/workspace.v1.html").read_text(encoding="utf-8")
+
+    assert 'id="budget" type="number" min="1" max="100000" step="1"' in start_html
+    assert 'id="fund-amount" type="number" min="1" max="100000" step="1"' in workspace_html
+    assert 'id="fund-amount"' not in start_html
+    assert 'id="autopilot-budget"' not in start_html
+    assert 'id="autopilot-budget"' not in workspace_html
 
 
 def test_growth_balance_topup_accepts_small_all_in_amounts_without_restoring_budget_field() -> None:
