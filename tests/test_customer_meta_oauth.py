@@ -3,6 +3,7 @@ from __future__ import annotations
 from urllib.parse import parse_qs, urlsplit
 
 from cryptography.fernet import Fernet
+from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.customer_autopilot import STAGED_META_CONNECTION_KEY
@@ -10,12 +11,16 @@ from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE, customer_funnel_serv
 from app.customer_meta_oauth import (
     CUSTOMER_META_OAUTH_STATE_NAMESPACE,
     CUSTOMER_META_PENDING_NAMESPACE,
+    CustomerMetaOAuthError,
     CustomerMetaOAuthService,
     HttpxMetaOAuthClient,
 )
 from app.customer_schemas import CustomerMetaConnectionRequest, CustomerPreviewRequest
+from app.main import app
 from app.provider_secret_store import ProviderSecretStore
 from app.runtime_store import get_runtime_store
+
+client = TestClient(app)
 
 
 class _Response:
@@ -63,11 +68,11 @@ def test_meta_resource_requests_keep_user_token_in_bearer_header(monkeypatch) ->
         return _Response({"promote_pages": {"data": [{"id": "page_1", "name": "Page"}]}})
 
     monkeypatch.setattr("app.customer_meta_oauth.httpx.get", fake_get)
-    client = HttpxMetaOAuthClient(_settings())
+    oauth_client = HttpxMetaOAuthClient(_settings())
     token = "EAAB-not-a-real-user-token"
 
-    accounts = client.ad_accounts(token)
-    pages = client.promote_pages(token, "123")
+    accounts = oauth_client.ad_accounts(token)
+    pages = oauth_client.promote_pages(token, "123")
 
     assert accounts[0]["account_id"] == "123"
     assert pages[0]["id"] == "page_1"
@@ -97,6 +102,67 @@ def test_meta_oauth_can_begin_before_research_or_funding() -> None:
     persisted = store.list_namespace(CUSTOMER_META_OAUTH_STATE_NAMESPACE)
     assert len(persisted) >= 1
     assert all(state not in str(item) for item in persisted)
+    assert service.pending_context(state) == (preview.project_id, "/start")
+
+
+def test_meta_oauth_state_preserves_workspace_return_without_open_redirect() -> None:
+    preview = _preview()
+    service = CustomerMetaOAuthService(store=get_runtime_store(), settings=_settings())
+
+    authorization_url = service.begin(
+        preview.project_id,
+        preview.customer_token,
+        return_path="/workspace",
+    )
+    state = parse_qs(urlsplit(authorization_url).query)["state"][0]
+
+    assert service.pending_context(state) == (preview.project_id, "/workspace")
+    try:
+        service.begin(
+            preview.project_id,
+            preview.customer_token,
+            return_path="https://evil.example/steal",
+        )
+    except CustomerMetaOAuthError as exc:
+        assert "return path" in str(exc)
+    else:
+        raise AssertionError("Meta OAuth must reject arbitrary return URLs")
+
+
+def test_meta_oauth_callback_returns_autonomous_customer_to_workspace(monkeypatch) -> None:
+    preview = _preview()
+    monkeypatch.setattr(
+        "app.customer_routes.customer_meta_oauth_service.complete_with_return",
+        lambda **kwargs: (preview.project_id, "/workspace"),
+    )
+
+    response = client.get(
+        "/v1/customer-meta/oauth/callback?state=workspace-state&code=meta-code",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == (
+        f"/workspace?meta=connected&project={preview.project_id}"
+    )
+
+
+def test_meta_oauth_error_returns_to_workspace_when_state_has_workspace_context(
+    monkeypatch,
+) -> None:
+    preview = _preview()
+    monkeypatch.setattr(
+        "app.customer_routes.customer_meta_oauth_service.pending_context",
+        lambda state: (preview.project_id, "/workspace"),
+    )
+
+    response = client.get(
+        "/v1/customer-meta/oauth/callback?state=workspace-state&error=access_denied",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/workspace?meta=error&project={preview.project_id}"
 
 
 def test_meta_account_is_staged_until_research_creates_product() -> None:
