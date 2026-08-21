@@ -152,52 +152,48 @@ def test_paid_growth_balance_unlocks_research_without_buying_49_plan() -> None:
     assert service.summary(PROJECT_ID, 0.0).funded_usd == 1000.0
 
 
-def test_start_page_is_research_first_growth_balance_execution_flow() -> None:
+def test_start_page_is_limits_first_research_then_access_flow() -> None:
     page = client.get("/start")
     css = client.get("/start/assets/start.v2.css")
     javascript = client.get("/start/assets/start.v2.js")
-    channel_javascript = client.get("/start/assets/start.channels.v1.js")
 
     assert page.status_code == 200
     assert '/start/assets/start.v2.css' in page.text
     assert '/start/assets/start.v2.js' in page.text
-    assert '/start/assets/start.channels.v1.js' in page.text
+    assert '/start/assets/start.channels.v1.js' not in page.text
     assert 'id="autopilot-direct-button"' in page.text
     assert 'id="growth-balance-form"' in page.text
     assert 'id="view-strategy-button"' in page.text
+    assert 'id="execution-access-step"' in page.text
     assert "$149" not in page.text
     assert "No monthly subscription" in page.text
     assert 'id="autopilot-budget"' not in page.text
-    assert "Where Partizan can find customers" in page.text
-    assert "Execution ecosystems" in page.text
-    assert "Public-web research" in page.text
+    assert "Where Partizan can research" in page.text
     assert "Research is not execution." in page.text
     assert "Channels Partizan can use" not in page.text
-    for channel in ("Instagram & Facebook", "TikTok", "Reddit", "Telegram"):
-        assert channel in page.text
     for research_surface in (
-        "Creators & influencers",
-        "Newsletters & podcasts",
-        "Partnerships & affiliates",
-        "Google Search & SEO",
-        "Directories & niche sites",
-        "Discord, forums & groups",
+        "Creators",
+        "Newsletters",
+        "Podcasts",
+        "Partnerships",
+        "Search & SEO",
+        "Directories",
+        "Discord & forums",
     ):
         assert research_surface in page.text
-    assert page.text.index("1 · Find customers & connect access") < page.text.index("2 · Guardrails")
-    assert page.text.index("2 · Guardrails") < page.text.index("3 · Fund growth")
+    assert page.text.index("1 · Set the limits") < page.text.index("2 · Fund the learning loop")
+    assert page.text.index("2 · Fund the learning loop") < page.text.index("3 · Access, only when needed")
+    assert 'id="execution-access-step" class="setup-step channels-step hidden"' in page.text
     assert css.status_code == 200
     assert ".autopilot-first-launch" in css.text
-    assert ".channel-grid" in css.text
-    assert ".research-channel-grid" in css.text
+    assert ".research-scope-pills" in css.text
+    assert ".selected-access-card" in css.text
     assert ".growth-balance-form" in css.text
     assert javascript.status_code == 200
     assert "View strategy & audience" in javascript.text
     assert "/autopilot/checkout" not in javascript.text
     assert "/growth-balance/checkout" in javascript.text
     assert "marketing_budget_usd" not in javascript.text
-    assert channel_javascript.status_code == 200
-    assert "Fund securely with Stripe now" in channel_javascript.text
-    assert "Paid acquisition will stay paused" in channel_javascript.text
-    assert "meta-connect-button" in channel_javascript.text
-    assert "autopilot-config-button" in channel_javascript.text
+    assert "execution-access-step" in javascript.text
+    assert "Fund securely with Stripe" in javascript.text
+    assert "paid experiments stay paused" in javascript.text.lower()

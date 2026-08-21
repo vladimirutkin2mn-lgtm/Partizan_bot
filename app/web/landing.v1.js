@@ -21,18 +21,18 @@
 
     const channels = Math.max(2, Math.min(7, Math.round(2 + value / 900)));
     const experiments = Math.max(3, Math.min(15, Math.round(3 + value / 270)));
-    const customers = Math.max(8, Math.round(value / 24));
+    const customersAtExampleCac = Math.max(1, Math.floor(value / 24));
 
     budgetValue.textContent = formatMoney(value);
     channelCount.textContent = String(channels);
     experimentCount.textContent = String(experiments);
-    customerCount.textContent = `~${customers}`;
+    customerCount.textContent = `~${customersAtExampleCac}`;
   };
 
   budget?.addEventListener('input', updatePlanner);
   updatePlanner();
 
-  document.querySelectorAll('a.button-primary[href="/app"]').forEach((link) => {
+  document.querySelectorAll('a[href="/start"]').forEach((link) => {
     link.addEventListener('click', (event) => {
       event.preventDefault();
       const value = budget ? Number(budget.value) : 1000;

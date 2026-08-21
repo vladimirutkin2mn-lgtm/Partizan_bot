@@ -31,23 +31,57 @@ def test_custom_goal_assets_are_allowlisted_and_served() -> None:
     assert "aria-selected" in javascript.text
 
 
-def test_customer_start_separates_research_surfaces_from_execution_access() -> None:
+def test_customer_start_is_honest_about_hypotheses_and_optional_website() -> None:
     page = client.get("/start")
-    css = client.get("/start/assets/start.v2.css")
+    javascript = client.get("/start/assets/start.v2.js")
 
     assert page.status_code == 200
-    assert "Where Partizan can find customers" in page.text
-    assert "Execution ecosystems" in page.text
-    assert "Public-web research" in page.text
-    assert "Creators &amp; influencers" in page.text or "Creators & influencers" in page.text
-    assert "Newsletters &amp; podcasts" in page.text or "Newsletters & podcasts" in page.text
-    assert "Partnerships &amp; affiliates" in page.text or "Partnerships & affiliates" in page.text
-    assert "Google Search &amp; SEO" in page.text or "Google Search & SEO" in page.text
-    assert "Directories &amp; niche sites" in page.text or "Directories & niche sites" in page.text
-    assert "Discord, forums &amp; groups" in page.text or "Discord, forums & groups" in page.text
+    assert "Initial acquisition hypotheses" in page.text
+    assert "This is not deep research yet" in javascript.text
+    assert "fake" not in page.text.lower()
+    assert 'id="website" type="url" inputmode="url" placeholder=' in page.text
+    assert 'id="website" type="url" inputmode="url" required' not in page.text
+    assert "only needs a live destination before it sends paid traffic" in page.text
+    assert "website_url: website || null" in javascript.text
+    assert "masked_opportunities.map" not in javascript.text
+    assert "Creator @••" not in page.text
+
+
+def test_customer_start_separates_research_scope_from_execution_access() -> None:
+    page = client.get("/start")
+    css = client.get("/start/assets/start.v2.css")
+    javascript = client.get("/start/assets/start.v2.js")
+
+    assert page.status_code == 200
+    assert "Where Partizan can research" in page.text
     assert "Research is not execution." in page.text
     assert "Channels Partizan can use" not in page.text
+    for surface in (
+        "Creators",
+        "Newsletters",
+        "Podcasts",
+        "Partnerships",
+        "Search & SEO",
+        "Directories",
+        "Discord & forums",
+    ):
+        assert surface in page.text
+    assert 'id="execution-access-step" class="setup-step channels-step hidden"' in page.text
+    assert "First-class paid execution" in page.text
+    assert "Instagram & Facebook" in page.text
 
     assert css.status_code == 200
-    assert ".research-channel-grid" in css.text
+    assert ".research-scope-pills" in css.text
+    assert ".selected-access-card" in css.text
     assert ".channel-boundary-note" in css.text
+    assert "classList.toggle('hidden', !researchReady)" in javascript.text
+
+
+def test_customer_start_can_restore_same_browser_project() -> None:
+    javascript = client.get("/start/assets/start.v2.js")
+
+    assert javascript.status_code == 200
+    assert "partizan.customer.preview." in javascript.text
+    assert "resumeStoredProject" in javascript.text
+    assert "localStorage.getItem(PROJECT_KEY)" in javascript.text
+    assert "Welcome back. Your Partizan project is restored." in javascript.text
