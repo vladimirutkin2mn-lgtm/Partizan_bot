@@ -398,7 +398,11 @@ def begin_workspace_meta_oauth(
 ) -> CustomerMetaConnectResponse:
     _, customer_token = _project_access(session_token, project_id)
     try:
-        url = customer_meta_oauth_service.begin(project_id, customer_token)
+        url = customer_meta_oauth_service.begin(
+            project_id,
+            customer_token,
+            return_path="/workspace",
+        )
         return CustomerMetaConnectResponse(authorization_url=url)
     except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
         raise _account_error(exc) from exc
