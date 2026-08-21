@@ -12,10 +12,31 @@
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
   <header class="top shell">
     <a class="brand" href="/"><span class="mark">P</span><span><strong>Partizan</strong><small>Workspace</small></span></a>
-    <div class="account-nav"><span id="account-email">Loading…</span><button id="logout-button" type="button">Sign out</button></div>
+    <div id="account-nav" class="account-nav hidden">
+      <select id="project-switcher" class="project-switcher hidden" aria-label="Partizan project"></select>
+      <span id="account-email"></span>
+      <button id="logout-button" type="button">Sign out</button>
+    </div>
   </header>
 
   <main class="shell workspace-main">
+    <section id="login-gate" class="login-gate panel hidden">
+      <div class="login-copy">
+        <span class="eyebrow">Welcome back</span>
+        <h1>Your Partizan workspace.</h1>
+        <p class="lede">Sign in to see Growth Balance, current acquisition work, integrations, guardrails and results.</p>
+        <div class="login-pills"><span>Growth Balance</span><span>Current work</span><span>Results</span><span>Integrations</span></div>
+      </div>
+      <form id="workspace-login-form" class="workspace-login-form">
+        <label for="workspace-login-email">Email</label>
+        <input id="workspace-login-email" type="email" autocomplete="email" required placeholder="you@company.com">
+        <label for="workspace-login-password">Password</label>
+        <input id="workspace-login-password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required>
+        <button class="button button-primary" type="submit">Sign in →</button>
+        <a href="/start">New to Partizan? Run the free pre-scan</a>
+      </form>
+    </section>
+
     <section id="loading" class="loading-card"><span class="spinner"></span><div><strong>Opening your Partizan workspace…</strong><small>Your project, balance and current work are loading.</small></div></section>
 
     <div id="workspace" class="hidden">
