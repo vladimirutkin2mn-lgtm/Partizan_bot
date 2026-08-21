@@ -14,4 +14,9 @@ def test_paid_plan_checkout_resumes_directly_into_research() -> None:
     assert "if (project.launch_unlocked)" in source
     assert "showUnlocked();\n        await startResearch(true);" in source
     assert "$('research-button').disabled = false;" in source
-    assert "if (data.already_unlocked) {\n        showUnlocked();\n        await startResearch(true);" in source
+    already_unlocked_resume = (
+        "if (data.already_unlocked) {\n"
+        "        showUnlocked();\n"
+        "        await startResearch(true);"
+    )
+    assert already_unlocked_resume in source
