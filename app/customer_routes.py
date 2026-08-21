@@ -75,6 +75,26 @@ def _project_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=409, detail=str(exc))
 
 
+def _meta_callback_target(
+    *,
+    state: str | None,
+    result: str,
+    project_id: UUID | None = None,
+    return_path: str | None = None,
+) -> str:
+    if return_path is None and state:
+        context = customer_meta_oauth_service.pending_context(state)
+        if context is not None:
+            context_project_id, context_return_path = context
+            project_id = project_id or context_project_id
+            return_path = context_return_path
+    safe_return_path = return_path if return_path in {"/start", "/workspace"} else "/start"
+    query_payload = {"meta": result}
+    if project_id is not None:
+        query_payload["project"] = str(project_id)
+    return f"{safe_return_path}?{urlencode(query_payload)}"
+
+
 @router.post(
     "/customer-projects/preview",
     response_model=CustomerPreviewResponse,
@@ -406,13 +426,29 @@ def complete_customer_meta_oauth(
     error: str | None = None,
 ) -> RedirectResponse:
     if error or not state or not code:
-        return RedirectResponse(url="/start?meta=error", status_code=303)
+        return RedirectResponse(
+            url=_meta_callback_target(state=state, result="error"),
+            status_code=303,
+        )
     try:
-        project_id = customer_meta_oauth_service.complete(state=state, code=code)
+        project_id, return_path = customer_meta_oauth_service.complete_with_return(
+            state=state,
+            code=code,
+        )
     except CustomerMetaOAuthError:
-        return RedirectResponse(url="/start?meta=error", status_code=303)
-    query = urlencode({"meta": "connected", "project": str(project_id)})
-    return RedirectResponse(url=f"/start?{query}", status_code=303)
+        return RedirectResponse(
+            url=_meta_callback_target(state=state, result="error"),
+            status_code=303,
+        )
+    return RedirectResponse(
+        url=_meta_callback_target(
+            state=state,
+            result="connected",
+            project_id=project_id,
+            return_path=return_path,
+        ),
+        status_code=303,
+    )
 
 
 @router.get(
