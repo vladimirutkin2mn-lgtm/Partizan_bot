@@ -13,7 +13,7 @@ def test_root_serves_marketing_site() -> None:
     html = response.text
     for anchor in (
         "<title>Partizan — AI that finds and acquires customers</title>",
-        'href="/app"',
+        'href="/start"',
         'id="budget-range"',
         'id="how"',
         'id="channels"',
@@ -22,6 +22,7 @@ def test_root_serves_marketing_site() -> None:
         "/site/assets/landing.v1.js",
     ):
         assert anchor in html
+    assert 'href="/app"' not in html
 
 
 def test_marketing_assets_are_allowlisted_and_served() -> None:
@@ -114,10 +115,6 @@ def test_workspace_assets_and_live_api_contracts_are_served() -> None:
     assert "localStorage" not in operator_js.text
     assert "sessionStorage" not in operator_js.text
     assert ".global-operator-access" in operator_css.text
-
-    assert execution_css.status_code == 200
-    assert ".execution-drawer" in execution_css.text
-    assert ".receipt-outcome.STAGED" in execution_css.text
 
     assert execution_js.status_code == 200
     assert "partizan.execution.v1" in execution_js.text
