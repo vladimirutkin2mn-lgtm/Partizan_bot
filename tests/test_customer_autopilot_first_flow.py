@@ -152,7 +152,7 @@ def test_paid_growth_balance_unlocks_research_without_buying_49_plan() -> None:
     assert service.summary(PROJECT_ID, 0.0).funded_usd == 1000.0
 
 
-def test_start_page_is_channel_first_growth_balance_execution_flow() -> None:
+def test_start_page_is_research_first_growth_balance_execution_flow() -> None:
     page = client.get("/start")
     css = client.get("/start/assets/start.v2.css")
     javascript = client.get("/start/assets/start.v2.js")
@@ -168,14 +168,28 @@ def test_start_page_is_channel_first_growth_balance_execution_flow() -> None:
     assert "$149" not in page.text
     assert "No monthly subscription" in page.text
     assert 'id="autopilot-budget"' not in page.text
-    assert "Channels Partizan can use" in page.text
+    assert "Where Partizan can find customers" in page.text
+    assert "Execution ecosystems" in page.text
+    assert "Public-web research" in page.text
+    assert "Research is not execution." in page.text
+    assert "Channels Partizan can use" not in page.text
     for channel in ("Instagram & Facebook", "TikTok", "Reddit", "Telegram"):
         assert channel in page.text
-    assert page.text.index("1 · Connect access") < page.text.index("2 · Guardrails")
+    for research_surface in (
+        "Creators & influencers",
+        "Newsletters & podcasts",
+        "Partnerships & affiliates",
+        "Google Search & SEO",
+        "Directories & niche sites",
+        "Discord, forums & groups",
+    ):
+        assert research_surface in page.text
+    assert page.text.index("1 · Find customers & connect access") < page.text.index("2 · Guardrails")
     assert page.text.index("2 · Guardrails") < page.text.index("3 · Fund growth")
     assert css.status_code == 200
     assert ".autopilot-first-launch" in css.text
     assert ".channel-grid" in css.text
+    assert ".research-channel-grid" in css.text
     assert ".growth-balance-form" in css.text
     assert javascript.status_code == 200
     assert "View strategy & audience" in javascript.text
