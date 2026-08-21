@@ -1,22 +1,13 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const TOKEN_PREFIX = 'partizan.customer.token.';
-  const notice = $('notice');
   let applyingFriendlyState = false;
 
-  const showFriendlyNotice = (message) => {
-    if (!notice) return;
-    notice.textContent = message;
-    notice.classList.remove('error');
-    notice.classList.remove('hidden');
-    window.setTimeout(() => notice.classList.add('hidden'), 5200);
-  };
-
-  const technicalFundingCopy = (value) => [
+  const deferredSpendRailCopy = (value) => [
     'Partizan-funded payment rail',
     'Funding rail setup required',
+    'PARTIZAN_FUNDED_PAYMENT_RAIL_NOT_CONFIGURED',
     'STRIPE_ISSUING',
-    'STRIPE_NOT_CONFIGURED',
   ].some((fragment) => String(value || '').includes(fragment));
 
   const applyFriendlyState = () => {
@@ -39,13 +30,13 @@
       const fundingButton = $('growth-balance-button');
       const fundingStatus = $('growth-balance-status');
       if (fundingButton && fundingStatus) {
-        const blocked = technicalFundingCopy(fundingButton.textContent)
-          || technicalFundingCopy(fundingStatus.textContent);
-        if (blocked) {
-          fundingButton.dataset.fundingUnavailable = '1';
+        const spendRailDeferred = deferredSpendRailCopy(fundingButton.textContent)
+          || deferredSpendRailCopy(fundingStatus.textContent);
+        if (spendRailDeferred) {
+          fundingButton.dataset.fundingUnavailable = '0';
           fundingButton.disabled = false;
           fundingButton.textContent = 'Fund Growth Balance →';
-          fundingStatus.textContent = 'Growth Balance is being enabled. You can connect channels and save guardrails now; funding will open here when ready.';
+          fundingStatus.textContent = 'Fund securely with Stripe now. Paid acquisition will stay paused until Partizan’s ad-spend connection is ready.';
           fundingStatus.classList.remove('settlement-warning');
         } else if (
           fundingStatus.textContent.includes('Ready to fund')
@@ -92,17 +83,6 @@
         delete button.dataset.busy;
         applyFriendlyState();
       }, 1800);
-    }, true);
-  }
-
-  const fundingForm = $('growth-balance-form');
-  if (fundingForm) {
-    fundingForm.addEventListener('submit', (event) => {
-      const fundingButton = $('growth-balance-button');
-      if (!fundingButton || fundingButton.dataset.fundingUnavailable !== '1') return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      showFriendlyNotice('Growth Balance is being enabled. Finish channel access and guardrails now; funding will become available here without changing your setup.');
     }, true);
   }
 
