@@ -189,11 +189,19 @@ def get_customer_workspace(
 ) -> CustomerWorkspaceView:
     account, customer_token = _project_access(session_token, project_id)
     try:
+        project_payload = customer_funnel_service.get_project_payload(project_id, customer_token)
         project = customer_funnel_service.get_project(project_id, customer_token)
         autopilot = customer_autopilot_service.overview(project_id, customer_token)
     except (CustomerProjectNotFoundError, CustomerProjectAccessError, ValueError) as exc:
         raise _account_error(exc) from exc
-    return CustomerWorkspaceView(account=account, project=project, autopilot=autopilot)
+    target_max_cac_raw = project_payload.get("autopilot_target_max_cac")
+    return CustomerWorkspaceView(
+        account=account,
+        project=project,
+        autopilot=autopilot,
+        target_max_cac=float(target_max_cac_raw) if target_max_cac_raw is not None else None,
+        autonomous_spend_confirmed=bool(project_payload.get("autopilot_spend_confirmed")),
+    )
 
 
 @router.put(
@@ -317,7 +325,10 @@ def verify_workspace_growth_balance_checkout(
             stripe_customer_id=(str(session["customer"]) if session.get("customer") else None),
         )
         if not credited:
-            raise HTTPException(status_code=401, detail="Growth Balance payment is not linked to this project")
+            raise HTTPException(
+                status_code=401,
+                detail="Growth Balance payment is not linked to this project",
+            )
         return customer_autopilot_service.overview(project_id, customer_token)
     except HTTPException:
         raise
