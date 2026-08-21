@@ -2,41 +2,53 @@
 
 ## Decision
 
-Partizan MVP deliberately focuses on four acquisition ecosystems only:
+Partizan has two different channel concepts and they must not be conflated:
+
+1. **Research surfaces** — places Partizan can investigate to find audiences, creators, communities, partners, media and demand without requiring the customer's account access up front.
+2. **Execution ecosystems** — platforms with first-class Partizan distribution models, adapters, permissions, attribution and execution controls.
+
+The MVP execution domain deliberately remains focused on four ecosystems:
 
 1. Telegram
 2. Instagram
 3. Reddit
 4. TikTok
 
-All other previously discussed ecosystems are moved to **Post-MVP**:
+This narrow execution scope does **not** mean Partizan's customer-acquisition research should look as if it is limited to those four logos.
 
-- YouTube;
-- Google Search;
-- X;
-- Discord;
-- newsletters;
-- niche sites;
-- forums;
-- any additional distribution source not included in the four MVP ecosystems above.
+## Research surface
 
-## Why scope is intentionally narrow
+Customer-facing research may consider a broader public-web opportunity universe, including:
 
-The MVP goal is not to prove that Partizan can enumerate every possible marketing channel.
+- creators and influencers across YouTube, X, blogs and other public profiles;
+- newsletters, podcasts and specialist media;
+- affiliate and partnership candidates;
+- Google Search / SEO demand and query opportunities;
+- directories, review sites and niche websites;
+- Discord communities, forums and other public groups;
+- Telegram, Instagram, Reddit and TikTok opportunities.
+
+Research access and execution access are separate. Public research should not require the customer to connect an account merely so Partizan can decide whether a surface is relevant.
+
+A surfaced research opportunity is **not** a promise that Partizan can automatically post, buy media or spend there. If execution needs an account connection, paid placement, partner approval or manual handoff, the product must make that boundary explicit.
+
+## Why execution scope is intentionally narrow
+
+The MVP goal is not to implement an autonomous adapter for every possible marketing channel.
 
 The MVP goal is to prove the core product loop:
 
 ```text
 Product + ICP
-  → Audience Distribution Map
-  → concrete distribution opportunities
-  → executable tactics
+  → research across plausible customer-acquisition surfaces
+  → concrete opportunities
+  → select an executable path
   → attributed experiments
   → activation / paid users / CAC
   → Growth Manager reallocates effort and budget
 ```
 
-Telegram, Instagram, Reddit and TikTok already provide enough diversity to test the core architecture:
+Telegram, Instagram, Reddit and TikTok provide enough diversity to validate the controlled execution architecture:
 
 - community-first distribution;
 - creator/audience-surface distribution;
@@ -48,9 +60,9 @@ Telegram, Instagram, Reddit and TikTok already provide enough diversity to test 
 - batch/campaign/action-level attribution patterns;
 - cross-channel CAC comparison.
 
-Adding more ecosystems before this loop works would increase implementation surface, integrations, policy handling and execution complexity without materially improving MVP validation.
+Adding first-class execution adapters for more ecosystems before this loop works would increase integration, policy and control surface without materially improving MVP validation.
 
-## MVP platforms
+## MVP execution platforms
 
 ### Telegram
 
@@ -114,9 +126,9 @@ content / topic cluster
 
 Partizan Media Network remains Post-MVP.
 
-## Post-MVP platforms
+## Post-MVP first-class execution adapters
 
-The following ecosystems should not block MVP implementation or launch:
+The following ecosystems do not need dedicated autonomous execution adapters to unblock MVP launch:
 
 ```text
 YouTube
@@ -129,21 +141,24 @@ Forums
 Other new platforms
 ```
 
-They can be added after the four-platform MVP proves the acquisition/learning loop and provides real economics.
+They may still appear as research surfaces before they become first-class `DistributionPlatform` values. Moving one of them into autonomous execution requires an explicit implementation with permissions, policy handling, attribution and fail-closed controls.
 
-## Re-entry criteria for a Post-MVP platform
+## Re-entry criteria for a new execution platform
 
-A new ecosystem should be prioritised only when at least one of the following is true:
+A research surface should be promoted into a first-class execution ecosystem only when at least one of the following is true:
 
 - repeated client demand is visible;
 - Audience Intelligence repeatedly finds meaningful audience concentration there;
-- the existing four channels leave a material ICP segment unreachable;
+- the existing execution channels leave a material ICP segment unreachable;
 - expected CAC is meaningfully better than current channels;
-- a new platform offers a uniquely valuable acquisition mechanic;
+- the platform offers a uniquely valuable acquisition mechanic;
 - implementation cost is low enough relative to expected incremental value.
 
 ## Product-design consequence
 
-The channel-matrix design phase for MVP is complete once Telegram, Instagram, Reddit and TikTok specifications are stable enough to drive implementation.
+Customer UI must answer two different questions separately:
 
-The next major product task should therefore move from **platform exploration** to the redesign/implementation of the Channel Hunter / Audience Intelligence / Distribution Engine for these four platforms.
+- **Where can Partizan look for customers?** — broad research universe.
+- **What access can Partizan use to execute?** — only supported, permissioned execution paths.
+
+The product must never use a short list of connected integrations as a proxy for the full acquisition research surface.
