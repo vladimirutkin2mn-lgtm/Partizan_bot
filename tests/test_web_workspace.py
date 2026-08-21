@@ -116,6 +116,10 @@ def test_workspace_assets_and_live_api_contracts_are_served() -> None:
     assert "sessionStorage" not in operator_js.text
     assert ".global-operator-access" in operator_css.text
 
+    assert execution_css.status_code == 200
+    assert ".execution-drawer" in execution_css.text
+    assert ".receipt-outcome.STAGED" in execution_css.text
+
     assert execution_js.status_code == 200
     assert "partizan.execution.v1" in execution_js.text
     for api_contract in (
