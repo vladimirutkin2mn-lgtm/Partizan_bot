@@ -36,13 +36,6 @@ class CustomerPreviewResponse(BaseModel):
     managed_spend_fee_pct: int = Field(ge=0, le=100)
 
 
-class CustomerStoredPreviewView(BaseModel):
-    channel_count: int = Field(ge=3, le=5)
-    opportunity_scope_estimate: int = Field(ge=1)
-    fastest_signal: str
-    directions: list[CustomerDirectionView]
-
-
 class CustomerProjectView(BaseModel):
     project_id: UUID
     status: Literal["PREVIEW", "CHECKOUT_PENDING", "UNLOCKED", "RESEARCH_READY"]
@@ -54,7 +47,6 @@ class CustomerProjectView(BaseModel):
     launch_unlocked: bool
     research_state: Literal["NOT_STARTED", "NEEDS_INPUT", "READY"]
     product_id: UUID | None = None
-    preview: CustomerStoredPreviewView
     launch_price_usd: int
     managed_spend_fee_pct: int
 
