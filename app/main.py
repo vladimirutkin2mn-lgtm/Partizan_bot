@@ -8,6 +8,7 @@ from app.customer_routes import router as customer_router
 from app.db import get_sync_engine
 from app.distribution_play_routes import router as distribution_play_router
 from app.distribution_routes import router as distribution_router
+from app.growth_balance_funding_policy import enable_checkout_first_growth_balance_funding
 from app.growth_balance_rail_routes import router as growth_balance_rail_router
 from app.icp_service import icp_service
 from app.logging import configure_logging
@@ -22,6 +23,7 @@ from app.schemas import (
 )
 from app.web_routes import router as web_router
 
+enable_checkout_first_growth_balance_funding()
 configure_logging()
 
 app = FastAPI(

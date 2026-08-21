@@ -183,6 +183,7 @@ def test_start_page_is_channel_first_growth_balance_execution_flow() -> None:
     assert "/growth-balance/checkout" in javascript.text
     assert "marketing_budget_usd" not in javascript.text
     assert channel_javascript.status_code == 200
-    assert "Growth Balance is being enabled" in channel_javascript.text
+    assert "Fund securely with Stripe now" in channel_javascript.text
+    assert "Paid acquisition will stay paused" in channel_javascript.text
     assert "meta-connect-button" in channel_javascript.text
     assert "autopilot-config-button" in channel_javascript.text
