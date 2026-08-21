@@ -64,3 +64,5 @@ class CustomerWorkspaceView(BaseModel):
     account: CustomerAccountView
     project: CustomerProjectView
     autopilot: CustomerAutopilotOverview
+    target_max_cac: float | None = None
+    autonomous_spend_confirmed: bool = False
