@@ -8,7 +8,6 @@ from pydantic import SecretStr
 from app.config import Settings
 from app.customer_billing import create_growth_balance_checkout
 
-
 PROJECT_ID = UUID("11111111-1111-1111-1111-111111111111")
 
 
