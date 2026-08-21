@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>Partizan — Find your customers</title>
-  <meta name="description" content="Tell Partizan what you sell, connect your channels, fund one Growth Balance, and let the autonomous acquisition engine find customers.">
+  <meta name="description" content="Tell Partizan what you sell, set the limits, and let it research where customers can be reached before asking for any channel access.">
   <link rel="stylesheet" href="/start/assets/start.v1.css">
   <link rel="stylesheet" href="/start/assets/start.autopilot.v1.css">
   <link rel="stylesheet" href="/start/assets/start.v2.css">
@@ -19,16 +19,16 @@
   </header>
 
   <main class="shell main">
-    <div class="progress"><i class="on"></i><i id="progress-2"></i><i id="progress-3"></i></div>
+    <div class="progress" aria-label="Customer journey"><i class="on"></i><i id="progress-2"></i><i id="progress-3"></i></div>
 
     <section id="stage-input" class="stage">
       <span class="eyebrow">Free acquisition pre-scan · no card required</span>
-      <h1>Tell Partizan what you sell.<br><em>See where growth may start.</em></h1>
-      <p class="lede">Give Partizan a short description of your product, market and test budget. In seconds, you’ll see which acquisition directions look most promising.</p>
+      <h1>Tell Partizan what you sell.<br><em>See the first hypotheses.</em></h1>
+      <p class="lede">Give Partizan a short description of your product, market and test budget. The free scan gives you a fast starting hypothesis; deep research verifies it and finds the actual opportunities.</p>
       <form id="preview-form" class="panel form-panel">
-        <label for="website">Website or landing page</label>
-        <input id="website" type="url" inputmode="url" required placeholder="https://yourproduct.com">
-        <p class="fine">Partizan uses this destination for tracked acquisition if you later launch autonomous acquisition.</p>
+        <label for="website">Website or landing page <span class="optional">optional</span></label>
+        <input id="website" type="url" inputmode="url" placeholder="https://yourproduct.com">
+        <p class="fine">Add it if you have one. Partizan only needs a live destination before it sends paid traffic.</p>
         <label for="brief">What do you sell?</label>
         <textarea id="brief" minlength="20" required placeholder="Example: AI bookkeeping assistant for US freelancers. $19/month subscription."></textarea>
         <div class="form-grid">
@@ -37,13 +37,13 @@
           <div><label for="goal">Goal</label><select id="goal"><option>Get paying customers</option><option>Get signups</option><option>Validate demand</option></select></div>
         </div>
         <button class="button button-primary" type="submit">Run free pre-scan →</button>
-        <p class="fine">Free. No card required.</p>
+        <p class="fine">Free. No card required. No deep-search providers are used for this first hypothesis.</p>
       </form>
     </section>
 
     <section id="stage-preview" class="stage hidden">
-      <span class="eyebrow">Pre-scan complete</span>
-      <h1>Partizan found where to start.<br><em>Choose insight or execution.</em></h1>
+      <span class="eyebrow">Initial acquisition hypotheses</span>
+      <h1>Partizan has a place to start.<br><em>Now verify the hypothesis.</em></h1>
       <p id="preview-summary" class="lede"></p>
       <div id="direction-grid" class="direction-grid"></div>
 
@@ -51,31 +51,35 @@
         <div>
           <span class="eyebrow">Recommended · autonomous execution</span>
           <h2>Want customers, not another report?</h2>
-          <p>Connect the channels you already use, set a maximum CAC, then fund one Growth Balance. Partizan does the audience research, channel selection and experiments under the hood.</p>
-          <small class="autopilot-first-note">No monthly subscription. The strategy is included in execution. Partizan earns only when acquisition money is actually spent.</small>
+          <p>Set the economic limits and fund one Growth Balance. Partizan starts the deeper audience and channel research itself, then asks for account access only when a real execution path needs it.</p>
+          <small class="autopilot-first-note">No monthly subscription. The research is included in execution. Partizan earns only when acquisition money is actually spent.</small>
         </div>
         <div class="autopilot-first-actions">
           <div class="autopilot-first-price"><strong id="autopilot-direct-price">10% of acquisition spend</strong><span id="autopilot-direct-fee">from Growth Balance · no monthly fee</span></div>
-          <button id="autopilot-direct-button" class="button button-primary" type="button">Launch Partizan →</button>
+          <button id="autopilot-direct-button" class="button button-primary" type="button">Set limits & start →</button>
           <button id="inspect-first-button" class="autopilot-first-link" type="button">I only want the Acquisition Plan</button>
         </div>
       </section>
 
       <div id="acquisition-plan-card" class="locked panel">
-        <div class="locked-head"><div><span class="eyebrow">Acquisition Plan only</span><h2 id="scope-title">Concrete opportunities</h2></div><span class="lock">🔒</span></div>
-        <div id="masked-list" class="masked-list"></div>
+        <div class="locked-head"><div><span class="eyebrow">Acquisition Plan only</span><h2 id="scope-title">Deep research, without execution</h2></div><span class="lock">⌁</span></div>
+        <div id="masked-list" class="research-value-grid">
+          <article><strong>Ranked customer segments</strong><span>Who is most likely to buy and why.</span></article>
+          <article><strong>Named acquisition opportunities</strong><span>Actual communities, creators, audiences and partner surfaces when evidence exists.</span></article>
+          <article><strong>Evidence behind the recommendation</strong><span>The free hypotheses are checked before you treat them as a plan.</span></article>
+        </div>
         <div class="unlock-row">
-          <div><strong id="unlock-price">Unlock Acquisition Plan — $49</strong><p>Get ranked customer segments, named communities, creators, audiences and partner surfaces without launching autonomous acquisition.</p></div>
+          <div><strong id="unlock-price">Unlock Acquisition Plan — $49</strong><p>One paid research pass for customers who want the intelligence but do not want Partizan to execute autonomously.</p></div>
           <button id="checkout-button" class="button button-primary" type="button">Unlock & research →</button>
         </div>
-        <p class="fine">One-time purchase. If you choose execution instead, the same research runs under the hood as part of execution.</p>
+        <p class="fine">One-time purchase. If you choose execution instead, the same research runs under the hood and there is no separate $49 charge.</p>
       </div>
     </section>
 
     <section id="stage-unlocked" class="stage hidden">
       <span class="eyebrow">Partizan workspace</span>
-      <h1>Partizan is building the engine.<br><em>You can stay above the machinery.</em></h1>
-      <p class="lede">Audience research and channel selection run under the hood. If Partizan needs one material product detail, it will ask.</p>
+      <h1>Partizan is mapping the market.<br><em>You stay above the machinery.</em></h1>
+      <p class="lede">Partizan researches the audience and acquisition surfaces first. If it needs one material product detail or a specific account connection, it will ask at that moment.</p>
       <div id="payment-status" class="status-card"><span class="status-dot"></span><div><strong>Ready</strong><small>Your project is available.</small></div></div>
       <button id="research-button" class="button button-primary" type="button">Build acquisition plan →</button>
       <div id="research-progress" class="research-progress hidden"><span class="spinner"></span><div><strong>Partizan is mapping your market…</strong><small>Finding customer segments and concrete distribution opportunities.</small></div></div>
@@ -87,85 +91,63 @@
     <section id="autopilot-card" class="autopilot panel hidden">
       <div class="autopilot-intro">
         <span class="eyebrow">Autonomous execution</span>
-        <h2>Research broadly. Connect only what execution needs.</h2>
-        <p>Partizan can look for customers across public communities, creators, media, partnerships and search surfaces. Account access is separate: Partizan asks for it only when a selected execution path actually needs it. Growth Balance remains the hard spend boundary.</p>
+        <h2>Set the limits. Partizan handles the search.</h2>
+        <p>You do not need to connect a catalogue of channels up front. Partizan researches broadly, compares the evidence and asks for access only when a supported execution path actually needs it.</p>
       </div>
       <div class="autopilot-price">
         <strong id="spend-fee">10% of acquisition spend</strong>
-        <small>No monthly subscription · no separate $49 charge for the strategy</small>
+        <small>No monthly subscription · research included</small>
+      </div>
+
+      <div class="research-scope" aria-label="Places Partizan can research">
+        <div><span class="eyebrow">Where Partizan can research</span><p>Public research does not require your login.</p></div>
+        <div class="research-scope-pills">
+          <span>Meta</span><span>TikTok</span><span>Reddit</span><span>Telegram</span><span>Creators</span><span>Newsletters</span><span>Podcasts</span><span>Partnerships</span><span>Search & SEO</span><span>Directories</span><span>Discord & forums</span>
+        </div>
+        <small><strong>Research is not execution.</strong> A surface shown here is not a promise of automatic posting or spend.</small>
       </div>
 
       <div id="autopilot-setup" class="autopilot-setup">
-        <div class="setup-step channels-step">
-          <div class="setup-copy"><span class="eyebrow">1 · Find customers & connect access</span><h3>Where Partizan can find customers</h3><p>Research scope is broader than account integrations. Partizan can investigate public opportunities without your login, then request access only for the execution path it selects.</p></div>
-
-          <div class="channel-section">
-            <div class="channel-section-head"><div><span class="eyebrow">Execution ecosystems</span><h4>Connect only when needed</h4></div><p>These ecosystems already have dedicated Partizan execution paths or adapters. Meta can be connected now; the others stay research-first until execution requires access.</p></div>
-            <div class="channel-grid">
-              <article class="channel-card channel-card-live">
-                <div class="channel-card-head"><div><span class="channel-kicker">Paid + social</span><h4>Instagram & Facebook</h4></div><span class="channel-badge ready">Connect now</span></div>
-                <p>Connect your Meta ad account and Facebook Page. They remain yours; Partizan receives scoped access and never receives your password.</p>
-                <div class="meta-actions">
-                  <button id="meta-connect-button" class="button button-primary" type="button">Connect Meta →</button>
-                  <span id="meta-connection-status" class="fine">You can connect Meta before funding Growth Balance.</span>
-                </div>
-              </article>
-              <article class="channel-card">
-                <div class="channel-card-head"><div><span class="channel-kicker">Organic + paid</span><h4>TikTok</h4></div><span class="channel-badge research">Research first</span></div>
-                <p>Partizan can research TikTok audiences, creators and creative angles. If TikTok is selected for execution, Partizan will request the required account access.</p>
-                <span class="channel-footnote">No account access needed for research</span>
-              </article>
-              <article class="channel-card">
-                <div class="channel-card-head"><div><span class="channel-kicker">Communities</span><h4>Reddit</h4></div><span class="channel-badge research">Research first</span></div>
-                <p>Partizan can discover relevant subreddits, conversations and paid opportunities. Connection will be requested only if Reddit is selected for execution.</p>
-                <span class="channel-footnote">No account access needed for research</span>
-              </article>
-              <article class="channel-card">
-                <div class="channel-card-head"><div><span class="channel-kicker">Communities + outreach</span><h4>Telegram</h4></div><span class="channel-badge research">Research first</span></div>
-                <p>Partizan can map channels and groups and prepare distribution actions. Account or bot access will be requested only when execution requires it.</p>
-                <span class="channel-footnote">No account access needed for research</span>
-              </article>
-            </div>
-          </div>
-
-          <div class="channel-section research-surfaces">
-            <div class="channel-section-head"><div><span class="eyebrow">Public-web research</span><h4>More places Partizan can investigate</h4></div><p>These do not need to be connected up front. Partizan can use public research to find concrete opportunities, then either prepare outreach or ask for access if an execution step requires it.</p></div>
-            <div class="research-channel-grid">
-              <article class="research-channel-card"><span class="channel-kicker">Audience access</span><h4>Creators & influencers</h4><p>YouTube creators, X accounts, bloggers and other niche voices with the right audience.</p><span class="channel-badge research">No login needed</span></article>
-              <article class="research-channel-card"><span class="channel-kicker">Media</span><h4>Newsletters & podcasts</h4><p>Specialist newsletters, podcasts and small publications for sponsorships, affiliates or cross-promo.</p><span class="channel-badge research">No login needed</span></article>
-              <article class="research-channel-card"><span class="channel-kicker">Distribution deals</span><h4>Partnerships & affiliates</h4><p>Complementary products, affiliate partners and businesses already serving the same audience.</p><span class="channel-badge research">No login needed</span></article>
-              <article class="research-channel-card"><span class="channel-kicker">Intent</span><h4>Google Search & SEO</h4><p>High-intent search demand, query clusters and content opportunities that can compound over time.</p><span class="channel-badge research">No login needed</span></article>
-              <article class="research-channel-card"><span class="channel-kicker">Discovery</span><h4>Directories & niche sites</h4><p>Product directories, review sites, specialist publications and small audience hubs.</p><span class="channel-badge research">No login needed</span></article>
-              <article class="research-channel-card"><span class="channel-kicker">Communities</span><h4>Discord, forums & groups</h4><p>Public Discord communities, forums and other focused groups where the problem is already discussed.</p><span class="channel-badge research">No login needed</span></article>
-            </div>
-            <p class="channel-boundary-note"><strong>Research is not execution.</strong> Showing a surface here does not mean Partizan can automatically post or spend there. If a winning path needs account access, a paid placement or a manual handoff, Partizan will make that explicit before execution.</p>
-          </div>
-
-          <form id="meta-options-form" class="meta-options hidden">
-            <div><label for="meta-account">Ad account</label><select id="meta-account" required></select></div>
-            <div><label for="meta-page">Facebook Page</label><select id="meta-page" required></select></div>
-            <div><label for="meta-country">Target country code</label><input id="meta-country" maxlength="2" placeholder="US" required></div>
-            <button class="button button-primary" type="submit">Use this Meta account</button>
-          </form>
-        </div>
-
-        <div class="setup-step">
-          <div class="setup-copy"><span class="eyebrow">2 · Guardrails</span><h3>What is the most Partizan should pay for a customer?</h3><p>Save this before funding if you want. Maximum CAC is the performance boundary; Growth Balance will become the hard money boundary once funded.</p></div>
+        <div class="setup-step guardrail-step">
+          <div class="setup-copy"><span class="eyebrow">1 · Set the limits</span><h3>What is the most Partizan should pay for a customer?</h3><p>Maximum CAC is the performance boundary. Save it before funding so Partizan knows what “good” must look like while it researches.</p></div>
           <form id="autopilot-config-form" class="autopilot-form autopilot-guardrail-form">
-            <div><label for="autopilot-cac">Maximum CAC</label><div class="money-input"><span>$</span><input id="autopilot-cac" type="number" min="1" max="100000" step="1" value="30" required></div></div>
-            <label class="check-row"><input id="autopilot-confirm-spend" type="checkbox" required><span>I authorize Partizan to run paid experiments autonomously, but never beyond the funded Growth Balance and configured guardrails.</span></label>
-            <button id="autopilot-config-button" class="button button-primary" type="submit">Save guardrails</button>
+            <div><label for="autopilot-cac">Maximum cost per customer</label><div class="money-input"><span>$</span><input id="autopilot-cac" type="number" min="1" max="100000" step="1" value="30" required></div></div>
+            <label class="check-row"><input id="autopilot-confirm-spend" type="checkbox" required><span>I authorize Partizan to run eligible paid experiments autonomously, never beyond the funded Growth Balance and these limits.</span></label>
+            <button id="autopilot-config-button" class="button button-primary" type="submit">Save limits</button>
           </form>
         </div>
 
         <div class="setup-step growth-balance-step">
-          <div class="setup-copy"><span class="eyebrow">3 · Fund growth</span><h3>Add to Growth Balance</h3><p>This is the all-in acquisition budget Partizan may use. Once funded, Partizan starts the included audience research, chooses the first eligible channel and prepares execution. The management fee is earned only when acquisition money is actually spent.</p></div>
+          <div class="setup-copy"><span class="eyebrow">2 · Fund the learning loop</span><h3>Add to Growth Balance</h3><p>This is the all-in amount Partizan may use for acquisition spend and its management fee. Funding unlocks the included deep research immediately.</p></div>
           <form id="growth-balance-form" class="growth-balance-form">
             <div><label for="growth-balance-amount">Amount to add</label><div class="money-input"><span>$</span><input id="growth-balance-amount" type="number" min="1" max="100000" step="1" value="1000" required></div></div>
             <div id="growth-balance-breakdown" class="balance-breakdown"></div>
             <button id="growth-balance-button" class="button button-primary" type="submit">Fund Growth Balance →</button>
           </form>
           <p id="growth-balance-status" class="dashboard-note"></p>
+        </div>
+
+        <div id="execution-access-step" class="setup-step channels-step hidden">
+          <div class="setup-copy"><span class="eyebrow">3 · Access, only when needed</span><h3>Partizan has researched before asking for access</h3><p>The current self-service paid adapter is Meta. Other surfaces can still be research or manual-handoff opportunities; Partizan does not pretend they are automatically executable.</p></div>
+          <div class="selected-access-card">
+            <div class="selected-access-copy">
+              <span class="channel-kicker">First-class paid execution</span>
+              <h4>Instagram & Facebook</h4>
+              <p>Connect a Meta ad account only if you want Partizan to be able to run an eligible Meta paid test. Your account remains yours and Partizan receives scoped access.</p>
+            </div>
+            <div class="meta-actions">
+              <button id="meta-connect-button" class="button button-primary" type="button">Connect Meta →</button>
+              <span id="meta-connection-status" class="fine">Research is ready. Connect only if Meta execution is useful.</span>
+            </div>
+          </div>
+          <div class="access-secondary"><span>TikTok</span><span>Reddit</span><span>Telegram</span><small>Research-first surfaces. Access is not requested here unless a supported execution action actually requires it.</small></div>
+          <form id="meta-options-form" class="meta-options hidden">
+            <div><label for="meta-account">Ad account</label><select id="meta-account" required></select></div>
+            <div><label for="meta-page">Facebook Page</label><select id="meta-page" required></select></div>
+            <div><label for="meta-country">Target country code</label><input id="meta-country" maxlength="2" placeholder="US" required></div>
+            <button class="button button-primary" type="submit">Use this Meta account</button>
+          </form>
+          <p class="channel-boundary-note"><strong>Before paid traffic starts:</strong> Partizan also needs a live website or landing page and a production-ready ad-spend rail. Missing prerequisites keep paid execution paused.</p>
         </div>
       </div>
 
@@ -188,6 +170,5 @@
   </main>
   <script src="/start/assets/goal-dropdown.v1.js" defer></script>
   <script src="/start/assets/start.v2.js" defer></script>
-  <script src="/start/assets/start.channels.v1.js" defer></script>
 </body>
 </html>
