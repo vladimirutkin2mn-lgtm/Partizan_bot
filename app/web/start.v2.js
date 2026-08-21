@@ -1,5 +1,6 @@
 (() => {
   const TOKEN_PREFIX = 'partizan.customer.token.';
+  const PREVIEW_PREFIX = 'partizan.customer.preview.';
   const PROJECT_KEY = 'partizan.customer.project';
   const $ = (id) => document.getElementById(id);
   const stageInput = $('stage-input');
@@ -30,11 +31,14 @@
   };
 
   const tokenKey = (projectId) => `${TOKEN_PREFIX}${projectId}`;
-  const rememberProject = (projectId, token) => {
+  const previewKey = (projectId) => `${PREVIEW_PREFIX}${projectId}`;
+
+  const rememberProject = (projectId, token, preview = null) => {
     currentProjectId = projectId;
     currentToken = token;
     localStorage.setItem(PROJECT_KEY, projectId);
     localStorage.setItem(tokenKey(projectId), token);
+    if (preview) localStorage.setItem(previewKey(projectId), JSON.stringify(preview));
   };
 
   const loadProjectToken = (projectId) => {
@@ -43,6 +47,22 @@
     currentProjectId = projectId;
     currentToken = token;
     return true;
+  };
+
+  const storedPreview = (projectId) => {
+    const raw = localStorage.getItem(previewKey(projectId));
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (_) { return null; }
+  };
+
+  const clearStoredProject = (projectId) => {
+    localStorage.removeItem(tokenKey(projectId));
+    localStorage.removeItem(previewKey(projectId));
+    if (localStorage.getItem(PROJECT_KEY) === projectId) localStorage.removeItem(PROJECT_KEY);
+    if (currentProjectId === projectId) {
+      currentProjectId = null;
+      currentToken = null;
+    }
   };
 
   const recoverProjectToken = async (projectId, sessionId) => {
@@ -92,18 +112,16 @@
 
   const renderPreview = (data) => {
     managementFeePct = Number(data.managed_spend_fee_pct || 10);
-    $('preview-summary').textContent = `Partizan sees ${data.channel_count} promising acquisition directions and roughly ${data.opportunity_scope_estimate} concrete places, audiences and partners worth investigating. Best place to start: ${data.fastest_signal}.`;
-    $('scope-title').textContent = `~${data.opportunity_scope_estimate} concrete opportunities to investigate`;
+    $('preview-summary').textContent = `The free scan sees ${data.channel_count} directions worth testing. Strongest starting hypothesis: ${data.fastest_signal}. This is not deep research yet; the paid research step verifies the audience and searches for the actual places, creators and partners.`;
+    $('scope-title').textContent = `Deep research can investigate ~${data.opportunity_scope_estimate} concrete opportunities`;
     $('unlock-price').textContent = `Unlock Acquisition Plan — $${data.launch_price_usd}`;
     $('autopilot-direct-price').textContent = `${managementFeePct}% of acquisition spend`;
     $('autopilot-direct-fee').textContent = 'from Growth Balance · no monthly fee';
     $('spend-fee').textContent = `${managementFeePct}% of acquisition spend`;
-    $('direction-grid').innerHTML = data.directions.map((item) => `
-      <article class="direction-card"><header><h3>${escapeHtml(item.name)}</h3><span class="potential ${item.potential === 'MEDIUM' ? 'medium' : ''}">${item.potential}</span></header><p>${escapeHtml(item.rationale)}</p></article>
-    `).join('');
-    $('masked-list').innerHTML = data.masked_opportunities.map((item) => `
-      <div class="masked-item"><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(item.category)} · locked</span></div>
-    `).join('');
+    $('direction-grid').innerHTML = data.directions.map((item) => {
+      const label = item.potential === 'HIGH' ? 'STRONG HYPOTHESIS' : 'WORTH TESTING';
+      return `<article class="direction-card"><header><h3>${escapeHtml(item.name)}</h3><span class="potential ${item.potential === 'MEDIUM' ? 'medium' : ''}">${label}</span></header><p>${escapeHtml(item.rationale)}</p></article>`;
+    }).join('');
     updateGrowthBalanceBreakdown();
     showStage(stagePreview);
   };
@@ -114,17 +132,18 @@
     button.disabled = true;
     button.textContent = 'Running pre-scan…';
     try {
+      const website = $('website').value.trim();
       const data = await api('/v1/customer-projects/preview', {
         method: 'POST',
         body: JSON.stringify({
           brief: $('brief').value.trim(),
-          website_url: $('website').value.trim(),
+          website_url: website || null,
           market: $('market').value.trim(),
           goal: $('goal').value,
           budget_usd: Number($('budget').value),
         }),
       });
-      rememberProject(data.project_id, data.customer_token);
+      rememberProject(data.project_id, data.customer_token, data);
       renderPreview(data);
     } catch (error) {
       showNotice(error.message, true);
@@ -214,7 +233,7 @@
       box.innerHTML = `<span class="eyebrow">One useful clarification</span><h3>${escapeHtml(question.question)}</h3><p>${escapeHtml(question.rationale)}</p><form id="clarification-form"><input id="clarification-answer" required placeholder="Your answer"><button class="button button-primary" type="submit">Continue →</button></form>`;
       box.classList.remove('hidden');
       $('payment-status').querySelector('strong').textContent = 'One detail needed';
-      $('payment-status').querySelector('small').textContent = 'Answer once; you still do not need to inspect the strategy.';
+      $('payment-status').querySelector('small').textContent = 'Answer once; Partizan will continue the research itself.';
       $('clarification-form').addEventListener('submit', async (event) => {
         event.preventDefault();
         const submit = event.submitter;
@@ -237,16 +256,16 @@
     $('research-button').classList.add('hidden');
     const results = $('research-results');
     results.innerHTML = `
-      <div class="results-head"><span class="eyebrow">Strategy ready</span><h2>Who Partizan will target first</h2><p>Your highest-value customer segments, ranked by fit and buying potential.</p></div>
+      <div class="results-head"><span class="eyebrow">Research ready</span><h2>Who Partizan will target first</h2><p>Your highest-value customer segments, ranked by fit and buying potential.</p></div>
       <div class="icp-grid">${result.icps.map((item) => `<article class="icp-card"><header><h3>${escapeHtml(item.title)}</h3><span class="score">${Math.round(item.score)}/100</span></header><p>${escapeHtml(item.description)}</p><div class="hook">${escapeHtml(item.message_hook)}</div></article>`).join('')}</div>
-      <div class="results-head"><span class="eyebrow">Distribution map</span><h2>Where Partizan sees opportunity</h2><p>Named places, audiences and partners behind the execution engine.</p></div>
+      <div class="results-head"><span class="eyebrow">Distribution map</span><h2>Where Partizan sees opportunity</h2><p>Named places, audiences and partners returned by the current deep-research engine.</p></div>
       <div class="opportunity-list">${result.opportunities.map((item) => `<article class="opp-card"><header><h3>${escapeHtml(item.title)}</h3><span class="platform">${escapeHtml(item.platform)} · ${escapeHtml(item.kind)}</span></header><p>${escapeHtml(item.rationale || 'Relevant distribution opportunity')}</p>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Open opportunity ↗</a>` : ''}</article>`).join('')}</div>`;
     results.classList.toggle('hidden', !reveal);
     const toggle = $('view-strategy-button');
     toggle.classList.remove('hidden');
     toggle.textContent = reveal ? 'Hide strategy & audience' : 'View strategy & audience';
-    $('payment-status').querySelector('strong').textContent = 'Strategy mapped';
-    $('payment-status').querySelector('small').textContent = 'Partizan has the audience and acquisition map it needs.';
+    $('payment-status').querySelector('strong').textContent = 'Research mapped';
+    $('payment-status').querySelector('small').textContent = 'Partizan has enough research to ask only for execution access it can actually use.';
     $('autopilot-card').classList.remove('hidden');
     loadAutopilot().catch(() => {});
   };
@@ -262,12 +281,10 @@
 
   const ensureUnderHoodResearch = async () => {
     try {
-      const project = await api(`/v1/customer-projects/${currentProjectId}`);
       showUnlocked();
       $('payment-status').querySelector('strong').textContent = 'Growth Balance funded';
-      $('payment-status').querySelector('small').textContent = 'Partizan is mapping the audience and deciding where to start.';
+      $('payment-status').querySelector('small').textContent = 'Deep research is starting now. Paid execution remains subject to its launch prerequisites.';
       await startResearch(false);
-      if (project.research_state === 'READY') await loadAutopilot();
     } catch (error) {
       showNotice(error.message, true);
     }
@@ -279,6 +296,22 @@
     renderAutopilot(overview);
   };
 
+  const renderFriendlyBlockers = (overview, researchReady) => {
+    const balance = overview.growth_balance;
+    const items = [];
+    if (!researchReady) {
+      items.push(balance.funded_usd > 0 ? 'Partizan is mapping the audience and acquisition strategy.' : 'Fund Growth Balance to start the included deep research.');
+      return items.join(' · ');
+    }
+    if (overview.blockers.some((item) => item.includes('Website or landing page'))) items.push('Add a live website or landing page before Partizan sends paid traffic.');
+    if (balance.funded_usd <= 0) items.push('Growth Balance is not funded.');
+    if (!balance.settlement_ready) items.push('Paid experiments are paused until Partizan’s ad-spend rail is ready.');
+    if (overview.blockers.some((item) => item.includes('guardrails'))) items.push('Save the maximum cost per customer.');
+    if (!overview.meta.connected) items.push('Connect Meta only if you want Partizan to run an eligible Meta paid test.');
+    if (!items.length) items.push(`Growth Balance available: ${money(balance.available_usd)}.`);
+    return items.join(' · ');
+  };
+
   const renderAutopilot = (overview) => {
     const researching = overview.autopilot_status === 'RESEARCHING';
     const balance = overview.growth_balance;
@@ -287,40 +320,37 @@
     $('spend-fee').textContent = `${managementFeePct}% of acquisition spend`;
     updateGrowthBalanceBreakdown();
     $('autopilot-setup').classList.remove('hidden');
+    $('execution-access-step').classList.toggle('hidden', !researchReady);
     $('autopilot-dashboard').classList.toggle('hidden', researching);
 
     if (overview.meta.connected) {
       $('meta-connection-status').textContent = `Connected: ad account ${overview.meta.ad_account_id}`;
       $('meta-connect-button').textContent = 'Reconnect Meta';
-      $('meta-connect-button').disabled = false;
+      $('meta-connect-button').disabled = !researchReady;
     } else if (!researchReady) {
-      $('meta-connection-status').textContent = balance.funded_usd > 0
-        ? 'Partizan is mapping the audience. Meta connection unlocks when research is ready.'
-        : 'Fund Growth Balance first; Partizan will map the audience before Meta setup.';
+      $('meta-connection-status').textContent = 'Partizan researches first. Access appears after the research is ready.';
       $('meta-connect-button').textContent = 'Connect Meta →';
       $('meta-connect-button').disabled = true;
     } else {
-      $('meta-connection-status').textContent = 'No Meta ad account connected.';
+      $('meta-connection-status').textContent = 'Research is ready. Connect only if Meta execution is useful.';
       $('meta-connect-button').textContent = 'Connect Meta →';
       $('meta-connect-button').disabled = false;
     }
 
-    const configurationBlocked = [
-      'PARTIZAN_FUNDED_PAYMENT_RAIL_NOT_CONFIGURED',
-      'STRIPE_NOT_CONFIGURED',
-      'STRIPE_ISSUING_CARDHOLDER_NOT_CONFIGURED',
-    ].includes(balance.settlement_status);
+    const checkoutUnavailable = balance.settlement_status === 'STRIPE_NOT_CONFIGURED';
     if (balance.funded_usd > 0) {
-      $('growth-balance-status').textContent = `${money(balance.funded_usd)} funded · ${money(balance.remaining_acquisition_capacity_usd)} acquisition capacity remains.${balance.settlement_ready ? '' : ' Provider billing setup is still being completed.'}`;
-    } else if (configurationBlocked) {
-      $('growth-balance-status').textContent = 'Growth Balance funding is temporarily unavailable until the Partizan-funded payment rail is configured. No monthly subscription is required.';
+      $('growth-balance-status').textContent = `${money(balance.funded_usd)} funded · ${money(balance.remaining_acquisition_capacity_usd)} acquisition capacity remains.${balance.settlement_ready ? ' Paid execution rail is ready.' : ' Research is available now; paid experiments remain paused until the ad-spend rail is ready.'}`;
+    } else if (checkoutUnavailable) {
+      $('growth-balance-status').textContent = 'Secure funding is temporarily unavailable because Stripe Checkout is not configured.';
+    } else if (!balance.settlement_ready) {
+      $('growth-balance-status').textContent = 'Fund securely with Stripe. Funding unlocks deep research now; paid experiments stay paused until Partizan’s ad-spend rail is ready.';
     } else {
-      $('growth-balance-status').textContent = 'Ready to fund. Partizan checks provider-payment liquidity before accepting money.';
+      $('growth-balance-status').textContent = 'Ready to fund. Growth Balance is the hard money boundary for autonomous paid experiments.';
     }
-    $('growth-balance-status').classList.toggle('settlement-warning', configurationBlocked || (balance.funded_usd > 0 && !balance.settlement_ready));
-    $('growth-balance-button').disabled = configurationBlocked;
-    $('growth-balance-button').textContent = configurationBlocked ? 'Funding rail setup required' : (balance.funded_usd > 0 ? 'Add to Growth Balance →' : 'Fund Growth Balance →');
-    $('autopilot-config-button').disabled = balance.funded_usd <= 0 || !researchReady;
+    $('growth-balance-status').classList.toggle('settlement-warning', checkoutUnavailable || (balance.funded_usd > 0 && !balance.settlement_ready));
+    $('growth-balance-button').disabled = checkoutUnavailable;
+    $('growth-balance-button').textContent = checkoutUnavailable ? 'Stripe Checkout unavailable' : (balance.funded_usd > 0 ? 'Add to Growth Balance →' : 'Fund Growth Balance →');
+    $('autopilot-config-button').disabled = false;
 
     if (researching) return;
     $('metric-balance').textContent = money(balance.available_usd);
@@ -329,8 +359,8 @@
     $('metric-customers').textContent = String(overview.paid_customers);
     $('metric-cac').textContent = overview.cac_usd == null ? '—' : money(overview.cac_usd);
     $('metric-revenue').textContent = money(overview.revenue_usd);
-    $('autopilot-live-status').textContent = overview.setup_complete ? 'Autopilot active' : overview.autopilot_status.replaceAll('_', ' ').toLowerCase();
-    $('autopilot-blockers').textContent = overview.blockers.length ? overview.blockers.join(' · ') : `Growth Balance available: ${money(balance.available_usd)}.`;
+    $('autopilot-live-status').textContent = overview.setup_complete ? 'Autopilot active' : 'Waiting on launch prerequisites';
+    $('autopilot-blockers').textContent = renderFriendlyBlockers(overview, researchReady);
 
     const paused = overview.autopilot_status === 'PAUSED';
     $('autopilot-pause-button').classList.toggle('hidden', paused || overview.autopilot_status === 'NOT_CONFIGURED');
@@ -338,7 +368,7 @@
     const experiments = [...overview.running_experiments, ...overview.waiting_experiments];
     $('autopilot-experiments').innerHTML = experiments.length
       ? experiments.slice(0, 8).map((item) => `<div><strong>${escapeHtml(item.platform)} · ${escapeHtml(item.action_type)}</strong><span>${escapeHtml(item.status)}${item.budget_cap == null ? '' : ` · ${money(item.budget_cap)}`}</span></div>`).join('')
-      : '<div><strong>No experiment yet</strong><span>Partizan will create the first eligible test after funding and setup are complete.</span></div>';
+      : '<div><strong>No experiment yet</strong><span>Partizan will create the first eligible test after research and launch prerequisites are complete.</span></div>';
     $('autopilot-decisions').innerHTML = overview.recent_decisions.length
       ? overview.recent_decisions.slice(0, 8).map((item) => `<div><strong>${escapeHtml(item.decision || item.outcome)}</strong><span>${escapeHtml(item.reasons[0] || item.kind)}</span></div>`).join('')
       : '<div><strong>Waiting for first signal</strong><span>Launch and learning decisions will appear here.</span></div>';
@@ -367,6 +397,7 @@
 
   $('autopilot-config-form').addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the pre-scan again.', true);
     const button = event.submitter;
     button.disabled = true;
     try {
@@ -378,7 +409,7 @@
         }),
       });
       renderAutopilot(overview);
-      showNotice(overview.setup_complete ? 'Autopilot guardrails saved.' : 'Guardrails saved. Remaining setup is shown below.');
+      showNotice('Limits saved. Partizan will apply them to eligible paid experiments.');
     } catch (error) {
       showNotice(error.message, true);
     } finally {
@@ -455,6 +486,38 @@
   $('autopilot-pause-button').addEventListener('click', () => setAutopilotStatus('PAUSED'));
   $('autopilot-resume-button').addEventListener('click', () => setAutopilotStatus('ACTIVE'));
 
+  const resumeStoredProject = async () => {
+    const storedProjectId = localStorage.getItem(PROJECT_KEY);
+    if (!storedProjectId || !loadProjectToken(storedProjectId)) return;
+    try {
+      const project = await api(`/v1/customer-projects/${storedProjectId}`);
+      managementFeePct = Number(project.managed_spend_fee_pct || managementFeePct);
+      $('growth-balance-amount').value = String(project.budget_usd || $('growth-balance-amount').value);
+      updateGrowthBalanceBreakdown();
+      if (project.launch_unlocked) {
+        showUnlocked();
+        await startResearch(false);
+        await loadAutopilot();
+        showNotice('Welcome back. Your Partizan project is restored.');
+        return;
+      }
+      const preview = storedPreview(storedProjectId);
+      if (preview) {
+        renderPreview(preview);
+        showNotice('Welcome back. Your acquisition hypotheses are restored.');
+        return;
+      }
+      $('brief').value = project.brief || '';
+      $('website').value = project.website_url || '';
+      $('market').value = project.market || 'United States';
+      $('goal').value = project.goal || 'Get paying customers';
+      $('budget').value = String(project.budget_usd || 1000);
+      showNotice('Welcome back. Your project details are restored; run the free scan to refresh the hypotheses.');
+    } catch (_) {
+      clearStoredProject(storedProjectId);
+    }
+  };
+
   const params = new URLSearchParams(window.location.search);
   const initialBudget = Number(params.get('budget'));
   if (Number.isFinite(initialBudget) && initialBudget >= 1) {
@@ -486,7 +549,10 @@
       };
       resumePurchase().catch((error) => showNotice(error.message, true));
     } else if (checkoutState === 'cancelled') {
-      loadProjectToken(projectId);
+      if (loadProjectToken(projectId)) {
+        const preview = storedPreview(projectId);
+        if (preview) renderPreview(preview);
+      }
       showNotice('Checkout cancelled. Your pre-scan is still here whenever you’re ready.');
     }
   }
@@ -526,4 +592,7 @@
       }
     }
   }
+
+  const callbackActive = Boolean(checkoutState || growthBalanceState || metaState);
+  if (!callbackActive) resumeStoredProject().catch(() => {});
 })();
