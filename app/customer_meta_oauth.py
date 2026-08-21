@@ -27,6 +27,7 @@ from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 CUSTOMER_META_OAUTH_STATE_NAMESPACE = "customer_meta_oauth_state"
 CUSTOMER_META_PENDING_NAMESPACE = "customer_meta_pending"
+META_OAUTH_RETURN_PATHS = frozenset({"/start", "/workspace"})
 
 
 class CustomerMetaOAuthError(RuntimeError):
@@ -159,8 +160,15 @@ class CustomerMetaOAuthService:
         self._client = client or HttpxMetaOAuthClient(self._settings)
         self._secret_store = secret_store or provider_secret_store
 
-    def begin(self, project_id: UUID, customer_token: str) -> str:
+    def begin(
+        self,
+        project_id: UUID,
+        customer_token: str,
+        *,
+        return_path: str = "/start",
+    ) -> str:
         customer_funnel_service.get_project_payload(project_id, customer_token)
+        return_path = self._normalize_return_path(return_path)
         redirect_uri = self._redirect_uri()
         app_id = self._settings.meta_oauth_app_id
         version = self._settings.meta_oauth_api_version
@@ -177,6 +185,7 @@ class CustomerMetaOAuthService:
             state_key,
             {
                 "project_id": str(project_id),
+                "return_path": return_path,
                 "created_at": now.isoformat(),
                 "expires_at": (now + timedelta(minutes=15)).isoformat(),
                 "used": False,
@@ -193,7 +202,27 @@ class CustomerMetaOAuthService:
         )
         return f"https://www.facebook.com/{version}/dialog/oauth?{query}"
 
+    def pending_context(self, state: str) -> tuple[UUID, str] | None:
+        record = self._store.get(
+            CUSTOMER_META_OAUTH_STATE_NAMESPACE,
+            self._state_key(state),
+        )
+        if record is None:
+            return None
+        try:
+            project_id = UUID(str(record["project_id"]))
+            return_path = self._normalize_return_path(
+                str(record.get("return_path") or "/start")
+            )
+        except (KeyError, ValueError, CustomerMetaOAuthError):
+            return None
+        return project_id, return_path
+
     def complete(self, *, state: str, code: str) -> UUID:
+        project_id, _ = self.complete_with_return(state=state, code=code)
+        return project_id
+
+    def complete_with_return(self, *, state: str, code: str) -> tuple[UUID, str]:
         state_key = self._state_key(state)
         record = self._store.get(CUSTOMER_META_OAUTH_STATE_NAMESPACE, state_key)
         if record is None or record.get("used"):
@@ -201,10 +230,13 @@ class CustomerMetaOAuthService:
         expires_at = datetime.fromisoformat(str(record["expires_at"]))
         if self._as_utc(expires_at) <= datetime.now(UTC):
             raise CustomerMetaOAuthError("Meta OAuth state has expired")
+        project_id = UUID(str(record["project_id"]))
+        return_path = self._normalize_return_path(
+            str(record.get("return_path") or "/start")
+        )
         record["used"] = True
         self._store.put(CUSTOMER_META_OAUTH_STATE_NAMESPACE, state_key, record)
 
-        project_id = UUID(str(record["project_id"]))
         short_token = self._client.exchange_code(code=code, redirect_uri=self._redirect_uri())
         access_token = self._client.extend_token(short_token)
         secret_reference = self._secret_store.create_reference()
@@ -251,7 +283,7 @@ class CustomerMetaOAuthService:
                 "created_at": datetime.now(UTC).isoformat(),
             },
         )
-        return project_id
+        return project_id, return_path
 
     def options(self, project_id: UUID, customer_token: str) -> CustomerMetaOptionsView:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
@@ -373,6 +405,12 @@ class CustomerMetaOAuthService:
         if not origin:
             raise CustomerMetaOAuthError("PARTIZAN_PUBLIC_BASE_URL is required for Meta OAuth")
         return f"{origin}/v1/customer-meta/oauth/callback"
+
+    @staticmethod
+    def _normalize_return_path(return_path: str) -> str:
+        if return_path not in META_OAUTH_RETURN_PATHS:
+            raise CustomerMetaOAuthError("Unsupported Meta OAuth return path")
+        return return_path
 
     @staticmethod
     def _state_key(state: str) -> str:
