@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Partizan Workspace</title>
+  <meta name="description" content="Your Partizan customer acquisition workspace: Growth Balance, current work, results, integrations and guardrails.">
+  <link rel="stylesheet" href="/workspace/assets/workspace.v1.css">
+</head>
+<body>
+  <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
+  <header class="top shell">
+    <a class="brand" href="/"><span class="mark">P</span><span><strong>Partizan</strong><small>Workspace</small></span></a>
+    <div class="account-nav"><span id="account-email">Loading…</span><button id="logout-button" type="button">Sign out</button></div>
+  </header>
+
+  <main class="shell workspace-main">
+    <section id="loading" class="loading-card"><span class="spinner"></span><div><strong>Opening your Partizan workspace…</strong><small>Your project, balance and current work are loading.</small></div></section>
+
+    <div id="workspace" class="hidden">
+      <section class="hero-card panel">
+        <div>
+          <span class="eyebrow">Autonomous customer acquisition</span>
+          <h1 id="workspace-status">Partizan is getting ready.</h1>
+          <p id="workspace-summary" class="lede">Your account is the home for funding, integrations, limits and results.</p>
+          <div class="project-line"><span id="project-market">—</span><i></i><span id="project-goal">—</span></div>
+        </div>
+        <div class="hero-actions">
+          <button id="pause-button" class="button button-secondary hidden" type="button">Pause Partizan</button>
+          <button id="resume-button" class="button button-primary hidden" type="button">Resume Partizan</button>
+        </div>
+      </section>
+
+      <section class="metric-grid" aria-label="Acquisition results">
+        <article><span>Growth Balance</span><strong id="metric-balance">$0</strong><small>available</small></article>
+        <article><span>Acquisition spend</span><strong id="metric-spend">$0</strong><small>media & acquisition</small></article>
+        <article><span>Customers</span><strong id="metric-customers">0</strong><small>paid customers</small></article>
+        <article><span>CAC</span><strong id="metric-cac">—</strong><small>blended cost</small></article>
+        <article><span>Revenue</span><strong id="metric-revenue">$0</strong><small>attributed</small></article>
+        <article><span>Partizan fee</span><strong id="metric-fee">$0</strong><small id="metric-fee-note">10% of spend</small></article>
+      </section>
+
+      <section class="workspace-grid">
+        <article class="panel balance-card">
+          <div class="section-head"><div><span class="eyebrow">Growth Balance</span><h2>Fund the learning loop</h2></div><span id="balance-state" class="status-pill">Not funded</span></div>
+          <p class="section-copy">This is the hard money boundary. Partizan cannot spend beyond the funded balance and your saved limits.</p>
+          <div class="balance-amount"><span>Available now</span><strong id="balance-available">$0</strong></div>
+          <div class="balance-mini"><span><b id="balance-capacity">$0</b> acquisition capacity</span><span><b id="balance-used">$0</b> used</span></div>
+          <form id="fund-form" class="inline-form">
+            <label for="fund-amount">Add funds</label>
+            <div class="money-field"><span>$</span><input id="fund-amount" type="number" min="1" max="100000" step="1" value="1000" required></div>
+            <button id="fund-button" class="button button-primary" type="submit">Fund Growth Balance →</button>
+          </form>
+          <p id="balance-note" class="note"></p>
+        </article>
+
+        <article class="panel current-card">
+          <div class="section-head"><div><span class="eyebrow">Current work</span><h2>What Partizan is doing</h2></div><span id="work-state" class="status-pill">Waiting</span></div>
+          <div id="current-work" class="activity-list"></div>
+          <p id="blockers" class="note"></p>
+        </article>
+      </section>
+
+      <section class="workspace-grid setup-grid">
+        <article class="panel">
+          <div class="section-head"><div><span class="eyebrow">Guardrails</span><h2>Maximum cost per customer</h2></div><span class="status-pill">Your limit</span></div>
+          <p class="section-copy">Partizan can decide what to test, but not how much a customer is worth to you.</p>
+          <form id="guardrail-form" class="guardrail-form">
+            <div><label for="max-cac">Maximum CAC</label><div class="money-field"><span>$</span><input id="max-cac" type="number" min="1" max="100000" step="1" value="30" required></div></div>
+            <label class="check-row"><input id="spend-confirm" type="checkbox" required><span>I authorize eligible paid experiments within Growth Balance and this limit.</span></label>
+            <button class="button button-secondary" type="submit">Save limit</button>
+          </form>
+        </article>
+
+        <article class="panel">
+          <div class="section-head"><div><span class="eyebrow">Integrations</span><h2>Access only when useful</h2></div><span id="meta-state" class="status-pill">Not connected</span></div>
+          <p class="section-copy">Partizan researches first. Connect Meta only when a supported Meta experiment is worth running.</p>
+          <div class="integration-card">
+            <div><strong>Instagram & Facebook</strong><small id="meta-detail">No account access yet.</small></div>
+            <button id="meta-connect" class="button button-secondary" type="button">Connect Meta →</button>
+          </div>
+          <form id="meta-options-form" class="meta-options hidden">
+            <div><label for="meta-account">Ad account</label><select id="meta-account" required></select></div>
+            <div><label for="meta-page">Facebook Page</label><select id="meta-page" required></select></div>
+            <div><label for="meta-country">Target country</label><input id="meta-country" maxlength="2" value="US" required></div>
+            <button class="button button-primary" type="submit">Use this Meta account</button>
+          </form>
+          <div class="research-pills"><span>TikTok</span><span>Reddit</span><span>Telegram</span><span>Creators</span><span>Search</span><span>Partners</span></div>
+          <p class="note">Research surfaces are not automatic execution promises. Partizan asks for access only when a supported action needs it.</p>
+        </article>
+      </section>
+
+      <section class="panel research-card">
+        <div class="section-head"><div><span class="eyebrow">Market research</span><h2 id="research-title">Partizan will map the market after funding</h2></div><span id="research-state" class="status-pill">Not started</span></div>
+        <p id="research-copy" class="section-copy">Funding Growth Balance includes the deep research. There is no separate $49 charge for autonomous execution.</p>
+        <button id="research-button" class="button button-secondary hidden" type="button">Continue research →</button>
+        <div id="research-progress" class="research-progress hidden"><span class="spinner"></span><div><strong>Partizan is mapping your market…</strong><small>Finding customer segments and concrete acquisition opportunities.</small></div></div>
+        <div id="clarification" class="clarification hidden"></div>
+        <div id="research-results" class="research-results hidden"></div>
+      </section>
+
+      <section class="panel experiments-card">
+        <div class="section-head"><div><span class="eyebrow">Experiments & decisions</span><h2>Learning history</h2></div></div>
+        <div class="history-grid"><div><h3>Experiments</h3><div id="experiments" class="activity-list"></div></div><div><h3>Recent decisions</h3><div id="decisions" class="activity-list"></div></div></div>
+      </section>
+    </div>
+
+    <div id="notice" class="notice hidden" role="status"></div>
+  </main>
+  <script src="/workspace/assets/workspace.v1.js" defer></script>
+</body>
+</html>
