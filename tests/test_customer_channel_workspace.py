@@ -4,6 +4,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
+import app.customer_channel_routes as customer_channel_routes_module
 import app.customer_channels as customer_channels_module
 from app.customer_account import customer_account_service
 from app.customer_channels import customer_channel_service
@@ -99,6 +100,35 @@ def test_customer_can_turn_channels_off_and_policy_persists() -> None:
     assert project["channel_preferences"]["REDDIT"] == "OFF"
     assert project["channel_preferences"]["INSTAGRAM"] == "OFF"
     assert customer_channel_service.autonomous_platforms(project) == []
+
+
+def test_channel_edits_do_not_resume_or_rebuild_a_customer_paused_autopilot(monkeypatch) -> None:
+    client, preview = _registered_client()
+    store = get_runtime_store()
+    project = store.get(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id))
+    assert project is not None
+    project["autopilot_pause_reason"] = "CUSTOMER"
+    store.put(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id), project)
+
+    def unexpected_refresh(*_args, **_kwargs):
+        raise AssertionError("manual customer pause must survive channel edits")
+
+    monkeypatch.setattr(
+        customer_channel_routes_module.customer_autopilot_service,
+        "refresh_channel_policy",
+        unexpected_refresh,
+    )
+
+    response = client.put(
+        f"/customer/workspace/{preview.project_id}/channels",
+        json={"channels": [{"platform": "REDDIT", "mode": "OFF"}]},
+    )
+
+    assert response.status_code == 200
+    updated = store.get(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id))
+    assert updated is not None
+    assert updated["autopilot_pause_reason"] == "CUSTOMER"
+    assert updated["channel_preferences"]["REDDIT"] == "OFF"
 
 
 def test_customer_cannot_enable_auto_for_channel_without_customer_execution_path() -> None:
