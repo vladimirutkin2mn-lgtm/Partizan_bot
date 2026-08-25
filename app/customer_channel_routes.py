@@ -19,6 +19,7 @@ from app.customer_channels import customer_channel_service
 from app.customer_funnel import (
     CustomerProjectAccessError,
     CustomerProjectNotFoundError,
+    customer_funnel_service,
 )
 
 router = APIRouter(tags=["customer-channels"])
@@ -71,8 +72,11 @@ def update_customer_channel_controls(
 ) -> list[CustomerChannelView]:
     customer_token = _project_token(session_token, project_id)
     try:
+        project = customer_funnel_service.get_project_payload(project_id, customer_token)
+        manually_paused = project.get("autopilot_pause_reason") == "CUSTOMER"
         customer_channel_service.update(project_id, customer_token, payload)
-        customer_autopilot_service.refresh_channel_policy(project_id, customer_token)
+        if not manually_paused:
+            customer_autopilot_service.refresh_channel_policy(project_id, customer_token)
         return customer_channel_service.list(project_id, customer_token)
     except (CustomerProjectNotFoundError, CustomerProjectAccessError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
