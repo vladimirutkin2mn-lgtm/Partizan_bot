@@ -35,6 +35,8 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert 'id="fund-form"' in workspace.text
     assert 'id="guardrail-form"' in workspace.text
     assert 'id="meta-connect"' in workspace.text
+    assert "Connect now, use only when useful" in workspace.text
+    assert "It does not authorize spend" in workspace.text
     assert 'id="pause-button"' in workspace.text
     assert 'id="resume-button"' in workspace.text
     assert 'id="metric-cac"' in workspace.text
@@ -72,6 +74,8 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
     for path in expected_workspace_paths:
         assert path in workspace_source
 
+    assert "$('meta-connect').disabled = !overview.product_id;" not in workspace_source
+    assert "$('meta-connect').disabled = false;" in workspace_source
     assert "/autopilot/checkout" not in workspace_source
     assert "/autopilot/verify" not in workspace_source
     assert "subscription_status" not in workspace_source
