@@ -43,6 +43,8 @@ class CustomerAccountProjectNavView(BaseModel):
     name: str
     project_type: CustomerProjectType | None = None
     reference_url: HttpUrl | None = None
+    brief: str
     market: str
     goal: str
+    budget_usd: int = Field(ge=1, le=100_000)
     created_at: datetime
