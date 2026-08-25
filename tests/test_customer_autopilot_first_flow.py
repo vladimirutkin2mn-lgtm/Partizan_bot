@@ -184,7 +184,7 @@ def test_start_page_routes_autonomous_execution_into_customer_workspace() -> Non
 
     assert workspace.status_code == 200
     assert "Fund the learning loop" in workspace.text
-    assert "Access only when useful" in workspace.text
+    assert "Connect now, use only when useful" in workspace.text
     assert "Market research" in workspace.text
     assert workspace_javascript.status_code == 200
     assert "/growth-balance/checkout" in workspace_javascript.text
