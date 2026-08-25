@@ -7,6 +7,23 @@
   <title>Partizan Workspace</title>
   <meta name="description" content="Your Partizan customer acquisition workspace: performance, channels, activity and controls.">
   <link rel="stylesheet" href="/workspace/assets/workspace.v1.css">
+  <style>
+    .auth-login{min-height:calc(100vh - 112px);padding:52px 0 88px;display:grid;place-items:start center;background:transparent;border:0;box-shadow:none}
+    .auth-card{width:min(100%,470px);padding:34px;border:1px solid var(--line);border-radius:24px;background:linear-gradient(180deg,rgba(22,25,34,.96),rgba(13,15,21,.94));box-shadow:var(--shadow)}
+    .auth-card h1{font-size:clamp(34px,5vw,44px);line-height:1.02;letter-spacing:-.04em;margin:10px 0 11px}
+    .auth-card .lede{font-size:14px;line-height:1.55;margin:0 0 26px;color:var(--muted)}
+    .auth-fields{display:grid;gap:14px}
+    .auth-field{display:grid;gap:7px}
+    .auth-field label{font-size:11px;font-weight:650;color:var(--soft)}
+    .auth-field input{width:100%;height:48px;border:1px solid var(--line-strong);border-radius:12px;background:rgba(0,0,0,.24);color:var(--text);padding:0 13px;font:inherit;outline:none;transition:border-color .18s ease,box-shadow .18s ease,background .18s ease}
+    .auth-field input::placeholder{color:#68707d}
+    .auth-field input:focus{border-color:rgba(201,255,101,.52);background:#11141b;box-shadow:0 0 0 3px rgba(201,255,101,.07)}
+    .auth-submit{width:100%;height:48px;margin-top:4px;font-size:14px}
+    .auth-new{margin:24px 0 0;padding-top:20px;border-top:1px solid var(--line);text-align:center;color:var(--muted);font-size:11px;line-height:1.5}
+    .auth-new a{display:inline-block;margin-left:5px;color:var(--soft);font-weight:700;text-decoration:none}
+    .auth-new a:hover{color:var(--accent)}
+    @media(max-width:700px){.auth-login{min-height:calc(100vh - 88px);padding:28px 0 56px}.auth-card{padding:26px 22px;border-radius:20px}.auth-card h1{font-size:34px}.auth-card .lede{margin-bottom:22px}}
+  </style>
 </head>
 <body>
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
@@ -20,21 +37,24 @@
   </header>
 
   <main class="shell workspace-main">
-    <section id="login-gate" class="login-gate panel hidden">
-      <div class="login-copy">
+    <section id="login-gate" class="login-gate auth-login hidden" aria-labelledby="workspace-login-title">
+      <div class="auth-card">
         <span class="eyebrow">Welcome back</span>
-        <h1>Your Partizan workspace.</h1>
-        <p class="lede">Sign in to see acquisition performance, channel controls, current work and Growth Balance.</p>
-        <div class="login-pills"><span>Performance</span><span>Channels</span><span>Activity</span><span>Settings</span></div>
+        <h1 id="workspace-login-title">Sign in to Partizan.</h1>
+        <p class="lede">Continue to your customer acquisition workspace.</p>
+        <form id="workspace-login-form" class="workspace-login-form auth-fields">
+          <div class="auth-field">
+            <label for="workspace-login-email">Email</label>
+            <input id="workspace-login-email" type="email" autocomplete="email" required placeholder="you@company.com">
+          </div>
+          <div class="auth-field">
+            <label for="workspace-login-password">Password</label>
+            <input id="workspace-login-password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required placeholder="Your password">
+          </div>
+          <button class="button button-primary auth-submit" type="submit">Sign in →</button>
+        </form>
+        <p class="auth-new">New to Partizan?<a href="/start">Run the free pre-scan →</a></p>
       </div>
-      <form id="workspace-login-form" class="workspace-login-form">
-        <label for="workspace-login-email">Email</label>
-        <input id="workspace-login-email" type="email" autocomplete="email" required placeholder="you@company.com">
-        <label for="workspace-login-password">Password</label>
-        <input id="workspace-login-password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required>
-        <button class="button button-primary" type="submit">Sign in →</button>
-        <a href="/start">New to Partizan? Run the free pre-scan</a>
-      </form>
     </section>
 
     <section id="loading" class="loading-card"><span class="spinner"></span><div><strong>Opening your Partizan workspace…</strong><small>Your project, performance and channel controls are loading.</small></div></section>
