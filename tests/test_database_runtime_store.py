@@ -27,6 +27,21 @@ def test_database_runtime_store_round_trip() -> None:
         store.clear_namespace(namespace)
 
 
+def test_database_runtime_store_put_if_absent_reports_insert_and_conflict() -> None:
+    store = DatabaseRuntimeStateStore()
+    namespace = f"ci-reservation-{uuid4()}"
+    key = str(uuid4())
+
+    try:
+        assert store.put_if_absent(namespace, key, {"winner": "first"}) is True
+        assert store.get(namespace, key) == {"winner": "first"}
+
+        assert store.put_if_absent(namespace, key, {"winner": "second"}) is False
+        assert store.get(namespace, key) == {"winner": "first"}
+    finally:
+        store.clear_namespace(namespace)
+
+
 def test_migrations_create_channel_first_runtime_tables() -> None:
     table_names = set(inspect(get_sync_engine()).get_table_names())
     expected = {
