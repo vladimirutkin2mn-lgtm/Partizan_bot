@@ -34,6 +34,7 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert 'id="workspace-login-form"' in workspace.text
     assert 'id="fund-form"' in workspace.text
     assert 'id="guardrail-form"' in workspace.text
+    assert 'id="workspace-summary" class="lede hidden" aria-hidden="true"' in workspace.text
     assert 'id="meta-connect"' in workspace.text
     assert "Connect now, use only when useful" in workspace.text
     assert "It does not authorize spend" in workspace.text
