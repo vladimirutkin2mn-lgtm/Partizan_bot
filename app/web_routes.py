@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -55,6 +56,17 @@ _CUSTOMER_WORKSPACE_ASSETS = {
     "workspace.v1.css": "text/css; charset=utf-8",
     "workspace.v1.js": "text/javascript; charset=utf-8",
 }
+
+
+def _workspace_asset_revision() -> str:
+    digest = hashlib.sha256()
+    for asset_name in sorted(_CUSTOMER_WORKSPACE_ASSETS):
+        digest.update(asset_name.encode("utf-8"))
+        digest.update((_WEB_DIR / asset_name).read_bytes())
+    return digest.hexdigest()[:12]
+
+
+_CUSTOMER_WORKSPACE_ASSET_REVISION = _workspace_asset_revision()
 _LANDING_STYLESHEET_MARKER = '<link rel="stylesheet" href="/site/assets/landing.v1.css">'
 _LANDING_ACCOUNT_STYLESHEET = (
     '<link rel="stylesheet" href="/site/assets/landing.account.v1.css">'
@@ -119,6 +131,12 @@ async def customer_start_asset(asset_name: str) -> FileResponse:
 @router.get("/workspace", include_in_schema=False)
 async def customer_workspace() -> HTMLResponse:
     html = (_WEB_DIR / "workspace.v1.html").read_text(encoding="utf-8")
+    for asset_name in _CUSTOMER_WORKSPACE_ASSETS:
+        asset_url = f"/workspace/assets/{asset_name}"
+        versioned_url = f"{asset_url}?v={_CUSTOMER_WORKSPACE_ASSET_REVISION}"
+        if asset_url not in html:
+            raise HTTPException(status_code=500, detail="Customer workspace asset marker missing")
+        html = html.replace(asset_url, versioned_url, 1)
     return HTMLResponse(
         html,
         media_type="text/html; charset=utf-8",
@@ -134,7 +152,14 @@ async def customer_workspace_asset(asset_name: str) -> FileResponse:
     media_type = _CUSTOMER_WORKSPACE_ASSETS.get(asset_name)
     if media_type is None:
         raise HTTPException(status_code=404, detail="Customer workspace asset not found")
-    return FileResponse(_WEB_DIR / asset_name, media_type=media_type)
+    return FileResponse(
+        _WEB_DIR / asset_name,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "no-store, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @router.get("/app", include_in_schema=False)
