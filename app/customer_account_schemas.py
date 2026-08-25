@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.customer_channel_schemas import CustomerChannelView
 from app.customer_schemas import (
     CustomerAutopilotOverview,
     CustomerProjectView,
@@ -64,5 +65,6 @@ class CustomerWorkspaceView(BaseModel):
     account: CustomerAccountView
     project: CustomerProjectView
     autopilot: CustomerAutopilotOverview
+    channels: list[CustomerChannelView] = Field(default_factory=list)
     target_max_cac: float | None = None
     autonomous_spend_confirmed: bool = False
