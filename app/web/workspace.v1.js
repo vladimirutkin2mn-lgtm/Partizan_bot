@@ -173,9 +173,9 @@
     $('meta-state').classList.toggle('good', overview.meta.connected);
     $('meta-detail').textContent = overview.meta.connected
       ? `Ad account ${overview.meta.ad_account_id}`
-      : (overview.product_id ? 'Research is ready. Connect only if Meta execution is useful.' : 'Partizan researches before asking for access.');
+      : 'Connect now if you expect to use Instagram or Facebook. Access alone never starts spend.';
     $('meta-connect').textContent = overview.meta.connected ? 'Reconnect Meta' : 'Connect Meta →';
-    $('meta-connect').disabled = !overview.product_id;
+    $('meta-connect').disabled = false;
 
     const paused = overview.autopilot_status === 'PAUSED';
     $('pause-button').classList.toggle('hidden', paused || overview.autopilot_status === 'NOT_CONFIGURED' || overview.autopilot_status === 'RESEARCHING');
