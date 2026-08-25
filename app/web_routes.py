@@ -55,6 +55,8 @@ _START_ASSETS = {
 _CUSTOMER_WORKSPACE_ASSETS = {
     "workspace.v1.css": "text/css; charset=utf-8",
     "workspace.v1.js": "text/javascript; charset=utf-8",
+    "workspace.channels.v1.css": "text/css; charset=utf-8",
+    "workspace.channels.v1.js": "text/javascript; charset=utf-8",
 }
 
 
