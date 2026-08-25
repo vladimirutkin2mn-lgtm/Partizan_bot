@@ -6,6 +6,7 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.customer_account_routes import router as customer_account_router
 from app.customer_channel_routes import router as customer_channel_router
+from app.customer_project_routes import router as customer_project_router
 from app.customer_routes import router as customer_router
 from app.db import get_sync_engine
 from app.distribution_play_routes import router as distribution_play_router
@@ -37,6 +38,7 @@ app = FastAPI(
 app.include_router(web_router)
 app.include_router(customer_router)
 app.include_router(customer_account_router)
+app.include_router(customer_project_router)
 app.include_router(customer_channel_router)
 app.include_router(growth_balance_rail_router)
 app.include_router(distribution_router)

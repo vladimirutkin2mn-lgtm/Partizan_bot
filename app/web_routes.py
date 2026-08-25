@@ -57,14 +57,22 @@ _CUSTOMER_WORKSPACE_ASSETS = {
     "workspace.v1.js": "text/javascript; charset=utf-8",
     "workspace.channels.v1.css": "text/css; charset=utf-8",
     "workspace.channels.v1.js": "text/javascript; charset=utf-8",
+    "workspace.projects.v1.css": "text/css; charset=utf-8",
+    "workspace.projects.v1.js": "text/javascript; charset=utf-8",
 }
 _WORKSPACE_STYLESHEET_MARKER = '<link rel="stylesheet" href="/workspace/assets/workspace.v1.css">'
 _WORKSPACE_CHANNEL_STYLESHEET = (
     '<link rel="stylesheet" href="/workspace/assets/workspace.channels.v1.css">'
 )
+_WORKSPACE_PROJECT_STYLESHEET = (
+    '<link rel="stylesheet" href="/workspace/assets/workspace.projects.v1.css">'
+)
 _WORKSPACE_SCRIPT_MARKER = '<script src="/workspace/assets/workspace.v1.js" defer></script>'
 _WORKSPACE_CHANNEL_SCRIPT = (
     '<script src="/workspace/assets/workspace.channels.v1.js" defer></script>'
+)
+_WORKSPACE_PROJECT_SCRIPT = (
+    '<script src="/workspace/assets/workspace.projects.v1.js" defer></script>'
 )
 
 
@@ -145,12 +153,18 @@ async def customer_workspace() -> HTMLResponse:
         raise HTTPException(status_code=500, detail="Customer workspace enhancement marker missing")
     html = html.replace(
         _WORKSPACE_STYLESHEET_MARKER,
-        f"{_WORKSPACE_STYLESHEET_MARKER}\n  {_WORKSPACE_CHANNEL_STYLESHEET}",
+        (
+            f"{_WORKSPACE_STYLESHEET_MARKER}\n  {_WORKSPACE_CHANNEL_STYLESHEET}"
+            f"\n  {_WORKSPACE_PROJECT_STYLESHEET}"
+        ),
         1,
     )
     html = html.replace(
         _WORKSPACE_SCRIPT_MARKER,
-        f"{_WORKSPACE_SCRIPT_MARKER}\n  {_WORKSPACE_CHANNEL_SCRIPT}",
+        (
+            f"{_WORKSPACE_SCRIPT_MARKER}\n  {_WORKSPACE_CHANNEL_SCRIPT}"
+            f"\n  {_WORKSPACE_PROJECT_SCRIPT}"
+        ),
         1,
     )
     for asset_name in _CUSTOMER_WORKSPACE_ASSETS:
