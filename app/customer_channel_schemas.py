@@ -18,7 +18,7 @@ class CustomerChannelPreferencesUpdateRequest(BaseModel):
     channels: list[CustomerChannelPreferenceInput] = Field(min_length=1, max_length=4)
 
     @model_validator(mode="after")
-    def validate_unique_platforms(self) -> "CustomerChannelPreferencesUpdateRequest":
+    def validate_unique_platforms(self) -> CustomerChannelPreferencesUpdateRequest:
         platforms = [item.platform for item in self.channels]
         if len(platforms) != len(set(platforms)):
             raise ValueError("Each channel can be configured only once")
