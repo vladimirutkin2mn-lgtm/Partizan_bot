@@ -5,6 +5,8 @@
   let projectId = params.get('project');
   let workspace = null;
   let metaOptions = null;
+  let lastResearchResult = null;
+  let activeTab = 'overview';
 
   const api = async (path, options = {}) => {
     const headers = new Headers(options.headers || {});
@@ -32,13 +34,32 @@
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
   })[char]);
   const money = (value) => `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  const roas = (value) => value == null ? '—' : `${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}×`;
+
+  const setActiveTab = (name) => {
+    activeTab = name;
+    document.querySelectorAll('.tab-button').forEach((button) => {
+      button.classList.toggle('active', button.dataset.tab === name);
+    });
+    document.querySelectorAll('[data-tab-panel]').forEach((panel) => {
+      panel.classList.toggle('hidden', panel.dataset.tabPanel !== name);
+    });
+  };
+
+  document.querySelectorAll('.tab-button').forEach((button) => {
+    button.addEventListener('click', () => setActiveTab(button.dataset.tab));
+  });
+  document.querySelectorAll('[data-open-tab]').forEach((button) => {
+    button.addEventListener('click', () => setActiveTab(button.dataset.openTab));
+  });
 
   const friendlyBlockers = (overview) => {
     const items = [];
+    if (overview.blockers.some((item) => item.includes('No autonomous execution channel'))) items.push('Choose an Auto channel when you want Partizan to execute, or keep every channel in Research only.');
     if (overview.growth_balance.funded_usd <= 0) items.push('Fund Growth Balance to start the included research.');
     if (overview.blockers.some((item) => item.includes('Website or landing page'))) items.push('Add a live website or landing page before paid traffic starts.');
-    if (overview.blockers.some((item) => item.includes('guardrails'))) items.push('Save the maximum cost per customer.');
-    if (overview.product_id && !overview.meta.connected) items.push('Connect Meta only if the selected execution path needs Meta paid access.');
+    if (overview.blockers.some((item) => item.includes('guardrails'))) items.push('Save the maximum cost per customer in Settings.');
+    if (overview.blockers.some((item) => item.includes('Meta access'))) items.push('Connect Meta in Settings for Auto Instagram & Facebook execution.');
     if (overview.growth_balance.funded_usd > 0 && !overview.growth_balance.settlement_ready) items.push('Paid spend is paused until Partizan’s ad-spend rail is ready. Research and planning remain available.');
     return items.join(' ');
   };
@@ -56,8 +77,9 @@
     $('account-nav').classList.remove('hidden');
     const switcher = $('project-switcher');
     switcher.innerHTML = account.projects.map((item) => {
-      const brief = item.brief.length > 42 ? `${item.brief.slice(0, 42)}…` : item.brief;
-      return `<option value="${escapeHtml(item.project_id)}">${escapeHtml(brief)}</option>`;
+      const label = `${item.market} · ${item.goal}`;
+      const compact = label.length > 54 ? `${label.slice(0, 54)}…` : label;
+      return `<option value="${escapeHtml(item.project_id)}">${escapeHtml(compact)}</option>`;
     }).join('');
     switcher.value = projectId || '';
     switcher.classList.toggle('hidden', account.projects.length < 2);
@@ -78,18 +100,21 @@
 
   const renderActivity = (overview) => {
     const work = [];
-    overview.running_experiments.slice(0, 5).forEach((item) => work.push({
+    overview.running_experiments.slice(0, 4).forEach((item) => work.push({
       title: `${item.platform} · ${item.action_type}`,
       detail: `${item.status}${item.budget_cap == null ? '' : ` · cap ${money(item.budget_cap)}`}`,
     }));
-    overview.waiting_experiments.slice(0, 5).forEach((item) => work.push({
+    overview.waiting_experiments.slice(0, 4).forEach((item) => work.push({
       title: `${item.platform} · ${item.action_type}`,
       detail: `${item.status}${item.budget_cap == null ? '' : ` · cap ${money(item.budget_cap)}`}`,
     }));
     if (!work.length) {
+      const autoEnabled = (workspace.channels || []).some((item) => item.mode === 'AUTO');
       work.push({
-        title: overview.product_id ? 'Comparing the first executable paths' : 'Waiting for deep research',
-        detail: overview.growth_balance.funded_usd > 0 ? 'Partizan will surface the first eligible experiment here.' : 'Funding unlocks the included deep research.',
+        title: !autoEnabled ? 'No Auto channel enabled' : (overview.product_id ? 'Comparing the first executable paths' : 'Waiting for deep research'),
+        detail: !autoEnabled
+          ? 'Partizan can keep researching. Choose Auto in Channels when you want execution.'
+          : (overview.growth_balance.funded_usd > 0 ? 'Partizan will surface the first eligible experiment here.' : 'Funding unlocks the included deep research.'),
       });
     }
     $('current-work').innerHTML = work.map((item) => `<div><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail)}</span></div>`).join('');
@@ -103,13 +128,47 @@
       : '<div><strong>Waiting for the first signal</strong><span>Acquisition and learning decisions will appear here.</span></div>';
   };
 
+  const channelModeLabel = (mode) => ({ AUTO: 'Auto', RESEARCH_ONLY: 'Research only', OFF: 'Off' })[mode] || mode;
+
+  const channelModeOptions = (channel) => {
+    const modes = channel.autonomous_execution_available
+      ? [['AUTO', 'Auto'], ['RESEARCH_ONLY', 'Research only'], ['OFF', 'Off']]
+      : [['RESEARCH_ONLY', 'Research only'], ['OFF', 'Off']];
+    return modes.map(([value, label]) => `<option value="${value}"${channel.mode === value ? ' selected' : ''}>${label}</option>`).join('');
+  };
+
+  const renderChannels = (channels) => {
+    const body = $('channels-table-body');
+    body.innerHTML = channels.map((channel) => {
+      const access = channel.platform === 'INSTAGRAM'
+        ? (channel.connected ? 'Meta connected' : 'Meta not connected')
+        : (channel.autonomous_execution_available ? 'Execution available' : 'Research surface');
+      const spendClass = channel.spend_usd ? 'channel-metric' : 'channel-zero';
+      return `<tr class="${channel.mode === 'OFF' ? 'channel-off' : ''}" data-platform="${escapeHtml(channel.platform)}">
+        <td class="channel-name"><strong>${escapeHtml(channel.label)}</strong><small>${escapeHtml(access)}</small></td>
+        <td><select class="channel-mode-select" data-platform="${escapeHtml(channel.platform)}" aria-label="${escapeHtml(channel.label)} mode">${channelModeOptions(channel)}</select></td>
+        <td class="${spendClass}">${money(channel.spend_usd)}</td>
+        <td class="${channel.paid_customers ? 'channel-metric' : 'channel-zero'}">${channel.paid_customers}</td>
+        <td class="${channel.cac_usd == null ? 'channel-zero' : 'channel-metric'}">${channel.cac_usd == null ? '—' : money(channel.cac_usd)}</td>
+        <td class="${channel.revenue_usd ? 'channel-metric' : 'channel-zero'}">${money(channel.revenue_usd)}</td>
+        <td class="${channel.roas == null ? 'channel-zero' : 'channel-metric'}">${roas(channel.roas)}</td>
+      </tr>`;
+    }).join('');
+
+    const snapshot = $('channel-snapshot');
+    const ordered = [...channels].sort((a, b) => (b.spend_usd - a.spend_usd) || a.label.localeCompare(b.label));
+    snapshot.innerHTML = ordered.length
+      ? ordered.map((channel) => `<div class="channel-snapshot-row"><strong>${escapeHtml(channel.label)}</strong><span class="mode">${escapeHtml(channelModeLabel(channel.mode))}</span><span>${money(channel.spend_usd)} spent</span><span>${channel.cac_usd == null ? 'CAC —' : `CAC ${money(channel.cac_usd)}`}</span></div>`).join('')
+      : '<div class="channel-snapshot-empty">No channel data yet.</div>';
+  };
+
   const renderResearchStatus = (project, overview) => {
     $('research-state').classList.remove('good', 'warn');
     if (project.research_state === 'READY') {
       $('research-state').textContent = 'Ready';
       $('research-state').classList.add('good');
       $('research-title').textContent = 'Market mapped';
-      $('research-copy').textContent = 'Partizan has mapped the current customer segments and acquisition opportunities. The plan can keep evolving as experiments produce evidence.';
+      $('research-copy').textContent = 'Partizan has mapped customer segments and acquisition opportunities. Disabled channels are excluded from what you see and from new autonomous execution.';
       $('research-button').classList.add('hidden');
       return;
     }
@@ -136,7 +195,7 @@
 
     renderAccountNav();
     $('workspace-status').textContent = statusText(overview);
-    $('workspace-summary').textContent = project.brief;
+    $('workspace-summary').textContent = '';
     $('project-market').textContent = project.market;
     $('project-goal').textContent = project.goal;
 
@@ -164,7 +223,6 @@
     $('work-state').textContent = overview.autopilot_status === 'ACTIVE' ? 'Working' : (overview.autopilot_status === 'PAUSED' ? 'Paused' : 'Preparing');
     $('work-state').classList.toggle('good', overview.autopilot_status === 'ACTIVE');
     $('blockers').textContent = friendlyBlockers(overview);
-    renderActivity(overview);
 
     if (data.target_max_cac != null) $('max-cac').value = String(data.target_max_cac);
     $('spend-confirm').checked = Boolean(data.autonomous_spend_confirmed);
@@ -173,33 +231,45 @@
     $('meta-state').classList.toggle('good', overview.meta.connected);
     $('meta-detail').textContent = overview.meta.connected
       ? `Ad account ${overview.meta.ad_account_id}`
-      : 'Connect now if you expect to use Instagram or Facebook. Access alone never starts spend.';
+      : 'Connect Meta if Instagram & Facebook is set to Auto. Access alone never starts spend.';
     $('meta-connect').textContent = overview.meta.connected ? 'Reconnect Meta' : 'Connect Meta →';
     $('meta-connect').disabled = false;
+
+    renderChannels(data.channels || []);
+    renderActivity(overview);
 
     const paused = overview.autopilot_status === 'PAUSED';
     $('pause-button').classList.toggle('hidden', paused || overview.autopilot_status === 'NOT_CONFIGURED' || overview.autopilot_status === 'RESEARCHING');
     $('resume-button').classList.toggle('hidden', !paused);
 
     renderResearchStatus(project, overview);
+    if (lastResearchResult) renderResearch(lastResearchResult);
     $('loading').classList.add('hidden');
     $('login-gate').classList.add('hidden');
     $('workspace').classList.remove('hidden');
+    setActiveTab(activeTab);
   };
 
   const loadWorkspace = async () => {
-    const data = await api(`/customer/workspace/${projectId}`);
+    const [data, channels] = await Promise.all([
+      api(`/customer/workspace/${projectId}`),
+      api(`/customer/workspace/${projectId}/channels`),
+    ]);
+    data.channels = channels;
     renderWorkspace(data);
     return data;
   };
 
-  const refreshWorkspaceWithoutResearch = async () => {
-    const data = await api(`/customer/workspace/${projectId}`);
-    renderWorkspace(data);
-    return data;
+  const refreshWorkspaceWithoutResearch = async () => loadWorkspace();
+
+  const visibleResearchOpportunities = (result) => {
+    const channels = workspace && workspace.channels ? workspace.channels : [];
+    const modes = new Map(channels.map((item) => [item.platform, item.mode]));
+    return result.opportunities.filter((item) => modes.get(String(item.platform).toUpperCase()) !== 'OFF');
   };
 
   const renderResearch = (result) => {
+    lastResearchResult = result;
     if (result.state === 'NEEDS_INPUT') {
       const question = result.clarifications[0];
       const box = $('clarification');
@@ -227,8 +297,9 @@
     }
 
     $('clarification').classList.add('hidden');
+    const opportunities = visibleResearchOpportunities(result);
     const results = $('research-results');
-    results.innerHTML = `<div><h3>Who Partizan will target first</h3><div class="result-grid">${result.icps.map((item) => `<article class="result-card"><strong>${escapeHtml(item.title)}</strong><span>${Math.round(item.score)}/100 fit</span><p>${escapeHtml(item.description)}</p></article>`).join('')}</div></div><div><h3>Where Partizan sees opportunity</h3><div class="result-grid">${result.opportunities.slice(0, 12).map((item) => `<article class="result-card"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.platform)} · ${escapeHtml(item.kind)}</span><p>${escapeHtml(item.rationale || 'Relevant acquisition opportunity')}</p>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Open ↗</a>` : ''}</article>`).join('')}</div></div>`;
+    results.innerHTML = `<div><h3>Who Partizan will target first</h3><div class="result-grid">${result.icps.map((item) => `<article class="result-card"><strong>${escapeHtml(item.title)}</strong><span>${Math.round(item.score)}/100 fit</span><p>${escapeHtml(item.description)}</p></article>`).join('')}</div></div><div><h3>Where Partizan sees opportunity</h3><div class="result-grid">${opportunities.slice(0, 12).map((item) => `<article class="result-card"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.platform)} · ${escapeHtml(item.kind)}</span><p>${escapeHtml(item.rationale || 'Relevant acquisition opportunity')}</p>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Open ↗</a>` : ''}</article>`).join('') || '<article class="result-card"><strong>No enabled channel opportunities yet</strong><p>Change channel preferences if you want Partizan to include additional surfaces.</p></article>'}</div></div>`;
     results.classList.remove('hidden');
   };
 
@@ -261,6 +332,7 @@
         showNotice(`Growth Balance funded. Available: ${money(overview.growth_balance.available_usd)}.`);
         await loadWorkspace();
         await loadResearch(true);
+        setActiveTab('overview');
         window.history.replaceState({}, '', `/workspace?project=${encodeURIComponent(projectId)}`);
       } catch (error) {
         showNotice(error.message, true);
@@ -275,12 +347,14 @@
     const metaState = params.get('meta');
     if (metaState === 'connected') {
       try {
+        setActiveTab('settings');
         await loadMetaOptions();
         showNotice('Meta authorized. Choose the ad account Partizan should use.');
       } catch (error) {
         showNotice(error.message, true);
       }
     } else if (metaState === 'error') {
+      setActiveTab('settings');
       showNotice('Meta connection was not completed.', true);
     }
   };
@@ -328,6 +402,27 @@
     const nextProject = event.target.value;
     if (!nextProject || nextProject === projectId) return;
     window.location.assign(`/workspace?project=${encodeURIComponent(nextProject)}`);
+  });
+
+  $('channels-table-body').addEventListener('change', async (event) => {
+    const select = event.target.closest('.channel-mode-select');
+    if (!select) return;
+    const platform = select.dataset.platform;
+    const mode = select.value;
+    select.disabled = true;
+    try {
+      await api(`/customer/workspace/${projectId}/channels`, {
+        method: 'PUT',
+        body: JSON.stringify({ channels: [{ platform, mode }] }),
+      });
+      showNotice(`${platform === 'INSTAGRAM' ? 'Instagram & Facebook' : platform} set to ${channelModeLabel(mode)}.`);
+      await loadWorkspace();
+    } catch (error) {
+      showNotice(error.message, true);
+      await loadWorkspace().catch(() => {});
+    } finally {
+      select.disabled = false;
+    }
   });
 
   $('fund-form').addEventListener('submit', async (event) => {
@@ -443,6 +538,7 @@
     account = null;
     workspace = null;
     projectId = null;
+    lastResearchResult = null;
     window.history.replaceState({}, '', '/workspace');
     showLoginGate();
   });
