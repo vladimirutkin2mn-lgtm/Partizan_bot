@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from app.customer_channel_schemas import (
@@ -7,6 +8,7 @@ from app.customer_channel_schemas import (
     CustomerChannelView,
 )
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE, customer_funnel_service
+from app.customer_schemas import CustomerResearchResponse
 from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_types import DistributionPlatform
 from app.paid_provider_connections import paid_provider_connection_service
@@ -110,6 +112,20 @@ class CustomerChannelService:
             and platform in AUTONOMOUS_EXECUTION_PLATFORMS
         ]
 
+    def filter_research(
+        self,
+        project_id: UUID,
+        customer_token: str,
+        result: CustomerResearchResponse,
+    ) -> CustomerResearchResponse:
+        project = customer_funnel_service.get_project_payload(project_id, customer_token)
+        visible = [
+            item
+            for item in result.opportunities
+            if not self.is_off(project, item.platform)
+        ]
+        return result.model_copy(update={"opportunities": visible})
+
     def is_off(self, project: dict, platform: str) -> bool:
         try:
             normalized = DistributionPlatform(str(platform).strip().upper())
@@ -162,9 +178,10 @@ class CustomerChannelService:
             return False
 
     def _persist(self, project: dict) -> None:
+        project["updated_at"] = datetime.now(UTC).isoformat()
         self._store.put(
             CUSTOMER_PROJECT_NAMESPACE,
-            str(project["project_id"]),
+            str(project["id"]),
             project,
         )
 
