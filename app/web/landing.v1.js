@@ -4,6 +4,7 @@
   const channelCount = document.getElementById('channel-count');
   const experimentCount = document.getElementById('experiment-count');
   const customerCount = document.getElementById('customer-count');
+  const accountLink = document.getElementById('nav-account-link');
 
   const formatMoney = (value) => new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -29,8 +30,27 @@
     customerCount.textContent = `~${customersAtExampleCac}`;
   };
 
+  const updateAccountEntry = async () => {
+    if (!accountLink) return;
+    try {
+      const response = await fetch('/customer/account/me', {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+      if (!response.ok) return;
+      accountLink.textContent = 'Open workspace';
+      accountLink.dataset.authenticated = 'true';
+      accountLink.setAttribute('aria-label', 'Open your Partizan workspace');
+    } catch (_error) {
+      // The static Sign in link remains a valid fail-open navigation path.
+    }
+  };
+
   budget?.addEventListener('input', updatePlanner);
   updatePlanner();
+  updateAccountEntry();
 
   document.querySelectorAll('a[href="/start"]').forEach((link) => {
     link.addEventListener('click', (event) => {

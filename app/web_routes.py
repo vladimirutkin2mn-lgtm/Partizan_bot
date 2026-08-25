@@ -38,6 +38,7 @@ _ASSETS = {
 }
 _LANDING_ASSETS = {
     "landing.v1.css": "text/css; charset=utf-8",
+    "landing.account.v1.css": "text/css; charset=utf-8",
     "landing.v1.js": "text/javascript; charset=utf-8",
 }
 _START_ASSETS = {
@@ -54,6 +55,19 @@ _CUSTOMER_WORKSPACE_ASSETS = {
     "workspace.v1.css": "text/css; charset=utf-8",
     "workspace.v1.js": "text/javascript; charset=utf-8",
 }
+_LANDING_STYLESHEET_MARKER = '<link rel="stylesheet" href="/site/assets/landing.v1.css">'
+_LANDING_ACCOUNT_STYLESHEET = (
+    '<link rel="stylesheet" href="/site/assets/landing.account.v1.css">'
+)
+_LANDING_START_CTA = (
+    '<a class="button button-nav" href="/start">Open Partizan <span>↗</span></a>'
+)
+_LANDING_NAV_ACTIONS = (
+    '<div class="nav-actions">'
+    '<a id="nav-account-link" class="nav-account-link" href="/workspace">Sign in</a>'
+    f"{_LANDING_START_CTA}"
+    "</div>"
+)
 
 router = APIRouter(tags=["web"])
 router.include_router(tracking_router)
@@ -62,6 +76,14 @@ router.include_router(tracking_router)
 @router.get("/", include_in_schema=False)
 async def marketing_site() -> HTMLResponse:
     html = (_WEB_DIR / "landing.v1.html").read_text(encoding="utf-8")
+    if _LANDING_STYLESHEET_MARKER not in html or _LANDING_START_CTA not in html:
+        raise HTTPException(status_code=500, detail="Marketing navigation marker missing")
+    html = html.replace(
+        _LANDING_STYLESHEET_MARKER,
+        f"{_LANDING_STYLESHEET_MARKER}\n  {_LANDING_ACCOUNT_STYLESHEET}",
+        1,
+    )
+    html = html.replace(_LANDING_START_CTA, _LANDING_NAV_ACTIONS, 1)
     return HTMLResponse(html, media_type="text/html; charset=utf-8")
 
 
