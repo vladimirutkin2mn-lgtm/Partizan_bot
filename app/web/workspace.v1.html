@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <title>Partizan Workspace</title>
-  <meta name="description" content="Your Partizan customer acquisition workspace: Growth Balance, current work, results, integrations and guardrails.">
+  <meta name="description" content="Your Partizan customer acquisition workspace: performance, channels, activity and controls.">
   <link rel="stylesheet" href="/workspace/assets/workspace.v1.css">
 </head>
 <body>
@@ -24,8 +24,8 @@
       <div class="login-copy">
         <span class="eyebrow">Welcome back</span>
         <h1>Your Partizan workspace.</h1>
-        <p class="lede">Sign in to see Growth Balance, current acquisition work, integrations, guardrails and results.</p>
-        <div class="login-pills"><span>Growth Balance</span><span>Current work</span><span>Results</span><span>Integrations</span></div>
+        <p class="lede">Sign in to see acquisition performance, channel controls, current work and Growth Balance.</p>
+        <div class="login-pills"><span>Performance</span><span>Channels</span><span>Activity</span><span>Settings</span></div>
       </div>
       <form id="workspace-login-form" class="workspace-login-form">
         <label for="workspace-login-email">Email</label>
@@ -37,66 +37,118 @@
       </form>
     </section>
 
-    <section id="loading" class="loading-card"><span class="spinner"></span><div><strong>Opening your Partizan workspace…</strong><small>Your project, balance and current work are loading.</small></div></section>
+    <section id="loading" class="loading-card"><span class="spinner"></span><div><strong>Opening your Partizan workspace…</strong><small>Your project, performance and channel controls are loading.</small></div></section>
 
     <div id="workspace" class="hidden">
-      <section class="hero-card panel">
-        <div>
-          <span class="eyebrow">Autonomous customer acquisition</span>
-          <h1 id="workspace-status">Partizan is getting ready.</h1>
-          <p id="workspace-summary" class="lede hidden" aria-hidden="true"></p>
-          <div class="project-line"><span id="project-market">—</span><i></i><span id="project-goal">—</span></div>
-        </div>
-        <div class="hero-actions">
-          <button id="pause-button" class="button button-secondary hidden" type="button">Pause Partizan</button>
-          <button id="resume-button" class="button button-primary hidden" type="button">Resume Partizan</button>
-        </div>
+      <nav class="workspace-tabs" aria-label="Workspace sections">
+        <button class="tab-button active" type="button" data-tab="overview">Overview</button>
+        <button class="tab-button" type="button" data-tab="channels">Channels</button>
+        <button class="tab-button" type="button" data-tab="activity">Activity</button>
+        <button class="tab-button" type="button" data-tab="settings">Settings</button>
+      </nav>
+
+      <section class="tab-panel" data-tab-panel="overview">
+        <section class="hero-card panel compact-hero">
+          <div>
+            <span class="eyebrow">Autonomous customer acquisition</span>
+            <h1 id="workspace-status">Partizan is getting ready.</h1>
+            <p id="workspace-summary" class="lede hidden" aria-hidden="true"></p>
+            <div class="project-line"><span id="project-market">—</span><i></i><span id="project-goal">—</span></div>
+          </div>
+          <div class="hero-actions">
+            <button id="pause-button" class="button button-secondary hidden" type="button">Pause Partizan</button>
+            <button id="resume-button" class="button button-primary hidden" type="button">Resume Partizan</button>
+          </div>
+        </section>
+
+        <section class="metric-grid metric-grid-primary" aria-label="Acquisition results">
+          <article><span>Growth Balance</span><strong id="metric-balance">$0</strong><small>available</small></article>
+          <article><span>Acquisition spend</span><strong id="metric-spend">$0</strong><small>across channels</small></article>
+          <article><span>Customers</span><strong id="metric-customers">0</strong><small>paid customers</small></article>
+          <article><span>CAC</span><strong id="metric-cac">—</strong><small>blended cost</small></article>
+        </section>
+
+        <section class="overview-grid">
+          <article class="panel current-card">
+            <div class="section-head"><div><span class="eyebrow">Current work</span><h2>What Partizan is doing</h2></div><span id="work-state" class="status-pill">Waiting</span></div>
+            <div id="current-work" class="activity-list"></div>
+            <p id="blockers" class="note"></p>
+          </article>
+
+          <article class="panel channel-snapshot-card">
+            <div class="section-head"><div><span class="eyebrow">Channel performance</span><h2>Where the money is working</h2></div><button class="text-button" type="button" data-open-tab="channels">Manage →</button></div>
+            <div id="channel-snapshot" class="channel-snapshot"></div>
+          </article>
+        </section>
+
+        <section class="panel overview-finance">
+          <div><span>Revenue</span><strong id="metric-revenue">$0</strong><small>attributed</small></div>
+          <div><span>Partizan fee</span><strong id="metric-fee">$0</strong><small id="metric-fee-note">10% of actual spend</small></div>
+          <div class="overview-finance-action"><span>Controls</span><strong>Budget & limits</strong><button class="text-button" type="button" data-open-tab="settings">Open settings →</button></div>
+        </section>
       </section>
 
-      <section class="metric-grid" aria-label="Acquisition results">
-        <article><span>Growth Balance</span><strong id="metric-balance">$0</strong><small>available</small></article>
-        <article><span>Acquisition spend</span><strong id="metric-spend">$0</strong><small>media & acquisition</small></article>
-        <article><span>Customers</span><strong id="metric-customers">0</strong><small>paid customers</small></article>
-        <article><span>CAC</span><strong id="metric-cac">—</strong><small>blended cost</small></article>
-        <article><span>Revenue</span><strong id="metric-revenue">$0</strong><small>attributed</small></article>
-        <article><span>Partizan fee</span><strong id="metric-fee">$0</strong><small id="metric-fee-note">10% of spend</small></article>
+      <section class="tab-panel hidden" data-tab-panel="channels">
+        <section class="panel channels-card">
+          <div class="section-head channels-head">
+            <div><span class="eyebrow">Channels</span><h2>Choose where Partizan can work</h2><p class="section-copy">Auto lets Partizan execute when that channel is supported and your spend controls allow it. Research only can study the channel but cannot run there. Off blocks new execution.</p></div>
+          </div>
+          <div class="channel-legend"><span><b>Auto</b> execute when eligible</span><span><b>Research only</b> no execution</span><span><b>Off</b> disabled</span></div>
+          <div class="channel-table-wrap">
+            <table class="channel-table">
+              <thead><tr><th>Channel</th><th>Mode</th><th>Spend</th><th>Customers</th><th>CAC</th><th>Revenue</th><th>ROAS</th></tr></thead>
+              <tbody id="channels-table-body"></tbody>
+            </table>
+          </div>
+          <p class="note">Turning a channel off stops it from being eligible for new autonomous execution. Historical spend and results stay visible so you can compare performance over time.</p>
+        </section>
       </section>
 
-      <section class="workspace-grid">
-        <article class="panel balance-card">
-          <div class="section-head"><div><span class="eyebrow">Growth Balance</span><h2>Fund the learning loop</h2></div><span id="balance-state" class="status-pill">Not funded</span></div>
-          <p class="section-copy">This is the hard money boundary. Partizan cannot spend beyond the funded balance and your saved limits.</p>
-          <div class="balance-amount"><span>Available now</span><strong id="balance-available">$0</strong></div>
-          <div class="balance-mini"><span><b id="balance-capacity">$0</b> acquisition capacity</span><span><b id="balance-used">$0</b> used</span></div>
-          <form id="fund-form" class="inline-form">
-            <label for="fund-amount">Add funds</label>
-            <div class="money-field"><span>$</span><input id="fund-amount" type="number" min="1" max="100000" step="1" value="1000" required></div>
-            <button id="fund-button" class="button button-primary" type="submit">Fund Growth Balance →</button>
-          </form>
-          <p id="balance-note" class="note"></p>
-        </article>
+      <section class="tab-panel hidden" data-tab-panel="activity">
+        <section class="panel research-card">
+          <div class="section-head"><div><span class="eyebrow">Market research</span><h2 id="research-title">Partizan will map the market after funding</h2></div><span id="research-state" class="status-pill">Not started</span></div>
+          <p id="research-copy" class="section-copy">Funding Growth Balance includes the deep research. There is no separate $49 charge for autonomous execution.</p>
+          <button id="research-button" class="button button-secondary hidden" type="button">Continue research →</button>
+          <div id="research-progress" class="research-progress hidden"><span class="spinner"></span><div><strong>Partizan is mapping your market…</strong><small>Finding customer segments and concrete acquisition opportunities.</small></div></div>
+          <div id="clarification" class="clarification hidden"></div>
+          <div id="research-results" class="research-results hidden"></div>
+        </section>
 
-        <article class="panel current-card">
-          <div class="section-head"><div><span class="eyebrow">Current work</span><h2>What Partizan is doing</h2></div><span id="work-state" class="status-pill">Waiting</span></div>
-          <div id="current-work" class="activity-list"></div>
-          <p id="blockers" class="note"></p>
-        </article>
+        <section class="panel experiments-card">
+          <div class="section-head"><div><span class="eyebrow">Experiments & decisions</span><h2>Learning history</h2></div></div>
+          <div class="history-grid"><div><h3>Experiments</h3><div id="experiments" class="activity-list"></div></div><div><h3>Recent decisions</h3><div id="decisions" class="activity-list"></div></div></div>
+        </section>
       </section>
 
-      <section class="workspace-grid setup-grid">
-        <article class="panel">
-          <div class="section-head"><div><span class="eyebrow">Guardrails</span><h2>Maximum cost per customer</h2></div><span class="status-pill">Your limit</span></div>
-          <p class="section-copy">Partizan can decide what to test, but not how much a customer is worth to you.</p>
-          <form id="guardrail-form" class="guardrail-form">
-            <div><label for="max-cac">Maximum CAC</label><div class="money-field"><span>$</span><input id="max-cac" type="number" min="1" max="100000" step="1" value="30" required></div></div>
-            <label class="check-row"><input id="spend-confirm" type="checkbox" required><span>I authorize eligible paid experiments within Growth Balance and this limit.</span></label>
-            <button class="button button-secondary" type="submit">Save limit</button>
-          </form>
-        </article>
+      <section class="tab-panel hidden" data-tab-panel="settings">
+        <section class="settings-grid">
+          <article class="panel balance-card">
+            <div class="section-head"><div><span class="eyebrow">Growth Balance</span><h2>Budget</h2></div><span id="balance-state" class="status-pill">Not funded</span></div>
+            <p class="section-copy">Partizan cannot spend beyond the funded balance and your saved limits.</p>
+            <div class="balance-amount"><span>Available now</span><strong id="balance-available">$0</strong></div>
+            <div class="balance-mini"><span><b id="balance-capacity">$0</b> acquisition capacity</span><span><b id="balance-used">$0</b> used</span></div>
+            <form id="fund-form" class="inline-form">
+              <label for="fund-amount">Add funds</label>
+              <div class="money-field"><span>$</span><input id="fund-amount" type="number" min="1" max="100000" step="1" value="1000" required></div>
+              <button id="fund-button" class="button button-primary" type="submit">Fund Growth Balance →</button>
+            </form>
+            <p id="balance-note" class="note"></p>
+          </article>
 
-        <article class="panel">
-          <div class="section-head"><div><span class="eyebrow">Integrations</span><h2>Connect now, use only when useful</h2></div><span id="meta-state" class="status-pill">Not connected</span></div>
-          <p class="section-copy">You can connect Meta at any time. Partizan will use it only when a supported Meta experiment is selected and your spend guardrails allow it.</p>
+          <article class="panel guardrail-card">
+            <div class="section-head"><div><span class="eyebrow">Guardrails</span><h2>Maximum cost per customer</h2></div><span class="status-pill">Your limit</span></div>
+            <p class="section-copy">Partizan can decide what to test, but not how much a customer is worth to you.</p>
+            <form id="guardrail-form" class="guardrail-form">
+              <div><label for="max-cac">Maximum CAC</label><div class="money-field"><span>$</span><input id="max-cac" type="number" min="1" max="100000" step="1" value="30" required></div></div>
+              <label class="check-row"><input id="spend-confirm" type="checkbox" required><span>I authorize eligible paid experiments within Growth Balance and this limit.</span></label>
+              <button class="button button-secondary" type="submit">Save limit</button>
+            </form>
+          </article>
+        </section>
+
+        <section class="panel integrations-card">
+          <div class="section-head"><div><span class="eyebrow">Integrations</span><h2>Account access</h2></div><span id="meta-state" class="status-pill">Not connected</span></div>
+          <p class="section-copy">Connecting an account grants access only. It never authorizes spend by itself.</p>
           <div class="integration-card">
             <div><strong>Instagram & Facebook</strong><small id="meta-detail">No account access yet.</small></div>
             <button id="meta-connect" class="button button-secondary" type="button">Connect Meta →</button>
@@ -107,22 +159,8 @@
             <div><label for="meta-country">Target country</label><input id="meta-country" maxlength="2" value="US" required></div>
             <button class="button button-primary" type="submit">Use this Meta account</button>
           </form>
-          <div class="research-pills"><span>TikTok</span><span>Reddit</span><span>Telegram</span><span>Creators</span><span>Search</span><span>Partners</span></div>
-          <p class="note">Connecting an integration grants access only. It does not authorize spend or promise automatic execution.</p>
-        </article>
-      </section>
-
-      <section class="panel research-card">
-        <div class="section-head"><div><span class="eyebrow">Market research</span><h2 id="research-title">Partizan will map the market after funding</h2></div><span id="research-state" class="status-pill">Not started</span></div>
-        <p id="research-copy" class="section-copy">Funding Growth Balance includes the deep research. There is no separate $49 charge for autonomous execution.</p>
-        <button id="research-button" class="button button-secondary hidden" type="button">Continue research →</button>
-        <div id="research-progress" class="research-progress hidden"><span class="spinner"></span><div><strong>Partizan is mapping your market…</strong><small>Finding customer segments and concrete acquisition opportunities.</small></div></div>
-        <div id="clarification" class="clarification hidden"></div>
-        <div id="research-results" class="research-results hidden"></div>
-      </section>
-
-      <section class="panel experiments-card">
-        <div class="section-head"><div><span class="eyebrow">Experiments & decisions</span><h2>Learning history</h2></div></div><div class="history-grid"><div><h3>Experiments</h3><div id="experiments" class="activity-list"></div></div><div><h3>Recent decisions</h3><div id="decisions" class="activity-list"></div></div></div>
+          <p class="note">Other channels stay in Research only or Off until their customer-facing execution path is production-ready.</p>
+        </section>
       </section>
     </div>
 

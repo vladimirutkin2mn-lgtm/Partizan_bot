@@ -7,6 +7,7 @@ from app.audience_intelligence_service import audience_intelligence_service
 from app.autonomy_overview import autonomy_overview_service
 from app.autonomy_schemas import GrowthMandateStatus, GrowthMandateUpsertRequest
 from app.autonomy_service import growth_mandate_service
+from app.customer_channels import customer_channel_service
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE, customer_funnel_service
 from app.customer_schemas import (
     CustomerAutopilotConfigureRequest,
@@ -63,6 +64,25 @@ class CustomerAutopilotService:
             )
         return self.overview(project_id, customer_token)
 
+    def refresh_channel_policy(
+        self,
+        project_id: UUID,
+        customer_token: str,
+    ) -> CustomerAutopilotOverview:
+        project = customer_funnel_service.get_project_payload(project_id, customer_token)
+        product_id_raw = project.get("product_id")
+        research_ready = project.get("research_state") == "READY" and bool(product_id_raw)
+        if research_ready:
+            product_id = UUID(str(product_id_raw))
+            self._materialize_staged_meta(project, product_id)
+            self._ensure_mandate_if_ready(
+                project_id,
+                project,
+                product_id,
+                force_update=True,
+            )
+        return self.overview(project_id, customer_token)
+
     def set_status(
         self,
         project_id: UUID,
@@ -71,9 +91,12 @@ class CustomerAutopilotService:
     ) -> CustomerAutopilotOverview:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         product_id = self._require_researched_product(project)
+        auto_platforms = customer_channel_service.autonomous_platforms(project)
         self._materialize_staged_meta(project, product_id)
         self._ensure_mandate_if_ready(project_id, project, product_id)
         if status == "ACTIVE":
+            if not auto_platforms:
+                raise ValueError("Enable at least one Auto channel before resuming Partizan")
             self._require_paid_destination(product_id)
             analytics = distribution_analytics_service.product_analytics(product_id)
             balance = self._balance.summary(project_id, analytics.total_spend)
@@ -81,8 +104,11 @@ class CustomerAutopilotService:
                 raise ValueError("Fund the Growth Balance before activating Autopilot")
             if not balance.settlement_ready:
                 raise ValueError("Growth Balance funding is not available for paid activation yet")
-            if paid_provider_connection_service.get_meta(product_id) is None:
-                raise ValueError("Connect Meta before activating paid acquisition")
+            if (
+                DistributionPlatform.INSTAGRAM in auto_platforms
+                and paid_provider_connection_service.get_meta(product_id) is None
+            ):
+                raise ValueError("Connect Meta before activating Meta acquisition")
             self._balance.activate_rail(project_id)
             growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
             project["autopilot_pause_reason"] = None
@@ -105,6 +131,7 @@ class CustomerAutopilotService:
             return self.overview(project_id, customer_token)
 
         product_id = UUID(str(product_id_raw))
+        auto_platforms = customer_channel_service.autonomous_platforms(project)
         self._materialize_staged_meta(project, product_id)
         self._ensure_mandate_if_ready(project_id, project, product_id)
         product = product_intake_service.get_product(product_id)
@@ -115,8 +142,10 @@ class CustomerAutopilotService:
         except KeyError:
             mandate = None
         can_activate = (
-            mandate is not None
+            DistributionPlatform.INSTAGRAM in auto_platforms
+            and mandate is not None
             and mandate.status == GrowthMandateStatus.PAUSED
+            and project.get("autopilot_pause_reason") != "CUSTOMER"
             and bool(product.reference_links)
             and balance.remaining_acquisition_capacity_usd > 0
             and balance.settlement_ready
@@ -140,12 +169,18 @@ class CustomerAutopilotService:
             project.get("autopilot_spend_confirmed")
             and project.get("autopilot_target_max_cac")
         )
+        auto_platforms = customer_channel_service.autonomous_platforms(project)
 
         if not research_ready:
             balance = self._balance.summary(project_id, 0.0)
             staged_meta = self._staged_meta_view(project)
             blockers: list[str] = []
-            if not staged_meta.connected:
+            if not auto_platforms:
+                blockers.append("No autonomous execution channel is enabled")
+            if (
+                DistributionPlatform.INSTAGRAM in auto_platforms
+                and not staged_meta.connected
+            ):
                 blockers.append("Meta access is not connected")
             if not guardrails_saved:
                 blockers.append("Maximum CAC and autonomous-spend guardrails are not saved")
@@ -190,6 +225,8 @@ class CustomerAutopilotService:
         connection = paid_provider_connection_service.get_meta(product_id)
 
         blockers = []
+        if not auto_platforms:
+            blockers.append("No autonomous execution channel is enabled")
         if not product.reference_links:
             blockers.append("Website or landing page is required for paid traffic")
         if balance.funded_usd <= 0:
@@ -200,9 +237,9 @@ class CustomerAutopilotService:
             blockers.append("Growth Balance funding is not available yet")
         if not guardrails_saved:
             blockers.append("Maximum CAC and autonomous-spend guardrails are not saved")
-        elif mandate is None and balance.funded_usd > 0:
+        elif mandate is None and balance.funded_usd > 0 and auto_platforms:
             blockers.append("Partizan is applying the saved guardrails")
-        if connection is None:
+        if DistributionPlatform.INSTAGRAM in auto_platforms and connection is None:
             blockers.append("Meta access is not connected")
         if mandate is not None and mandate.status != GrowthMandateStatus.ACTIVE:
             blockers.append(f"Autopilot is {mandate.status.value.lower()}")
@@ -267,6 +304,16 @@ class CustomerAutopilotService:
             existing = growth_mandate_service.get(product_id)
         except KeyError:
             existing = None
+
+        auto_platforms = customer_channel_service.autonomous_platforms(project)
+        if not auto_platforms:
+            if existing is not None and existing.status == GrowthMandateStatus.ACTIVE:
+                growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
+                self._balance.pause_rail(project_id, "CHANNELS")
+                project["autopilot_pause_reason"] = "CHANNELS"
+                self._persist(project)
+            return existing
+
         if existing is not None and not force_update:
             return existing
 
@@ -296,7 +343,7 @@ class CustomerAutopilotService:
                 max_autonomous_spend_per_experiment=per_experiment,
                 max_autonomous_spend_per_day=daily,
                 max_concurrent_running_experiments=2,
-                allowed_platforms=[DistributionPlatform.INSTAGRAM],
+                allowed_platforms=auto_platforms,
                 allowed_actions=[DistributionActionType.PAID_CAMPAIGN],
                 autonomous_prepare=True,
                 autonomous_approve=True,
@@ -305,15 +352,23 @@ class CustomerAutopilotService:
             ),
         )
 
+        meta_required = DistributionPlatform.INSTAGRAM in auto_platforms
         meta_connected = paid_provider_connection_service.get_meta(product_id) is not None
         pause_reason: str | None = None
-        if not meta_connected:
+        if meta_required and not meta_connected:
             pause_reason = "SETUP"
         elif not balance.settlement_ready:
             pause_reason = "FUNDING"
         if pause_reason is not None and mandate.status == GrowthMandateStatus.ACTIVE:
             growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
             self._balance.pause_rail(project_id, pause_reason)
+        elif (
+            pause_reason is None
+            and mandate.status == GrowthMandateStatus.PAUSED
+            and project.get("autopilot_pause_reason") == "CHANNELS"
+        ):
+            self._balance.activate_rail(project_id)
+            mandate = growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
         project["autopilot_pause_reason"] = pause_reason
         self._persist(project)
         return mandate
