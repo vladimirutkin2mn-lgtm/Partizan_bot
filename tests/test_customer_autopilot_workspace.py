@@ -32,23 +32,34 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert workspace.status_code == 200
     assert "/workspace/assets/workspace.v1.css" in workspace.text
     assert 'id="workspace-login-form"' in workspace.text
+    assert 'data-tab="overview"' in workspace.text
+    assert 'data-tab="channels"' in workspace.text
+    assert 'data-tab="activity"' in workspace.text
+    assert 'data-tab="settings"' in workspace.text
+    assert 'id="channels-table-body"' in workspace.text
+    assert "Choose where Partizan can work" in workspace.text
+    assert "Research only" in workspace.text
+    assert "Off blocks new execution" in workspace.text
     assert 'id="fund-form"' in workspace.text
     assert 'id="guardrail-form"' in workspace.text
     assert 'id="workspace-summary" class="lede hidden" aria-hidden="true"' in workspace.text
     assert 'id="meta-connect"' in workspace.text
-    assert "Connect now, use only when useful" in workspace.text
-    assert "It does not authorize spend" in workspace.text
+    assert "Connecting an account grants access only" in workspace.text
     assert 'id="pause-button"' in workspace.text
     assert 'id="resume-button"' in workspace.text
     assert 'id="metric-cac"' in workspace.text
     assert 'id="metric-customers"' in workspace.text
     assert 'id="autopilot-budget"' not in workspace.text
     assert "$149" not in workspace.text
+    assert "Creators</span>" not in workspace.text
+    assert "Search</span>" not in workspace.text
+    assert "Partners</span>" not in workspace.text
 
     stylesheet = client.get("/workspace/assets/workspace.v1.css")
     assert stylesheet.status_code == 200
-    assert ".metric-grid" in stylesheet.text
-    assert ".workspace-grid" in stylesheet.text
+    assert ".metric-grid-primary" in stylesheet.text
+    assert ".workspace-tabs" in stylesheet.text
+    assert ".channel-table" in stylesheet.text
 
 
 def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> None:
@@ -71,12 +82,15 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
         "/meta/connection",
         "/autopilot/status",
         "/autopilot",
+        "/channels",
     )
     for path in expected_workspace_paths:
         assert path in workspace_source
 
     assert "$('meta-connect').disabled = !overview.product_id;" not in workspace_source
     assert "$('meta-connect').disabled = false;" in workspace_source
+    assert "channel-mode-select" in workspace_source
+    assert "RESEARCH_ONLY" in workspace_source
     assert "/autopilot/checkout" not in workspace_source
     assert "/autopilot/verify" not in workspace_source
     assert "subscription_status" not in workspace_source
