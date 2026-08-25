@@ -102,10 +102,11 @@ class DatabaseRuntimeStateStore:
             pg_insert(RuntimeSnapshot)
             .values(namespace=namespace, entity_key=entity_key, payload=payload)
             .on_conflict_do_nothing(index_elements=["namespace", "entity_key"])
+            .returning(RuntimeSnapshot.entity_key)
         )
         with session_factory.begin() as session:
-            result = session.execute(statement)
-            return result.rowcount == 1
+            inserted_key = session.execute(statement).scalar_one_or_none()
+            return inserted_key is not None
 
     def delete(self, namespace: str, entity_key: str) -> None:
         session_factory = get_sync_session_factory()
