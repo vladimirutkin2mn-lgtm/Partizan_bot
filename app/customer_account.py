@@ -49,6 +49,15 @@ class CustomerAccountService:
         customer_token: str,
     ) -> tuple[CustomerAccountView, str]:
         normalized_email = self._normalize_email(email)
+        existing_account = self._account_by_email(normalized_email)
+        if existing_account is not None:
+            return self._resume_registration(
+                existing_account,
+                password=password,
+                project_id=project_id,
+                customer_token=customer_token,
+            )
+
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         owner = project.get("customer_account_id")
         if owner:
@@ -75,6 +84,14 @@ class CustomerAccountService:
         )
         if not email_reserved:
             self._store.delete(CUSTOMER_ACCOUNT_NAMESPACE, str(account_id))
+            winner = self._account_by_email(normalized_email)
+            if winner is not None:
+                return self._resume_registration(
+                    winner,
+                    password=password,
+                    project_id=project_id,
+                    customer_token=customer_token,
+                )
             raise CustomerAccountConflictError(
                 "An account with this email already exists. Sign in instead."
             )
@@ -190,6 +207,23 @@ class CustomerAccountService:
             self._store.clear_namespace(CUSTOMER_ACCOUNT_PROJECT_ACCESS_NAMESPACE)
             self._store.clear_namespace(CUSTOMER_ACCOUNT_PROJECT_CLAIM_NAMESPACE)
 
+    def _resume_registration(
+        self,
+        account: dict,
+        *,
+        password: str,
+        project_id: UUID,
+        customer_token: str,
+    ) -> tuple[CustomerAccountView, str]:
+        if not self._password_matches(account, password):
+            raise CustomerAccountConflictError(
+                "An account with this email already exists. Sign in instead."
+            )
+        account_id = UUID(str(account["id"]))
+        self._claim_project(account_id, project_id, customer_token)
+        session_token = self._create_session(account_id)
+        return self.view(account_id), session_token
+
     def _claim_project(self, account_id: UUID, project_id: UUID, customer_token: str) -> None:
         project = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
         if project is None:
@@ -302,7 +336,15 @@ class CustomerAccountService:
         index = self._store.get(CUSTOMER_ACCOUNT_EMAIL_NAMESPACE, normalized)
         if index is None:
             return None
-        return self._store.get(CUSTOMER_ACCOUNT_NAMESPACE, str(index.get("account_id") or ""))
+        account_id = str(index.get("account_id") or "")
+        account = self._store.get(CUSTOMER_ACCOUNT_NAMESPACE, account_id)
+        if account is not None:
+            return account
+
+        current_index = self._store.get(CUSTOMER_ACCOUNT_EMAIL_NAMESPACE, normalized)
+        if current_index and str(current_index.get("account_id") or "") == account_id:
+            self._store.delete(CUSTOMER_ACCOUNT_EMAIL_NAMESPACE, normalized)
+        return None
 
     def _password_matches(self, account: dict, password: str) -> bool:
         try:
