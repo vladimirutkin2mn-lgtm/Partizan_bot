@@ -349,7 +349,10 @@ class GrowthAutoResearchEvaluator:
         )
         threshold = policy.min_relative_proxy_improvement
         rationale = [
-            f"Using {label} because higher-priority purchase economics are not decision-grade for both variants.",
+            (
+                f"Using {label} because higher-priority purchase economics are not "
+                "decision-grade for both variants."
+            ),
             (
                 f"Champion={champion_rate:.2%}; challenger={challenger_rate:.2%}; "
                 f"relative improvement={relative_improvement:.1%}."
