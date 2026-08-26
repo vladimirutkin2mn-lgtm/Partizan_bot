@@ -45,7 +45,6 @@ def reset_state() -> None:
     distribution_analytics_service.reset()
     distribution_growth_manager_service.reset()
     growth_mandate_service.reset()
-    growth_autoresearch_service.reset()
 
 
 def _ready_product() -> UUID:
