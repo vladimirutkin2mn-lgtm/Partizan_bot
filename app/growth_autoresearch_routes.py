@@ -3,8 +3,11 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from app.growth_autoresearch import growth_autoresearch_service
+from app.growth_autoresearch_hypothesis import growth_autoresearch_hypothesis_service
 from app.growth_autoresearch_schemas import (
     GrowthChampionView,
+    GrowthHypothesisGenerationRequest,
+    GrowthHypothesisGenerationView,
     GrowthResearchBaselineRequest,
     GrowthResearchChallengerRequest,
     GrowthResearchEvaluationRequest,
@@ -53,6 +56,26 @@ def establish_growth_autoresearch_baseline(
         raise HTTPException(
             status_code=409,
             detail="Configure Growth AutoResearch policy before establishing a baseline",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/products/{product_id}/growth-autoresearch/hypotheses",
+    response_model=GrowthHypothesisGenerationView,
+)
+async def generate_growth_autoresearch_hypothesis(
+    product_id: UUID,
+    payload: GrowthHypothesisGenerationRequest,
+) -> GrowthHypothesisGenerationView:
+    _require_product(product_id)
+    try:
+        return await growth_autoresearch_hypothesis_service.generate(product_id, payload)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="Configure Growth AutoResearch policy before generating a hypothesis",
         ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
