@@ -9,6 +9,7 @@ from app.customer_schemas import (
     CustomerAutopilotOverview,
     CustomerProjectView,
 )
+from app.growth_autoresearch_schemas import GrowthAutoResearchOverviewView
 
 
 class CustomerAccountRegisterRequest(BaseModel):
@@ -64,5 +65,6 @@ class CustomerWorkspaceView(BaseModel):
     account: CustomerAccountView
     project: CustomerProjectView
     autopilot: CustomerAutopilotOverview
+    autoresearch: GrowthAutoResearchOverviewView | None = None
     target_max_cac: float | None = None
     autonomous_spend_confirmed: bool = False
