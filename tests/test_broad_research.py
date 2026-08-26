@@ -97,12 +97,13 @@ async def test_broad_research_discovers_all_first_class_surfaces_without_distrib
     result = await service.discover(_product(), _icp_result())
 
     surfaces = {item.surface for item in result.opportunities}
+    execution_platform_values = {platform.value for platform in DistributionPlatform}
     assert surfaces == set(ResearchSurface)
     assert result.opportunity_count == len(result.opportunities)
     assert result.opportunity_count >= 12
     assert all(item.provenance for item in result.opportunities)
     assert all(item.execution_status != "PARTIZAN_CONTROL_PLANE" for item in result.opportunities)
-    assert all(surface.value not in {platform.value for platform in DistributionPlatform} for surface in ResearchSurface)
+    assert all(surface.value not in execution_platform_values for surface in ResearchSurface)
 
     search_clusters = [item for item in result.opportunities if item.surface == ResearchSurface.SEARCH]
     assert search_clusters
