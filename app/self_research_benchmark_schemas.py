@@ -61,7 +61,7 @@ class SelfResearchBenchmarkCase(BaseModel):
     decision_grade: bool = False
 
     @model_validator(mode="after")
-    def validate_winner(self) -> "SelfResearchBenchmarkCase":
+    def validate_winner(self) -> SelfResearchBenchmarkCase:
         candidate_keys = {item.candidate_key for item in self.candidates}
         if self.winner_candidate_key is not None:
             if self.winner_candidate_key not in candidate_keys:
@@ -85,7 +85,7 @@ class SelfResearchBenchmarkDataset(BaseModel):
     created_at: datetime
 
     @model_validator(mode="after")
-    def validate_counts(self) -> "SelfResearchBenchmarkDataset":
+    def validate_counts(self) -> SelfResearchBenchmarkDataset:
         if self.case_count != len(self.cases):
             raise ValueError("case_count must match cases length")
         counts = {
