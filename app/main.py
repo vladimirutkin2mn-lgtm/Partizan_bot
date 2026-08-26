@@ -5,6 +5,7 @@ from sqlalchemy import text
 
 from app.config import get_settings
 from app.customer_account_routes import router as customer_account_router
+from app.customer_autoresearch_routes import router as customer_autoresearch_router
 from app.customer_channel_routes import router as customer_channel_router
 from app.customer_project_routes import router as customer_project_router
 from app.customer_routes import router as customer_router
@@ -41,6 +42,7 @@ app.include_router(customer_router)
 app.include_router(customer_account_router)
 app.include_router(customer_project_router)
 app.include_router(customer_channel_router)
+app.include_router(customer_autoresearch_router)
 app.include_router(growth_balance_rail_router)
 app.include_router(growth_autoresearch_router)
 app.include_router(distribution_router)
