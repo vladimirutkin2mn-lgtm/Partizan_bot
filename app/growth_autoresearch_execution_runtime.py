@@ -116,21 +116,54 @@ class ResumableGrowthAutoResearchExecutionService(GrowthAutoResearchExecutionSer
         trial = self._autoresearch.get_trial(trial_id)
         if trial.status != GrowthResearchTrialStatus.READY:
             return await super().execute_trial(trial_id)
-        policy = self._autoresearch.get_policy(trial.product_id)
-        if not policy.paused:
-            return await super().execute_trial(trial_id)
 
+        policy = self._autoresearch.get_policy(trial.product_id)
         existing = self.get_for_trial(trial.id)
-        return self._record(
-            trial=trial,
-            status=GrowthAutoResearchExecutionStatus.PAUSED,
-            platform=trial.challenger.platform,
-            reasons=[
-                "Growth AutoResearch is paused. The READY trial and any prepared linkage are "
-                "preserved so execution can continue after Resume."
-            ],
-            existing=existing,
-        )
+        if existing is not None and existing.status in _TERMINAL:
+            return existing
+        if (
+            existing is not None
+            and existing.status == GrowthAutoResearchExecutionStatus.PREPARING
+            and existing.action_id is None
+        ):
+            return self._record(
+                trial=trial,
+                status=GrowthAutoResearchExecutionStatus.ERROR,
+                platform=trial.challenger.platform,
+                reasons=[
+                    "A previous AutoResearch preparation was interrupted before its action link "
+                    "was durably confirmed. Automatic retry is blocked to avoid a duplicate "
+                    "external action; reconcile the existing DistributionAction state first."
+                ],
+                existing=existing,
+            )
+        if policy.paused:
+            return self._record(
+                trial=trial,
+                status=GrowthAutoResearchExecutionStatus.PAUSED,
+                platform=trial.challenger.platform,
+                reasons=[
+                    "Growth AutoResearch is paused. The READY trial and any prepared linkage are "
+                    "preserved so execution can continue after Resume."
+                ],
+                existing=existing,
+            )
+
+        if existing is None or (
+            existing.status == GrowthAutoResearchExecutionStatus.PAUSED
+            and existing.action_id is None
+        ):
+            existing = self._record(
+                trial=trial,
+                status=GrowthAutoResearchExecutionStatus.PREPARING,
+                platform=trial.challenger.platform,
+                reasons=[
+                    "Reserved this AutoResearch trial before creating a DistributionAction."
+                ],
+                existing=existing,
+            )
+
+        return await super().execute_trial(trial_id)
 
 
 growth_autoresearch_execution_runtime_service = ResumableGrowthAutoResearchExecutionService()
