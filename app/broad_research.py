@@ -71,11 +71,17 @@ class _ResearchQuery:
 _SURFACE_EXECUTION = {
     ResearchSurface.CREATOR: (
         ResearchExecutionStatus.OUTREACH_POSSIBLE,
-        "Partizan may prepare outreach, but contact access, review and recipient consent/response are still required.",
+        (
+            "Partizan may prepare outreach, but contact access, review and recipient "
+            "consent/response are still required."
+        ),
     ),
     ResearchSurface.MEDIA: (
         ResearchExecutionStatus.OUTREACH_POSSIBLE,
-        "Partizan may prepare outreach or a pitch; publication access and editorial approval are not implied.",
+        (
+            "Partizan may prepare outreach or a pitch; publication access and editorial "
+            "approval are not implied."
+        ),
     ),
     ResearchSurface.PARTNERSHIP: (
         ResearchExecutionStatus.OUTREACH_POSSIBLE,
@@ -87,11 +93,17 @@ _SURFACE_EXECUTION = {
     ),
     ResearchSurface.DIRECTORY: (
         ResearchExecutionStatus.MANUAL_HANDOFF,
-        "Listing or review-site placement requires the site's own submission/account process or a manual handoff.",
+        (
+            "Listing or review-site placement requires the site's own submission/account "
+            "process or a manual handoff."
+        ),
     ),
     ResearchSurface.COMMUNITY: (
         ResearchExecutionStatus.MANUAL_HANDOFF,
-        "This public community is research evidence only until a permissioned Partizan execution path exists for it.",
+        (
+            "This public community is research evidence only until a permissioned Partizan "
+            "execution path exists for it."
+        ),
     ),
 }
 
@@ -274,7 +286,8 @@ class BroadResearchService:
             title=f"Search cluster: {query.icp.pain}"[:500],
             url=None,
             rationale=(
-                f"Search intent around the pain and desired outcome of {query.icp.title} can be tested as an SEO/content cluster before any paid-search integration exists."
+                f"Search intent around the pain and desired outcome of {query.icp.title} "
+                "can be tested as an SEO/content cluster before any paid-search integration exists."
             )[:1200],
             relevance_score=self._score(query.icp, len(hits)),
             execution_status=status,
@@ -298,11 +311,24 @@ class BroadResearchService:
     @staticmethod
     def _rationale(surface: ResearchSurface, icp: ICPView) -> str:
         descriptions = {
-            ResearchSurface.CREATOR: "A concrete creator audience may already concentrate this customer segment.",
-            ResearchSurface.MEDIA: "A specialist media, newsletter or podcast may already aggregate this customer segment.",
-            ResearchSurface.PARTNERSHIP: "A complementary business or affiliate surface may provide distribution through a partner relationship.",
-            ResearchSurface.DIRECTORY: "A directory, comparison or review surface may intercept customers while they evaluate alternatives.",
-            ResearchSurface.COMMUNITY: "A public community may contain active discussions around this segment's problem and alternatives.",
+            ResearchSurface.CREATOR: (
+                "A concrete creator audience may already concentrate this customer segment."
+            ),
+            ResearchSurface.MEDIA: (
+                "A specialist media, newsletter or podcast may already aggregate this customer segment."
+            ),
+            ResearchSurface.PARTNERSHIP: (
+                "A complementary business or affiliate surface may provide distribution "
+                "through a partner relationship."
+            ),
+            ResearchSurface.DIRECTORY: (
+                "A directory, comparison or review surface may intercept customers while "
+                "they evaluate alternatives."
+            ),
+            ResearchSurface.COMMUNITY: (
+                "A public community may contain active discussions around this segment's "
+                "problem and alternatives."
+            ),
         }
         return f"{descriptions[surface]} Target segment: {icp.title}."[:1200]
 
