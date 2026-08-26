@@ -21,8 +21,8 @@ from app.self_research_benchmark_schemas import (
 from app.self_research_evaluator import SelfResearchEvaluator
 from app.self_research_loop import SelfResearchLoopService
 from app.self_research_loop_schemas import (
-    PlannerScoringSpec,
     SELF_RESEARCH_PLANNER_PATH,
+    PlannerScoringSpec,
     SelfResearchMutation,
     SelfResearchRunRequest,
 )
