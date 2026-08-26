@@ -12,8 +12,8 @@ from app.self_research_benchmark_schemas import (
     SelfResearchSplit,
 )
 from app.self_research_loop_schemas import (
-    PlannerScoringSpec,
     SELF_RESEARCH_PLANNER_PATH,
+    PlannerScoringSpec,
     SelfResearchMutation,
 )
 
