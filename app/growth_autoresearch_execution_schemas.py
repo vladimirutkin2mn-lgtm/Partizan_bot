@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 class GrowthAutoResearchExecutionStatus(StrEnum):
     PAUSED = "PAUSED"
+    PREPARING = "PREPARING"
     PREPARED = "PREPARED"
     WAITING_APPROVAL = "WAITING_APPROVAL"
     EXECUTED = "EXECUTED"
