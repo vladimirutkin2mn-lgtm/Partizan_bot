@@ -303,6 +303,41 @@
   };
   $('research-button').addEventListener('click', startResearch);
 
+  const surfaceLabels = {
+    EXECUTION_PLATFORM: 'Execution platform',
+    CREATOR: 'Creator / influencer',
+    MEDIA: 'Media / podcast / newsletter',
+    PARTNERSHIP: 'Partnership / affiliate',
+    SEARCH: 'Search / SEO',
+    DIRECTORY: 'Directory / reviews',
+    COMMUNITY: 'Public community',
+  };
+  const executionStatusLabels = {
+    PARTIZAN_CONTROL_PLANE: 'Control-plane path',
+    RESEARCH_ONLY: 'Research only',
+    OUTREACH_POSSIBLE: 'Outreach possible',
+    MANUAL_HANDOFF: 'Manual handoff',
+  };
+  const opportunitySurface = (item) => item.surface || 'EXECUTION_PLATFORM';
+  const opportunityStatus = (item) => item.execution_status || (opportunitySurface(item) === 'EXECUTION_PLATFORM' ? 'PARTIZAN_CONTROL_PLANE' : 'RESEARCH_ONLY');
+  const opportunityMeta = (item) => [
+    surfaceLabels[opportunitySurface(item)] || opportunitySurface(item),
+    item.platform,
+    item.kind,
+  ].filter(Boolean).join(' · ');
+  const executionRequirement = (item) => item.execution_requirement || ({
+    PARTIZAN_CONTROL_PLANE: 'A control-plane path is not authorization to execute. The channel still needs to be enabled, connected with the required identity/permissions, and pass normal safety checks.',
+    RESEARCH_ONLY: 'Research finding only. This is not a connected channel and Partizan cannot execute it automatically.',
+    OUTREACH_POSSIBLE: 'Partizan can prepare an outreach path, but sending still requires the normal outreach permissions and safety checks.',
+    MANUAL_HANDOFF: 'Manual handoff is required before anything happens on this opportunity.',
+  })[opportunityStatus(item)];
+  const renderEvidence = (item) => {
+    const evidence = Array.isArray(item.provenance) ? item.provenance.slice(0, 3) : [];
+    if (!evidence.length) return '';
+    return `<details><summary>Evidence · ${evidence.length}</summary>${evidence.map((source) => `<p>${source.url ? `<a href="${escapeHtml(source.url)}" target="_blank" rel="noopener">${escapeHtml(source.title || source.query || 'Source')}</a>` : `<strong>${escapeHtml(source.title || source.query || 'Source')}</strong>`}${source.snippet ? ` — ${escapeHtml(source.snippet)}` : ''}</p>`).join('')}</details>`;
+  };
+  const renderOpportunity = (item) => `<article class="opp-card"><header><h3>${escapeHtml(item.title)}</h3><span class="platform">${escapeHtml(opportunityMeta(item))} · ${escapeHtml(executionStatusLabels[opportunityStatus(item)] || opportunityStatus(item))}</span></header><p>${escapeHtml(item.rationale || 'Relevant distribution opportunity')}</p><div class="hook">${escapeHtml(executionRequirement(item))}</div>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Open opportunity ↗</a>` : ''}${renderEvidence(item)}</article>`;
+
   const renderResearch = (result) => {
     if (result.state === 'NEEDS_INPUT') {
       const question = result.clarifications[0];
@@ -332,11 +367,20 @@
 
     $('clarification-box').classList.add('hidden');
     $('research-button').classList.add('hidden');
+    const opportunities = Array.isArray(result.opportunities) ? result.opportunities : [];
+    const broadResearch = opportunities.filter((item) => opportunitySurface(item) !== 'EXECUTION_PLATFORM');
+    const executionCandidates = opportunities.filter((item) => opportunitySurface(item) === 'EXECUTION_PLATFORM');
+    const broadSection = broadResearch.length
+      ? `<div class="results-head"><span class="eyebrow">Broad research</span><h2>Research surfaces beyond connected channels</h2><p>Creators, media, partnerships, search demand, directories and public communities are findings — not connected execution channels.</p></div><div class="opportunity-list">${broadResearch.map(renderOpportunity).join('')}</div>`
+      : '';
+    const executionSection = executionCandidates.length
+      ? `<div class="results-head"><span class="eyebrow">Execution-platform candidates</span><h2>Where Partizan also has a control-plane path</h2><p>Discovery alone never authorizes posting or spend. Enabled channel state, integration/identity/permission and the normal safety checks still apply.</p></div><div class="opportunity-list">${executionCandidates.map(renderOpportunity).join('')}</div>`
+      : '';
     const results = $('research-results');
-    results.innerHTML = `<div class="results-head"><span class="eyebrow">Research ready</span><h2>Who Partizan would target first</h2><p>Your highest-value customer segments, ranked by fit and buying potential.</p></div><div class="icp-grid">${result.icps.map((item) => `<article class="icp-card"><header><h3>${escapeHtml(item.title)}</h3><span class="score">${Math.round(item.score)}/100</span></header><p>${escapeHtml(item.description)}</p><div class="hook">${escapeHtml(item.message_hook)}</div></article>`).join('')}</div><div class="results-head"><span class="eyebrow">Distribution map</span><h2>Where Partizan sees opportunity</h2><p>Named places, audiences and partners returned by the current deep-research engine.</p></div><div class="opportunity-list">${result.opportunities.map((item) => `<article class="opp-card"><header><h3>${escapeHtml(item.title)}</h3><span class="platform">${escapeHtml(item.platform)} · ${escapeHtml(item.kind)}</span></header><p>${escapeHtml(item.rationale || 'Relevant distribution opportunity')}</p>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Open opportunity ↗</a>` : ''}</article>`).join('')}</div>`;
+    results.innerHTML = `<div class="results-head"><span class="eyebrow">Research ready</span><h2>Who Partizan would target first</h2><p>Your highest-value customer segments, ranked by fit and buying potential.</p></div><div class="icp-grid">${result.icps.map((item) => `<article class="icp-card"><header><h3>${escapeHtml(item.title)}</h3><span class="score">${Math.round(item.score)}/100</span></header><p>${escapeHtml(item.description)}</p><div class="hook">${escapeHtml(item.message_hook)}</div></article>`).join('')}</div>${broadSection}${executionSection}`;
     results.classList.remove('hidden');
     $('payment-status').querySelector('strong').textContent = 'Research mapped';
-    $('payment-status').querySelector('small').textContent = 'Your Acquisition Plan is ready.';
+    $('payment-status').querySelector('small').textContent = 'Your Acquisition Plan is ready. Research findings remain separate from execution permission.';
   };
 
   const accountOwnsProject = async (projectId) => {
