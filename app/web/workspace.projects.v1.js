@@ -28,6 +28,8 @@
     return /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
   };
 
+  const currentProjectId = () => new URLSearchParams(window.location.search).get('project');
+
   const renderModal = () => {
     if (document.getElementById('new-project-modal')) return;
     const modal = document.createElement('div');
@@ -80,9 +82,91 @@
     error.classList.add('hidden');
   };
 
+  const ensureProjectDetailsCard = () => {
+    if (document.getElementById('project-details-card')) return;
+    const settings = document.querySelector('[data-tab-panel="settings"]');
+    if (!settings) return;
+    const card = document.createElement('section');
+    card.id = 'project-details-card';
+    card.className = 'panel project-details-card';
+    card.innerHTML = `
+      <div class="section-head project-details-head"><div><span class="eyebrow">Project</span><h2 id="project-details-name">Project details</h2></div><span id="project-details-type" class="status-pill">Project</span></div>
+      <div class="project-detail-grid">
+        <div><span>Link</span><strong id="project-details-link">—</strong></div>
+        <div><span>Market</span><strong id="project-details-market">—</strong></div>
+        <div><span>Goal</span><strong id="project-details-goal">—</strong></div>
+        <div><span>Test budget</span><strong id="project-details-budget">—</strong></div>
+      </div>
+      <div class="project-description-block"><span>Description</span><p id="project-details-brief">—</p></div>
+      <div class="project-danger-zone">
+        <div><strong>Delete project</strong><span>Remove this project from your workspace. Financial and experiment records are retained for audit integrity.</span></div>
+        <button id="delete-project-button" class="project-delete-button" type="button">Delete project</button>
+      </div>
+      <div id="project-delete-confirm" class="project-delete-confirm hidden">
+        <div><strong id="project-delete-confirm-title">Delete this project?</strong><span>This cannot be undone from the customer workspace.</span></div>
+        <div><button id="project-delete-cancel" class="button button-secondary" type="button">Cancel</button><button id="project-delete-confirm-button" class="project-delete-confirm-button" type="button">Yes, delete project</button></div>
+      </div>`;
+    settings.appendChild(card);
+
+    document.getElementById('delete-project-button').addEventListener('click', () => {
+      const confirm = document.getElementById('project-delete-confirm');
+      const name = document.getElementById('project-details-name').textContent;
+      document.getElementById('project-delete-confirm-title').textContent = `Delete “${name}”?`;
+      confirm.classList.remove('hidden');
+      document.getElementById('delete-project-button').classList.add('hidden');
+    });
+    document.getElementById('project-delete-cancel').addEventListener('click', () => {
+      document.getElementById('project-delete-confirm').classList.add('hidden');
+      document.getElementById('delete-project-button').classList.remove('hidden');
+    });
+    document.getElementById('project-delete-confirm-button').addEventListener('click', async (event) => {
+      const button = event.currentTarget;
+      const projectId = document.getElementById('project-details-card').dataset.projectId;
+      if (!projectId) return;
+      button.disabled = true;
+      button.textContent = 'Deleting…';
+      try {
+        await api(`/customer/account/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+        const projects = await api('/customer/account/projects');
+        if (projects.length) {
+          window.location.assign(`/workspace?project=${encodeURIComponent(projects[0].project_id)}`);
+        } else {
+          window.location.assign('/start');
+        }
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Yes, delete project';
+        const errorNode = document.getElementById('new-project-error');
+        errorNode.textContent = error.message;
+        errorNode.classList.remove('hidden');
+      }
+    });
+  };
+
+  const renderProjectDetails = (project) => {
+    ensureProjectDetailsCard();
+    const card = document.getElementById('project-details-card');
+    if (!card || !project) return;
+    card.dataset.projectId = String(project.project_id);
+    document.getElementById('project-details-name').textContent = project.name || 'Project details';
+    document.getElementById('project-details-type').textContent = projectTypeLabels[project.project_type] || 'Project';
+    const link = document.getElementById('project-details-link');
+    if (project.reference_url) {
+      link.innerHTML = `<a href="${escapeHtml(project.reference_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(project.reference_url)}</a>`;
+    } else {
+      link.textContent = 'No link added';
+    }
+    document.getElementById('project-details-market').textContent = project.market || '—';
+    document.getElementById('project-details-goal').textContent = project.goal || '—';
+    document.getElementById('project-details-budget').textContent = `$${Number(project.budget_usd || 0).toLocaleString('en-US')}`;
+    document.getElementById('project-details-brief').textContent = project.brief || 'No description added.';
+    document.getElementById('project-delete-confirm').classList.add('hidden');
+    document.getElementById('delete-project-button').classList.remove('hidden');
+  };
+
   const refreshProjectLabels = async () => {
     const switcher = document.getElementById('project-switcher');
-    if (!switcher || !switcher.options.length) return;
+    if (!switcher) return;
     try {
       const projects = await api('/customer/account/projects');
       const byId = new Map(projects.map((item) => [String(item.project_id), item]));
@@ -93,8 +177,10 @@
         option.textContent = label.length > 46 ? `${label.slice(0, 46)}…` : label;
         option.title = `${label} · ${projectTypeLabels[project.project_type] || 'Project'}`;
       });
+      const selected = byId.get(currentProjectId() || switcher.value);
+      if (selected) renderProjectDetails(selected);
     } catch (_) {
-      // The core workspace handles authentication; labels can safely keep their fallback.
+      // The core workspace handles authentication; project enhancements can keep their fallback.
     }
   };
 
@@ -111,6 +197,7 @@
     button.textContent = '+ New project';
     nav.insertBefore(button, email);
     renderModal();
+    ensureProjectDetailsCard();
 
     button.addEventListener('click', openModal);
     document.querySelectorAll('[data-close-new-project]').forEach((node) => node.addEventListener('click', closeModal));

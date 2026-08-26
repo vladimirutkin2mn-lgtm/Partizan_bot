@@ -30,6 +30,12 @@ def test_workspace_loads_versioned_new_project_assets() -> None:
     assert css.headers["cache-control"] == "no-store, max-age=0"
     assert javascript.headers["cache-control"] == "no-store, max-age=0"
     assert ".project-modal" in css.text
+    assert ".project-details-card" in css.text
+    assert ".project-danger-zone" in css.text
     assert "+ New project" in javascript.text
+    assert "Project details" in javascript.text
+    assert "Description" in javascript.text
+    assert "Delete project" in javascript.text
+    assert "method: 'DELETE'" in javascript.text
     assert "'/customer/account/projects'" in javascript.text
     assert "customer_token" not in javascript.text
