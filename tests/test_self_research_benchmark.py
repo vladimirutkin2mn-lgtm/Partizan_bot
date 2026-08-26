@@ -35,11 +35,11 @@ from app.runtime_store import MemoryRuntimeStateStore
 from app.schemas import ProductProfileView
 from app.self_research_benchmark import SelfResearchBenchmarkBuilder
 from app.self_research_benchmark_schemas import (
+    SelfResearchCasePrediction,
     SelfResearchComparisonOutcome,
     SelfResearchEvaluationInput,
     SelfResearchEvaluationMetrics,
     SelfResearchEvaluationView,
-    SelfResearchCasePrediction,
 )
 from app.self_research_evaluator import SelfResearchEvaluator
 from app.self_research_policy import (
