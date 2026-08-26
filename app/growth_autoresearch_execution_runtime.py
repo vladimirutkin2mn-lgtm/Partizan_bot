@@ -10,6 +10,7 @@ from app.autonomous_controlled_growth import (
     AutonomousGrowthSweepAlreadyRunning,
 )
 from app.database_advisory_lock import postgres_session_advisory_lock
+from app.execution_adapters import AdapterExecutionOutcome, DistributionAdapterExecuteRequest
 from app.growth_autoresearch_execution import (
     _TERMINAL,
     GrowthAutoResearchExecutionService,
@@ -19,6 +20,9 @@ from app.growth_autoresearch_execution_schemas import (
     GrowthAutoResearchExecutionSweepView,
 )
 from app.growth_autoresearch_schemas import GrowthResearchTrialStatus
+from app.organic_creative_execution import (
+    organic_creative_distribution_execution_adapter_service,
+)
 
 ExecutionLockFactory = Callable[[], AbstractContextManager[bool]]
 
@@ -137,6 +141,11 @@ class ResumableGrowthAutoResearchExecutionService(GrowthAutoResearchExecutionSer
                 ],
                 existing=existing,
             )
+        if (
+            existing is not None
+            and existing.status == GrowthAutoResearchExecutionStatus.IN_PROGRESS
+        ):
+            return self._resume_provider_reconciliation(trial, existing)
         if policy.paused:
             return self._record(
                 trial=trial,
@@ -165,5 +174,46 @@ class ResumableGrowthAutoResearchExecutionService(GrowthAutoResearchExecutionSer
 
         return await super().execute_trial(trial_id)
 
+    def _resume_provider_reconciliation(self, trial, existing):
+        if (
+            existing.platform != "TIKTOK"
+            or existing.action_type != "ORGANIC_VIDEO"
+            or existing.action_id is None
+        ):
+            return self._record(
+                trial=trial,
+                status=GrowthAutoResearchExecutionStatus.ERROR,
+                platform=existing.platform,
+                reasons=[
+                    "Only an already-submitted TikTok ORGANIC_VIDEO action may use automatic "
+                    "provider reconciliation from an IN_PROGRESS AutoResearch state."
+                ],
+                existing=existing,
+            )
 
-growth_autoresearch_execution_runtime_service = ResumableGrowthAutoResearchExecutionService()
+        execution = self._adapter_service.execute(
+            existing.action_id,
+            DistributionAdapterExecuteRequest(retry=True),
+        )
+        return self._record(
+            trial=trial,
+            status=self._adapter_status(execution.receipt.outcome),
+            platform=existing.platform,
+            action_type=existing.action_type,
+            action_id=execution.plan.action.id,
+            experiment_id=execution.plan.experiment.id,
+            adapter_outcome=execution.receipt.outcome.value,
+            reasons=[execution.receipt.message],
+            existing=existing,
+        )
+
+    @staticmethod
+    def _adapter_status(outcome: AdapterExecutionOutcome) -> GrowthAutoResearchExecutionStatus:
+        if outcome == AdapterExecutionOutcome.IN_PROGRESS:
+            return GrowthAutoResearchExecutionStatus.IN_PROGRESS
+        return GrowthAutoResearchExecutionService._adapter_status(outcome)
+
+
+growth_autoresearch_execution_runtime_service = ResumableGrowthAutoResearchExecutionService(
+    adapter_service=organic_creative_distribution_execution_adapter_service,
+)
