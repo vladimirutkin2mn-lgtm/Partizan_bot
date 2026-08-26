@@ -223,7 +223,7 @@ async def test_failed_near_duplicate_is_suppressed_and_falls_back(monkeypatch) -
             evidence=_evidence(spend=400, paid=20, revenue=600),
         ),
     )
-    assert evaluation.outcome.value == "DISCARD"
+    assert evaluation.outcome.value == "FAILED"
     assert service.current_champion(product_id).id == baseline.id
 
     context = _context(service, product_id, policy)
