@@ -1,6 +1,6 @@
 # Growth AutoResearch
 
-Roadmap: GitHub issue #179. Phase 1 implementation task: #180. Phase 2: #186.
+Roadmap: GitHub issue #179. Phase 1 implementation task: #180. Phase 2: #186. Phase 3: #192.
 
 ## Purpose
 
@@ -86,12 +86,51 @@ Shadow challengers are bounded by:
 
 Evidence that exceeds the trial protocol fails closed as `FAILED`; it is not silently compared with a differently-sized test.
 
+## Phase 3: bounded hypothesis generator
+
+Phase 3 lets Partizan propose the next challenger instead of requiring an operator to write every `GrowthVariantSpec` manually.
+
+The generator receives:
+
+- Product Intake / project facts;
+- current champion and evidence;
+- recent AutoResearch trials and outcomes;
+- Distribution Growth Manager learning memory;
+- ready Distribution Plays and concrete opportunities when available;
+- policy-allowed platforms;
+- remaining shadow research budget.
+
+It produces exactly one structured hypothesis containing a proposed variant, a human-readable rationale and an explicit `EXPLOIT` or `EXPLORE` intent.
+
+### Explore vs exploit
+
+`EXPLOIT` makes a small variation around a promising current pattern, normally one changed dimension such as message angle, audience or offer.
+
+`EXPLORE` deliberately tests a meaningfully different bounded surface such as another allowed platform, tactic or audience. `AUTO` selects between the two using recent research history while still allowing an operator to request either mode explicitly.
+
+### Validation boundary
+
+The LLM is a proposer, never an authority. Every generated draft is passed through the same `GrowthAutoResearchService.create_challenger` validator used by manual trials. A prompt cannot grant a platform, budget or changed-dimension permission that the policy does not allow.
+
+When an LLM draft violates policy, the rejection is fed back for regeneration. After bounded retries, the system uses a deterministic sandbox fallback rather than weakening the validator.
+
+### Duplicate suppression
+
+Exact and near-duplicate variants that previously ended as `DISCARD` or `FAILED` are rejected before trial creation. Cosmetic rewrites of a losing hypothesis therefore do not consume the next research slot.
+
+### Deterministic fallback
+
+When `LLM_PROVIDER=mock`, Phase 3 still produces reproducible bounded hypotheses from product facts, current champion, prior trials, allowed platforms and remaining budget. This keeps the Growth Sandbox and CI independent from a live model API.
+
+Hypothesis text, rationale, mode and source are persisted with the generated trial so later evaluation and workspace UX can explain what Partizan tested and why.
+
 ## Operator API
 
 The internal/operator routes are:
 
 - `PUT /products/{product_id}/growth-autoresearch/policy`
 - `POST /products/{product_id}/growth-autoresearch/baseline`
+- `POST /products/{product_id}/growth-autoresearch/hypotheses`
 - `POST /products/{product_id}/growth-autoresearch/trials`
 - `POST /growth-autoresearch/trials/{trial_id}/evaluate`
 - `GET /products/{product_id}/growth-autoresearch`
@@ -106,6 +145,6 @@ Current phases must not:
 - activate or increase paid spend;
 - bypass Growth Mandate or channel permissions;
 - imply that research access is execution integration;
-- generate autonomous hypotheses through an LLM yet.
+- let LLM-generated hypotheses bypass deterministic policy validation.
 
-Hypothesis generation is Phase 3. Paid AutoResearch stays blocked until the spend rail tracked in #160 is genuinely settlement-ready.
+Phase 4 adds a continuous research-only loop and customer workspace visibility. Paid AutoResearch stays blocked until the spend rail tracked in #160 is genuinely settlement-ready.
