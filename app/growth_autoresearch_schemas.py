@@ -15,6 +15,14 @@ class GrowthResearchOutcome(StrEnum):
     FAILED = "FAILED"
 
 
+class GrowthResearchObjective(StrEnum):
+    PAID_CAC = "PAID_CAC"
+    PAID_CONVERSION = "PAID_CONVERSION"
+    ACTIVATION_CONVERSION = "ACTIVATION_CONVERSION"
+    SIGNUP_CONVERSION = "SIGNUP_CONVERSION"
+    NONE = "NONE"
+
+
 class GrowthResearchTrialStatus(StrEnum):
     READY = "READY"
     EVALUATED = "EVALUATED"
@@ -24,8 +32,17 @@ class GrowthResearchPolicyRequest(BaseModel):
     allowed_platforms: list[str] = Field(default_factory=list, max_length=32)
     max_changed_dimensions: int = Field(default=2, ge=1, le=2)
     max_shadow_trial_budget: float = Field(default=0, ge=0)
-    min_paid_users_for_decision: int = Field(default=3, ge=1, le=100000)
+    shadow_research_budget: float | None = Field(default=None, ge=0)
+    max_trial_budget_share: float = Field(default=0.25, gt=0, le=1)
+    max_trial_duration_hours: float = Field(default=168, gt=0, le=24 * 90)
+    min_paid_users_for_decision: int = Field(default=3, ge=2, le=100000)
+    min_activated_users_for_decision: int = Field(default=5, ge=2, le=100000)
+    min_signups_for_decision: int = Field(default=10, ge=2, le=100000)
+    min_visits_for_proxy_decision: int = Field(default=100, ge=10, le=10000000)
     min_relative_cac_improvement: float = Field(default=0.05, ge=0, le=1)
+    min_relative_proxy_improvement: float = Field(default=0.10, ge=0, le=1)
+    max_relative_roas_regression: float = Field(default=0.15, ge=0, le=1)
+    confidence_level: float = Field(default=0.90, ge=0.5, lt=1)
     paused: bool = False
 
 
@@ -52,11 +69,14 @@ class GrowthVariantSpec(BaseModel):
 
 class GrowthResearchEvidence(BaseModel):
     spend: float = Field(default=0, ge=0)
+    impressions: int = Field(default=0, ge=0)
+    clicks: int = Field(default=0, ge=0)
     visits: int = Field(default=0, ge=0)
     signups: int = Field(default=0, ge=0)
     activated_users: int = Field(default=0, ge=0)
     paid_users: int = Field(default=0, ge=0)
     revenue: float = Field(default=0, ge=0)
+    duration_hours: float = Field(default=0, ge=0)
     source: str = Field(default="shadow", min_length=1, max_length=120)
 
 
@@ -102,11 +122,18 @@ class GrowthResearchEvaluationView(BaseModel):
     trial_id: UUID
     champion_id: UUID
     outcome: GrowthResearchOutcome
+    objective: GrowthResearchObjective = GrowthResearchObjective.NONE
     rationale: list[str]
     champion_evidence: GrowthResearchEvidence
     challenger_evidence: GrowthResearchEvidence
     champion_cac: float | None = None
     challenger_cac: float | None = None
+    champion_roas: float | None = None
+    challenger_roas: float | None = None
+    champion_metric_value: float | None = None
+    challenger_metric_value: float | None = None
+    relative_improvement: float | None = None
+    confidence: float | None = None
     created_at: datetime
 
 
