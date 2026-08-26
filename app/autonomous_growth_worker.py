@@ -12,6 +12,10 @@ from app.autonomous_controlled_growth import (
     autonomous_controlled_growth_sweep_service,
 )
 from app.autonomous_growth import AutonomousGrowthSweepService
+from app.growth_autoresearch_execution import (
+    GrowthAutoResearchExecutionService,
+    growth_autoresearch_execution_service,
+)
 from app.growth_autoresearch_loop import (
     GrowthAutoResearchLoopService,
     growth_autoresearch_loop_service,
@@ -26,11 +30,15 @@ class AutonomousGrowthWorker:
         self,
         *,
         sweep_service: AutonomousGrowthSweepService | None = None,
+        autoresearch_execution_service: GrowthAutoResearchExecutionService | None = None,
         autoresearch_loop_service: GrowthAutoResearchLoopService | None = None,
         heartbeat_service: WorkerHeartbeatService | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._sweep_service = sweep_service or autonomous_controlled_growth_sweep_service
+        self._autoresearch_execution_service = (
+            autoresearch_execution_service or growth_autoresearch_execution_service
+        )
         self._autoresearch_loop_service = (
             autoresearch_loop_service or growth_autoresearch_loop_service
         )
@@ -60,6 +68,12 @@ class AutonomousGrowthWorker:
             if heartbeat is not None:
                 heartbeat.mark_running(AUTONOMOUS_GROWTH_WORKER)
             try:
+                # Give an existing READY AutoResearch challenger first access to its exact,
+                # permissioned non-paid DistributionPlay. The bridge still delegates every
+                # mutation to the existing mandate, drafting, approval and adapter control plane.
+                asyncio.run(
+                    self._autoresearch_execution_service.run_once(product_id=product_id)
+                )
                 result = asyncio.run(self._sweep_service.run_once(product_id=product_id))
                 asyncio.run(self._autoresearch_loop_service.run_once(product_id=product_id))
             except AutonomousGrowthSweepAlreadyRunning as exc:
