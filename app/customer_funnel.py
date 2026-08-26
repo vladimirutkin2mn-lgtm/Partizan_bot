@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from app.audience_intelligence_service import audience_intelligence_service
+from app.broad_research import BroadResearchService
 from app.config import get_settings
 from app.customer_schemas import (
     CustomerClarificationAnswerRequest,
@@ -17,6 +18,7 @@ from app.customer_schemas import (
     CustomerPreviewRequest,
     CustomerPreviewResponse,
     CustomerProjectView,
+    CustomerResearchEvidenceView,
     CustomerResearchResponse,
     MaskedOpportunityView,
 )
@@ -49,8 +51,13 @@ class CustomerFunnelService:
     either the $49 Acquisition Plan is purchased or Growth Balance is actually funded.
     """
 
-    def __init__(self, store: RuntimeStateStore | None = None) -> None:
+    def __init__(
+        self,
+        store: RuntimeStateStore | None = None,
+        broad_research: BroadResearchService | None = None,
+    ) -> None:
         self._store = store or get_runtime_store()
+        self._broad_research = broad_research or BroadResearchService(self._store)
 
     def create_preview(self, payload: CustomerPreviewRequest) -> CustomerPreviewResponse:
         project_id = uuid4()
@@ -224,6 +231,7 @@ class CustomerFunnelService:
     def reset(self) -> None:
         if self._store.ephemeral:
             self._store.clear_namespace(CUSTOMER_PROJECT_NAMESPACE)
+            self._broad_research.reset()
 
     async def _finish_research(self, project: dict, product_id: UUID) -> CustomerResearchResponse:
         product = product_intake_service.get_product(product_id)
@@ -236,6 +244,10 @@ class CustomerFunnelService:
         except KeyError:
             distribution = await audience_intelligence_service.discover(product, icp_result)
 
+        broad = self._broad_research.get(product_id)
+        if broad is None:
+            broad = await self._broad_research.discover(product, icp_result)
+
         icps = [
             CustomerICPView(
                 title=item.title,
@@ -245,7 +257,7 @@ class CustomerFunnelService:
             )
             for item in icp_result.icps[:5]
         ]
-        opportunities = [
+        execution_opportunities = [
             CustomerOpportunityView(
                 platform=item.platform.value,
                 kind=item.kind.value,
@@ -253,9 +265,42 @@ class CustomerFunnelService:
                 url=item.url,
                 rationale=item.rationale,
                 relevance_score=item.relevance_score,
+                surface="EXECUTION_PLATFORM",
+                execution_status="PARTIZAN_CONTROL_PLANE",
+                execution_requirement=(
+                    "Partizan has an execution-domain path for this platform, but actual execution still requires an enabled channel, the required integration/identity/permission, and all existing safety checks."
+                ),
+                provenance=self._distribution_evidence(item.evidence, fallback_title=item.title),
             )
-            for item in distribution.opportunities[:20]
+            for item in distribution.opportunities[:12]
         ]
+        broad_opportunities = [
+            CustomerOpportunityView(
+                platform=None,
+                kind=item.kind,
+                title=item.title,
+                url=item.url,
+                rationale=item.rationale,
+                relevance_score=item.relevance_score,
+                surface=item.surface.value,
+                execution_status=item.execution_status.value,
+                execution_requirement=item.execution_requirement,
+                provenance=[
+                    CustomerResearchEvidenceView(
+                        query=evidence.query,
+                        title=evidence.title,
+                        url=evidence.url,
+                        snippet=evidence.snippet,
+                    )
+                    for evidence in item.provenance
+                ],
+            )
+            for item in broad.opportunities[:24]
+        ]
+        opportunities = execution_opportunities + broad_opportunities
+        opportunities.sort(
+            key=lambda item: (-(item.relevance_score or 0), item.surface, item.title.casefold())
+        )
         project["research_state"] = "READY"
         project["status"] = "RESEARCH_READY"
         project["research"] = {
@@ -271,6 +316,27 @@ class CustomerFunnelService:
             icps=icps,
             opportunities=opportunities,
         )
+
+    @staticmethod
+    def _distribution_evidence(
+        rows: list[dict],
+        *,
+        fallback_title: str,
+    ) -> list[CustomerResearchEvidenceView]:
+        evidence: list[CustomerResearchEvidenceView] = []
+        for row in rows:
+            url = str(row.get("url") or "").strip()
+            if not url:
+                continue
+            evidence.append(
+                CustomerResearchEvidenceView(
+                    query=str(row.get("query") or "distribution research")[:800],
+                    title=str(row.get("title") or fallback_title)[:500],
+                    url=url,
+                    snippet=str(row.get("snippet") or "")[:1200],
+                )
+            )
+        return evidence
 
     def _cached_research(self, project: dict) -> CustomerResearchResponse:
         research = project.get("research", {})
