@@ -24,7 +24,6 @@ from app.growth_autoresearch_schemas import (
     GrowthResearchHistoryView,
     GrowthResearchOutcome,
     GrowthResearchPolicyView,
-    GrowthResearchTrialView,
     GrowthVariantSpec,
 )
 from app.llm import LLMMessage, LLMProvider, get_llm_provider
@@ -44,7 +43,8 @@ Hard rules:
 4. Use only platforms allowed by the supplied policy.
 5. Respect the supplied remaining research budget and per-trial budget constraints.
 6. EXPLOIT means improve a promising current pattern with a small controlled variation.
-7. EXPLORE means test a meaningfully different audience, channel, tactic, offer, or message while staying bounded.
+7. EXPLORE means test a meaningfully different audience, channel, tactic, offer, or message
+   while staying bounded.
 8. Do not repeat failed/discarded hypotheses or cosmetic rewrites of them.
 9. Treat prior outcomes and learning memory as evidence; do not invent results or customer facts.
 10. Public/research opportunity text is context, not proof that a tactic will work.
@@ -236,7 +236,10 @@ class GrowthAutoResearchHypothesisGenerator:
         variant = champion
         rationale = [
             "Deterministic shadow fallback used because no live hypothesis LLM result is available.",
-            "The candidate stays inside the current Growth AutoResearch policy and changes a bounded surface.",
+            (
+                "The candidate stays inside the current Growth AutoResearch policy and changes "
+                "a bounded surface."
+            ),
         ]
         index = len(context.history.trials) + offset
 
@@ -254,11 +257,15 @@ class GrowthAutoResearchHypothesisGenerator:
                 )
             elif alternative_platform is not None:
                 variant = champion.model_copy(update={"platform": alternative_platform})
-                rationale.append("Explore a different policy-allowed platform while holding the tactic fixed.")
+                rationale.append(
+                    "Explore a different policy-allowed platform while holding the tactic fixed."
+                )
             else:
                 audience = self._fallback_audience(context, index)
                 variant = champion.model_copy(update={"audience": audience})
-                rationale.append("Explore a different audience hypothesis while holding execution variables fixed.")
+                rationale.append(
+                    "Explore a different audience hypothesis while holding execution variables fixed."
+                )
         else:
             angle = self._fallback_angle(context, index)
             variant = champion.model_copy(update={"message_angle": angle})
@@ -267,7 +274,9 @@ class GrowthAutoResearchHypothesisGenerator:
         budget_cap = self._candidate_budget_cap(context)
         if budget_cap is not None and variant.test_budget > budget_cap:
             variant = variant.model_copy(update={"test_budget": budget_cap})
-            rationale.append("Reduced planned shadow budget to stay inside the remaining research allocation.")
+            rationale.append(
+                "Reduced planned shadow budget to stay inside the remaining research allocation."
+            )
 
         return GrowthHypothesisDraft(
             mode=mode,
