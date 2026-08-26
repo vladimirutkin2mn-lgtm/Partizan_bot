@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class GrowthAutoResearchExecutionStatus(StrEnum):
+    PAUSED = "PAUSED"
     PREPARED = "PREPARED"
     WAITING_APPROVAL = "WAITING_APPROVAL"
     EXECUTED = "EXECUTED"
@@ -23,7 +24,7 @@ class GrowthAutoResearchExecutionView(BaseModel):
     play_id: UUID | None = None
     action_id: UUID | None = None
     experiment_id: UUID | None = None
-    mandate_id: UUID | None = None
+    mandate_id: UUID | None = Field(default=None)
     mandate_version: int | None = Field(default=None, ge=1)
     platform: str
     action_type: str | None = None
