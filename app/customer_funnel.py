@@ -268,7 +268,9 @@ class CustomerFunnelService:
                 surface="EXECUTION_PLATFORM",
                 execution_status="PARTIZAN_CONTROL_PLANE",
                 execution_requirement=(
-                    "Partizan has an execution-domain path for this platform, but actual execution still requires an enabled channel, the required integration/identity/permission, and all existing safety checks."
+                    "Partizan has an execution-domain path for this platform, but actual execution "
+                    "still requires an enabled channel, the required integration/identity/permission, "
+                    "and all existing safety checks."
                 ),
                 provenance=self._distribution_evidence(item.evidence, fallback_title=item.title),
             )
