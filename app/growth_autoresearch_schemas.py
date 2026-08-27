@@ -23,6 +23,12 @@ class GrowthResearchObjective(StrEnum):
     NONE = "NONE"
 
 
+class GrowthHypothesisMode(StrEnum):
+    AUTO = "AUTO"
+    EXPLOIT = "EXPLOIT"
+    EXPLORE = "EXPLORE"
+
+
 class GrowthResearchTrialStatus(StrEnum):
     READY = "READY"
     EVALUATED = "EVALUATED"
@@ -87,6 +93,21 @@ class GrowthResearchBaselineRequest(BaseModel):
 
 class GrowthResearchChallengerRequest(BaseModel):
     variant: GrowthVariantSpec
+    hypothesis: str | None = Field(default=None, max_length=4000)
+    hypothesis_rationale: list[str] = Field(default_factory=list, max_length=20)
+    hypothesis_mode: GrowthHypothesisMode | None = None
+    hypothesis_source: str | None = Field(default=None, max_length=120)
+
+
+class GrowthHypothesisGenerationRequest(BaseModel):
+    mode: GrowthHypothesisMode = GrowthHypothesisMode.AUTO
+
+
+class GrowthHypothesisDraft(BaseModel):
+    mode: GrowthHypothesisMode
+    hypothesis: str = Field(min_length=20, max_length=4000)
+    rationale: list[str] = Field(min_length=1, max_length=20)
+    variant: GrowthVariantSpec
 
 
 class GrowthResearchEvaluationRequest(BaseModel):
@@ -111,9 +132,24 @@ class GrowthResearchTrialView(BaseModel):
     challenger: GrowthVariantSpec
     changed_dimensions: list[str]
     status: GrowthResearchTrialStatus
+    hypothesis: str | None = None
+    hypothesis_rationale: list[str] = Field(default_factory=list)
+    hypothesis_mode: GrowthHypothesisMode | None = None
+    hypothesis_source: str | None = None
     evaluation_id: UUID | None = None
     created_at: datetime
     evaluated_at: datetime | None = None
+
+
+class GrowthHypothesisGenerationView(BaseModel):
+    product_id: UUID
+    mode: GrowthHypothesisMode
+    hypothesis: str
+    rationale: list[str]
+    changed_dimensions: list[str]
+    source: str
+    remaining_research_budget: float | None = None
+    trial: GrowthResearchTrialView
 
 
 class GrowthResearchEvaluationView(BaseModel):
