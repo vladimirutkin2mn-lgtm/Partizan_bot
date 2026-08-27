@@ -71,8 +71,17 @@ class GrowthAutoResearchService:
             allowed_platforms=allowed_platforms,
             max_changed_dimensions=payload.max_changed_dimensions,
             max_shadow_trial_budget=payload.max_shadow_trial_budget,
+            shadow_research_budget=payload.shadow_research_budget,
+            max_trial_budget_share=payload.max_trial_budget_share,
+            max_trial_duration_hours=payload.max_trial_duration_hours,
             min_paid_users_for_decision=payload.min_paid_users_for_decision,
+            min_activated_users_for_decision=payload.min_activated_users_for_decision,
+            min_signups_for_decision=payload.min_signups_for_decision,
+            min_visits_for_proxy_decision=payload.min_visits_for_proxy_decision,
             min_relative_cac_improvement=payload.min_relative_cac_improvement,
+            min_relative_proxy_improvement=payload.min_relative_proxy_improvement,
+            max_relative_roas_regression=payload.max_relative_roas_regression,
+            confidence_level=payload.confidence_level,
             paused=payload.paused,
             shadow_only=True,
             created_at=created_at,
@@ -178,6 +187,7 @@ class GrowthAutoResearchService:
             policy=policy,
             champion=original_champion.evidence,
             challenger=payload.evidence,
+            planned_budget=trial.challenger.test_budget,
             blocked_reason=stale_reason or payload.blocked_reason,
             failed_reason=payload.failed_reason,
         )
@@ -188,11 +198,18 @@ class GrowthAutoResearchService:
             trial_id=trial.id,
             champion_id=original_champion.id,
             outcome=result.outcome,
+            objective=result.objective,
             rationale=result.rationale,
             champion_evidence=original_champion.evidence,
             challenger_evidence=payload.evidence,
             champion_cac=result.champion_cac,
             challenger_cac=result.challenger_cac,
+            champion_roas=result.champion_roas,
+            challenger_roas=result.challenger_roas,
+            champion_metric_value=result.champion_metric_value,
+            challenger_metric_value=result.challenger_metric_value,
+            relative_improvement=result.relative_improvement,
+            confidence=result.confidence,
             created_at=now,
         )
         if not self._store.put_if_absent(
@@ -283,6 +300,13 @@ class GrowthAutoResearchService:
                 "Growth variant test budget exceeds the shadow research policy: "
                 f"{normalized.test_budget:.2f} > {policy.max_shadow_trial_budget:.2f}"
             )
+        if policy.shadow_research_budget is not None:
+            share_cap = policy.shadow_research_budget * policy.max_trial_budget_share
+            if normalized.test_budget > share_cap:
+                raise ValueError(
+                    "Growth variant test budget exceeds the configured research-budget share: "
+                    f"{normalized.test_budget:.2f} > {share_cap:.2f}"
+                )
         return normalized
 
     @staticmethod
