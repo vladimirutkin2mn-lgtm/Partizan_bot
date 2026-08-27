@@ -59,6 +59,8 @@ _CUSTOMER_WORKSPACE_ASSETS = {
     "workspace.channels.v1.js": "text/javascript; charset=utf-8",
     "workspace.projects.v1.css": "text/css; charset=utf-8",
     "workspace.projects.v1.js": "text/javascript; charset=utf-8",
+    "workspace.experiments.v1.css": "text/css; charset=utf-8",
+    "workspace.experiments.v1.js": "text/javascript; charset=utf-8",
 }
 _WORKSPACE_STYLESHEET_MARKER = '<link rel="stylesheet" href="/workspace/assets/workspace.v1.css">'
 _WORKSPACE_CHANNEL_STYLESHEET = (
@@ -67,12 +69,18 @@ _WORKSPACE_CHANNEL_STYLESHEET = (
 _WORKSPACE_PROJECT_STYLESHEET = (
     '<link rel="stylesheet" href="/workspace/assets/workspace.projects.v1.css">'
 )
+_WORKSPACE_EXPERIMENT_STYLESHEET = (
+    '<link rel="stylesheet" href="/workspace/assets/workspace.experiments.v1.css">'
+)
 _WORKSPACE_SCRIPT_MARKER = '<script src="/workspace/assets/workspace.v1.js" defer></script>'
 _WORKSPACE_CHANNEL_SCRIPT = (
     '<script src="/workspace/assets/workspace.channels.v1.js" defer></script>'
 )
 _WORKSPACE_PROJECT_SCRIPT = (
     '<script src="/workspace/assets/workspace.projects.v1.js" defer></script>'
+)
+_WORKSPACE_EXPERIMENT_SCRIPT = (
+    '<script src="/workspace/assets/workspace.experiments.v1.js" defer></script>'
 )
 
 
@@ -156,6 +164,7 @@ async def customer_workspace() -> HTMLResponse:
         (
             f"{_WORKSPACE_STYLESHEET_MARKER}\n  {_WORKSPACE_CHANNEL_STYLESHEET}"
             f"\n  {_WORKSPACE_PROJECT_STYLESHEET}"
+            f"\n  {_WORKSPACE_EXPERIMENT_STYLESHEET}"
         ),
         1,
     )
@@ -164,6 +173,7 @@ async def customer_workspace() -> HTMLResponse:
         (
             f"{_WORKSPACE_SCRIPT_MARKER}\n  {_WORKSPACE_CHANNEL_SCRIPT}"
             f"\n  {_WORKSPACE_PROJECT_SCRIPT}"
+            f"\n  {_WORKSPACE_EXPERIMENT_SCRIPT}"
         ),
         1,
     )

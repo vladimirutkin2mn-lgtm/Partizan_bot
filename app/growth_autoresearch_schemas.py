@@ -34,6 +34,16 @@ class GrowthResearchTrialStatus(StrEnum):
     EVALUATED = "EVALUATED"
 
 
+class GrowthAutoResearchLoopStatus(StrEnum):
+    NOT_CONFIGURED = "NOT_CONFIGURED"
+    PAUSED = "PAUSED"
+    NO_BASELINE = "NO_BASELINE"
+    BUDGET_EXHAUSTED = "BUDGET_EXHAUSTED"
+    WAITING_EVIDENCE = "WAITING_EVIDENCE"
+    GENERATED = "GENERATED"
+    IDLE = "IDLE"
+
+
 class GrowthResearchPolicyRequest(BaseModel):
     allowed_platforms: list[str] = Field(default_factory=list, max_length=32)
     max_changed_dimensions: int = Field(default=2, ge=1, le=2)
@@ -86,6 +96,16 @@ class GrowthResearchEvidence(BaseModel):
     source: str = Field(default="shadow", min_length=1, max_length=120)
 
 
+class GrowthResearchProvenanceView(BaseModel):
+    platform: str = Field(min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=300)
+    url: str | None = Field(default=None, max_length=2000)
+    rationale: str | None = Field(default=None, max_length=4000)
+    relevance_score: float | None = Field(default=None, ge=0, le=100)
+    source_urls: list[str] = Field(default_factory=list, max_length=20)
+    signal_tags: list[str] = Field(default_factory=list, max_length=40)
+
+
 class GrowthResearchBaselineRequest(BaseModel):
     variant: GrowthVariantSpec
     evidence: GrowthResearchEvidence
@@ -136,6 +156,7 @@ class GrowthResearchTrialView(BaseModel):
     hypothesis_rationale: list[str] = Field(default_factory=list)
     hypothesis_mode: GrowthHypothesisMode | None = None
     hypothesis_source: str | None = None
+    research_provenance: list[GrowthResearchProvenanceView] = Field(default_factory=list)
     evaluation_id: UUID | None = None
     created_at: datetime
     evaluated_at: datetime | None = None
@@ -179,3 +200,38 @@ class GrowthResearchHistoryView(BaseModel):
     champion: GrowthChampionView | None = None
     trials: list[GrowthResearchTrialView] = Field(default_factory=list)
     evaluations: list[GrowthResearchEvaluationView] = Field(default_factory=list)
+
+
+class GrowthAutoResearchSweepView(BaseModel):
+    id: UUID
+    product_id: UUID
+    status: GrowthAutoResearchLoopStatus
+    message: str
+    trial_id: UUID | None = None
+    provenance_count: int = Field(default=0, ge=0)
+    remaining_research_budget: float | None = Field(default=None, ge=0)
+    created_at: datetime
+
+
+class GrowthAutoResearchRunView(BaseModel):
+    id: UUID
+    product_count: int = Field(ge=0)
+    generated_count: int = Field(ge=0)
+    waiting_count: int = Field(ge=0)
+    sweeps: list[GrowthAutoResearchSweepView] = Field(default_factory=list)
+    created_at: datetime
+
+
+class GrowthAutoResearchOverviewView(BaseModel):
+    product_id: UUID
+    configured: bool
+    paused: bool
+    status: GrowthAutoResearchLoopStatus
+    remaining_research_budget: float | None = Field(default=None, ge=0)
+    champion: GrowthChampionView | None = None
+    active_trial: GrowthResearchTrialView | None = None
+    recent_trials: list[GrowthResearchTrialView] = Field(default_factory=list)
+    recent_evaluations: list[GrowthResearchEvaluationView] = Field(default_factory=list)
+    provenance: list[GrowthResearchProvenanceView] = Field(default_factory=list)
+    last_sweep: GrowthAutoResearchSweepView | None = None
+    research_only: bool = True

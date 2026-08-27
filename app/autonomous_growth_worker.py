@@ -12,6 +12,10 @@ from app.autonomous_controlled_growth import (
     autonomous_controlled_growth_sweep_service,
 )
 from app.autonomous_growth import AutonomousGrowthSweepService
+from app.growth_autoresearch_loop import (
+    GrowthAutoResearchLoopService,
+    growth_autoresearch_loop_service,
+)
 from app.worker_health import AUTONOMOUS_GROWTH_WORKER, WorkerHeartbeatService
 
 AUTONOMOUS_SWEEP_CONTENTION_RETRY_SECONDS = 5.0
@@ -22,10 +26,14 @@ class AutonomousGrowthWorker:
         self,
         *,
         sweep_service: AutonomousGrowthSweepService | None = None,
+        autoresearch_loop_service: GrowthAutoResearchLoopService | None = None,
         heartbeat_service: WorkerHeartbeatService | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._sweep_service = sweep_service or autonomous_controlled_growth_sweep_service
+        self._autoresearch_loop_service = (
+            autoresearch_loop_service or growth_autoresearch_loop_service
+        )
         self._heartbeat_service = heartbeat_service
         self._sleep = sleep
 
@@ -53,6 +61,7 @@ class AutonomousGrowthWorker:
                 heartbeat.mark_running(AUTONOMOUS_GROWTH_WORKER)
             try:
                 result = asyncio.run(self._sweep_service.run_once(product_id=product_id))
+                asyncio.run(self._autoresearch_loop_service.run_once(product_id=product_id))
             except AutonomousGrowthSweepAlreadyRunning as exc:
                 emit(json.dumps({"status": "skipped", "reason": str(exc)}))
                 if once:
