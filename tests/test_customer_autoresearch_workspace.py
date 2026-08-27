@@ -148,7 +148,7 @@ def test_customer_autoresearch_requires_deep_research_product() -> None:
     response = client.get(f"/customer/workspace/{project.project_id}/autoresearch")
 
     assert response.status_code == 409
-    assert "Complete deep research" in response.json()["detail"]
+    assert response.json()["detail"] == "Initial market research has not finished yet."
 
 
 def test_experiments_assets_are_versioned_and_no_store() -> None:
