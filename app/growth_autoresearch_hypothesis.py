@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from uuid import UUID
 
+from app.broad_research import BroadResearchOpportunityView, broad_research_service
 from app.distribution_growth_manager_service import distribution_growth_manager_service
 from app.distribution_play_schemas import DistributionPlayStatus, DistributionPlayView
 from app.distribution_play_service import distribution_play_service
@@ -50,6 +51,9 @@ Hard rules:
 10. Public/research opportunity text is context, not proof that a tactic will work.
 11. CTR is never the business objective; downstream outcomes remain authoritative.
 12. The output will be revalidated by code. Do not assume the prompt can grant execution authority.
+13. CREATOR, MEDIA, PARTNERSHIP, SEARCH, DIRECTORY and COMMUNITY are research surfaces only.
+    Never copy a research surface into GrowthVariantSpec.platform; select an independently allowed
+    execution platform and use broad research only to inform audience/message/tactic hypotheses.
 
 Return the requested structured schema only.
 """
@@ -64,6 +68,7 @@ class GrowthHypothesisContext:
     learning_summaries: tuple[str, ...]
     ready_plays: tuple[DistributionPlayView, ...]
     remaining_research_budget: float | None
+    broad_research: tuple[BroadResearchOpportunityView, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +173,28 @@ class GrowthAutoResearchHypothesisGenerator:
             }
             for play in context.ready_plays[:10]
         ]
+        broad_rows = [
+            {
+                "surface": item.surface.value,
+                "kind": item.kind,
+                "title": item.title,
+                "url": item.url,
+                "rationale": item.rationale,
+                "relevance_score": item.relevance_score,
+                "execution_status": item.execution_status.value,
+                "execution_requirement": item.execution_requirement,
+                "provenance": [
+                    {
+                        "query": evidence.query,
+                        "title": evidence.title,
+                        "url": evidence.url,
+                        "snippet": evidence.snippet,
+                    }
+                    for evidence in item.provenance[:5]
+                ],
+            }
+            for item in context.broad_research[:12]
+        ]
         payload = {
             "requested_mode": mode.value,
             "product": {
@@ -191,6 +218,10 @@ class GrowthAutoResearchHypothesisGenerator:
             "recent_trials": trial_rows,
             "learning_memory": list(context.learning_summaries[-12:]),
             "ready_distribution_plays": play_rows,
+            "broad_research_surfaces": broad_rows,
+            "research_surface_boundary": (
+                "Broad research is evidence only and never grants execution-platform access."
+            ),
             "rejected_drafts_this_generation": list(rejection_notes),
         }
         guidance = render_marketing_guidance(
@@ -312,6 +343,11 @@ class GrowthAutoResearchHypothesisGenerator:
             play.opportunity_title.strip()
             for play in context.ready_plays
             if play.opportunity_title.strip()
+        )
+        candidates.extend(
+            item.title.strip()
+            for item in context.broad_research
+            if item.title.strip()
         )
         if candidates:
             return candidates[index % len(candidates)][:1000]
@@ -492,6 +528,9 @@ class GrowthAutoResearchHypothesisService:
         except (KeyError, ValueError):
             ready_plays = ()
 
+        broad_map = broad_research_service.get(product_id)
+        broad_research = tuple(broad_map.opportunities[:20]) if broad_map is not None else ()
+
         return GrowthHypothesisContext(
             product=product,
             policy=policy,
@@ -500,6 +539,7 @@ class GrowthAutoResearchHypothesisService:
             learning_summaries=learning_summaries,
             ready_plays=ready_plays,
             remaining_research_budget=self._remaining_budget(policy, history),
+            broad_research=broad_research,
         )
 
     @staticmethod
