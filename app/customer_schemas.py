@@ -145,6 +145,10 @@ class CustomerAutopilotStatusRequest(BaseModel):
     status: Literal["ACTIVE", "PAUSED"]
 
 
+class CustomerAutoResearchStatusRequest(BaseModel):
+    status: Literal["ACTIVE", "PAUSED"]
+
+
 class CustomerMetaConnectResponse(BaseModel):
     authorization_url: HttpUrl
 
