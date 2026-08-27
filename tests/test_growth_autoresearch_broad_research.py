@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
@@ -136,7 +135,8 @@ class RecordingProvider(LLMProvider):
 
 
 @pytest.mark.asyncio
-async def test_hypothesis_context_includes_broad_research_evidence_without_platform_leakage() -> None:
+async def test_hypothesis_context_includes_broad_research_evidence_without_platform_leakage(
+) -> None:
     product_id = uuid4()
     store = MemoryRuntimeStateStore()
     autoresearch = GrowthAutoResearchService(store=store)
