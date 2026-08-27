@@ -97,13 +97,19 @@ class GrowthResearchEvidence(BaseModel):
 
 
 class GrowthResearchProvenanceView(BaseModel):
-    platform: str = Field(min_length=1, max_length=64)
-    title: str = Field(min_length=1, max_length=300)
+    source_domain: str = Field(default="DISTRIBUTION", min_length=1, max_length=64)
+    surface: str = Field(default="EXECUTION_PLATFORM", min_length=1, max_length=64)
+    platform: str | None = Field(default=None, max_length=64)
+    title: str = Field(min_length=1, max_length=500)
     url: str | None = Field(default=None, max_length=2000)
     rationale: str | None = Field(default=None, max_length=4000)
     relevance_score: float | None = Field(default=None, ge=0, le=100)
+    execution_status: str | None = Field(default=None, max_length=64)
+    execution_requirement: str | None = Field(default=None, max_length=1000)
     source_urls: list[str] = Field(default_factory=list, max_length=20)
     signal_tags: list[str] = Field(default_factory=list, max_length=40)
+    evidence_queries: list[str] = Field(default_factory=list, max_length=20)
+    evidence_snippets: list[str] = Field(default_factory=list, max_length=20)
 
 
 class GrowthResearchBaselineRequest(BaseModel):
