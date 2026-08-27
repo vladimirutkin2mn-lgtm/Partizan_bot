@@ -7,9 +7,13 @@
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })}`;
-  const params = new URLSearchParams(window.location.search);
-  const projectId = params.get('project');
+  let projectId = new URLSearchParams(window.location.search).get('project');
   let overview = null;
+
+  const syncProjectId = (candidate = null) => {
+    projectId = candidate || new URLSearchParams(window.location.search).get('project');
+    return projectId;
+  };
 
   const api = async (path, options = {}) => {
     const headers = new Headers(options.headers || {});
@@ -56,6 +60,22 @@
     FAILED: 'Failed',
   })[outcome] || outcome || 'Pending';
 
+  const surfaceLabel = (surface) => ({
+    EXECUTION_PLATFORM: 'Execution platform',
+    CREATOR: 'Creator / influencer',
+    MEDIA: 'Media / newsletter',
+    PARTNERSHIP: 'Partnership / affiliate',
+    SEARCH: 'Search / SEO',
+    DIRECTORY: 'Directory / reviews',
+    COMMUNITY: 'Public community',
+  })[surface] || surface || 'Research';
+
+  const compact = (value, limit = 88) => {
+    const text = String(value || '').trim();
+    if (!text) return '';
+    return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+  };
+
   const metricSummary = (evidence) => {
     if (!evidence) return 'No measured baseline evidence yet.';
     const values = [];
@@ -98,11 +118,88 @@
       )).join(' ');
       const tags = (item.signal_tags || []).slice(0, 5).join(' · ');
       return `<article class="ar-source">
-        <div><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.platform)}</span></div>
+        <div><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.platform || surfaceLabel(item.surface))}</span></div>
         <p>${escapeHtml(item.rationale || 'Public research evidence for this hypothesis.')}</p>
         <small>${escapeHtml(tags || 'research provenance')}${links ? ` · ${links}` : ''}</small>
       </article>`;
     }).join('');
+  };
+
+  const renderOverview = (data) => {
+    const status = $('autoresearch-overview-status');
+    if (!status) return;
+    status.textContent = statusLabel(data.status);
+    status.classList.toggle('good', data.status === 'IDLE');
+    status.classList.toggle('warn', [
+      'PAUSED', 'NO_BASELINE', 'BUDGET_EXHAUSTED', 'WAITING_EVIDENCE',
+    ].includes(data.status));
+
+    const champion = data.champion;
+    const trial = data.active_trial;
+    const latestEvaluation = (data.recent_evaluations || [])[0];
+
+    $('autoresearch-overview-winner').textContent = champion
+      ? compact(
+        champion.variant.message_angle
+          || champion.variant.audience
+          || champion.variant.tactic_id
+          || champion.variant.platform,
+      )
+      : 'Waiting for a measured baseline';
+    $('autoresearch-overview-winner-detail').textContent = champion
+      ? `${champion.variant.platform} · ${metricSummary(champion.evidence)}`
+      : 'Public research can suggest tests, but it cannot create a winner.';
+
+    $('autoresearch-overview-test').textContent = trial
+      ? compact(trial.hypothesis || `Testing ${trial.changed_dimensions.join(', ')}`)
+      : (data.status === 'PAUSED' ? 'Continuous testing is paused' : 'Ready for the next bounded test');
+    $('autoresearch-overview-test-detail').textContent = trial
+      ? `${trial.challenger.platform} · changed ${trial.changed_dimensions.join(', ')}`
+      : (data.status === 'NO_BASELINE'
+        ? 'Partizan needs a baseline before it can compare challengers.'
+        : 'Partizan proposes one challenger at a time when policy and evidence allow it.');
+
+    $('autoresearch-overview-learning').textContent = latestEvaluation
+      ? outcomeLabel(latestEvaluation.outcome)
+      : statusLabel(data.status);
+    $('autoresearch-overview-learning-detail').textContent = latestEvaluation
+      ? compact(
+        (latestEvaluation.rationale || [])[0]
+          || `Decision based on ${objectiveLabel(latestEvaluation.objective)}.`,
+        112,
+      )
+      : 'Each decision is stored and feeds the next hypothesis instead of resetting the plan.';
+
+    $('autoresearch-overview-boundary').textContent = (
+      'Continuous AutoResearch is included in the funded workspace. Research can suggest what to test; '
+      + 'measured/replay evidence decides winners. Paid execution remains behind settlement and channel-permission gates.'
+    );
+  };
+
+  const renderOverviewUnavailable = (error) => {
+    if (!$('autoresearch-overview-status')) return;
+    const needsResearch = error && error.status === 409;
+    $('autoresearch-overview-status').textContent = needsResearch ? 'Starts after deep research' : 'Not available';
+    $('autoresearch-overview-status').classList.remove('good');
+    $('autoresearch-overview-status').classList.add('warn');
+    $('autoresearch-overview-winner').textContent = 'No measured winner yet';
+    $('autoresearch-overview-winner-detail').textContent = needsResearch
+      ? 'Deep research establishes the evidence context before continuous testing starts.'
+      : 'AutoResearch state could not be loaded.';
+    $('autoresearch-overview-test').textContent = needsResearch
+      ? 'First challenger comes after research'
+      : 'No active challenger visible';
+    $('autoresearch-overview-test-detail').textContent = needsResearch
+      ? 'The free pre-scan is a snapshot; continuous learning begins in the funded workspace after research.'
+      : 'Open Experiments later to retry.';
+    $('autoresearch-overview-learning').textContent = needsResearch ? 'Continuous learning included' : 'Waiting';
+    $('autoresearch-overview-learning-detail').textContent = needsResearch
+      ? 'Partizan will retain decisions and use them to choose what to test next.'
+      : 'No learning state is available right now.';
+    $('autoresearch-overview-boundary').textContent = (
+      'Funding unlocks continuous research and learning, not unrestricted ad spend. '
+      + 'Every execution path still requires its normal integration, permission and spend gates.'
+    );
   };
 
   const renderHistory = (data) => {
@@ -126,6 +223,7 @@
 
   const render = (data) => {
     overview = data;
+    renderOverview(data);
     $('autoresearch-status').textContent = statusLabel(data.status);
     $('autoresearch-status').classList.toggle('good', data.status === 'IDLE');
     $('autoresearch-status').classList.toggle('warn', [
@@ -173,16 +271,20 @@
   };
 
   const load = async () => {
-    if (!projectId) return;
+    if (!syncProjectId(projectId)) return;
     const node = $('autoresearch-loading');
     node.classList.remove('hidden');
+    $('autoresearch-error').classList.add('hidden');
     try {
       const data = await api(`/customer/workspace/${encodeURIComponent(projectId)}/autoresearch`);
       render(data);
       $('autoresearch-content').classList.remove('hidden');
     } catch (error) {
+      renderOverviewUnavailable(error);
       $('autoresearch-content').classList.add('hidden');
-      $('autoresearch-error').textContent = error.message;
+      $('autoresearch-error').textContent = error.status === 409
+        ? 'Complete deep research to start continuous AutoResearch.'
+        : error.message;
       $('autoresearch-error').classList.remove('hidden');
     } finally {
       node.classList.add('hidden');
@@ -221,6 +323,31 @@
       });
     });
 
+    const overviewPanel = workspaceNode.querySelector('[data-tab-panel="overview"]');
+    if (overviewPanel && !$('autoresearch-overview')) {
+      const overviewCard = document.createElement('section');
+      overviewCard.id = 'autoresearch-overview';
+      overviewCard.className = 'panel ar-overview';
+      overviewCard.innerHTML = `
+        <div class="ar-overview-head">
+          <div>
+            <span class="eyebrow">Continuous learning · included</span>
+            <h2>Partizan keeps improving how it gets you customers.</h2>
+            <p>Research → test → measure → learn → test again. The plan does not reset after the first recommendation.</p>
+          </div>
+          <div class="ar-overview-actions"><span id="autoresearch-overview-status" class="status-pill">Loading</span><button id="autoresearch-overview-open" class="text-button" type="button">Open experiments →</button></div>
+        </div>
+        <div class="ar-overview-grid">
+          <div><span>Current winner</span><strong id="autoresearch-overview-winner">Loading…</strong><small id="autoresearch-overview-winner-detail">Checking measured evidence.</small></div>
+          <div><span>Testing now</span><strong id="autoresearch-overview-test">Loading…</strong><small id="autoresearch-overview-test-detail">Checking the active challenger.</small></div>
+          <div><span>Learning</span><strong id="autoresearch-overview-learning">Loading…</strong><small id="autoresearch-overview-learning-detail">Checking recent decisions.</small></div>
+        </div>
+        <p id="autoresearch-overview-boundary" class="note ar-overview-boundary">Loading AutoResearch safety state…</p>`;
+      const finance = overviewPanel.querySelector('.overview-finance');
+      overviewPanel.insertBefore(overviewCard, finance || null);
+      $('autoresearch-overview-open').addEventListener('click', activate);
+    }
+
     const panel = document.createElement('section');
     panel.id = 'autoresearch-panel';
     panel.className = 'tab-panel hidden';
@@ -242,6 +369,15 @@
       </div>`;
     const settingsPanel = workspaceNode.querySelector('[data-tab-panel="settings"]');
     workspaceNode.insertBefore(panel, settingsPanel || null);
+
+    window.addEventListener('partizan:workspace-ready', (event) => {
+      const nextProjectId = event.detail && event.detail.projectId;
+      if (!nextProjectId) return;
+      syncProjectId(nextProjectId);
+      load().catch(() => {});
+    });
+
+    if (syncProjectId()) load().catch(() => {});
 
     $('autoresearch-control').addEventListener('click', async () => {
       const control = $('autoresearch-control');

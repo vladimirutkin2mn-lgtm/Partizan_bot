@@ -77,6 +77,16 @@ def test_customer_start_sends_autonomous_customers_to_persistent_workspace() -> 
     assert "/customer/account/projects/claim" in javascript.text
     assert "redirectWorkspace" in javascript.text
 
+    assert "Continuous learning" in page.text
+    assert "Research</span><i>→</i><span>Test" in page.text
+    assert "continuous AutoResearch are included" in page.text
+    assert "Funding does not by itself authorize ad spend" in page.text
+    assert "one deep research pass" in page.text
+    start_css = client.get("/start/assets/start.v2.css")
+    assert start_css.status_code == 200
+    assert ".autoresearch-included" in start_css.text
+    assert ".autoresearch-loop" in start_css.text
+
 
 def test_customer_start_keeps_same_browser_recovery_for_pre_account_and_research_only() -> None:
     javascript = client.get("/start/assets/start.v2.js")

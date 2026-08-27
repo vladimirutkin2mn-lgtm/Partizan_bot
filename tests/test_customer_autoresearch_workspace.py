@@ -167,3 +167,20 @@ def test_experiments_assets_are_versioned_and_no_store() -> None:
     assert script.headers["cache-control"] == "no-store, max-age=0"
     assert "Continuous acquisition experiments" in script.text
     assert "never count as visits, conversions, customers" in script.text
+
+    assert "Continuous learning · included" in script.text
+    assert "Partizan keeps improving how it gets you customers." in script.text
+    assert "autoresearch-overview-winner" in script.text
+    assert "autoresearch-overview-test" in script.text
+    assert "autoresearch-overview-learning" in script.text
+    assert "Paid execution remains behind settlement and channel-permission gates." in script.text
+    assert "item.platform || surfaceLabel(item.surface)" in script.text
+
+    base_script = client.get("/workspace/assets/workspace.v1.js")
+    assert base_script.status_code == 200
+    assert "partizan:workspace-ready" in base_script.text
+
+    css = client.get("/workspace/assets/workspace.experiments.v1.css")
+    assert css.status_code == 200
+    assert ".ar-overview" in css.text
+    assert ".ar-overview-grid" in css.text

@@ -257,6 +257,9 @@
     ]);
     data.channels = channels;
     renderWorkspace(data);
+    window.dispatchEvent(new CustomEvent('partizan:workspace-ready', {
+      detail: { projectId },
+    }));
     return data;
   };
 
