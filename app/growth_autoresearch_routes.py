@@ -3,6 +3,10 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from app.growth_autoresearch import growth_autoresearch_service
+from app.growth_autoresearch_execution_runtime import (
+    growth_autoresearch_execution_runtime_service,
+)
+from app.growth_autoresearch_execution_schemas import GrowthAutoResearchExecutionView
 from app.growth_autoresearch_hypothesis import growth_autoresearch_hypothesis_service
 from app.growth_autoresearch_schemas import (
     GrowthChampionView,
@@ -115,6 +119,32 @@ def evaluate_growth_autoresearch_trial(
         raise HTTPException(status_code=404, detail="Growth AutoResearch trial not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/growth-autoresearch/trials/{trial_id}/execute-non-paid",
+    response_model=GrowthAutoResearchExecutionView,
+)
+async def execute_growth_autoresearch_non_paid_trial(
+    trial_id: UUID,
+) -> GrowthAutoResearchExecutionView:
+    try:
+        return await growth_autoresearch_execution_runtime_service.execute_trial(trial_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Growth AutoResearch trial not found") from exc
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/products/{product_id}/growth-autoresearch/executions",
+    response_model=list[GrowthAutoResearchExecutionView],
+)
+def get_growth_autoresearch_executions(
+    product_id: UUID,
+) -> list[GrowthAutoResearchExecutionView]:
+    _require_product(product_id)
+    return growth_autoresearch_execution_runtime_service.list_for_product(product_id)
 
 
 @router.get(
