@@ -78,13 +78,37 @@ class CustomerICPView(BaseModel):
     message_hook: str
 
 
+class CustomerResearchEvidenceView(BaseModel):
+    query: str
+    title: str
+    url: HttpUrl
+    snippet: str = ""
+
+
 class CustomerOpportunityView(BaseModel):
-    platform: str
+    platform: str | None = None
     kind: str
     title: str
     url: HttpUrl | None = None
     rationale: str | None = None
     relevance_score: float | None = None
+    surface: Literal[
+        "EXECUTION_PLATFORM",
+        "CREATOR",
+        "MEDIA",
+        "PARTNERSHIP",
+        "SEARCH",
+        "DIRECTORY",
+        "COMMUNITY",
+    ] = "EXECUTION_PLATFORM"
+    execution_status: Literal[
+        "PARTIZAN_CONTROL_PLANE",
+        "RESEARCH_ONLY",
+        "OUTREACH_POSSIBLE",
+        "MANUAL_HANDOFF",
+    ] = "PARTIZAN_CONTROL_PLANE"
+    execution_requirement: str | None = None
+    provenance: list[CustomerResearchEvidenceView] = Field(default_factory=list)
 
 
 class CustomerResearchResponse(BaseModel):

@@ -168,7 +168,7 @@
       $('research-state').textContent = 'Ready';
       $('research-state').classList.add('good');
       $('research-title').textContent = 'Market mapped';
-      $('research-copy').textContent = 'Partizan has mapped customer segments and acquisition opportunities. Disabled channels are excluded from what you see and from new autonomous execution.';
+      $('research-copy').textContent = 'Partizan has mapped customer segments and broad acquisition surfaces. Research-only findings stay visible independently; execution-platform opportunities still respect channel controls and execution prerequisites.';
       $('research-button').classList.add('hidden');
       return;
     }
@@ -262,10 +262,49 @@
 
   const refreshWorkspaceWithoutResearch = async () => loadWorkspace();
 
+  const surfaceLabels = {
+    EXECUTION_PLATFORM: 'Execution platform',
+    CREATOR: 'Creator / influencer',
+    MEDIA: 'Media / podcast / newsletter',
+    PARTNERSHIP: 'Partnership / affiliate',
+    SEARCH: 'Search / SEO',
+    DIRECTORY: 'Directory / reviews',
+    COMMUNITY: 'Public community',
+  };
+  const executionStatusLabels = {
+    PARTIZAN_CONTROL_PLANE: 'Control-plane path',
+    RESEARCH_ONLY: 'Research only',
+    OUTREACH_POSSIBLE: 'Outreach possible',
+    MANUAL_HANDOFF: 'Manual handoff',
+  };
+  const opportunitySurface = (item) => item.surface || 'EXECUTION_PLATFORM';
+  const opportunityStatus = (item) => item.execution_status || (opportunitySurface(item) === 'EXECUTION_PLATFORM' ? 'PARTIZAN_CONTROL_PLANE' : 'RESEARCH_ONLY');
+  const opportunityMeta = (item) => [
+    surfaceLabels[opportunitySurface(item)] || opportunitySurface(item),
+    item.platform,
+    item.kind,
+  ].filter(Boolean).join(' · ');
+  const executionRequirement = (item) => item.execution_requirement || ({
+    PARTIZAN_CONTROL_PLANE: 'A control-plane path is not authorization to execute. The channel still needs to be enabled, connected with the required identity/permissions, and pass normal safety checks.',
+    RESEARCH_ONLY: 'Research finding only. This is not a connected channel and Partizan cannot execute it automatically.',
+    OUTREACH_POSSIBLE: 'Partizan can prepare an outreach path, but sending still requires the normal outreach permissions and safety checks.',
+    MANUAL_HANDOFF: 'Manual handoff is required before anything happens on this opportunity.',
+  })[opportunityStatus(item)];
+  const renderEvidence = (item) => {
+    const evidence = Array.isArray(item.provenance) ? item.provenance.slice(0, 3) : [];
+    if (!evidence.length) return '';
+    return `<details><summary>Evidence · ${evidence.length}</summary>${evidence.map((source) => `<p>${source.url ? `<a href="${escapeHtml(source.url)}" target="_blank" rel="noopener">${escapeHtml(source.title || source.query || 'Source')}</a>` : `<strong>${escapeHtml(source.title || source.query || 'Source')}</strong>`}${source.snippet ? ` — ${escapeHtml(source.snippet)}` : ''}</p>`).join('')}</details>`;
+  };
+  const renderOpportunity = (item) => `<article class="result-card"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(opportunityMeta(item))}</span><span>${escapeHtml(executionStatusLabels[opportunityStatus(item)] || opportunityStatus(item))}</span><p>${escapeHtml(item.rationale || 'Relevant acquisition opportunity')}</p><p>${escapeHtml(executionRequirement(item))}</p>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Open ↗</a>` : ''}${renderEvidence(item)}</article>`;
+
   const visibleResearchOpportunities = (result) => {
     const channels = workspace && workspace.channels ? workspace.channels : [];
     const modes = new Map(channels.map((item) => [item.platform, item.mode]));
-    return result.opportunities.filter((item) => modes.get(String(item.platform).toUpperCase()) !== 'OFF');
+    return result.opportunities.filter((item) => {
+      const surface = opportunitySurface(item);
+      if (surface !== 'EXECUTION_PLATFORM') return true;
+      return modes.get(String(item.platform || '').toUpperCase()) !== 'OFF';
+    });
   };
 
   const renderResearch = (result) => {
@@ -297,9 +336,17 @@
     }
 
     $('clarification').classList.add('hidden');
-    const opportunities = visibleResearchOpportunities(result);
+    const visible = visibleResearchOpportunities(result);
+    const broadResearch = visible.filter((item) => opportunitySurface(item) !== 'EXECUTION_PLATFORM');
+    const executionCandidates = visible.filter((item) => opportunitySurface(item) === 'EXECUTION_PLATFORM');
+    const broadCards = broadResearch.length
+      ? broadResearch.slice(0, 12).map(renderOpportunity).join('')
+      : '<article class="result-card"><strong>No broad public-web findings yet</strong><p>Partizan will keep the research domain separate from execution channels and only surface evidence-backed findings.</p></article>';
+    const executionCards = executionCandidates.length
+      ? executionCandidates.slice(0, 12).map(renderOpportunity).join('')
+      : '<article class="result-card"><strong>No enabled execution-platform candidates</strong><p>Research-only surfaces above stay visible. Change channel preferences only if you want Partizan to consider execution on supported platforms.</p></article>';
     const results = $('research-results');
-    results.innerHTML = `<div><h3>Who Partizan will target first</h3><div class="result-grid">${result.icps.map((item) => `<article class="result-card"><strong>${escapeHtml(item.title)}</strong><span>${Math.round(item.score)}/100 fit</span><p>${escapeHtml(item.description)}</p></article>`).join('')}</div></div><div><h3>Where Partizan sees opportunity</h3><div class="result-grid">${opportunities.slice(0, 12).map((item) => `<article class="result-card"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.platform)} · ${escapeHtml(item.kind)}</span><p>${escapeHtml(item.rationale || 'Relevant acquisition opportunity')}</p>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Open ↗</a>` : ''}</article>`).join('') || '<article class="result-card"><strong>No enabled channel opportunities yet</strong><p>Change channel preferences if you want Partizan to include additional surfaces.</p></article>'}</div></div>`;
+    results.innerHTML = `<div><h3>Who Partizan would target first</h3><div class="result-grid">${result.icps.map((item) => `<article class="result-card"><strong>${escapeHtml(item.title)}</strong><span>${Math.round(item.score)}/100 fit</span><p>${escapeHtml(item.description)}</p></article>`).join('')}</div></div><div><h3>Broad research surfaces</h3><p>These are evidence-backed findings, not connected channels and not automatic execution permission.</p><div class="result-grid">${broadCards}</div></div><div><h3>Execution-platform candidates</h3><p>Only enabled supported platforms appear here. A control-plane path still requires integration/identity/permission and normal safety checks before execution.</p><div class="result-grid">${executionCards}</div></div>`;
     results.classList.remove('hidden');
   };
 
