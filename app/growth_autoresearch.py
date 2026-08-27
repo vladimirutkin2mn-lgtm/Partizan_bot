@@ -29,6 +29,11 @@ GROWTH_AUTORESEARCH_CHAMPION_NAMESPACE = "growth_autoresearch_champion"
 GROWTH_AUTORESEARCH_TRIAL_NAMESPACE = "growth_autoresearch_trial"
 GROWTH_AUTORESEARCH_EVALUATION_NAMESPACE = "growth_autoresearch_evaluation"
 
+# Broad-research surfaces are evidence domains, never executable GrowthVariantSpec platforms.
+_RESEARCH_ONLY_SURFACES = frozenset(
+    {"CREATOR", "MEDIA", "PARTNERSHIP", "SEARCH", "DIRECTORY", "COMMUNITY"}
+)
+
 
 class GrowthAutoResearchService:
     def __init__(
@@ -291,6 +296,10 @@ class GrowthAutoResearchService:
         )
         if not normalized.platform or not normalized.tactic_id:
             raise ValueError("Growth variant platform and tactic_id are required")
+        if normalized.platform in _RESEARCH_ONLY_SURFACES:
+            raise ValueError(
+                f"Research surface {normalized.platform} cannot be used as an execution platform"
+            )
         if policy.allowed_platforms and normalized.platform not in policy.allowed_platforms:
             raise ValueError(
                 f"Platform {normalized.platform} is outside the Growth AutoResearch policy"

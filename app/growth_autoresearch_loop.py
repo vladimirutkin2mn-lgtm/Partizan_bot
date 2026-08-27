@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -7,6 +8,7 @@ from app.audience_intelligence_service import (
     InMemoryAudienceIntelligenceService,
     audience_intelligence_service,
 )
+from app.broad_research import BroadResearchService
 from app.growth_autoresearch import (
     GROWTH_AUTORESEARCH_POLICY_NAMESPACE,
     GROWTH_AUTORESEARCH_TRIAL_NAMESPACE,
@@ -53,11 +55,13 @@ class GrowthAutoResearchLoopService:
         autoresearch: GrowthAutoResearchService | None = None,
         hypotheses: GrowthAutoResearchHypothesisService | None = None,
         audience_service: InMemoryAudienceIntelligenceService | None = None,
+        broad_research: BroadResearchService | None = None,
     ) -> None:
         self._store = store or get_runtime_store()
         self._autoresearch = autoresearch or growth_autoresearch_service
         self._hypotheses = hypotheses or growth_autoresearch_hypothesis_service
         self._audience_service = audience_service or audience_intelligence_service
+        self._broad_research = broad_research or BroadResearchService(self._store)
 
     @property
     def store(self) -> RuntimeStateStore:
@@ -289,20 +293,25 @@ class GrowthAutoResearchLoopService:
         product_id: UUID,
         trial: GrowthResearchTrialView | None,
     ) -> list[GrowthResearchProvenanceView]:
+        result: list[GrowthResearchProvenanceView] = []
         try:
             distribution = self._audience_service.get(product_id)
         except KeyError:
-            return []
+            distribution = None
+
         platform = trial.challenger.platform if trial is not None else None
-        candidates = [
-            item
-            for item in distribution.opportunities
-            if platform is None or item.platform.value == platform
-        ]
+        candidates = (
+            [
+                item
+                for item in distribution.opportunities
+                if platform is None or item.platform.value == platform
+            ]
+            if distribution is not None
+            else []
+        )
         candidates.sort(
             key=lambda item: (-(item.relevance_score or 0), item.canonical_key)
         )
-        result: list[GrowthResearchProvenanceView] = []
         for opportunity in candidates[:5]:
             source_urls: list[str] = []
             signal_tags: list[str] = []
@@ -316,16 +325,119 @@ class GrowthAutoResearchLoopService:
                         signal_tags.append(tag_text)
             result.append(
                 GrowthResearchProvenanceView(
+                    source_domain="DISTRIBUTION",
+                    surface="EXECUTION_PLATFORM",
                     platform=opportunity.platform.value,
                     title=opportunity.title,
                     url=str(opportunity.url) if opportunity.url else None,
                     rationale=opportunity.rationale,
                     relevance_score=opportunity.relevance_score,
+                    execution_status="PARTIZAN_CONTROL_PLANE",
+                    execution_requirement=(
+                        "Execution still requires the configured channel, integration, identity, "
+                        "permission and safety gates."
+                    ),
                     source_urls=source_urls[:20],
                     signal_tags=signal_tags[:40],
                 )
             )
+
+        if trial is None:
+            return result
+        broad = self._broad_research.get(product_id)
+        if broad is None:
+            return result
+
+        trial_text = " ".join(
+            [
+                trial.hypothesis or "",
+                *trial.hypothesis_rationale,
+                trial.challenger.audience or "",
+                trial.challenger.message_angle or "",
+                trial.challenger.offer or "",
+                trial.challenger.tactic_id,
+            ]
+        )
+        trial_tokens = self._support_tokens(trial_text)
+        broad_candidates: list[tuple[int, float, str, object]] = []
+        for opportunity in broad.opportunities:
+            research_text = " ".join(
+                [
+                    opportunity.title,
+                    opportunity.rationale,
+                    *(evidence.query for evidence in opportunity.provenance),
+                    *(evidence.title for evidence in opportunity.provenance),
+                    *(evidence.snippet for evidence in opportunity.provenance),
+                ]
+            )
+            overlap = trial_tokens & self._support_tokens(research_text)
+            if not overlap:
+                continue
+            broad_candidates.append(
+                (
+                    -len(overlap),
+                    -opportunity.relevance_score,
+                    opportunity.title.casefold(),
+                    opportunity,
+                )
+            )
+        broad_candidates.sort(key=lambda item: item[:3])
+        for _, _, _, opportunity in broad_candidates[:5]:
+            source_urls: list[str] = []
+            evidence_queries: list[str] = []
+            evidence_snippets: list[str] = []
+            for evidence in opportunity.provenance:
+                if evidence.url not in source_urls:
+                    source_urls.append(evidence.url)
+                if evidence.query not in evidence_queries:
+                    evidence_queries.append(evidence.query)
+                if evidence.snippet and evidence.snippet not in evidence_snippets:
+                    evidence_snippets.append(evidence.snippet)
+            result.append(
+                GrowthResearchProvenanceView(
+                    source_domain="BROAD_RESEARCH",
+                    surface=opportunity.surface.value,
+                    platform=None,
+                    title=opportunity.title,
+                    url=opportunity.url,
+                    rationale=opportunity.rationale,
+                    relevance_score=opportunity.relevance_score,
+                    execution_status=opportunity.execution_status.value,
+                    execution_requirement=opportunity.execution_requirement,
+                    source_urls=source_urls[:20],
+                    signal_tags=[
+                        "broad_research",
+                        f"surface:{opportunity.surface.value.lower()}",
+                    ],
+                    evidence_queries=evidence_queries[:20],
+                    evidence_snippets=evidence_snippets[:20],
+                )
+            )
         return result
+
+    @staticmethod
+    def _support_tokens(value: str) -> set[str]:
+        stop = {
+            "about",
+            "after",
+            "before",
+            "from",
+            "into",
+            "that",
+            "their",
+            "this",
+            "with",
+            "without",
+            "test",
+            "growth",
+            "current",
+            "challenger",
+        }
+        return {
+            token
+            for token in re.findall(r"[a-z0-9][a-z0-9_-]{2,}", value.casefold())
+            if token not in stop
+        }
 
     @staticmethod
     def _waiting_message(ready_count: int) -> str:
