@@ -76,6 +76,62 @@
     return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
   };
 
+
+  const openWorkspaceTab = (name) => {
+    const button = document.querySelector(`.tab-button[data-tab="${name}"]`);
+    if (button) button.click();
+  };
+
+  const preResearchState = (workspaceData) => {
+    const project = workspaceData.project || {};
+    const autopilot = workspaceData.autopilot || {};
+    const balance = autopilot.growth_balance || {};
+    const funded = Number(balance.funded_usd || 0) > 0;
+    const entitled = Boolean(project.launch_unlocked) || funded;
+
+    if (!entitled) {
+      return {
+        status: 'Waiting for funding',
+        title: 'Fund Growth Balance to start the initial market research.',
+        detail: 'The funded workspace includes the initial research and continuous AutoResearch. Funding does not authorize unrestricted ad spend.',
+        action: 'fund',
+        actionLabel: 'Fund Growth Balance →',
+      };
+    }
+    if (project.research_state === 'NEEDS_INPUT') {
+      return {
+        status: 'One detail needed',
+        title: 'Partizan needs one useful answer before it can finish the market research.',
+        detail: 'Answer the clarification once. Partizan will continue the research itself and continuous testing will follow automatically.',
+        action: 'research',
+        actionLabel: 'Answer one question →',
+      };
+    }
+    return {
+      status: 'Ready to research',
+      title: 'Start the initial market research.',
+      detail: 'Partizan will map customer segments and acquisition opportunities first. Continuous AutoResearch starts from that evidence instead of from a guess.',
+      action: 'research',
+      actionLabel: 'Start market research →',
+    };
+  };
+
+  const runPreResearchAction = (action) => {
+    if (action === 'fund') {
+      openWorkspaceTab('settings');
+      const form = $('fund-form');
+      if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const amount = $('fund-amount');
+      if (amount) amount.focus();
+      return;
+    }
+    openWorkspaceTab('activity');
+    const card = document.querySelector('.research-card');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const button = $('research-button');
+    if (button && !button.classList.contains('hidden') && !button.disabled) button.click();
+  };
+
   const metricSummary = (evidence) => {
     if (!evidence) return 'No measured baseline evidence yet.';
     const values = [];
@@ -128,6 +184,11 @@
   const renderOverview = (data) => {
     const status = $('autoresearch-overview-status');
     if (!status) return;
+    const action = $('autoresearch-overview-open');
+    if (action) {
+      action.textContent = 'Open experiments →';
+      action.dataset.action = 'experiments';
+    }
     status.textContent = statusLabel(data.status);
     status.classList.toggle('good', data.status === 'IDLE');
     status.classList.toggle('warn', [
@@ -176,30 +237,57 @@
     );
   };
 
-  const renderOverviewUnavailable = (error) => {
+  const renderPreResearchOverview = (workspaceData) => {
     if (!$('autoresearch-overview-status')) return;
-    const needsResearch = error && error.status === 409;
-    $('autoresearch-overview-status').textContent = needsResearch ? 'Starts after deep research' : 'Not available';
+    const state = preResearchState(workspaceData);
+    $('autoresearch-overview-status').textContent = state.status;
     $('autoresearch-overview-status').classList.remove('good');
     $('autoresearch-overview-status').classList.add('warn');
-    $('autoresearch-overview-winner').textContent = 'No measured winner yet';
-    $('autoresearch-overview-winner-detail').textContent = needsResearch
-      ? 'Deep research establishes the evidence context before continuous testing starts.'
-      : 'AutoResearch state could not be loaded.';
-    $('autoresearch-overview-test').textContent = needsResearch
-      ? 'First challenger comes after research'
-      : 'No active challenger visible';
-    $('autoresearch-overview-test-detail').textContent = needsResearch
-      ? 'The free pre-scan is a snapshot; continuous learning begins in the funded workspace after research.'
-      : 'Open Experiments later to retry.';
-    $('autoresearch-overview-learning').textContent = needsResearch ? 'Continuous learning included' : 'Waiting';
-    $('autoresearch-overview-learning-detail').textContent = needsResearch
-      ? 'Partizan will retain decisions and use them to choose what to test next.'
-      : 'No learning state is available right now.';
+    $('autoresearch-overview-winner').textContent = 'Initial research comes first';
+    $('autoresearch-overview-winner-detail').textContent = 'Partizan will not invent a winning strategy before it has an evidence base.';
+    $('autoresearch-overview-test').textContent = state.title;
+    $('autoresearch-overview-test-detail').textContent = state.detail;
+    $('autoresearch-overview-learning').textContent = 'Continuous learning included';
+    $('autoresearch-overview-learning-detail').textContent = 'After the initial research, Partizan keeps decisions and uses them to choose the next bounded test.';
     $('autoresearch-overview-boundary').textContent = (
-      'Funding unlocks continuous research and learning, not unrestricted ad spend. '
-      + 'Every execution path still requires its normal integration, permission and spend gates.'
+      'Initial market research and continuous learning are included in the funded workspace. '
+      + 'Paid execution still requires its normal settlement, integration and channel-permission gates.'
     );
+    const action = $('autoresearch-overview-open');
+    if (action) {
+      action.textContent = state.actionLabel;
+      action.dataset.action = state.action;
+    }
+  };
+
+  const renderPreResearchPanel = (workspaceData) => {
+    const state = preResearchState(workspaceData);
+    const node = $('autoresearch-error');
+    node.classList.remove('ar-error');
+    node.classList.add('ar-prelaunch');
+    node.innerHTML = `
+      <span class="eyebrow">Before continuous testing</span>
+      <h2>${escapeHtml(state.title)}</h2>
+      <p>${escapeHtml(state.detail)}</p>
+      <div class="ar-prelaunch-actions">
+        <button id="autoresearch-prelaunch-action" class="button button-primary" type="button">${escapeHtml(state.actionLabel)}</button>
+        <small>No separate AutoResearch add-on is required.</small>
+      </div>`;
+    node.classList.remove('hidden');
+    const button = $('autoresearch-prelaunch-action');
+    if (button) button.addEventListener('click', () => runPreResearchAction(state.action));
+  };
+
+  const renderLoadError = (error) => {
+    if (!$('autoresearch-overview-status')) return;
+    $('autoresearch-overview-status').textContent = 'Not available';
+    $('autoresearch-overview-status').classList.remove('good');
+    $('autoresearch-overview-status').classList.add('warn');
+    const node = $('autoresearch-error');
+    node.classList.remove('ar-prelaunch');
+    node.classList.add('ar-error');
+    node.textContent = error.message;
+    node.classList.remove('hidden');
   };
 
   const renderHistory = (data) => {
@@ -275,17 +363,22 @@
     const node = $('autoresearch-loading');
     node.classList.remove('hidden');
     $('autoresearch-error').classList.add('hidden');
+    $('autoresearch-error').classList.remove('ar-prelaunch');
     try {
+      const workspaceData = await api(`/customer/workspace/${encodeURIComponent(projectId)}`);
+      if (workspaceData.project.research_state !== 'READY') {
+        overview = null;
+        $('autoresearch-content').classList.add('hidden');
+        renderPreResearchOverview(workspaceData);
+        renderPreResearchPanel(workspaceData);
+        return;
+      }
       const data = await api(`/customer/workspace/${encodeURIComponent(projectId)}/autoresearch`);
       render(data);
       $('autoresearch-content').classList.remove('hidden');
     } catch (error) {
-      renderOverviewUnavailable(error);
       $('autoresearch-content').classList.add('hidden');
-      $('autoresearch-error').textContent = error.status === 409
-        ? 'Complete deep research to start continuous AutoResearch.'
-        : error.message;
-      $('autoresearch-error').classList.remove('hidden');
+      renderLoadError(error);
     } finally {
       node.classList.add('hidden');
     }
@@ -345,7 +438,14 @@
         <p id="autoresearch-overview-boundary" class="note ar-overview-boundary">Loading AutoResearch safety state…</p>`;
       const finance = overviewPanel.querySelector('.overview-finance');
       overviewPanel.insertBefore(overviewCard, finance || null);
-      $('autoresearch-overview-open').addEventListener('click', activate);
+      $('autoresearch-overview-open').addEventListener('click', () => {
+        const action = $('autoresearch-overview-open').dataset.action || 'experiments';
+        if (action === 'experiments') {
+          activate();
+          return;
+        }
+        runPreResearchAction(action);
+      });
     }
 
     const panel = document.createElement('section');
