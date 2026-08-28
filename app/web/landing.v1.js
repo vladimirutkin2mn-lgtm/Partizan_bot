@@ -22,6 +22,17 @@
 
   updateAccountEntry();
 
+  const heroScanForm = document.getElementById('hero-scan-form');
+  const heroWebsite = document.getElementById('hero-website');
+  heroScanForm?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const query = new URLSearchParams();
+    query.set('budget', String(defaultBudget));
+    const website = heroWebsite?.value.trim();
+    if (website) query.set('website', website);
+    window.location.assign(`/start?${query.toString()}`);
+  });
+
   document.querySelectorAll('a[href="/start"]').forEach((link) => {
     link.addEventListener('click', (event) => {
       event.preventDefault();
