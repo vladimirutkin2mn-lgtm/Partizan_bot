@@ -22,9 +22,9 @@
     <div class="progress" aria-label="Customer journey"><i class="on"></i><i id="progress-2"></i><i id="progress-3"></i></div>
 
     <section id="stage-input" class="stage">
-      <span class="eyebrow">Free scan · no card required</span>
-      <h1>Give Partizan your product.<br><em>See where customers may be.</em></h1>
-      <p class="lede">Start with your website. If you do not have one, describe the product instead. Partizan uses the free scan to form a first acquisition hypothesis; full market research verifies the concrete opportunities.</p>
+      <span class="eyebrow">Start free · no card required</span>
+      <h1>You built the product.<br><em>Let's figure out where to start.</em></h1>
+      <p class="lede">Paste the product you already made. If you do not have a website, describe it instead. The free scan gives a fast first hypothesis; full market research is what verifies concrete communities, creators, directories and other opportunities.</p>
       <form id="preview-form" class="panel form-panel start-simple-form">
         <div class="website-first">
           <label for="website">Paste your website</label>
@@ -39,8 +39,16 @@
         <input id="market" type="hidden" value="Auto-detect from product and website">
         <div class="simple-intake-grid">
           <div>
-            <label for="budget">How much can Partizan test with?</label>
-            <div class="money-input"><span>$</span><input id="budget" type="number" min="1" max="100000" step="1" value="1000" required></div>
+            <label for="budget">How much can you comfortably test with?</label>
+            <div class="budget-presets" role="group" aria-label="Common test budgets">
+              <button class="budget-preset active" type="button" data-budget="10">$10</button>
+              <button class="budget-preset" type="button" data-budget="50">$50</button>
+              <button class="budget-preset" type="button" data-budget="100">$100</button>
+              <button class="budget-preset" type="button" data-budget="500">$500</button>
+              <button class="budget-preset" type="button" data-budget="custom">Custom</button>
+            </div>
+            <div class="money-input budget-custom"><span>$</span><input id="budget" type="number" min="1" max="100000" step="1" value="10" required></div>
+            <p class="fine">This is a planning limit, not a promise that Partizan will spend it. The best first move may cost $0.</p>
           </div>
           <div>
             <label for="goal">What matters most?</label>
@@ -52,29 +60,29 @@
             </select>
           </div>
         </div>
-        <button class="button button-primary" type="submit">Run free scan →</button>
+        <button class="button button-primary" type="submit">Scan my product →</button>
         <p class="fine">The free scan is a fast hypothesis. It does not pretend that public-web research or paid experiments have already happened.</p>
       </form>
     </section>
 
     <section id="stage-preview" class="stage hidden">
       <span class="eyebrow">Your free scan</span>
-      <h1>Here are the strongest<br><em>places to start.</em></h1>
+      <h1>Here are the first<br><em>directions worth investigating.</em></h1>
       <p id="preview-summary" class="lede"></p>
       <div id="preview-highlights" class="preview-highlights"></div>
       <div id="direction-grid" class="direction-grid"></div>
 
       <section class="panel autonomous-choice">
         <div>
-          <span class="eyebrow">Recommended · Partizan with acquisition budget</span>
-          <h2>Want Partizan to test what it finds?</h2>
-          <p>Create a workspace, add an acquisition budget and let Partizan keep researching. It prepares the smallest useful tests, runs what is eligible, measures real outcomes and uses the result to choose what to try next.</p>
+          <span class="eyebrow">Keep going</span>
+          <h2>Want Partizan to turn these directions into real opportunities?</h2>
+          <p>Create a workspace if you want continuous research and learning. Partizan researches what is worth trying, prepares the smallest useful next move and only asks for channel access or money when execution actually needs it.</p>
           <div class="autoresearch-included">
             <div class="autoresearch-included-head"><span>Included with acquisition budget</span><strong>Continuous learning</strong></div>
-            <div class="autoresearch-loop" aria-label="Partizan continuous learning loop"><span>Find</span><i>→</i><span>Test</span><i>→</i><span>Measure</span><i>→</i><span>Learn</span></div>
+            <div class="autoresearch-loop" aria-label="Partizan continuous learning loop"><span>Find</span><i>→</i><span>Try</span><i>→</i><span>Measure</span><i>→</i><span>Learn</span></div>
             <p>Research suggests what is worth testing. Only measured customer outcomes decide what worked.</p>
           </div>
-          <small>No monthly subscription. Initial market research and continuous learning are included. Adding money does not by itself authorize paid advertising; execution still follows the normal spend and channel controls.</small>
+          <small>No monthly subscription. Initial market research and continuous learning are included in a funded workspace. Adding money does not by itself authorize paid advertising, and Partizan may recommend a non-paid first move.</small>
         </div>
         <div class="autonomous-choice-actions">
           <div><strong id="autonomous-price">10% of acquisition spend</strong><span>only on money actually put to work · no monthly fee</span></div>
@@ -86,9 +94,9 @@
       <section id="account-gate" class="panel account-gate hidden">
         <div class="account-gate-copy">
           <span class="eyebrow">Your Partizan workspace</span>
-          <h2>Keep the budget, channels and results in one place.</h2>
-          <p>Partizan keeps learning over time, so create an account before money or integrations are connected.</p>
-          <div class="account-benefits"><span>Acquisition budget</span><span>Continuous learning</span><span>Current work</span><span>Results</span><span>Channels</span><span>Limits</span></div>
+          <h2>Keep the research, next move and results in one place.</h2>
+          <p>Partizan keeps learning over time. You should not have to design a channel strategy yourself; connect or approve a channel only when the recommended action actually needs it.</p>
+          <div class="account-benefits"><span>Research</span><span>Recommended next move</span><span>Continuous learning</span><span>Results</span><span>Budget controls</span></div>
         </div>
         <div class="account-auth">
           <form id="register-form" class="account-form">
