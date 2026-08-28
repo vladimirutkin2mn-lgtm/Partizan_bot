@@ -1,34 +1,6 @@
 (() => {
-  const budget = document.getElementById('budget-range');
-  const budgetValue = document.getElementById('budget-value');
-  const channelCount = document.getElementById('channel-count');
-  const experimentCount = document.getElementById('experiment-count');
-  const customerCount = document.getElementById('customer-count');
+  const defaultBudget = 1000;
   const accountLink = document.getElementById('nav-account-link');
-
-  const formatMoney = (value) => new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(value);
-
-  const updatePlanner = () => {
-    if (!budget) return;
-    const value = Number(budget.value);
-    const min = Number(budget.min);
-    const max = Number(budget.max);
-    const pct = ((value - min) / (max - min)) * 100;
-    budget.style.setProperty('--range-pct', `${pct}%`);
-
-    const channels = Math.max(2, Math.min(7, Math.round(2 + value / 900)));
-    const experiments = Math.max(3, Math.min(15, Math.round(3 + value / 270)));
-    const customersAtExampleCac = Math.max(1, Math.floor(value / 24));
-
-    budgetValue.textContent = formatMoney(value);
-    channelCount.textContent = String(channels);
-    experimentCount.textContent = String(experiments);
-    customerCount.textContent = `~${customersAtExampleCac}`;
-  };
 
   const updateAccountEntry = async () => {
     if (!accountLink) return;
@@ -48,15 +20,12 @@
     }
   };
 
-  budget?.addEventListener('input', updatePlanner);
-  updatePlanner();
   updateAccountEntry();
 
   document.querySelectorAll('a[href="/start"]').forEach((link) => {
     link.addEventListener('click', (event) => {
       event.preventDefault();
-      const value = budget ? Number(budget.value) : 1000;
-      window.location.assign(`/start?budget=${encodeURIComponent(value)}`);
+      window.location.assign(`/start?budget=${encodeURIComponent(defaultBudget)}`);
     });
   });
 
