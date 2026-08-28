@@ -39,6 +39,39 @@ def test_free_preview_is_deterministic_and_requires_no_llm_or_search() -> None:
     assert first.launch_price_usd == 49
 
 
+def test_free_preview_accepts_website_without_forcing_duplicate_product_fields() -> None:
+    response = client.post(
+        "/v1/customer-projects/preview",
+        json={
+            "website_url": "https://example.com/product",
+            "goal": "Get paying customers",
+            "budget_usd": 1000,
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    project = client.get(
+        f"/v1/customer-projects/{data['project_id']}",
+        headers={"X-Partizan-Customer-Token": data["customer_token"]},
+    )
+    assert project.status_code == 200
+    assert project.json()["website_url"] == "https://example.com/product"
+    assert project.json()["market"] == "Auto-detect from product and website"
+    assert project.json()["brief"].startswith("Product website:")
+    assert "must verify the offer and audience" in project.json()["brief"]
+
+
+def test_free_preview_requires_a_website_or_product_description() -> None:
+    response = client.post(
+        "/v1/customer-projects/preview",
+        json={"goal": "Get paying customers", "budget_usd": 1000},
+    )
+
+    assert response.status_code == 422
+    assert "Paste a website or describe your product" in response.text
+
+
 def test_customer_preview_and_project_access_are_public_but_token_gated() -> None:
     preview = client.post("/v1/customer-projects/preview", json=_preview_payload())
 
@@ -172,8 +205,8 @@ def test_customer_start_and_workspace_assets_are_served_on_separate_boundaries()
     workspace_javascript = client.get("/workspace/assets/workspace.v1.js")
 
     assert start.status_code == 200
-    assert "Unlock Acquisition Plan — $49" in start.text
-    assert "Growth Balance" in start.text
+    assert "Get the full Acquisition Plan — $49 once" in start.text
+    assert "Acquisition budget" in start.text
     assert 'id="preview-form"' in start.text
     assert 'id="checkout-button"' in start.text
     assert 'id="autonomous-button"' in start.text
@@ -207,8 +240,11 @@ def test_landing_all_customer_ctas_route_to_start_not_internal_app() -> None:
     assert page.status_code == 200
     assert 'href="/app"' not in page.text
     assert page.text.count('href="/start"') >= 5
-    assert "Acquisition Plan: $49 once." in page.text
+    assert "Simple pricing." in page.text
+    assert "$49 <small>once</small>" in page.text
     assert "10% of actual acquisition spend" in page.text
+    assert "Find → Test → Learn." in page.text
+    assert "You're always <em>in control.</em>" in page.text
     assert "Example target customer cost" in page.text
     assert "$1,000 budget capacity: up to" in page.text
     assert "This is math, not a Partizan forecast." in page.text
