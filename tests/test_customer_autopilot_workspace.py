@@ -49,6 +49,10 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert 'id="resume-button"' in workspace.text
     assert 'id="metric-cac"' in workspace.text
     assert 'id="metric-customers"' in workspace.text
+    assert 'id="growth-balance-metric"' in workspace.text
+    assert 'id="overview-fund-button"' in workspace.text
+    assert 'id="overview-fund-label"' in workspace.text
+    assert "Unlock initial market research and continuous learning" in workspace.text
     assert 'id="autopilot-budget"' not in workspace.text
     assert "$149" not in workspace.text
     assert "Creators</span>" not in workspace.text
@@ -58,6 +62,9 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     stylesheet = client.get("/workspace/assets/workspace.v1.css")
     assert stylesheet.status_code == 200
     assert ".metric-grid-primary" in stylesheet.text
+    assert ".growth-balance-metric" in stylesheet.text
+    assert ".growth-balance-cta" in stylesheet.text
+    assert ".growth-balance-benefit" in stylesheet.text
     assert ".workspace-tabs" in stylesheet.text
     assert ".channel-table" in stylesheet.text
 
@@ -90,6 +97,10 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
     assert "$('meta-connect').disabled = !overview.product_id;" not in workspace_source
     assert "$('meta-connect').disabled = false;" in workspace_source
     assert "channel-mode-select" in workspace_source
+    assert "openFundingControls" in workspace_source
+    assert "$('overview-fund-button').addEventListener('click', openFundingControls)" in workspace_source
+    assert "funded ? 'Add funds' : 'Fund Balance'" in workspace_source
+    assert "amount.select()" in workspace_source
     assert "RESEARCH_ONLY" in workspace_source
     assert "/autopilot/checkout" not in workspace_source
     assert "/autopilot/verify" not in workspace_source
