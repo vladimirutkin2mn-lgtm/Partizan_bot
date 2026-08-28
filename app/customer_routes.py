@@ -70,7 +70,10 @@ def _project_error(exc: Exception) -> HTTPException:
         except ValueError:
             pass
         else:
-            detail = "Get the Acquisition Plan or add acquisition budget before starting full market research."
+            detail = (
+                "Get the Acquisition Plan or add acquisition budget "
+                "before starting full market research."
+            )
         return HTTPException(status_code=402, detail=detail)
     return HTTPException(status_code=409, detail=str(exc))
 
@@ -284,7 +287,10 @@ def create_growth_balance_topup_checkout(
     except BillingConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except stripe.StripeError as exc:
-        raise HTTPException(status_code=502, detail="Secure acquisition-budget checkout is unavailable") from exc
+        raise HTTPException(
+            status_code=502,
+            detail="Secure acquisition-budget checkout is unavailable",
+        ) from exc
 
 
 @router.post(
