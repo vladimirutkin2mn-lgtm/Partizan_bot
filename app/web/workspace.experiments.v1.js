@@ -213,7 +213,7 @@
 
     $('autoresearch-overview-test').textContent = trial
       ? compact(trial.hypothesis || `Testing ${trial.changed_dimensions.join(', ')}`)
-      : (data.status === 'PAUSED' ? 'Continuous testing is paused' : 'Ready for the next bounded test');
+      : (data.status === 'PAUSED' ? 'Continuous testing is paused' : 'Ready for the next test');
     $('autoresearch-overview-test-detail').textContent = trial
       ? `${trial.challenger.platform} · changed ${trial.changed_dimensions.join(', ')}`
       : (data.status === 'NO_BASELINE'
@@ -248,7 +248,7 @@
     $('autoresearch-overview-test').textContent = state.title;
     $('autoresearch-overview-test-detail').textContent = state.detail;
     $('autoresearch-overview-learning').textContent = 'Continuous learning included';
-    $('autoresearch-overview-learning-detail').textContent = 'After the initial research, Partizan keeps decisions and uses them to choose the next bounded test.';
+    $('autoresearch-overview-learning-detail').textContent = 'After the initial research, Partizan keeps decisions and uses them to choose the next test.';
     $('autoresearch-overview-boundary').textContent = (
       'Initial market research and continuous learning are included in the funded workspace. '
       + 'Paid execution still requires its normal settlement, integration and channel-permission gates.'
@@ -300,13 +300,13 @@
       const state = evaluation ? outcomeLabel(evaluation.outcome) : 'Waiting for results';
       const rationale = evaluation && evaluation.rationale && evaluation.rationale.length
         ? evaluation.rationale[0]
-        : (trial.hypothesis || 'Bounded challenger awaiting measured evidence.');
+        : (trial.hypothesis || 'New test waiting for measured customer results.');
       const objective = evaluation ? ` · ${objectiveLabel(evaluation.objective)}` : '';
       return `<div class="ar-history-row">
         <div><strong>${escapeHtml(state)}</strong><span>${escapeHtml(trial.challenger.platform)} · ${escapeHtml(trial.changed_dimensions.join(', '))}${escapeHtml(objective)}</span></div>
         <p>${escapeHtml(rationale)}</p>
       </div>`;
-    }).join('') : '<div class="ar-empty">No AutoResearch tests yet.</div>';
+    }).join('') : '<div class="ar-empty">No continuous-learning tests yet.</div>';
   };
 
   const render = (data) => {
@@ -324,17 +324,17 @@
       : '<div class="ar-empty">A measured/replay baseline has not been established yet.</div>';
     $('autoresearch-winner-metrics').textContent = champion
       ? metricSummary(champion.evidence)
-      : 'AutoResearch will not invent a winner from public research.';
+      : 'Partizan will not invent a winner from public research.';
 
     const trial = data.active_trial;
     if (trial) {
-      $('autoresearch-testing-title').textContent = trial.hypothesis || 'Bounded challenger';
-      $('autoresearch-testing-meta').textContent = `${trial.challenger.platform} · changed ${trial.changed_dimensions.join(', ')} · shadow budget ${money(trial.challenger.test_budget)}`;
+      $('autoresearch-testing-title').textContent = trial.hypothesis || 'New test';
+      $('autoresearch-testing-meta').textContent = `${trial.challenger.platform} · changed ${trial.changed_dimensions.join(', ')} · planned test budget ${money(trial.challenger.test_budget)}`;
       $('autoresearch-testing-variant').innerHTML = variantRows(trial.challenger);
       $('autoresearch-testing-state').textContent = 'Waiting for measured/replay evidence before any decision.';
     } else {
       $('autoresearch-testing-title').textContent = data.status === 'PAUSED'
-        ? 'AutoResearch is paused.'
+        ? 'Continuous testing is paused.'
         : 'No challenger is waiting right now.';
       $('autoresearch-testing-meta').textContent = data.remaining_research_budget == null
         ? 'Research budget is governed by the configured per-trial limit.'
@@ -342,7 +342,7 @@
       $('autoresearch-testing-variant').innerHTML = '';
       $('autoresearch-testing-state').textContent = data.status === 'NO_BASELINE'
         ? 'Establish a baseline before Partizan can compare challengers scientifically.'
-        : 'The next worker sweep may generate one bounded hypothesis when policy allows it.';
+        : 'Partizan may propose one new test when the rules allow it.';
     }
 
     renderProvenance(data.provenance || []);
@@ -350,7 +350,7 @@
 
     const control = $('autoresearch-control');
     control.classList.toggle('hidden', !data.configured);
-    control.textContent = data.paused ? 'Resume AutoResearch' : 'Pause testing';
+    control.textContent = data.paused ? 'Resume testing' : 'Pause testing';
     control.dataset.nextStatus = data.paused ? 'ACTIVE' : 'PAUSED';
     $('autoresearch-boundary').textContent = (
       'Research sources can justify what to test, but never count as visits, conversions, customers, '
@@ -454,7 +454,7 @@
     panel.dataset.tabPanel = 'experiments';
     panel.innerHTML = `
       <section class="panel ar-hero">
-        <div><span class="eyebrow">Continuous learning</span><h2>Continuous customer-acquisition tests</h2><p>Partizan proposes one bounded challenger at a time, waits for downstream evidence, learns, then decides what to test next.</p></div>
+        <div><span class="eyebrow">Continuous learning</span><h2>Continuous customer-acquisition tests</h2><p>Partizan proposes one small test at a time, waits for measured customer results, learns, then decides what to try next.</p></div>
         <div class="ar-actions"><span id="autoresearch-status" class="status-pill">Loading</span><button id="autoresearch-control" class="button button-secondary hidden" type="button">Pause testing</button></div>
       </section>
       <div id="autoresearch-loading" class="panel ar-loading"><span class="spinner"></span><span>Loading continuous-learning state…</span></div>
@@ -464,7 +464,7 @@
           <article class="panel ar-card"><span class="eyebrow">Current winner</span><h2>Strategy to beat</h2><div id="autoresearch-winner-variant" class="ar-variant"></div><p id="autoresearch-winner-metrics" class="ar-metrics"></p></article>
           <article class="panel ar-card"><span class="eyebrow">Testing now</span><h2 id="autoresearch-testing-title">—</h2><p id="autoresearch-testing-meta" class="ar-metrics"></p><div id="autoresearch-testing-variant" class="ar-variant"></div><p id="autoresearch-testing-state" class="note"></p></article>
         </section>
-        <section class="panel ar-card"><div class="section-head"><div><span class="eyebrow">Research provenance</span><h2>Why this test is worth running</h2></div></div><div id="autoresearch-provenance" class="ar-sources"></div><p id="autoresearch-boundary" class="note ar-boundary"></p></section>
+        <section class="panel ar-card"><div class="section-head"><div><span class="eyebrow">Research evidence</span><h2>Why this test is worth running</h2></div></div><div id="autoresearch-provenance" class="ar-sources"></div><p id="autoresearch-boundary" class="note ar-boundary"></p></section>
         <section class="panel ar-card"><div class="section-head"><div><span class="eyebrow">Recent tests</span><h2>What Partizan learned</h2></div></div><div id="autoresearch-history" class="ar-history"></div></section>
       </div>`;
     const settingsPanel = workspaceNode.querySelector('[data-tab-panel="settings"]');
