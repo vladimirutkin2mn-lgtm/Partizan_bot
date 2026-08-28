@@ -82,7 +82,21 @@
         </section>
 
         <section class="metric-grid metric-grid-primary" aria-label="Acquisition results">
-          <article><span>Growth Balance</span><strong id="metric-balance">$0</strong><small>available</small></article>
+          <article id="growth-balance-metric" class="growth-balance-metric">
+            <div class="growth-balance-metric-main">
+              <div class="growth-balance-value">
+                <span>Growth Balance</span>
+                <strong id="metric-balance">$0</strong>
+                <small>available</small>
+              </div>
+              <button id="overview-fund-button" class="button button-primary growth-balance-cta" type="button" aria-describedby="overview-balance-benefit">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7.5h14.5A1.5 1.5 0 0 1 20 9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18V7.5Zm0 0V6a1.5 1.5 0 0 1 1.5-1.5H16"/><path d="M15.5 12h4.5v4h-4.5a2 2 0 1 1 0-4Z"/></svg>
+                <span id="overview-fund-label">Fund Balance</span>
+                <b aria-hidden="true">→</b>
+              </button>
+            </div>
+            <div id="overview-balance-benefit" class="growth-balance-benefit"><i aria-hidden="true">✦</i><span>Unlock initial market research and continuous learning</span></div>
+          </article>
           <article><span>Acquisition spend</span><strong id="metric-spend">$0</strong><small>across channels</small></article>
           <article><span>Customers</span><strong id="metric-customers">0</strong><small>paid customers</small></article>
           <article><span>CAC</span><strong id="metric-cac">—</strong><small>blended cost</small></article>

@@ -53,6 +53,19 @@
     button.addEventListener('click', () => setActiveTab(button.dataset.openTab));
   });
 
+  const openFundingControls = () => {
+    setActiveTab('settings');
+    const form = $('fund-form');
+    if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const amount = $('fund-amount');
+    if (amount) {
+      window.setTimeout(() => {
+        amount.focus();
+        amount.select();
+      }, 180);
+    }
+  };
+
   const friendlyBlockers = (overview) => {
     const items = [];
     if (overview.blockers.some((item) => item.includes('No autonomous execution channel'))) items.push('Choose an Auto channel when you want Partizan to execute, or keep every channel in Research only.');
@@ -212,6 +225,11 @@
     $('balance-used').textContent = money(balance.used_usd);
     $('fund-amount').value = String(project.budget_usd || 1000);
     const funded = balance.funded_usd > 0;
+    $('growth-balance-metric').classList.toggle('is-funded', funded);
+    $('overview-fund-label').textContent = funded ? 'Add funds' : 'Fund Balance';
+    $('overview-balance-benefit').querySelector('span').textContent = funded
+      ? 'Keep research and experimentation funded'
+      : 'Unlock initial market research and continuous learning';
     $('balance-state').textContent = funded ? 'Funded' : 'Not funded';
     $('balance-state').classList.toggle('good', funded);
     $('fund-button').textContent = funded ? 'Add to Growth Balance →' : 'Fund Growth Balance →';
@@ -474,6 +492,8 @@
       select.disabled = false;
     }
   });
+
+  $('overview-fund-button').addEventListener('click', openFundingControls);
 
   $('fund-form').addEventListener('submit', async (event) => {
     event.preventDefault();
