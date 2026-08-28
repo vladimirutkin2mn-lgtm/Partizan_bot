@@ -12,9 +12,9 @@ def test_root_serves_marketing_site() -> None:
     assert "text/html" in response.headers["content-type"]
     html = response.text
     for anchor in (
-        "<title>Partizan — AI that finds and acquires customers</title>",
+        "<title>Partizan — find where your customers are and test what works</title>",
         'href="/start"',
-        'id="budget-range"',
+        'id="budget-story"',
         'id="how"',
         'id="channels"',
         'id="autonomy"',
