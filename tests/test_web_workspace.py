@@ -19,6 +19,7 @@ def test_root_serves_marketing_site() -> None:
         'id="channels"',
         'id="safety"',
         'id="pricing"',
+        'id="product-demo"',
         "/site/assets/landing.v1.css",
         "/site/assets/landing.v1.js",
     ):
@@ -39,6 +40,33 @@ def test_marketing_assets_are_allowlisted_and_served() -> None:
     assert "javascript" in javascript.headers["content-type"]
     assert "const defaultBudget = 1000;" in javascript.text
     assert "IntersectionObserver" in javascript.text
+
+
+def test_first_party_legal_and_security_pages_are_served() -> None:
+    legal_css = client.get("/site/assets/legal.v1.css")
+    assert legal_css.status_code == 200
+    assert "text/css" in legal_css.headers["content-type"]
+    assert ".legal-main" in legal_css.text
+
+    expectations = {
+        "/privacy": ("What Partizan stores", "Stripe handles checkout"),
+        "/terms": ("Use Partizan with clear boundaries.", "No guaranteed acquisition outcome"),
+        "/security": ("Execution should fail closed", "does not currently claim SOC 2"),
+        "/contact": ("Need help with Partizan?", "GitHub issue tracker"),
+    }
+    for path, phrases in expectations.items():
+        response = client.get(path)
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "/site/assets/legal.v1.css" in response.text
+        for phrase in phrases:
+            assert phrase in response.text
+
+    security = client.get("/security").text
+    assert "payment-card" in security
+    assert "production spend rail" in security
+    assert "SOC 2" in security
+    assert "ISO 27001" in security
 
 
 def test_workspace_shell_contains_core_growth_and_execution_surfaces() -> None:
