@@ -39,11 +39,15 @@
         <div class="eyebrow"><span class="pulse-dot"></span> For people who built a product but do not know marketing yet</div>
         <h1>You built the product.<br><em>Now find the customers.</em></h1>
         <p class="hero-lede">You do not need to learn marketing first. Give Partizan your product and a budget — even $10. It helps figure out where to start and what the smallest useful next move could be.</p>
-        <div class="hero-actions">
-          <a class="button button-primary" href="/start">Scan my product <span>→</span></a>
+        <form id="hero-scan-form" class="hero-scan-form">
+          <label class="sr-only" for="hero-website">Your product website</label>
+          <input id="hero-website" type="url" inputmode="url" placeholder="https://yourproduct.com" aria-label="Your product website">
+          <button class="button button-primary" type="submit">Scan my product <span>→</span></button>
+        </form>
+        <div class="hero-actions hero-secondary-actions">
           <a class="text-link" href="#how">See how it works <span>↓</span></a>
         </div>
-        <p class="hero-no-card">Start free · No card required</p>
+        <p class="hero-no-card">Start free · No card required · No website? Describe the product instead.</p>
       </div>
     </section>
 
@@ -57,6 +61,15 @@
         <article><span>01</span><strong>Where do I even start?</strong><p>You should not have to learn every marketing channel before you can find the first users.</p></article>
         <article><span>02</span><strong>Do I need ads at all?</strong><p>Sometimes the right first signal comes from a community, creator, directory or direct conversation instead.</p></article>
         <article><span>03</span><strong>How do I avoid wasting money?</strong><p>Start with the smallest useful move. Spend more only after the evidence becomes stronger.</p></article>
+      </div>
+      <div class="builder-flow reveal">
+        <div><span>Your product</span><strong>What you already built</strong></div>
+        <i>→</i>
+        <div class="builder-flow-core"><span>Partizan</span><strong>Figures out where to start</strong></div>
+        <i>→</i>
+        <div><span>Customer paths</span><strong>Communities · creators · directories · search · paid</strong></div>
+        <i>→</i>
+        <div><span>Real signals</span><strong>Visits · signups · paying customers</strong></div>
       </div>
     </section>
 
