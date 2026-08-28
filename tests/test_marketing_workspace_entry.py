@@ -16,14 +16,14 @@ def test_marketing_header_exposes_direct_customer_workspace_entry() -> None:
     assert 'href="/start"' in html
     assert ">Scan my product <span>↗</span></a>" in html
     assert "You built the product." in html
-    assert "Partizan is an AI customer acquisition system" in html
-    assert "It finds where your customers are — and tests what works." in html
+    assert "For people who built a product but do not know marketing yet" in html
+    assert "You do not need to learn marketing first." in html
     assert "Start free · No card required" in html
     assert "Your marketing budget can start at <em>$10.</em>" in html
     assert "Partizan may tell you not to spend money." in html
     assert "Maybe you do not need Meta Ads." in html
-    assert "You have $1,000." in html
-    assert "This is math, not a Partizan forecast." in html
+    assert "$10</span><span>$50</span><span>$100</span><span>$500</span><span>$1,000" in html
+    assert "Sometimes the best first move costs $0." in html
     assert "See what Partizan actually finds." in html
     assert "r/Freelancers" in html
     assert "Gabrielle Talks Money" in html
