@@ -57,6 +57,8 @@ def test_marketing_account_entry_detects_existing_customer_session_fail_safe() -
     assert "Open workspace" in javascript.text
     assert "nav-account-link" in javascript.text
     assert "const defaultBudget = 10;" in javascript.text
+    assert "hero-scan-form" in javascript.text
+    assert "query.set('website', website)" in javascript.text
     assert "customer-count" not in javascript.text
     assert "customersAtExampleCac" not in javascript.text
     assert "const demoSteps" in javascript.text
@@ -70,7 +72,9 @@ def test_marketing_account_entry_detects_existing_customer_session_fail_safe() -
 
     landing_css = client.get("/site/assets/landing.v1.css")
     assert landing_css.status_code == 200
-    assert ".budget-story-grid" in landing_css.text
+    assert ".small-budget-grid" in landing_css.text
+    assert ".hero-scan-form" in landing_css.text
+    assert ".builder-flow" in landing_css.text
     assert ".research-proof-grid" in landing_css.text
     assert ".research-opportunity" in landing_css.text
     assert ".pricing-grid" in landing_css.text
