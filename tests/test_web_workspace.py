@@ -51,7 +51,7 @@ def test_first_party_legal_and_security_pages_are_served() -> None:
     expectations = {
         "/privacy": ("What Partizan stores", "Stripe handles checkout"),
         "/terms": ("Use Partizan with clear boundaries.", "No guaranteed acquisition outcome"),
-        "/security": ("Execution should fail closed", "does not currently claim SOC 2"),
+        "/security": ("Execution should fail closed", "This page does not claim SOC 2"),
         "/contact": ("Need help with Partizan?", "GitHub issue tracker"),
     }
     for path, phrases in expectations.items():
