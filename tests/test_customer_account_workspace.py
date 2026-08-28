@@ -273,10 +273,11 @@ def test_customer_workspace_page_is_separate_from_internal_operator_app() -> Non
 
     assert page.status_code == 200
     assert "Partizan Workspace" in page.text
-    assert "Growth Balance" in page.text
+    assert "Acquisition budget" in page.text
     assert "Current work" in page.text
-    assert "Integrations" in page.text
-    assert "Guardrails" in page.text
+    assert "Account access" in page.text
+    assert "What's the most you'd pay for one new customer?" in page.text
+    assert "Let's get your first acquisition test running." in page.text
     assert "dogfooding workspace" not in page.text
     assert "/app/assets/" not in page.text
     assert javascript.status_code == 200

@@ -112,33 +112,68 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const verificationCopy = (name) => ({
+    'Niche communities': 'Find named communities and recent public discussions that show the problem is active.',
+    'Creators': 'Find concrete creators whose audience overlaps with the buyer and verify the fit with public evidence.',
+    'Expert / creator partnerships': 'Find niche experts and creators, then verify audience overlap and a realistic outreach path.',
+    'Paid acquisition': 'Verify the audience/message combination before any meaningful paid budget is committed.',
+    'Direct outreach': 'Find a concrete prospect cluster and validate the message with the smallest useful outreach test.',
+    'Partnerships': 'Find adjacent products or publishers with a credible distribution relationship.',
+  })[name] || 'Turn this direction into named opportunities with evidence before treating it as a plan.';
+
   const renderPreview = (data) => {
     managementFeePct = Number(data.managed_spend_fee_pct || 10);
-    $('preview-summary').textContent = `The free scan sees ${data.channel_count} directions worth testing. Strongest starting hypothesis: ${data.fastest_signal}. This is not deep research yet; the paid step verifies the audience and finds the actual opportunities.`;
-    $('scope-title').textContent = `Deep research can investigate ~${data.opportunity_scope_estimate} concrete opportunities`;
-    $('unlock-price').textContent = `Unlock Acquisition Plan — $${data.launch_price_usd}`;
+    const strongCount = data.directions.filter((item) => item.potential === 'HIGH').length;
+    $('preview-summary').textContent = `Partizan found ${data.channel_count} acquisition directions worth investigating. ${strongCount} look especially strong for a first test. The free scan is the starting hypothesis; full market research names and verifies the concrete opportunities.`;
+    $('preview-highlights').innerHTML = `
+      <article><strong>${data.channel_count}</strong><span>directions to investigate</span></article>
+      <article><strong>${strongCount}</strong><span>strong starting hypotheses</span></article>
+      <article><strong>${escapeHtml(data.fastest_signal)}</strong><span>fastest signal to verify</span></article>`;
+    $('scope-title').textContent = 'Turn these hypotheses into a full acquisition map';
+    $('unlock-price').textContent = `Get the full Acquisition Plan — $${data.launch_price_usd} once`;
     $('autonomous-price').textContent = `${managementFeePct}% of acquisition spend`;
     $('direction-grid').innerHTML = data.directions.map((item) => {
-      const label = item.potential === 'HIGH' ? 'STRONG HYPOTHESIS' : 'WORTH TESTING';
-      return `<article class="direction-card"><header><h3>${escapeHtml(item.name)}</h3><span class="potential ${item.potential === 'MEDIUM' ? 'medium' : ''}">${label}</span></header><p>${escapeHtml(item.rationale)}</p></article>`;
+      const label = item.potential === 'HIGH' ? 'STRONG START' : 'WORTH CHECKING';
+      return `<article class="direction-card result-direction-card">
+        <header><h3>${escapeHtml(item.name)}</h3><span class="potential ${item.potential === 'MEDIUM' ? 'medium' : ''}">${label}</span></header>
+        <div class="direction-result-block"><span>Why it may fit</span><p>${escapeHtml(item.rationale)}</p></div>
+        <div class="direction-result-block"><span>What Partizan verifies next</span><p>${escapeHtml(verificationCopy(item.name))}</p></div>
+      </article>`;
     }).join('');
     $('account-gate').classList.add('hidden');
     showStage(stagePreview);
   };
 
+  const showBriefFallback = () => {
+    $('brief-fallback').classList.remove('hidden');
+    $('no-website-button').classList.add('hidden');
+    $('brief').focus();
+  };
+
+  $('no-website-button').addEventListener('click', showBriefFallback);
+  $('website').addEventListener('input', () => {
+    if ($('website').value.trim()) $('brief-fallback').classList.add('hidden');
+  });
+
   $('preview-form').addEventListener('submit', async (event) => {
     event.preventDefault();
+    const website = $('website').value.trim();
+    const brief = $('brief').value.trim();
+    if (!website && !brief) {
+      showBriefFallback();
+      showNotice('Paste a website or describe your product.', true);
+      return;
+    }
     const button = event.submitter;
     button.disabled = true;
-    button.textContent = 'Running pre-scan…';
+    button.textContent = 'Running free scan…';
     try {
-      const website = $('website').value.trim();
       const data = await api('/v1/customer-projects/preview', {
         method: 'POST',
         body: JSON.stringify({
-          brief: $('brief').value.trim(),
+          brief: brief || null,
           website_url: website || null,
-          market: $('market').value.trim(),
+          market: $('market').value,
           goal: $('goal').value,
           budget_usd: Number($('budget').value),
         }),
@@ -149,7 +184,7 @@
       showNotice(error.message, true);
     } finally {
       button.disabled = false;
-      button.textContent = 'Run free pre-scan →';
+      button.textContent = 'Run free scan →';
     }
   });
 
@@ -159,7 +194,7 @@
   };
 
   const claimIntoCurrentAccount = async () => {
-    if (!currentProjectId || !currentToken) throw new Error('Project session is missing. Run the pre-scan again.');
+    if (!currentProjectId || !currentToken) throw new Error('Project session is missing. Run the free scan again.');
     const account = await accountApi('/customer/account/me');
     if (account.projects.some((item) => item.project_id === currentProjectId)) {
       redirectWorkspace(currentProjectId);
@@ -175,7 +210,7 @@
 
   const openAccountGate = async () => {
     if (!currentProjectId || !currentToken) {
-      showNotice('Project session is missing. Run the pre-scan again.', true);
+      showNotice('Project session is missing. Run the free scan again.', true);
       return;
     }
     try {
@@ -204,7 +239,7 @@
 
   $('register-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the pre-scan again.', true);
+    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the free scan again.', true);
     const button = event.submitter;
     button.disabled = true;
     button.textContent = 'Creating workspace…';
@@ -228,7 +263,7 @@
 
   $('login-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the pre-scan again.', true);
+    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the free scan again.', true);
     const button = event.submitter;
     button.disabled = true;
     button.textContent = 'Signing in…';
@@ -249,7 +284,7 @@
   });
 
   $('checkout-button').addEventListener('click', async () => {
-    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the pre-scan again.', true);
+    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the free scan again.', true);
     const button = $('checkout-button');
     button.disabled = true;
     button.textContent = 'Opening secure checkout…';
@@ -478,7 +513,7 @@
           const preview = storedPreview(projectId);
           if (preview) renderPreview(preview);
         }
-        showNotice('Checkout cancelled. Your pre-scan is still here whenever you’re ready.');
+        showNotice('Checkout cancelled. Your free scan is still here whenever you’re ready.');
         return true;
       }
     }
@@ -486,7 +521,7 @@
   };
 
   const bootstrap = async () => {
-    if (params.get('login') === 'required') showNotice('Sign in or create a workspace after running a free pre-scan.');
+    if (params.get('login') === 'required') showNotice('Sign in or create a workspace after running a free scan.');
     const callbackHandled = await bootstrapCallbacks();
     if (!callbackHandled) await resumeStoredProject();
   };

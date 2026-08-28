@@ -70,7 +70,10 @@ def _project_error(exc: Exception) -> HTTPException:
         except ValueError:
             pass
         else:
-            detail = "Unlock the Acquisition Plan or fund Growth Balance before starting deep research."
+            detail = (
+                "Get the Acquisition Plan or add acquisition budget "
+                "before starting full market research."
+            )
         return HTTPException(status_code=402, detail=detail)
     return HTTPException(status_code=409, detail=str(exc))
 
@@ -284,7 +287,10 @@ def create_growth_balance_topup_checkout(
     except BillingConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except stripe.StripeError as exc:
-        raise HTTPException(status_code=502, detail="Stripe Growth Balance checkout is unavailable") from exc
+        raise HTTPException(
+            status_code=502,
+            detail="Secure acquisition-budget checkout is unavailable",
+        ) from exc
 
 
 @router.post(
@@ -302,7 +308,7 @@ def verify_growth_balance_topup(
         customer_funnel_service.get_project_payload(project_id, token)
         pending = growth_balance_service.pending(payload.session_id)
         if pending is None:
-            raise HTTPException(status_code=401, detail="Growth Balance Checkout Session is not pending")
+            raise HTTPException(status_code=401, detail="Acquisition-budget checkout session is not pending")
         session = retrieve_launch_checkout(settings=settings, session_id=payload.session_id)
         metadata = session.get("metadata") or {}
         amount_total = int(session.get("amount_total") or 0)
@@ -320,7 +326,7 @@ def verify_growth_balance_topup(
             and currency == "usd"
         )
         if not verified:
-            raise HTTPException(status_code=401, detail="Growth Balance payment could not be verified")
+            raise HTTPException(status_code=401, detail="Acquisition-budget payment could not be verified")
         credited = growth_balance_service.credit_paid_checkout(
             project_id,
             session_id=payload.session_id,
@@ -331,7 +337,7 @@ def verify_growth_balance_topup(
         if not credited:
             raise HTTPException(
                 status_code=401,
-                detail="Growth Balance payment is not linked to this project",
+                detail="Acquisition-budget payment is not linked to this project",
             )
         return customer_autopilot_service.overview(project_id, token)
     except HTTPException:
@@ -341,7 +347,7 @@ def verify_growth_balance_topup(
     except BillingConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except stripe.StripeError as exc:
-        raise HTTPException(status_code=502, detail="Stripe Growth Balance verification failed") from exc
+        raise HTTPException(status_code=502, detail="Acquisition-budget payment verification failed") from exc
 
 
 @router.put(

@@ -551,3 +551,54 @@ body::before {
   .budget-brief h3{font-size:24px}
   .test-card{grid-template-columns:1fr auto}
 }
+
+
+/* P1: simpler product story, controls and pricing. */
+.simple-loop-grid .loop-card{min-height:300px}
+.safety-section{display:grid;grid-template-columns:.82fr 1.18fr;gap:72px;align-items:center}
+.control-demo{border:1px solid var(--line);border-radius:24px;background:linear-gradient(150deg,rgba(255,255,255,.055),rgba(255,255,255,.018));overflow:hidden;box-shadow:var(--shadow)}
+.control-row{min-height:78px;padding:18px 22px;display:flex;align-items:center;justify-content:space-between;gap:24px;border-bottom:1px solid rgba(255,255,255,.07)}
+.control-row>span{color:#77818b;font-size:10px;text-transform:uppercase;letter-spacing:.1em}
+.control-row>strong{font-size:15px}
+.control-tags{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.control-tags b{padding:7px 9px;border:1px solid rgba(200,255,77,.16);border-radius:999px;background:rgba(200,255,77,.04);color:var(--lime);font-size:9px}
+.control-tags b.off{border-color:rgba(255,255,255,.08);background:rgba(255,255,255,.025);color:#747e87}
+.control-demo>p{margin:0;padding:18px 22px;color:#7f8992;font-size:11px;line-height:1.6;background:rgba(0,0,0,.12)}
+.pricing-section{padding-top:130px;padding-bottom:140px}
+.pricing-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:52px}
+.pricing-card{min-height:470px;padding:26px;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:22px;background:linear-gradient(150deg,rgba(255,255,255,.05),rgba(255,255,255,.016))}
+.pricing-card.featured{border-color:rgba(200,255,77,.24);background:linear-gradient(150deg,rgba(200,255,77,.075),rgba(255,255,255,.018))}
+.price-label{color:#838d96;font-size:9px;font-weight:760;text-transform:uppercase;letter-spacing:.11em}
+.price{display:block;margin-top:18px;font-size:34px;letter-spacing:-.05em;line-height:1}
+.price small{font-size:13px;color:#8b949d;letter-spacing:0}
+.pricing-card>p{margin:18px 0 0;color:#89939d;font-size:12px;line-height:1.65}
+.pricing-card ul{display:grid;gap:11px;margin:25px 0 30px;padding:0;list-style:none;color:#c7cdd3;font-size:11px}
+.pricing-card li::before{content:"✓";color:var(--lime);margin-right:8px}
+.pricing-card .button{margin-top:auto}
+.price-example{margin:0 0 18px;padding:14px;border:1px solid rgba(200,255,77,.14);border-radius:13px;background:rgba(200,255,77,.035)}
+.price-example span,.price-example strong{display:block}
+.price-example span{color:#7f8992;font-size:9px;text-transform:uppercase;letter-spacing:.08em}
+.price-example strong{margin-top:6px;color:var(--lime);font-size:13px}
+@media(max-width:1020px){
+  .safety-section{grid-template-columns:1fr;gap:42px}
+  .pricing-grid{grid-template-columns:1fr}
+  .pricing-card{min-height:0}
+}
+@media(max-width:760px){
+  .control-row{align-items:flex-start;flex-direction:column;gap:10px}
+  .control-tags{justify-content:flex-start}
+}
+
+
+.capability-matrix{margin-top:22px;border:1px solid var(--line);border-radius:20px;overflow:hidden;background:rgba(255,255,255,.018)}
+.capability-matrix>div{display:grid;grid-template-columns:1fr 90px 1.65fr;gap:18px;align-items:center;min-height:58px;padding:12px 18px;border-bottom:1px solid rgba(255,255,255,.06)}
+.capability-matrix>div:last-child{border-bottom:0}
+.capability-matrix .capability-head{min-height:42px;background:rgba(255,255,255,.025);color:#69737d;font-size:8px;font-weight:760;text-transform:uppercase;letter-spacing:.1em}
+.capability-matrix strong{font-size:11px}
+.capability-matrix b{color:var(--lime);font-size:13px}
+.capability-matrix span{color:#858f98;font-size:10px;line-height:1.5}
+@media(max-width:760px){
+  .capability-matrix>div{grid-template-columns:1fr auto;gap:8px 12px}
+  .capability-matrix>div>span:last-child{grid-column:1/-1}
+  .capability-matrix .capability-head{display:none}
+}

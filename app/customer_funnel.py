@@ -62,13 +62,14 @@ class CustomerFunnelService:
     def create_preview(self, payload: CustomerPreviewRequest) -> CustomerPreviewResponse:
         project_id = uuid4()
         customer_token = secrets.token_urlsafe(32)
+        preview_brief = self._preview_brief(payload)
         directions = self._directions(payload)
         scope_estimate = self._scope_estimate(payload)
         settings = get_settings()
         project = {
             "id": str(project_id),
             "customer_token_hash": self._hash_token(customer_token),
-            "brief": payload.brief,
+            "brief": preview_brief,
             "website_url": str(payload.website_url) if payload.website_url else None,
             "market": payload.market,
             "goal": payload.goal,
@@ -303,6 +304,11 @@ class CustomerFunnelService:
         opportunities.sort(
             key=lambda item: (-(item.relevance_score or 0), item.surface, item.title.casefold())
         )
+        if (
+            project.get("market") == "Auto-detect from product and website"
+            and product.market
+        ):
+            project["market"] = product.market
         project["research_state"] = "READY"
         project["status"] = "RESEARCH_READY"
         project["research"] = {
@@ -415,13 +421,24 @@ class CustomerFunnelService:
         return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
     @staticmethod
+    def _preview_brief(payload: CustomerPreviewRequest) -> str:
+        brief = (payload.brief or "").strip()
+        if brief:
+            return brief
+        website = str(payload.website_url or "").strip()
+        return (
+            f"Product website: {website}. The instant scan has website context only; "
+            "Partizan must verify the offer and audience from the website during full market research."
+        )
+
+    @staticmethod
     def _scope_estimate(payload: CustomerPreviewRequest) -> int:
-        seed = f"{payload.brief}|{payload.market}|{payload.goal}".encode()
+        seed = f"{CustomerFunnelService._preview_brief(payload)}|{payload.market}|{payload.goal}".encode()
         return 18 + int(hashlib.sha256(seed).hexdigest()[:4], 16) % 25
 
     @staticmethod
     def _directions(payload: CustomerPreviewRequest) -> list[CustomerDirectionView]:
-        text = f"{payload.brief} {payload.goal}".lower()
+        text = f"{CustomerFunnelService._preview_brief(payload)} {payload.goal}".lower()
         b2b = any(
             token in text
             for token in ("b2b", "saas", "business", "company", "companies", "founder", "teams")

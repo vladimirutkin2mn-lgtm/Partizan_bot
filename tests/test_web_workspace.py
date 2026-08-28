@@ -17,7 +17,8 @@ def test_root_serves_marketing_site() -> None:
         'id="budget-story"',
         'id="how"',
         'id="channels"',
-        'id="autonomy"',
+        'id="safety"',
+        'id="pricing"',
         "/site/assets/landing.v1.css",
         "/site/assets/landing.v1.js",
     ):

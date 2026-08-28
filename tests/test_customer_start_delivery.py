@@ -32,18 +32,24 @@ def test_custom_goal_assets_are_allowlisted_and_served() -> None:
     assert "aria-selected" in javascript.text
 
 
-def test_customer_start_is_honest_about_hypotheses_and_optional_website() -> None:
+def test_customer_start_is_website_first_and_honest_about_the_free_scan() -> None:
     page = client.get("/start")
     javascript = client.get("/start/assets/start.v2.js")
 
     assert page.status_code == 200
-    assert "Initial acquisition hypotheses" in page.text
-    assert "This is not deep research yet" in javascript.text
+    assert "Paste your website" in page.text
+    assert "I don't have a website" in page.text
+    assert 'id="brief-fallback" class="brief-fallback hidden"' in page.text
+    assert "How much can Partizan test with?" in page.text
+    assert "What matters most?" in page.text
+    assert "Run free scan" in page.text
+    assert "The free scan is a fast hypothesis" in page.text
     assert "fake" not in page.text.lower()
     assert 'id="website" type="url" inputmode="url" placeholder=' in page.text
     assert 'id="website" type="url" inputmode="url" required' not in page.text
-    assert "only needs a live destination before it sends paid traffic" in page.text
+    assert "brief: brief || null" in javascript.text
     assert "website_url: website || null" in javascript.text
+    assert "showBriefFallback" in javascript.text
     assert "masked_opportunities.map" not in javascript.text
     assert "Creator @••" not in page.text
 
@@ -56,11 +62,11 @@ def test_customer_start_sends_autonomous_customers_to_persistent_workspace() -> 
     assert page.status_code == 200
     assert "10% of acquisition spend" in page.text
     assert "Create workspace" in page.text
-    assert "Growth Balance" in page.text
+    assert "Acquisition budget" in page.text
     assert "Current work" in page.text
     assert "Results" in page.text
-    assert "Integrations" in page.text
-    assert "Guardrails" in page.text
+    assert "Channels" in page.text
+    assert "Limits" in page.text
     assert 'id="register-form"' in page.text
     assert 'id="login-form"' in page.text
     assert 'href="/workspace"' in page.text
@@ -78,10 +84,10 @@ def test_customer_start_sends_autonomous_customers_to_persistent_workspace() -> 
     assert "redirectWorkspace" in javascript.text
 
     assert "Continuous learning" in page.text
-    assert "Research</span><i>→</i><span>Test" in page.text
-    assert "continuous AutoResearch are included" in page.text
-    assert "Funding does not by itself authorize ad spend" in page.text
-    assert "one deep research pass" in page.text
+    assert "Find</span><i>→</i><span>Test" in page.text
+    assert "Initial market research and continuous learning are included" in page.text
+    assert "Adding money does not by itself authorize paid advertising" in page.text
+    assert "one full market-research pass" in page.text
     start_css = client.get("/start/assets/start.v2.css")
     assert start_css.status_code == 200
     assert ".autoresearch-included" in start_css.text

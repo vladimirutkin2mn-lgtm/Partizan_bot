@@ -52,7 +52,12 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert 'id="growth-balance-metric"' in workspace.text
     assert 'id="overview-fund-button"' in workspace.text
     assert 'id="overview-fund-label"' in workspace.text
-    assert "Unlock initial market research and continuous learning" in workspace.text
+    assert "Acquisition budget" in workspace.text
+    assert "Start market research and keep experiments funded" in workspace.text
+    assert "Let's get your first acquisition test running." in workspace.text
+    assert 'id="activation-card"' in workspace.text
+    assert 'id="activation-primary"' in workspace.text
+    assert "What's the most you'd pay for one new customer?" in workspace.text
     assert 'id="autopilot-budget"' not in workspace.text
     assert "$149" not in workspace.text
     assert "Creators</span>" not in workspace.text
@@ -67,6 +72,8 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert ".growth-balance-benefit" in stylesheet.text
     assert ".workspace-tabs" in stylesheet.text
     assert ".channel-table" in stylesheet.text
+    assert ".activation-card" in stylesheet.text
+    assert ".activation-list" in stylesheet.text
 
 
 def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> None:
@@ -99,7 +106,14 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
     assert "channel-mode-select" in workspace_source
     assert "openFundingControls" in workspace_source
     assert "$('overview-fund-button').addEventListener('click', openFundingControls)" in workspace_source
-    assert "funded ? 'Add funds' : 'Fund Balance'" in workspace_source
+    assert "$('overview-fund-label').textContent = 'Add funds'" in workspace_source
+    assert "renderActivation" in workspace_source
+    assert "activationAction === 'fund'" in workspace_source
+    assert "activationAction === 'channels'" in workspace_source
+    assert "activationAction === 'integration'" in workspace_source
+    assert "openIntegrationControls" in workspace_source
+    assert "autoChannel.platform !== 'INSTAGRAM' || Boolean(overview.meta.connected)" in workspace_source
+    assert "activationAction === 'limit'" in workspace_source
     assert "amount.select()" in workspace_source
     assert "RESEARCH_ONLY" in workspace_source
     assert "/autopilot/checkout" not in workspace_source
