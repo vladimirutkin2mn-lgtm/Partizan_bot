@@ -6,7 +6,7 @@ from typing import Annotated
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from fastapi import APIRouter, Cookie, HTTPException, Request
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from app.distribution_analytics_schemas import DistributionAnalyticsEventCreate
@@ -18,6 +18,8 @@ from app.distribution_execution_service import (
     distribution_execution_service,
 )
 from app.distribution_play_service import distribution_play_service
+from app.config import Settings, get_settings
+from app.self_dogfood import SELF_DOGFOOD_ATTRIBUTION_COOKIE, self_dogfood_service
 
 TRACKING_VISITOR_COOKIE = "ptz_vid"
 _VISITOR_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
@@ -31,7 +33,12 @@ _tracking_builder = DistributionTrackingLinkBuilder()
 async def distribution_tracking_redirect(
     referral_token: str,
     request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
     visitor_cookie: Annotated[str | None, Cookie(alias=TRACKING_VISITOR_COOKIE)] = None,
+    self_dogfood_cookie: Annotated[
+        str | None,
+        Cookie(alias=SELF_DOGFOOD_ATTRIBUTION_COOKIE),
+    ] = None,
 ) -> RedirectResponse:
     try:
         experiment, _ = distribution_execution_service.resolve_experiment(
@@ -59,6 +66,19 @@ async def distribution_tracking_redirect(
             httponly=True,
             secure=request.url.scheme == "https",
             samesite="lax",
+        )
+    if (
+        not self_dogfood_cookie
+        and self_dogfood_service.should_capture_referral(experiment, destination, settings)
+    ):
+        response.set_cookie(
+            SELF_DOGFOOD_ATTRIBUTION_COOKIE,
+            referral_token,
+            max_age=2_592_000,
+            httponly=True,
+            secure=request.url.scheme == "https",
+            samesite="lax",
+            path="/",
         )
     return response
 
