@@ -243,9 +243,11 @@ def test_landing_all_customer_ctas_route_to_start_not_internal_app() -> None:
     assert 'href="/app"' not in page.text
     assert page.text.count('href="/start"') >= 5
     assert "Simple pricing." in page.text
+    assert "You built the product." in page.text
+    assert "Your marketing budget can start at <em>$10.</em>" in page.text
     assert "$49 <small>once</small>" in page.text
     assert "10% of actual acquisition spend" in page.text
-    assert "Find → Test → Learn." in page.text
+    assert "Find → Try → Learn." in page.text
     assert "You're always <em>in control.</em>" in page.text
     assert "Example target customer cost" in page.text
     assert "$1,000 budget capacity: up to" in page.text
