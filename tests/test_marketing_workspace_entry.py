@@ -16,6 +16,7 @@ def test_marketing_header_exposes_direct_customer_workspace_entry() -> None:
     assert 'href="/start"' in html
     assert ">Start free <span>↗</span></a>" in html
     assert "Tell Partizan what you sell." in html
+    assert "Partizan is an AI customer acquisition system" in html
     assert "It finds where your customers are — and tests what works." in html
     assert "No card required." in html
     assert "You have $1,000." in html
@@ -25,6 +26,9 @@ def test_marketing_header_exposes_direct_customer_workspace_entry() -> None:
     assert "Gabrielle Talks Money" in html
     assert "Research evidence is not conversion evidence." in html
     assert "Find → Test → Learn." in html
+    assert 'id="product-demo"' in html
+    assert "Animation shows decision flow only." in html
+    assert "Research across" in html
     assert 'id="pricing"' in html
     assert 'id="safety"' in html
     assert "Simple pricing." in html
@@ -34,6 +38,8 @@ def test_marketing_header_exposes_direct_customer_workspace_entry() -> None:
     assert "Ask above $200" not in html
     assert "Customers at $24 CAC" not in html
     assert "~41" not in html
+    for href in ("/privacy", "/terms", "/security", "/contact"):
+        assert f'href="{href}"' in html
     assert "/site/assets/landing.account.v1.css" in html
 
 
@@ -50,6 +56,9 @@ def test_marketing_account_entry_detects_existing_customer_session_fail_safe() -
     assert "const defaultBudget = 1000;" in javascript.text
     assert "customer-count" not in javascript.text
     assert "customersAtExampleCac" not in javascript.text
+    assert "const demoSteps" in javascript.text
+    assert "prefers-reduced-motion: reduce" in javascript.text
+    assert "window.setInterval" in javascript.text
 
     assert account_css.status_code == 200
     assert "text/css" in account_css.headers["content-type"]
@@ -63,4 +72,7 @@ def test_marketing_account_entry_detects_existing_customer_session_fail_safe() -
     assert ".research-opportunity" in landing_css.text
     assert ".pricing-grid" in landing_css.text
     assert ".capability-matrix" in landing_css.text
+    assert ".product-demo" in landing_css.text
+    assert ".demo-step.is-active" in landing_css.text
+    assert ".footer-links" in landing_css.text
     assert "@media (max-width: 760px)" in account_css.text
