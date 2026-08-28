@@ -244,11 +244,11 @@
       : '<div><strong>Waiting for the first signal</strong><span>Acquisition and learning decisions will appear here.</span></div>';
   };
 
-  const channelModeLabel = (mode) => ({ AUTO: 'Auto', RESEARCH_ONLY: 'Research only', OFF: 'Off' })[mode] || mode;
+  const channelModeLabel = (mode) => ({ AUTO: 'Execution allowed', RESEARCH_ONLY: 'Research only', OFF: 'Off' })[mode] || mode;
 
   const channelModeOptions = (channel) => {
     const modes = channel.autonomous_execution_available
-      ? [['AUTO', 'Auto'], ['RESEARCH_ONLY', 'Research only'], ['OFF', 'Off']]
+      ? [['AUTO', 'Allow execution'], ['RESEARCH_ONLY', 'Research only'], ['OFF', 'Off']]
       : [['RESEARCH_ONLY', 'Research only'], ['OFF', 'Off']];
     return modes.map(([value, label]) => `<option value="${value}"${channel.mode === value ? ' selected' : ''}>${label}</option>`).join('');
   };
