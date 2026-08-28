@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 from uuid import UUID
 
 import stripe
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 
 from app.config import Settings, get_settings
@@ -45,6 +45,7 @@ from app.customer_schemas import (
     CustomerResearchResponse,
 )
 from app.growth_balance import growth_balance_service
+from app.self_dogfood import SELF_DOGFOOD_ATTRIBUTION_COOKIE, self_dogfood_service
 
 router = APIRouter(prefix="/v1", tags=["customer"])
 
@@ -103,8 +104,21 @@ def _meta_callback_target(
     response_model=CustomerPreviewResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_customer_preview(payload: CustomerPreviewRequest) -> CustomerPreviewResponse:
-    return customer_funnel_service.create_preview(payload)
+def create_customer_preview(
+    payload: CustomerPreviewRequest,
+    settings: Annotated[Settings, Depends(get_settings)],
+    self_dogfood_cookie: Annotated[
+        str | None,
+        Cookie(alias=SELF_DOGFOOD_ATTRIBUTION_COOKIE),
+    ] = None,
+) -> CustomerPreviewResponse:
+    preview = customer_funnel_service.create_preview(payload)
+    self_dogfood_service.bind_project_best_effort(
+        preview.project_id,
+        self_dogfood_cookie,
+        settings,
+    )
+    return preview
 
 
 @router.get("/customer-projects/{project_id}", response_model=CustomerProjectView)
@@ -189,6 +203,14 @@ def recover_customer_access(
     )
     if not unlocked:
         raise HTTPException(status_code=401, detail="Paid Checkout Session is not linked to this project")
+
+    self_dogfood_service.record_project_event_best_effort(
+        project_id,
+        event_type="PAID",
+        business_key=f"stripe-launch:{payload.session_id}",
+        settings=settings,
+        revenue=round(float(session.get("amount_total") or 0) / 100, 2),
+    )
 
     try:
         customer_token = recover_paid_customer_access(project_id, payload.session_id)
@@ -522,11 +544,19 @@ async def stripe_webhook(
         except ValueError:
             project_id = None
         if project_id is not None and entitlement == "launch_plan" and obj.get("payment_status") == "paid":
-            customer_funnel_service.unlock_launch(
+            unlocked = customer_funnel_service.unlock_launch(
                 project_id,
                 stripe_checkout_session_id=str(obj["id"]),
                 stripe_customer_id=(str(obj["customer"]) if obj.get("customer") else None),
             )
+            if unlocked:
+                self_dogfood_service.record_project_event_best_effort(
+                    project_id,
+                    event_type="PAID",
+                    business_key=f"stripe-launch:{obj['id']}",
+                    settings=settings,
+                    revenue=round(float(obj.get("amount_total") or 0) / 100, 2),
+                )
         elif (
             project_id is not None
             and entitlement == "growth_balance_topup"
