@@ -111,7 +111,9 @@ def test_deep_research_is_blocked_before_payment_without_calling_product_intake(
     )
 
     assert response.status_code == 402
-    assert response.json()["detail"] == "Get the Acquisition Plan or add acquisition budget before starting full market research."
+    assert response.json()["detail"] == (
+        "Get the Acquisition Plan or add acquisition budget before starting full market research."
+    )
 
 
 def test_checkout_fails_closed_when_stripe_is_not_configured() -> None:
