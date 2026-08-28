@@ -477,6 +477,8 @@
   };
 
   const params = new URLSearchParams(window.location.search);
+  const initialWebsite = String(params.get('website') || '').trim();
+  if (initialWebsite) $('website').value = initialWebsite;
   const initialBudget = Number(params.get('budget'));
   if (Number.isFinite(initialBudget) && initialBudget >= 1) {
     $('budget').value = String(initialBudget);
