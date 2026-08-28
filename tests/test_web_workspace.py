@@ -38,7 +38,7 @@ def test_marketing_assets_are_allowlisted_and_served() -> None:
 
     assert javascript.status_code == 200
     assert "javascript" in javascript.headers["content-type"]
-    assert "const defaultBudget = 1000;" in javascript.text
+    assert "const defaultBudget = 10;" in javascript.text
     assert "IntersectionObserver" in javascript.text
 
 
