@@ -740,3 +740,23 @@ body::before {
 .dont-burn-money h3{margin:10px 0 0;font-size:22px;letter-spacing:-.03em}
 .dont-burn-money p{margin:9px 0 0;color:#89939d;font-size:11px;line-height:1.6}
 @media(max-width:900px){.founder-problem-grid,.small-budget-grid{grid-template-columns:1fr}}
+
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.hero-scan-form{display:grid;grid-template-columns:minmax(0,520px) auto;gap:10px;margin-top:30px;max-width:760px}
+.hero-scan-form input{min-height:52px;width:100%;border:1px solid rgba(255,255,255,.12);border-radius:13px;background:rgba(255,255,255,.035);color:#f0f4f6;padding:0 16px;font:inherit;font-size:13px;outline:none}
+.hero-scan-form input:focus{border-color:rgba(200,255,77,.45);box-shadow:0 0 0 3px rgba(200,255,77,.06)}
+.hero-scan-form input::placeholder{color:#626d77}
+.hero-secondary-actions{margin-top:16px}
+.builder-flow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto minmax(0,1.35fr) auto minmax(0,1fr);gap:14px;align-items:center;margin-top:34px;padding:20px;border:1px solid var(--line);border-radius:22px;background:rgba(255,255,255,.018)}
+.builder-flow>div{min-height:96px;display:flex;flex-direction:column;justify-content:center;padding:15px;border:1px solid rgba(255,255,255,.06);border-radius:15px;background:rgba(0,0,0,.12)}
+.builder-flow>div>span{color:#67717b;font-size:8px;font-weight:760;text-transform:uppercase;letter-spacing:.1em}
+.builder-flow>div>strong{margin-top:8px;font-size:11px;line-height:1.5}
+.builder-flow>i{color:#56616b;font-style:normal}
+.builder-flow-core{border-color:rgba(200,255,77,.2)!important;background:rgba(200,255,77,.045)!important}
+.builder-flow-core>span,.builder-flow-core>strong{color:var(--lime)!important}
+@media(max-width:900px){
+  .hero-scan-form{grid-template-columns:1fr;max-width:620px}
+  .hero-scan-form .button{width:100%}
+  .builder-flow{grid-template-columns:1fr}
+  .builder-flow>i{transform:rotate(90deg);justify-self:center}
+}
