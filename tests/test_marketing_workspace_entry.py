@@ -56,7 +56,7 @@ def test_marketing_account_entry_detects_existing_customer_session_fail_safe() -
     assert "cache: 'no-store'" in javascript.text
     assert "Open workspace" in javascript.text
     assert "nav-account-link" in javascript.text
-    assert "const defaultBudget = 1000;" in javascript.text
+    assert "const defaultBudget = 10;" in javascript.text
     assert "customer-count" not in javascript.text
     assert "customersAtExampleCac" not in javascript.text
     assert "const demoSteps" in javascript.text
