@@ -9,6 +9,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
+from app.config import Settings, get_settings
 from app.distribution_analytics_schemas import DistributionAnalyticsEventCreate
 from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_control_plane_service import distribution_control_plane_service
@@ -18,7 +19,6 @@ from app.distribution_execution_service import (
     distribution_execution_service,
 )
 from app.distribution_play_service import distribution_play_service
-from app.config import Settings, get_settings
 from app.self_dogfood import SELF_DOGFOOD_ATTRIBUTION_COOKIE, self_dogfood_service
 
 TRACKING_VISITOR_COOKIE = "ptz_vid"
