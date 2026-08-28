@@ -304,6 +304,11 @@ class CustomerFunnelService:
         opportunities.sort(
             key=lambda item: (-(item.relevance_score or 0), item.surface, item.title.casefold())
         )
+        if (
+            project.get("market") == "Auto-detect from product and website"
+            and product.market
+        ):
+            project["market"] = product.market
         project["research_state"] = "READY"
         project["status"] = "RESEARCH_READY"
         project["research"] = {
