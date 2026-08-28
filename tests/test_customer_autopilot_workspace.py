@@ -62,7 +62,10 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     for href in ("/privacy", "/terms", "/security", "/contact"):
         assert f'href="{href}"' in workspace.text
     assert "Let's find your first users." in workspace.text
-    assert "You should not have to choose a marketing channel or configure a campaign first." in workspace.text
+    assert (
+        "You should not have to choose a marketing channel or configure a campaign first."
+        in workspace.text
+    )
     assert 'id="activation-card"' in workspace.text
     assert 'id="activation-primary"' in workspace.text
     assert "What's the most you'd pay for one new customer?" in workspace.text
