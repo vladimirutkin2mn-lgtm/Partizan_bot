@@ -1,5 +1,5 @@
 (() => {
-  const defaultBudget = 1000;
+  const defaultBudget = 10;
   const accountLink = document.getElementById('nav-account-link');
 
   const updateAccountEntry = async () => {
