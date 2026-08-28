@@ -165,7 +165,7 @@ def test_experiments_assets_are_versioned_and_no_store() -> None:
     script = client.get("/workspace/assets/workspace.experiments.v1.js")
     assert script.status_code == 200
     assert script.headers["cache-control"] == "no-store, max-age=0"
-    assert "Continuous acquisition experiments" in script.text
+    assert "Continuous customer-acquisition tests" in script.text
     assert "never count as visits, conversions, customers" in script.text
 
     assert "Continuous learning · included" in script.text
@@ -185,15 +185,17 @@ def test_experiments_assets_are_versioned_and_no_store() -> None:
     assert ".ar-overview" in css.text
     assert ".ar-overview-grid" in css.text
 
-    assert "Fund Growth Balance →" in script.text
+    assert "Add acquisition budget →" in script.text
     assert "Start market research →" in script.text
     assert "Answer one question →" in script.text
     assert "Initial research comes first" in script.text
-    assert "No separate AutoResearch add-on is required." in script.text
+    assert "Continuous learning is included — no separate add-on." in script.text
     assert "/customer/workspace/${encodeURIComponent(projectId)}" in script.text
     assert "openWorkspaceTab('settings')" in script.text
     assert "openWorkspaceTab('activity')" in script.text
     assert "button.click()" in script.text
     assert "Complete deep research to start continuous AutoResearch." not in script.text
+    assert "AutoResearch is paused." not in script.text
+    assert "Bounded challenger" not in script.text
     assert ".ar-prelaunch" in css.text
     assert ".ar-prelaunch-actions" in css.text
