@@ -250,8 +250,8 @@ def test_landing_all_customer_ctas_route_to_start_not_internal_app() -> None:
     assert "Find → Try → Learn." in page.text
     assert "You're always <em>in control.</em>" in page.text
     assert "Example target customer cost" in page.text
-    assert "$1,000 budget capacity: up to" in page.text
-    assert "This is math, not a Partizan forecast." in page.text
+    assert "Partizan may tell you not to spend money." in page.text
+    assert "Sometimes the best first move costs $0." in page.text
 
     assert javascript.status_code == 200
     assert 'a[href="/start"]' in javascript.text
