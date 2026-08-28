@@ -90,6 +90,14 @@
     if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  const openIntegrationControls = () => {
+    setActiveTab('settings');
+    const card = document.querySelector('.integrations-card');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const button = $('meta-connect');
+    if (button && !button.disabled) button.focus();
+  };
+
   const setActivationStep = (id, complete, current, stateText) => {
     const node = $(id);
     node.classList.toggle('complete', complete);
@@ -100,7 +108,11 @@
 
   const renderActivation = (project, overview, data) => {
     const funded = overview.growth_balance.funded_usd > 0;
-    const autoEnabled = (data.channels || []).some((item) => item.mode === 'AUTO');
+    const autoChannel = (data.channels || []).find((item) => item.mode === 'AUTO');
+    const autoEnabled = Boolean(autoChannel);
+    const channelReady = Boolean(autoChannel) && (
+      autoChannel.platform !== 'INSTAGRAM' || Boolean(overview.meta.connected)
+    );
     const limitSaved = data.target_max_cac != null && Boolean(data.autonomous_spend_confirmed);
     const testStarted = overview.running_experiments.length > 0 || overview.waiting_experiments.length > 0;
     const researchReady = project.research_state === 'READY';
@@ -108,7 +120,7 @@
     const noMeasuredActivity = overview.growth_balance.acquisition_spend_usd <= 0
       && overview.paid_customers <= 0
       && !testStarted;
-    const userSetupComplete = funded && autoEnabled && limitSaved;
+    const userSetupComplete = funded && channelReady && limitSaved;
     const showActivation = noMeasuredActivity && (!userSetupComplete || !researchReady);
 
     $('activation-card').classList.toggle('hidden', !showActivation);
@@ -120,11 +132,13 @@
       return;
     }
 
-    let current = !funded ? 'budget' : (needsInput ? 'research' : (!autoEnabled ? 'channel' : (!limitSaved ? 'limit' : 'research')));
+    let current = !funded ? 'budget' : (
+      needsInput ? 'research' : (!channelReady ? 'channel' : (!limitSaved ? 'limit' : 'research'))
+    );
     setActivationStep('activation-product', true, false, 'Done');
     setActivationStep('activation-direction', true, false, 'Done');
     setActivationStep('activation-budget', funded, current === 'budget', funded ? 'Done' : 'Next');
-    setActivationStep('activation-channel', autoEnabled, current === 'channel', autoEnabled ? 'Done' : 'Waiting');
+    setActivationStep('activation-channel', channelReady, current === 'channel', channelReady ? 'Done' : 'Waiting');
     setActivationStep('activation-limit', limitSaved, current === 'limit', limitSaved ? 'Done' : 'Waiting');
     setActivationStep('activation-test', testStarted, false, testStarted ? 'Running' : 'Partizan');
 
@@ -145,10 +159,12 @@
       $('activation-note').textContent = 'Partizan needs one product detail because it materially changes the acquisition plan.';
       return;
     }
-    if (!autoEnabled) {
-      activationAction = 'channels';
-      button.textContent = 'Choose a channel →';
-      $('activation-note').textContent = 'Auto means Partizan may execute only when that channel and its permissions are actually ready.';
+    if (!channelReady) {
+      activationAction = autoEnabled && autoChannel.platform === 'INSTAGRAM' ? 'integration' : 'channels';
+      button.textContent = activationAction === 'integration' ? 'Connect Instagram & Facebook →' : 'Choose a channel →';
+      $('activation-note').textContent = activationAction === 'integration'
+        ? 'The channel is selected, but Partizan still needs real account access before it can execute there.'
+        : 'Auto means Partizan may execute only when that channel and its permissions are actually ready.';
       return;
     }
     if (!limitSaved) {
@@ -598,6 +614,7 @@
     if (activationAction === 'fund') return openFundingControls();
     if (activationAction === 'research') return openResearchControls();
     if (activationAction === 'channels') return openChannelControls();
+    if (activationAction === 'integration') return openIntegrationControls();
     if (activationAction === 'limit') return openLimitControls();
   });
 
