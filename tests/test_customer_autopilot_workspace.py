@@ -39,7 +39,8 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert 'id="channels-table-body"' in workspace.text
     assert "Partizan recommends. You control the boundaries." in workspace.text
     assert "Research only" in workspace.text
-    assert "Off blocks new execution" in workspace.text
+    assert "Allow execution" in workspace.text
+    assert "do not use" in workspace.text
     assert 'id="fund-form"' in workspace.text
     assert 'id="guardrail-form"' in workspace.text
     assert 'id="workspace-summary" class="lede hidden" aria-hidden="true"' in workspace.text
