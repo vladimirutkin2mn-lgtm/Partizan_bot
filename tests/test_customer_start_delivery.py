@@ -60,6 +60,8 @@ def test_customer_start_is_website_first_and_honest_about_the_free_scan() -> Non
     assert "showBriefFallback" in javascript.text
     assert "const budgetPresets" in javascript.text
     assert "selectBudgetPreset" in javascript.text
+    assert "initialWebsite" in javascript.text
+    assert "$('website').value = initialWebsite" in javascript.text
     assert "masked_opportunities.map" not in javascript.text
     assert "Creator @••" not in page.text
 
