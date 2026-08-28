@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.audience_intelligence_service import audience_intelligence_service
 from app.config import get_settings
-from app.customer_account import customer_account_service
+from app.customer_account import CUSTOMER_ACCOUNT_SESSION_COOKIE, customer_account_service
 from app.customer_funnel import customer_funnel_service
 from app.distribution_analytics_schemas import DistributionSpendCreate
 from app.distribution_analytics_service import distribution_analytics_service
@@ -181,9 +181,15 @@ def test_self_dogfood_records_signup_activation_and_paid_purchase_idempotently(
     workspace_repeat = client.get(f"/customer/workspace/{preview['project_id']}")
     assert workspace_repeat.status_code == 200
 
+    session_token = client.cookies.get(CUSTOMER_ACCOUNT_SESSION_COOKIE)
+    assert session_token
+    _, current_customer_token = customer_account_service.project_access(
+        session_token=session_token,
+        project_id=project_id,
+    )
     customer_funnel_service.mark_checkout_pending(
         project_id,
-        preview["customer_token"],
+        current_customer_token,
         "cs_self_dogfood",
     )
 
