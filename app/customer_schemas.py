@@ -2,15 +2,25 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 
 class CustomerPreviewRequest(BaseModel):
-    brief: str = Field(min_length=20, max_length=6000)
+    brief: str | None = Field(default=None, max_length=6000)
     website_url: HttpUrl | None = None
-    market: str = Field(min_length=2, max_length=160)
+    market: str = Field(default="Auto-detect from product and website", min_length=2, max_length=160)
     goal: str = Field(min_length=2, max_length=200)
     budget_usd: int = Field(ge=1, le=100_000)
+
+    @model_validator(mode="after")
+    def require_website_or_description(self) -> "CustomerPreviewRequest":
+        brief = (self.brief or "").strip()
+        if brief and len(brief) < 20:
+            raise ValueError("Product description must be at least 20 characters")
+        if not brief and self.website_url is None:
+            raise ValueError("Paste a website or describe your product")
+        self.brief = brief or None
+        return self
 
 
 class CustomerDirectionView(BaseModel):
