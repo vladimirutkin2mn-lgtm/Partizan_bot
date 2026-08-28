@@ -49,7 +49,7 @@
     PAID_CONVERSION: 'paid conversion',
     ACTIVATION_CONVERSION: 'activation conversion',
     SIGNUP_CONVERSION: 'signup conversion',
-    NONE: 'insufficient downstream evidence',
+    NONE: 'not enough customer evidence',
   })[objective] || objective || 'evidence';
 
   const outcomeLabel = (outcome) => ({
@@ -186,7 +186,7 @@
     if (!status) return;
     const action = $('autoresearch-overview-open');
     if (action) {
-      action.textContent = 'Open experiments →';
+      action.textContent = 'Open tests →';
       action.dataset.action = 'experiments';
     }
     status.textContent = statusLabel(data.status);
@@ -217,8 +217,8 @@
     $('autoresearch-overview-test-detail').textContent = trial
       ? `${trial.challenger.platform} · changed ${trial.changed_dimensions.join(', ')}`
       : (data.status === 'NO_BASELINE'
-        ? 'Partizan needs a baseline before it can compare challengers.'
-        : 'Partizan proposes one challenger at a time when policy and evidence allow it.');
+        ? 'Partizan needs a baseline before it can compare tests.'
+        : 'Partizan proposes one new test at a time when the rules and evidence allow it.');
 
     $('autoresearch-overview-learning').textContent = latestEvaluation
       ? outcomeLabel(latestEvaluation.outcome)
@@ -335,13 +335,13 @@
     } else {
       $('autoresearch-testing-title').textContent = data.status === 'PAUSED'
         ? 'Continuous testing is paused.'
-        : 'No challenger is waiting right now.';
+        : 'No new test is waiting right now.';
       $('autoresearch-testing-meta').textContent = data.remaining_research_budget == null
         ? 'Research budget is governed by the configured per-trial limit.'
-        : `${money(data.remaining_research_budget)} shadow research budget remains.`;
+        : `${money(data.remaining_research_budget)} research budget remains.`;
       $('autoresearch-testing-variant').innerHTML = '';
       $('autoresearch-testing-state').textContent = data.status === 'NO_BASELINE'
-        ? 'Establish a baseline before Partizan can compare challengers scientifically.'
+        ? 'Establish a baseline before Partizan can compare tests.'
         : 'Partizan may propose one new test when the rules allow it.';
     }
 
@@ -354,7 +354,7 @@
     control.dataset.nextStatus = data.paused ? 'ACTIVE' : 'PAUSED';
     $('autoresearch-boundary').textContent = (
       'Research sources can justify what to test, but never count as visits, conversions, customers, '
-      + 'CAC, revenue or permission to spend. Champion changes require Phase 2 measured/replay evidence.'
+      + 'CAC, revenue or permission to spend. A winner changes only after measured or replayable customer evidence.'
     );
   };
 
@@ -404,7 +404,7 @@
     button.className = 'tab-button';
     button.type = 'button';
     button.dataset.tab = 'experiments';
-    button.textContent = 'Experiments';
+    button.textContent = 'Tests';
     const settings = nav.querySelector('[data-tab="settings"]');
     nav.insertBefore(button, settings || null);
     button.addEventListener('click', activate);
@@ -428,11 +428,11 @@
             <h2>Partizan keeps improving how it gets you customers.</h2>
             <p>Research → test → measure → learn → test again. The plan does not reset after the first recommendation.</p>
           </div>
-          <div class="ar-overview-actions"><span id="autoresearch-overview-status" class="status-pill">Loading</span><button id="autoresearch-overview-open" class="text-button" type="button">Open experiments →</button></div>
+          <div class="ar-overview-actions"><span id="autoresearch-overview-status" class="status-pill">Loading</span><button id="autoresearch-overview-open" class="text-button" type="button">Open tests →</button></div>
         </div>
         <div class="ar-overview-grid">
           <div><span>Current winner</span><strong id="autoresearch-overview-winner">Loading…</strong><small id="autoresearch-overview-winner-detail">Checking measured evidence.</small></div>
-          <div><span>Testing now</span><strong id="autoresearch-overview-test">Loading…</strong><small id="autoresearch-overview-test-detail">Checking the active challenger.</small></div>
+          <div><span>Testing now</span><strong id="autoresearch-overview-test">Loading…</strong><small id="autoresearch-overview-test-detail">Checking the active test.</small></div>
           <div><span>Learning</span><strong id="autoresearch-overview-learning">Loading…</strong><small id="autoresearch-overview-learning-detail">Checking recent decisions.</small></div>
         </div>
         <p id="autoresearch-overview-boundary" class="note ar-overview-boundary">Loading safety state…</p>`;

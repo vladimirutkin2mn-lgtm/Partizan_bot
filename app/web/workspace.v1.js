@@ -183,7 +183,7 @@
 
   const friendlyBlockers = (overview) => {
     const items = [];
-    if (overview.blockers.some((item) => item.includes('No autonomous execution channel'))) items.push('Choose an Auto channel when you want Partizan to execute, or keep every channel in Research only.');
+    if (overview.blockers.some((item) => item.includes('No autonomous execution channel'))) items.push('Choose a channel with execution enabled when you want Partizan to act, or keep channels in Research only.');
     if (overview.growth_balance.funded_usd <= 0) items.push('Add acquisition budget to start the included market research.');
     if (overview.blockers.some((item) => item.includes('Website or landing page'))) items.push('Add a live website or landing page before paid traffic starts.');
     if (overview.blockers.some((item) => item.includes('guardrails'))) items.push('Save the maximum cost per customer in Settings.');
@@ -242,7 +242,7 @@
         title: !autoEnabled ? 'No Auto channel enabled' : (overview.product_id ? 'Comparing the first executable paths' : 'Waiting for market research'),
         detail: !autoEnabled
           ? 'Partizan can keep researching. Choose Auto in Channels when you want execution.'
-          : (overview.growth_balance.funded_usd > 0 ? 'Partizan will surface the first eligible experiment here.' : 'Adding budget starts the included market research.'),
+          : (overview.growth_balance.funded_usd > 0 ? 'Partizan will surface the first eligible test here.' : 'Adding budget starts the included market research.'),
       });
     }
     $('current-work').innerHTML = work.map((item) => `<div><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail)}</span></div>`).join('');
@@ -250,7 +250,7 @@
     const experiments = [...overview.running_experiments, ...overview.waiting_experiments];
     $('experiments').innerHTML = experiments.length
       ? experiments.slice(0, 8).map((item) => `<div><strong>${escapeHtml(item.platform)} · ${escapeHtml(item.action_type)}</strong><span>${escapeHtml(item.status)}${item.budget_cap == null ? '' : ` · ${money(item.budget_cap)}`}</span></div>`).join('')
-      : '<div><strong>No experiment yet</strong><span>Partizan will create the first eligible test after research and launch prerequisites are complete.</span></div>';
+      : '<div><strong>No test yet</strong><span>Partizan will create the first eligible test after research and launch prerequisites are complete.</span></div>';
     $('decisions').innerHTML = overview.recent_decisions.length
       ? overview.recent_decisions.slice(0, 8).map((item) => `<div><strong>${escapeHtml(item.decision || item.outcome)}</strong><span>${escapeHtml(item.reasons[0] || item.kind)}</span></div>`).join('')
       : '<div><strong>Waiting for the first signal</strong><span>Acquisition and learning decisions will appear here.</span></div>';
@@ -343,13 +343,13 @@
     $('growth-balance-metric').classList.toggle('is-funded', funded);
     $('overview-fund-label').textContent = 'Add funds';
     $('overview-balance-benefit').querySelector('span').textContent = funded
-      ? 'Keep research and experiments funded'
-      : 'Start market research and keep experiments funded';
+      ? 'Keep research and tests funded'
+      : 'Start market research and keep tests funded';
     $('balance-state').textContent = funded ? 'Funded' : 'Not funded';
     $('balance-state').classList.toggle('good', funded);
     $('fund-button').textContent = 'Add funds securely →';
     $('balance-note').textContent = funded
-      ? `${money(balance.funded_usd)} added. Unused money remains in your acquisition budget.${balance.settlement_ready ? ' Paid execution rail is ready.' : ' Paid experiments are still paused until the ad-spend rail is ready.'}`
+      ? `${money(balance.funded_usd)} added. Unused money remains in your acquisition budget.${balance.settlement_ready ? ' Paid execution rail is ready.' : ' Paid tests are still paused until the ad-spend rail is ready.'}`
       : 'Adding funds starts the initial market research. Partizan charges its fee only on acquisition money actually spent.';
     $('balance-note').classList.toggle('warning', funded && !balance.settlement_ready);
 
@@ -513,7 +513,7 @@
           method: 'POST',
           body: JSON.stringify({ session_id: sessionId }),
         });
-        showNotice(`acquisition budget funded. Available: ${money(overview.growth_balance.available_usd)}.`);
+        showNotice(`Acquisition budget funded. Available: ${money(overview.growth_balance.available_usd)}.`);
         await loadWorkspace();
         await loadResearch(true);
         setActiveTab('overview');

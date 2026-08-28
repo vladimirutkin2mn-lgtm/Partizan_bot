@@ -40,7 +40,14 @@ _ASSETS = {
 _LANDING_ASSETS = {
     "landing.v1.css": "text/css; charset=utf-8",
     "landing.account.v1.css": "text/css; charset=utf-8",
+    "legal.v1.css": "text/css; charset=utf-8",
     "landing.v1.js": "text/javascript; charset=utf-8",
+}
+_LEGAL_PAGES = {
+    "/privacy": "privacy.v1.html",
+    "/terms": "terms.v1.html",
+    "/security": "security.v1.html",
+    "/contact": "contact.v1.html",
 }
 _START_ASSETS = {
     "start.v1.css": "text/css; charset=utf-8",
@@ -131,6 +138,33 @@ async def marketing_asset(asset_name: str) -> FileResponse:
     if media_type is None:
         raise HTTPException(status_code=404, detail="Marketing asset not found")
     return FileResponse(_WEB_DIR / asset_name, media_type=media_type)
+
+
+def _legal_page(filename: str) -> HTMLResponse:
+    return HTMLResponse(
+        (_WEB_DIR / filename).read_text(encoding="utf-8"),
+        media_type="text/html; charset=utf-8",
+    )
+
+
+@router.get("/privacy", include_in_schema=False)
+async def privacy_page() -> HTMLResponse:
+    return _legal_page(_LEGAL_PAGES["/privacy"])
+
+
+@router.get("/terms", include_in_schema=False)
+async def terms_page() -> HTMLResponse:
+    return _legal_page(_LEGAL_PAGES["/terms"])
+
+
+@router.get("/security", include_in_schema=False)
+async def security_page() -> HTMLResponse:
+    return _legal_page(_LEGAL_PAGES["/security"])
+
+
+@router.get("/contact", include_in_schema=False)
+async def contact_page() -> HTMLResponse:
+    return _legal_page(_LEGAL_PAGES["/contact"])
 
 
 @router.get("/start", include_in_schema=False)

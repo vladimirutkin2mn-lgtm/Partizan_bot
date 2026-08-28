@@ -15,6 +15,9 @@ def test_customer_start_is_no_store_and_references_custom_goal_assets() -> None:
     assert '/start/assets/goal-dropdown.v1.js' in response.text
     assert '/start/assets/customer-account.v1.css' in response.text
     assert '<select id="goal">' in response.text
+    assert "AI customer acquisition system" in response.text
+    for href in ("/privacy", "/terms", "/security", "/contact"):
+        assert f'href="{href}"' in response.text
 
 
 def test_custom_goal_assets_are_allowlisted_and_served() -> None:

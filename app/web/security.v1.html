@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Security — Partizan</title>
+  <meta name="description" content="Security boundaries for Partizan accounts, provider access, acquisition budgets and paid execution.">
+  <meta name="theme-color" content="#090b0f">
+  <link rel="stylesheet" href="/site/assets/legal.v1.css">
+</head>
+<body>
+  <header class="legal-nav shell">
+    <a class="brand" href="/" aria-label="Partizan home"><span class="brand-mark">P</span><span class="brand-copy"><strong>Partizan</strong><small>AI customer acquisition system</small></span></a>
+    <a class="back-link" href="/">Back to Partizan ↗</a>
+  </header>
+  <main class="legal-main shell">
+    <aside class="legal-intro"><span class="eyebrow">Security</span><h1>Execution should fail closed, not fail open.</h1><p class="lede">Partizan may eventually touch valuable channel access and acquisition budget. The product is designed so research, connection and permission are separate states.</p><span class="updated">Last updated · 28 August 2026</span></aside>
+    <div class="legal-copy">
+      <section class="legal-section"><h2>Customer isolation</h2><p>Customer workspace routes require an authenticated session and enforce project ownership. Internal operator surfaces are separate from the customer workspace.</p></section>
+      <section class="legal-section"><h2>Provider credentials</h2><p>Connected provider credentials are handled server-side. Customer-facing pages are not intended to contain provider access tokens or production secrets. When a provider connection is absent or invalid, execution should remain unavailable rather than silently bypass the requirement.</p></section>
+      <section class="legal-section"><h2>Billing and acquisition budget</h2><p>Stripe-hosted checkout handles card entry. Funding an acquisition budget and being able to spend that budget are separate capabilities. Paid execution remains blocked unless the production spend rail, channel connection, project limits and other required safety checks are ready.</p></section>
+      <section class="legal-section"><h2>Measured evidence</h2><p>Public research sources do not count as customer conversions or permission to spend. Changes to a winning strategy require measured or replayable customer-event evidence under the evaluation rules.</p></section>
+      <section class="legal-section"><h2>Operational safeguards</h2><ul><li>production health and readiness checks;</li><li>restart-safe persisted state for important workflows;</li><li>budget and customer-cost limits;</li><li>channel-level execution modes;</li><li>reconciliation before treating paid execution as authoritative.</li></ul></section>
+      <section class="legal-section"><h2>What Partizan does not claim</h2><p>This page does not claim SOC 2, ISO 27001, PCI merchant certification, penetration-test coverage or any other certification that has not actually been completed. Stripe handles payment-card entry through its own checkout infrastructure.</p></section>
+      <section class="legal-section notice"><h2>Report a vulnerability</h2><p>Do not post credentials, exploit details or customer data into a normal public issue. Use the repository's private vulnerability-reporting path on GitHub when available. If that path is unavailable, open a minimal public issue asking for private security follow-up without including the sensitive details.</p><div class="contact-actions"><a class="button button-primary" href="https://github.com/vladimirutkin2mn-lgtm/Partizan_bot/security" target="_blank" rel="noopener noreferrer">Open Security on GitHub ↗</a></div></section>
+    </div>
+  </main>
+  <footer class="legal-footer shell"><span>© 2026 Partizan Labs</span><nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/security">Security</a><a href="/contact">Contact</a></nav></footer>
+</body>
+</html>
