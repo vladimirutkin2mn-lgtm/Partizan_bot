@@ -48,7 +48,7 @@ def _project_product_id(session_token: str | None, project_id: UUID) -> UUID:
     if not product_id:
         raise HTTPException(
             status_code=409,
-            detail="Complete deep research before opening Growth AutoResearch experiments.",
+            detail="Initial market research has not finished yet.",
         )
     return UUID(str(product_id))
 
