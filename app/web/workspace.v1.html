@@ -70,7 +70,7 @@
       <section class="tab-panel" data-tab-panel="overview">
         <section class="hero-card panel compact-hero">
           <div>
-            <span class="eyebrow">Autonomous customer acquisition</span>
+            <span class="eyebrow">Customer acquisition</span>
             <h1 id="workspace-status">Partizan is getting ready.</h1>
             <p id="workspace-summary" class="lede hidden" aria-hidden="true"></p>
             <div class="project-line"><span id="project-market">—</span><i></i><span id="project-goal">—</span></div>
@@ -81,28 +81,48 @@
           </div>
         </section>
 
-        <section class="metric-grid metric-grid-primary" aria-label="Acquisition results">
+        <section id="activation-card" class="panel activation-card hidden">
+          <div class="activation-head">
+            <div><span class="eyebrow">Get started</span><h2>Let's get your first acquisition test running.</h2></div>
+            <span id="activation-progress" class="status-pill">2 of 6</span>
+          </div>
+          <p class="section-copy">Partizan already has your product and first acquisition direction. Finish the few decisions only you can make; Partizan handles the research and next-test logic.</p>
+          <ol class="activation-list">
+            <li id="activation-product"><span class="activation-index">1</span><div><strong>Product understood</strong><small>Your free scan created the project context.</small></div><span class="activation-step-state">Done</span></li>
+            <li id="activation-direction"><span class="activation-index">2</span><div><strong>Initial direction mapped</strong><small>Partizan has the first channel hypotheses to investigate.</small></div><span class="activation-step-state">Done</span></li>
+            <li id="activation-budget"><span class="activation-index">3</span><div><strong>Add acquisition budget</strong><small>Funding starts the included market research and gives Partizan a bounded budget to work with.</small></div><span class="activation-step-state">Next</span></li>
+            <li id="activation-channel"><span class="activation-index">4</span><div><strong>Choose a channel for testing</strong><small>Select Auto only where you want execution; Research only stays non-executing.</small></div><span class="activation-step-state">Waiting</span></li>
+            <li id="activation-limit"><span class="activation-index">5</span><div><strong>Set the most you'd pay for one customer</strong><small>You decide the economic limit. Partizan decides which eligible test fits inside it.</small></div><span class="activation-step-state">Waiting</span></li>
+            <li id="activation-test"><span class="activation-index">6</span><div><strong>Partizan starts the first eligible test</strong><small>Research, channel access and safety gates must be ready first.</small></div><span class="activation-step-state">Partizan</span></li>
+          </ol>
+          <div class="activation-action">
+            <button id="activation-primary" class="button button-primary" type="button">Add acquisition budget →</button>
+            <p id="activation-note" class="note">Adding budget does not by itself authorize paid advertising.</p>
+          </div>
+        </section>
+
+        <section id="performance-metrics" class="metric-grid metric-grid-primary" aria-label="Acquisition results">
           <article id="growth-balance-metric" class="growth-balance-metric">
             <div class="growth-balance-metric-main">
               <div class="growth-balance-value">
-                <span>Growth Balance</span>
+                <span>Acquisition budget</span>
                 <strong id="metric-balance">$0</strong>
                 <small>available</small>
               </div>
               <button id="overview-fund-button" class="button button-primary growth-balance-cta" type="button" aria-describedby="overview-balance-benefit">
                 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7.5h14.5A1.5 1.5 0 0 1 20 9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18V7.5Zm0 0V6a1.5 1.5 0 0 1 1.5-1.5H16"/><path d="M15.5 12h4.5v4h-4.5a2 2 0 1 1 0-4Z"/></svg>
-                <span id="overview-fund-label">Fund Balance</span>
+                <span id="overview-fund-label">Add funds</span>
                 <b aria-hidden="true">→</b>
               </button>
             </div>
-            <div id="overview-balance-benefit" class="growth-balance-benefit"><i aria-hidden="true">✦</i><span>Unlock initial market research and continuous learning</span></div>
+            <div id="overview-balance-benefit" class="growth-balance-benefit"><i aria-hidden="true">✦</i><span>Start market research and keep experiments funded</span></div>
           </article>
           <article><span>Acquisition spend</span><strong id="metric-spend">$0</strong><small>across channels</small></article>
           <article><span>Customers</span><strong id="metric-customers">0</strong><small>paid customers</small></article>
           <article><span>CAC</span><strong id="metric-cac">—</strong><small>blended cost</small></article>
         </section>
 
-        <section class="overview-grid">
+        <section id="performance-overview" class="overview-grid">
           <article class="panel current-card">
             <div class="section-head"><div><span class="eyebrow">Current work</span><h2>What Partizan is doing</h2></div><span id="work-state" class="status-pill">Waiting</span></div>
             <div id="current-work" class="activity-list"></div>
@@ -115,7 +135,7 @@
           </article>
         </section>
 
-        <section class="panel overview-finance">
+        <section id="performance-finance" class="panel overview-finance">
           <div><span>Revenue</span><strong id="metric-revenue">$0</strong><small>attributed</small></div>
           <div><span>Partizan fee</span><strong id="metric-fee">$0</strong><small id="metric-fee-note">10% of actual spend</small></div>
           <div class="overview-finance-action"><span>Controls</span><strong>Budget & limits</strong><button class="text-button" type="button" data-open-tab="settings">Open settings →</button></div>
@@ -141,7 +161,7 @@
       <section class="tab-panel hidden" data-tab-panel="activity">
         <section class="panel research-card">
           <div class="section-head"><div><span class="eyebrow">Market research</span><h2 id="research-title">Partizan will map the market after funding</h2></div><span id="research-state" class="status-pill">Not started</span></div>
-          <p id="research-copy" class="section-copy">Funding Growth Balance includes the deep research. There is no separate $49 charge for autonomous execution.</p>
+          <p id="research-copy" class="section-copy">Adding an acquisition budget includes the initial market research. There is no separate $49 research charge for a funded workspace.</p>
           <button id="research-button" class="button button-secondary hidden" type="button">Continue research →</button>
           <div id="research-progress" class="research-progress hidden"><span class="spinner"></span><div><strong>Partizan is mapping your market…</strong><small>Finding customer segments and concrete acquisition opportunities.</small></div></div>
           <div id="clarification" class="clarification hidden"></div>
@@ -157,24 +177,24 @@
       <section class="tab-panel hidden" data-tab-panel="settings">
         <section class="settings-grid">
           <article class="panel balance-card">
-            <div class="section-head"><div><span class="eyebrow">Growth Balance</span><h2>Budget</h2></div><span id="balance-state" class="status-pill">Not funded</span></div>
-            <p class="section-copy">Partizan cannot spend beyond the funded balance and your saved limits.</p>
+            <div class="section-head"><div><span class="eyebrow">Acquisition budget</span><h2>Available budget</h2></div><span id="balance-state" class="status-pill">Not funded</span></div>
+            <p class="section-copy">Partizan cannot use more acquisition money than you add here, and paid execution still needs its normal channel and spend permissions.</p>
             <div class="balance-amount"><span>Available now</span><strong id="balance-available">$0</strong></div>
             <div class="balance-mini"><span><b id="balance-capacity">$0</b> acquisition capacity</span><span><b id="balance-used">$0</b> used</span></div>
             <form id="fund-form" class="inline-form">
               <label for="fund-amount">Add funds</label>
               <div class="money-field"><span>$</span><input id="fund-amount" type="number" min="1" max="100000" step="1" value="1000" required></div>
-              <button id="fund-button" class="button button-primary" type="submit">Fund Growth Balance →</button>
+              <button id="fund-button" class="button button-primary" type="submit">Add funds securely →</button>
             </form>
             <p id="balance-note" class="note"></p>
           </article>
 
           <article class="panel guardrail-card">
-            <div class="section-head"><div><span class="eyebrow">Guardrails</span><h2>Maximum cost per customer</h2></div><span class="status-pill">Your limit</span></div>
-            <p class="section-copy">Partizan can decide what to test, but not how much a customer is worth to you.</p>
+            <div class="section-head"><div><span class="eyebrow">Your limit</span><h2>What's the most you'd pay for one new customer?</h2></div><span class="status-pill">Maximum CAC</span></div>
+            <p class="section-copy">You set the number. Partizan can choose eligible tests, but it cannot decide what a customer is worth to your business.</p>
             <form id="guardrail-form" class="guardrail-form">
-              <div><label for="max-cac">Maximum CAC</label><div class="money-field"><span>$</span><input id="max-cac" type="number" min="1" max="100000" step="1" value="30" required></div></div>
-              <label class="check-row"><input id="spend-confirm" type="checkbox" required><span>I authorize eligible paid experiments within Growth Balance and this limit.</span></label>
+              <div><label for="max-cac">Maximum CAC <small>cost per acquired customer</small></label><div class="money-field"><span>$</span><input id="max-cac" type="number" min="1" max="100000" step="1" value="30" required></div></div>
+              <label class="check-row"><input id="spend-confirm" type="checkbox" required><span>I authorize eligible paid tests within this acquisition budget and this customer-cost limit.</span></label>
               <button class="button button-secondary" type="submit">Save limit</button>
             </form>
           </article>
