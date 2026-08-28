@@ -1,5 +1,6 @@
 from functools import lru_cache
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,6 +26,7 @@ class Settings(BaseSettings):
     operator_auth_required: bool = False
     operator_api_key: SecretStr | None = None
     partizan_public_base_url: str | None = None
+    partizan_self_dogfood_product_id: UUID | None = None
     partizan_release_sha: str = "unknown"
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None
@@ -78,6 +80,7 @@ class Settings(BaseSettings):
         "stripe_issuing_webhook_api_version",
         "meta_oauth_app_id",
         "meta_oauth_api_version",
+        "partizan_self_dogfood_product_id",
         mode="before",
     )
     @classmethod
