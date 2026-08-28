@@ -74,11 +74,10 @@ def test_customer_start_sends_autonomous_customers_to_persistent_workspace() -> 
     assert page.status_code == 200
     assert "10% of acquisition spend" in page.text
     assert "Create workspace" in page.text
-    assert "Acquisition budget" in page.text
-    assert "Current work" in page.text
-    assert "Results" in page.text
-    assert "Channels" in page.text
-    assert "Limits" in page.text
+    assert "Keep going" in page.text
+    assert "Continuous learning" in page.text
+    assert "Recommended next move" in page.text
+    assert "Budget controls" in page.text
     assert 'id="register-form"' in page.text
     assert 'id="login-form"' in page.text
     assert 'href="/workspace"' in page.text
@@ -96,7 +95,7 @@ def test_customer_start_sends_autonomous_customers_to_persistent_workspace() -> 
     assert "redirectWorkspace" in javascript.text
 
     assert "Continuous learning" in page.text
-    assert "Find</span><i>→</i><span>Test" in page.text
+    assert "Find</span><i>→</i><span>Try" in page.text
     assert "Initial market research and continuous learning are included" in page.text
     assert "Adding money does not by itself authorize paid advertising" in page.text
     assert "one full market-research pass" in page.text
