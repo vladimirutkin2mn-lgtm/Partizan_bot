@@ -24,6 +24,14 @@ def test_marketing_header_exposes_direct_customer_workspace_entry() -> None:
     assert "r/Freelancers" in html
     assert "Gabrielle Talks Money" in html
     assert "Research evidence is not conversion evidence." in html
+    assert "Find → Test → Learn." in html
+    assert 'id="pricing"' in html
+    assert 'id="safety"' in html
+    assert "Simple pricing." in html
+    assert "No monthly fee" in html
+    assert "Account connection available; paid spend stays gated by the production spend rail." in html
+    assert "Research only today." in html
+    assert "Ask above $200" not in html
     assert "Customers at $24 CAC" not in html
     assert "~41" not in html
     assert "/site/assets/landing.account.v1.css" in html
@@ -53,4 +61,6 @@ def test_marketing_account_entry_detects_existing_customer_session_fail_safe() -
     assert ".budget-story-grid" in landing_css.text
     assert ".research-proof-grid" in landing_css.text
     assert ".research-opportunity" in landing_css.text
+    assert ".pricing-grid" in landing_css.text
+    assert ".capability-matrix" in landing_css.text
     assert "@media (max-width: 760px)" in account_css.text
