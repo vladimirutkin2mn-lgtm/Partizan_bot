@@ -22,56 +22,73 @@
     <div class="progress" aria-label="Customer journey"><i class="on"></i><i id="progress-2"></i><i id="progress-3"></i></div>
 
     <section id="stage-input" class="stage">
-      <span class="eyebrow">Free acquisition pre-scan · no card required</span>
-      <h1>Tell Partizan what you sell.<br><em>See the first hypotheses.</em></h1>
-      <p class="lede">Give Partizan a short description of your product, market and test budget. The free scan gives you a fast starting hypothesis; deep research verifies it and finds the actual opportunities.</p>
-      <form id="preview-form" class="panel form-panel">
-        <label for="website">Website or landing page <span class="optional">optional</span></label>
-        <input id="website" type="url" inputmode="url" placeholder="https://yourproduct.com">
-        <p class="fine">Add it if you have one. Partizan only needs a live destination before it sends paid traffic.</p>
-        <label for="brief">What do you sell?</label>
-        <textarea id="brief" minlength="20" required placeholder="Example: AI bookkeeping assistant for US freelancers. $19/month subscription."></textarea>
-        <div class="form-grid">
-          <div><label for="budget">Test budget</label><div class="money-input"><span>$</span><input id="budget" type="number" min="1" max="100000" step="1" value="1000" required></div></div>
-          <div><label for="market">Market</label><input id="market" value="United States" required></div>
-          <div><label for="goal">Goal</label><select id="goal"><option>Get paying customers</option><option>Get signups</option><option>Validate demand</option></select></div>
+      <span class="eyebrow">Free scan · no card required</span>
+      <h1>Give Partizan your product.<br><em>See where customers may be.</em></h1>
+      <p class="lede">Start with your website. If you do not have one, describe the product instead. Partizan uses the free scan to form a first acquisition hypothesis; full market research verifies the concrete opportunities.</p>
+      <form id="preview-form" class="panel form-panel start-simple-form">
+        <div class="website-first">
+          <label for="website">Paste your website</label>
+          <input id="website" type="url" inputmode="url" placeholder="https://yourproduct.com">
+          <button id="no-website-button" class="text-button inline-toggle" type="button">I don't have a website</button>
         </div>
-        <button class="button button-primary" type="submit">Run free pre-scan →</button>
-        <p class="fine">Free. No card required. No deep-search providers are used for this first hypothesis.</p>
+        <div id="brief-fallback" class="brief-fallback hidden">
+          <label for="brief">Describe your product</label>
+          <textarea id="brief" minlength="20" placeholder="Example: AI bookkeeping assistant for freelancers. $19/month."></textarea>
+          <p class="fine">One or two sentences are enough. Partizan will ask for more only when it changes the acquisition plan.</p>
+        </div>
+        <input id="market" type="hidden" value="Auto-detect from product and website">
+        <div class="simple-intake-grid">
+          <div>
+            <label for="budget">How much can Partizan test with?</label>
+            <div class="money-input"><span>$</span><input id="budget" type="number" min="1" max="100000" step="1" value="1000" required></div>
+          </div>
+          <div>
+            <label for="goal">What matters most?</label>
+            <select id="goal">
+              <option value="Get paying customers">Paid customers</option>
+              <option value="Get leads">Leads</option>
+              <option value="Get signups">Signups</option>
+              <option value="Grow revenue">Revenue</option>
+            </select>
+          </div>
+        </div>
+        <button class="button button-primary" type="submit">Run free scan →</button>
+        <p class="fine">The free scan is a fast hypothesis. It does not pretend that public-web research or paid experiments have already happened.</p>
       </form>
     </section>
 
     <section id="stage-preview" class="stage hidden">
-      <span class="eyebrow">Initial acquisition hypotheses</span>
-      <h1>Partizan has a place to start.<br><em>Choose how far it should go.</em></h1>
+      <span class="eyebrow">Your free scan</span>
+      <h1>Here are the strongest<br><em>places to start.</em></h1>
       <p id="preview-summary" class="lede"></p>
+      <div id="preview-highlights" class="preview-highlights"></div>
       <div id="direction-grid" class="direction-grid"></div>
 
       <section class="panel autonomous-choice">
         <div>
-          <span class="eyebrow">Recommended · autonomous customer acquisition</span>
-          <h2>Want customers, not another report?</h2>
-          <p>Create your Partizan workspace. Partizan does not stop after the first plan: it keeps researching, proposes bounded challengers, waits for real downstream evidence and uses what it learns to choose the next test.</p>
+          <span class="eyebrow">Recommended · Partizan with acquisition budget</span>
+          <h2>Want Partizan to test what it finds?</h2>
+          <p>Create a workspace, add an acquisition budget and let Partizan keep researching. It prepares the smallest useful tests, runs what is eligible, measures real outcomes and uses the result to choose what to try next.</p>
           <div class="autoresearch-included">
-            <div class="autoresearch-included-head"><span>Included with Growth Balance</span><strong>Continuous learning</strong></div>
-            <div class="autoresearch-loop" aria-label="Partizan continuous learning loop"><span>Research</span><i>→</i><span>Test</span><i>→</i><span>Measure</span><i>→</i><span>Learn</span><i>→</i><span>Test again</span></div>
-            <p>AutoResearch changes only bounded acquisition variables and never treats public research as proof that a tactic won.</p>
+            <div class="autoresearch-included-head"><span>Included with acquisition budget</span><strong>Continuous learning</strong></div>
+            <div class="autoresearch-loop" aria-label="Partizan continuous learning loop"><span>Find</span><i>→</i><span>Test</span><i>→</i><span>Measure</span><i>→</i><span>Learn</span></div>
+            <p>Research suggests what is worth testing. Only measured customer outcomes decide what worked.</p>
           </div>
-          <small>No monthly subscription. Deep research and continuous AutoResearch are included. Funding does not by itself authorize ad spend; paid execution stays gated until the controlled spend rail and channel permissions are ready.</small>
+          <small>No monthly subscription. Initial market research and continuous learning are included. Adding money does not by itself authorize paid advertising; execution still follows the normal spend and channel controls.</small>
         </div>
         <div class="autonomous-choice-actions">
-          <div><strong id="autonomous-price">10% of acquisition spend</strong><span>from Growth Balance · no monthly fee</span></div>
+          <div><strong id="autonomous-price">10% of acquisition spend</strong><span>only on money actually put to work · no monthly fee</span></div>
           <button id="autonomous-button" class="button button-primary" type="button">Create workspace →</button>
-          <button id="research-only-link" class="text-button" type="button">I only want the Acquisition Plan</button>
+          <button id="research-only-link" class="text-button" type="button">I only want the $49 Acquisition Plan</button>
         </div>
       </section>
 
       <section id="account-gate" class="panel account-gate hidden">
         <div class="account-gate-copy">
           <span class="eyebrow">Your Partizan workspace</span>
-          <h2>Keep your balance, integrations and results in one place.</h2>
-          <p>Autonomous acquisition is an ongoing relationship, so Partizan asks you to create an account before money or integrations are connected.</p>
-          <div class="account-benefits"><span>Growth Balance</span><span>Continuous learning</span><span>Current work</span><span>Results</span><span>Integrations</span><span>Guardrails</span></div>
+          <h2>Keep the budget, channels and results in one place.</h2>
+          <p>Partizan keeps learning over time, so create an account before money or integrations are connected.</p>
+          <div class="account-benefits"><span>Acquisition budget</span><span>Continuous learning</span><span>Current work</span><span>Results</span><span>Channels</span><span>Limits</span></div>
         </div>
         <div class="account-auth">
           <form id="register-form" class="account-form">
@@ -92,26 +109,26 @@
       </section>
 
       <section id="acquisition-plan-card" class="locked panel">
-        <div class="locked-head"><div><span class="eyebrow">Acquisition Plan only</span><h2 id="scope-title">Deep research, without execution</h2></div><span class="lock">⌁</span></div>
+        <div class="locked-head"><div><span class="eyebrow">Acquisition Plan</span><h2 id="scope-title">Go from hypotheses to a full acquisition map</h2></div><span class="lock">⌁</span></div>
         <div class="research-value-grid">
-          <article><strong>Ranked customer segments</strong><span>Who is most likely to buy and why.</span></article>
-          <article><strong>Named acquisition opportunities</strong><span>Actual communities, creators, audiences and partner surfaces when evidence exists.</span></article>
-          <article><strong>Evidence behind the recommendation</strong><span>The free hypotheses are checked before you treat them as a plan.</span></article>
+          <article><strong>Who is most likely to buy</strong><span>Ranked customer segments and the reasons behind them.</span></article>
+          <article><strong>Where to reach them</strong><span>Named communities, creators, search clusters and other concrete opportunities when evidence exists.</span></article>
+          <article><strong>Why Partizan picked them</strong><span>Supporting public-web evidence and recommended first tests.</span></article>
         </div>
         <div class="unlock-row">
-          <div><strong id="unlock-price">Unlock Acquisition Plan — $49</strong><p>One paid research pass for customers who want the intelligence but do not want Partizan to execute autonomously.</p></div>
-          <button id="checkout-button" class="button button-primary" type="button">Unlock & research →</button>
+          <div><strong id="unlock-price">Get the full Acquisition Plan — $49 once</strong><p>For founders who want the research and recommended tests without giving Partizan an acquisition budget.</p></div>
+          <button id="checkout-button" class="button button-primary" type="button">Get full acquisition map →</button>
         </div>
-        <p class="fine">One-time purchase: one deep research pass and its evidence. It does not keep running acquisition experiments after delivery. If you choose the funded workspace instead, the same deep research plus continuous AutoResearch are included and there is no separate $49 charge.</p>
+        <p class="fine">One-time purchase: one full market-research pass and its evidence. A funded workspace includes the same initial research plus continuous learning, so there is no separate $49 research charge.</p>
       </section>
     </section>
 
     <section id="stage-unlocked" class="stage hidden">
       <span class="eyebrow">Acquisition Plan</span>
       <h1>Partizan is mapping the market.<br><em>Your research stays focused.</em></h1>
-      <p class="lede">This is the research-only path. No Growth Balance, autonomous spend or integrations are required.</p>
+      <p class="lede">This is the research-only path. No acquisition budget or integrations are required.</p>
       <div id="payment-status" class="status-card"><span class="status-dot"></span><div><strong>Ready</strong><small>Your Acquisition Plan is available.</small></div></div>
-      <button id="research-button" class="button button-primary" type="button">Build acquisition plan →</button>
+      <button id="research-button" class="button button-primary" type="button">Build full acquisition map →</button>
       <div id="research-progress" class="research-progress hidden"><span class="spinner"></span><div><strong>Partizan is mapping your market…</strong><small>Finding customer segments and concrete distribution opportunities.</small></div></div>
       <div id="clarification-box" class="panel clarification hidden"></div>
       <div id="research-results" class="strategy-results hidden"></div>
