@@ -45,3 +45,5 @@
   .activation-action{align-items:stretch;flex-direction:column}
   .activation-action .button{width:100%}
 }
+
+.activation-card:not(.hidden) ~ .ar-overview{display:none}
