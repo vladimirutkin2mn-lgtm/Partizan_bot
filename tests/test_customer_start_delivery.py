@@ -43,9 +43,14 @@ def test_customer_start_is_website_first_and_honest_about_the_free_scan() -> Non
     assert "Paste your website" in page.text
     assert "I don't have a website" in page.text
     assert 'id="brief-fallback" class="brief-fallback hidden"' in page.text
-    assert "How much can Partizan test with?" in page.text
+    assert "How much can you comfortably test with?" in page.text
     assert "What matters most?" in page.text
-    assert "Run free scan" in page.text
+    assert 'data-budget="10"' in page.text
+    assert 'data-budget="50"' in page.text
+    assert 'data-budget="100"' in page.text
+    assert 'data-budget="500"' in page.text
+    assert "The best first move may cost $0." in page.text
+    assert "Scan my product" in page.text
     assert "The free scan is a fast hypothesis" in page.text
     assert "fake" not in page.text.lower()
     assert 'id="website" type="url" inputmode="url" placeholder=' in page.text
@@ -53,6 +58,8 @@ def test_customer_start_is_website_first_and_honest_about_the_free_scan() -> Non
     assert "brief: brief || null" in javascript.text
     assert "website_url: website || null" in javascript.text
     assert "showBriefFallback" in javascript.text
+    assert "const budgetPresets" in javascript.text
+    assert "selectBudgetPreset" in javascript.text
     assert "masked_opportunities.map" not in javascript.text
     assert "Creator @••" not in page.text
 
