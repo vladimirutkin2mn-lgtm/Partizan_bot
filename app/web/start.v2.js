@@ -478,7 +478,13 @@
 
   const params = new URLSearchParams(window.location.search);
   const initialBudget = Number(params.get('budget'));
-  if (Number.isFinite(initialBudget) && initialBudget >= 1) $('budget').value = String(initialBudget);
+  if (Number.isFinite(initialBudget) && initialBudget >= 1) {
+    $('budget').value = String(initialBudget);
+    const matchingPreset = budgetPresets.find(
+      (button) => button.dataset.budget === String(initialBudget),
+    );
+    budgetPresets.forEach((button) => button.classList.toggle('active', button === matchingPreset));
+  }
 
   const bootstrapCallbacks = async () => {
     const projectId = params.get('project');
