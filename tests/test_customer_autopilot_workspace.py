@@ -53,7 +53,11 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert 'id="overview-fund-button"' in workspace.text
     assert 'id="overview-fund-label"' in workspace.text
     assert "Acquisition budget" in workspace.text
-    assert "Start market research and keep experiments funded" in workspace.text
+    assert "Start market research and keep tests funded" in workspace.text
+    assert "Tests & decisions" in workspace.text
+    assert "AI customer acquisition system" in workspace.text
+    for href in ("/privacy", "/terms", "/security", "/contact"):
+        assert f'href="{href}"' in workspace.text
     assert "Let's get your first acquisition test running." in workspace.text
     assert 'id="activation-card"' in workspace.text
     assert 'id="activation-primary"' in workspace.text
@@ -74,6 +78,7 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert ".channel-table" in stylesheet.text
     assert ".activation-card" in stylesheet.text
     assert ".activation-list" in stylesheet.text
+    assert ".product-legal-footer" in stylesheet.text
 
 
 def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> None:
