@@ -98,7 +98,7 @@ _LANDING_ACCOUNT_STYLESHEET = (
     '<link rel="stylesheet" href="/site/assets/landing.account.v1.css">'
 )
 _LANDING_START_CTA = (
-    '<a class="button button-nav" href="/start">Open Partizan <span>↗</span></a>'
+    '<a class="button button-nav" href="/start">Start free <span>↗</span></a>'
 )
 _LANDING_NAV_ACTIONS = (
     '<div class="nav-actions">'

@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>Partizan — AI that finds and acquires customers</title>
-  <meta name="description" content="Tell Partizan what you sell and your budget. It finds audiences, discovers acquisition channels, launches experiments, measures results, learns and scales what works.">
+  <title>Partizan — find where your customers are and test what works</title>
+  <meta name="description" content="Tell Partizan what you sell. It finds where your customers already are, recommends the smallest useful acquisition tests and learns from real results.">
   <meta name="theme-color" content="#090b0f">
-  <meta property="og:title" content="Partizan — AI that finds and acquires customers">
-  <meta property="og:description" content="From product brief to real acquisition experiments — with one autonomous growth operator.">
+  <meta property="og:title" content="Partizan — find where your customers are and test what works">
+  <meta property="og:description" content="Give Partizan your product and budget. It researches where customers are, tests the available paths and learns what works.">
   <meta property="og:type" content="website">
   <link rel="stylesheet" href="/site/assets/landing.v1.css">
 </head>
@@ -28,51 +28,100 @@
         <a href="#channels">Channels</a>
         <a href="#autonomy">Autonomy</a>
       </div>
-      <a class="button button-nav" href="/start">Open Partizan <span>↗</span></a>
+      <a class="button button-nav" href="/start">Start free <span>↗</span></a>
     </nav>
   </header>
 
   <main>
-    <section class="hero shell">
+    <section class="hero shell hero-p0">
       <div class="hero-copy reveal">
-        <div class="eyebrow"><span class="pulse-dot"></span> AI growth operator for founders</div>
-        <h1>Tell Partizan what you sell.<br><em>It finds the customers.</em></h1>
-        <p class="hero-lede">Give it your product, budget and goal. Partizan finds the audience, discovers where they already are, launches acquisition experiments, measures what happens and doubles down on what works.</p>
+        <div class="eyebrow"><span class="pulse-dot"></span> AI customer acquisition system</div>
+        <h1>Tell Partizan what you sell.<br><em>It finds where your customers are — and tests what works.</em></h1>
+        <p class="hero-lede">Give Partizan your product and budget. It researches where potential customers already spend attention, proposes the smallest useful tests, measures real outcomes and uses that evidence to choose what to try next.</p>
         <div class="hero-actions">
-          <a class="button button-primary" href="/start">Start finding customers <span>→</span></a>
-          <a class="text-link" href="#how">See how it works <span>↓</span></a>
+          <a class="button button-primary" href="/start">Start free <span>→</span></a>
+          <a class="text-link" href="#budget-story">See the $1,000 example <span>↓</span></a>
         </div>
-        <div class="hero-proof" aria-label="Partizan capabilities">
-          <span>Find audiences</span><i></i><span>Discover channels</span><i></i><span>Launch</span><i></i><span>Measure</span><i></i><span>Learn</span>
-        </div>
+        <p class="hero-no-card">No card required.</p>
       </div>
+    </section>
 
-      <div class="hero-console reveal delay-1" aria-label="Partizan budget planner preview">
-        <div class="console-top">
-          <div><span class="console-light"></span><span>Partizan · illustrative planning</span></div>
-          <span class="status"><i></i> autonomous loop</span>
-        </div>
-        <div class="console-body">
-          <label for="demo-product">What are you selling?</label>
-          <div class="demo-input" id="demo-product">AI bookkeeping assistant for US freelancers</div>
-          <div class="budget-row">
-            <div>
-              <label for="budget-range">Test budget</label>
-              <strong id="budget-value">$1,000</strong>
-            </div>
-            <input id="budget-range" type="range" min="250" max="5000" step="250" value="1000" aria-label="Test budget">
+    <section id="budget-story" class="section shell budget-story">
+      <div class="section-intro reveal">
+        <span class="kicker">Built for the first $1,000</span>
+        <h2>You have $1,000.<br><em>Where should it go?</em></h2>
+        <p>Partizan is built to learn before it scales. Instead of putting the whole budget into one channel, it researches the market, proposes a few small tests and keeps most of the money available until evidence arrives.</p>
+      </div>
+      <div class="budget-story-grid">
+        <article class="budget-brief reveal">
+          <span class="mini-kicker">Example product</span>
+          <h3>AI bookkeeping for freelancers</h3>
+          <div class="budget-brief-row"><span>Market</span><strong>United States</strong></div>
+          <div class="budget-brief-row"><span>Budget</span><strong>$1,000</strong></div>
+          <div class="budget-brief-row"><span>Goal</span><strong>Paying customers</strong></div>
+          <div class="budget-capacity-card">
+            <span>Example target customer cost</span>
+            <strong>$24</strong>
+            <small>$1,000 budget capacity: up to <b>41 customers</b> if customers actually cost $24. This is math, not a Partizan forecast.</small>
           </div>
-          <div class="console-result">
-            <span>Example plan for this budget</span>
-            <div class="result-grid">
-              <article><small>Channels to test</small><strong id="channel-count">4</strong></article>
-              <article><small>Experiments</small><strong id="experiment-count">7</strong></article>
-              <article class="accent"><small>Customers at $24 CAC</small><strong id="customer-count">~41</strong></article>
-            </div>
-            <p><span class="spark">✦</span> The customer count is simple budget capacity at an example $24 CAC, not a forecast. Partizan measures the real CAC before it reallocates spend.</p>
-          </div>
+        </article>
+        <div class="test-stack reveal delay-1">
+          <article class="test-card">
+            <div><span class="test-channel">Community</span><h3>Reddit research + assisted test</h3></div>
+            <strong>$120</strong>
+            <p>Validate a high-intent problem angle in a relevant public community before committing more budget.</p>
+          </article>
+          <article class="test-card">
+            <div><span class="test-channel">Creator</span><h3>Creator outreach</h3></div>
+            <strong>$180</strong>
+            <p>Prepare a small creator test where the audience already overlaps with freelancers handling their own finance admin.</p>
+          </article>
+          <article class="test-card">
+            <div><span class="test-channel">Paid</span><h3>Meta experiment</h3></div>
+            <strong>$100</strong>
+            <p>Run only when the account, spend rail and normal channel permissions are ready.</p>
+          </article>
+          <article class="test-card reserve-card">
+            <div><span class="test-channel">Reserve</span><h3>Wait for evidence</h3></div>
+            <strong>$600</strong>
+            <p>Observe results → learn → reallocate the remaining budget toward the strongest signal.</p>
+          </article>
+          <p class="test-stack-note">Illustrative starting allocation. It shows the decision logic, not promised performance.</p>
         </div>
       </div>
+    </section>
+
+    <section id="results" class="section shell research-proof">
+      <div class="section-intro reveal">
+        <span class="kicker">Research proof</span>
+        <h2>See what Partizan actually finds.</h2>
+        <p>This example uses real public-web sources for the same kind of product. The structure mirrors what Partizan keeps in the workspace: where the audience is, why it matters, the evidence and what can actually happen next. Research evidence is not conversion evidence.</p>
+      </div>
+      <div class="research-proof-grid">
+        <article class="research-opportunity reveal">
+          <div class="proof-card-head"><span class="proof-type">Community</span><span class="proof-status assisted">Assisted</span></div>
+          <h3>r/Freelancers</h3>
+          <p class="proof-rationale">Freelancers publicly describe bookkeeping, reconciliation and tax admin as time-consuming work they would rather avoid.</p>
+          <div class="proof-evidence"><span>Evidence</span><a href="https://www.reddit.com/r/Freelancers/comments/1tio2mo/bookkeeping_for_a_small_business_is_harder_than_i/" target="_blank" rel="noopener noreferrer">Recent bookkeeping discussion ↗</a></div>
+          <div class="proof-action"><span>Partizan would propose</span><strong>Test a helpful community angle around reducing finance admin.</strong></div>
+        </article>
+        <article class="research-opportunity reveal delay-1">
+          <div class="proof-card-head"><span class="proof-type">Creator</span><span class="proof-status assisted">Assisted</span></div>
+          <h3>Gabrielle Talks Money</h3>
+          <p class="proof-rationale">A CPA-led creator audience already consumes content about sole-proprietor bookkeeping and taxes — a strong audience-overlap signal for this product.</p>
+          <div class="proof-evidence"><span>Evidence</span><a href="https://www.youtube.com/watch?v=iEwkd2FM1bQ" target="_blank" rel="noopener noreferrer">Bookkeeping & tax content ↗</a></div>
+          <div class="proof-action"><span>Partizan would propose</span><strong>Prepare a creator outreach or small sponsored-test brief.</strong></div>
+        </article>
+        <article class="research-opportunity reveal delay-2">
+          <div class="proof-card-head"><span class="proof-type">Search / SEO</span><span class="proof-status research">Research only</span></div>
+          <h3>“freelancer bookkeeping + taxes”</h3>
+          <p class="proof-rationale">Recurring public questions around bookkeeping, accounting and 1099 taxes reveal a concrete problem/search cluster worth researching before any paid-search integration exists.</p>
+          <div class="proof-evidence"><span>Evidence</span><a href="https://www.reddit.com/r/Freelancers/comments/1uvqhbp/taxes/" target="_blank" rel="noopener noreferrer">Recent tax-intent discussion ↗</a></div>
+          <div class="proof-action"><span>Partizan would propose</span><strong>Research a content/search test. No automatic publishing is implied.</strong></div>
+        </article>
+      </div>
+      <p class="research-proof-note">Public research can tell Partizan what is worth testing. Only measured visits, signups, paid customers and spend can tell it what won.</p>
+      <a class="button button-secondary proof-start-cta" href="/start">Start free <span>→</span></a>
     </section>
 
     <section class="trust-strip">
@@ -194,25 +243,6 @@
       </div>
     </section>
 
-    <section class="section shell proof-section">
-      <div class="proof-copy reveal">
-        <span class="kicker">04 · Built for the first $1,000</span>
-        <h2>You bring the budget.<br><em>Partizan builds the learning loop.</em></h2>
-        <p>The first goal is not “do marketing everywhere.” It is to spend the smallest useful amount of money to discover where customers respond — then concentrate effort there.</p>
-        <a class="button button-primary" href="/start">Give Partizan a product <span>→</span></a>
-      </div>
-      <div class="budget-visual reveal delay-1">
-        <div class="budget-total"><small>Example test budget</small><strong>$1,000</strong></div>
-        <div class="allocation-list">
-          <div><span><i style="--w: 42%"></i></span><b>Paid tests</b><strong>$420</strong></div>
-          <div><span><i style="--w: 28%"></i></span><b>Creator tests</b><strong>$280</strong></div>
-          <div><span><i style="--w: 18%"></i></span><b>Communities</b><strong>$180</strong></div>
-          <div><span><i style="--w: 12%"></i></span><b>Reserve</b><strong>$120</strong></div>
-        </div>
-        <p>Illustrative allocation — Partizan changes the mix as evidence arrives.</p>
-      </div>
-    </section>
-
     <section class="section shell faq-section">
       <div class="section-intro reveal">
         <span class="kicker">05 · Questions</span>
@@ -244,7 +274,7 @@
         <h2>Stop collecting marketing ideas.<br><em>Start collecting customers.</em></h2>
         <p>Describe the product. Set the budget. Let Partizan build the first acquisition loop.</p>
         <p><strong>Acquisition Plan: $49 once.</strong> Autonomous execution has no monthly subscription; Partizan earns 10% of actual acquisition spend.</p>
-        <a class="button button-light" href="/start">Start finding customers <span>→</span></a>
+        <a class="button button-light" href="/start">Start free <span>→</span></a>
       </div>
     </section>
   </main>
@@ -252,7 +282,7 @@
   <footer class="footer shell">
     <a class="brand" href="/" aria-label="Partizan home"><span class="brand-mark">P</span><span class="brand-copy"><strong>Partizan</strong><small>Autonomous Growth</small></span></a>
     <p>Execution over recommendations.</p>
-    <a href="/start">Open Partizan ↗</a>
+    <a href="/start">Start free ↗</a>
   </footer>
 
   <script src="/site/assets/landing.v1.js" defer></script>
