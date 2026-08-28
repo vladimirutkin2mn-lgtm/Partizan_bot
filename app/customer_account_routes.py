@@ -48,6 +48,7 @@ from app.customer_schemas import (
     CustomerResearchResponse,
 )
 from app.growth_balance import growth_balance_service
+from app.self_dogfood import self_dogfood_service
 
 router = APIRouter(tags=["customer-account"])
 
@@ -121,6 +122,12 @@ def register_customer_account(
     ) as exc:
         raise _account_error(exc) from exc
     _set_session_cookie(response, session_token, settings)
+    self_dogfood_service.record_project_event_best_effort(
+        payload.project_id,
+        event_type="SIGNUP",
+        business_key=f"account:{account.account_id}",
+        settings=settings,
+    )
     return account
 
 
@@ -185,6 +192,7 @@ def claim_customer_project(
 @router.get("/customer/workspace/{project_id}", response_model=CustomerWorkspaceView)
 def get_customer_workspace(
     project_id: UUID,
+    settings: Annotated[Settings, Depends(get_settings)],
     session_token: Annotated[str | None, Depends(_session_cookie)] = None,
 ) -> CustomerWorkspaceView:
     account, customer_token = _project_access(session_token, project_id)
@@ -195,6 +203,12 @@ def get_customer_workspace(
     except (CustomerProjectNotFoundError, CustomerProjectAccessError, ValueError) as exc:
         raise _account_error(exc) from exc
     target_max_cac_raw = project_payload.get("autopilot_target_max_cac")
+    self_dogfood_service.record_project_event_best_effort(
+        project_id,
+        event_type="ACTIVATED",
+        business_key="first-authenticated-workspace",
+        settings=settings,
+    )
     return CustomerWorkspaceView(
         account=account,
         project=project,
