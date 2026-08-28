@@ -166,6 +166,8 @@ def test_experiments_assets_are_versioned_and_no_store() -> None:
     assert script.status_code == 200
     assert script.headers["cache-control"] == "no-store, max-age=0"
     assert "Continuous customer-acquisition tests" in script.text
+    assert "button.textContent = 'Tests'" in script.text
+    assert "Open tests →" in script.text
     assert "never count as visits, conversions, customers" in script.text
 
     assert "Continuous learning · included" in script.text
@@ -197,5 +199,9 @@ def test_experiments_assets_are_versioned_and_no_store() -> None:
     assert "Complete deep research to start continuous AutoResearch." not in script.text
     assert "AutoResearch is paused." not in script.text
     assert "Bounded challenger" not in script.text
+    assert "insufficient downstream evidence" not in script.text
+    assert "shadow research budget remains" not in script.text
+    assert "compare challengers" not in script.text
+    assert "No challenger is waiting" not in script.text
     assert ".ar-prelaunch" in css.text
     assert ".ar-prelaunch-actions" in css.text
