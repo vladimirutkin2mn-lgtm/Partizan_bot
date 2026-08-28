@@ -170,11 +170,11 @@ def test_start_page_routes_autonomous_execution_into_customer_workspace() -> Non
     assert "$149" not in page.text
     assert "No monthly subscription" in page.text
     assert "10% of acquisition spend" in page.text
-    assert "Growth Balance" in page.text
+    assert "Acquisition budget" in page.text
     assert "Current work" in page.text
     assert "Results" in page.text
-    assert "Integrations" in page.text
-    assert "Guardrails" in page.text
+    assert "Channels" in page.text
+    assert "Limits" in page.text
 
     assert start_javascript.status_code == 200
     assert "/autopilot/checkout" not in start_javascript.text
