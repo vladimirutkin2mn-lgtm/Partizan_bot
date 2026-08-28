@@ -60,7 +60,7 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert "AI customer acquisition system" in workspace.text
     for href in ("/privacy", "/terms", "/security", "/contact"):
         assert f'href="{href}"' in workspace.text
-    assert "Let's get your first acquisition test running." in workspace.text
+    assert "Let's find your first users." in workspace.text
     assert 'id="activation-card"' in workspace.text
     assert 'id="activation-primary"' in workspace.text
     assert "What's the most you'd pay for one new customer?" in workspace.text
@@ -117,10 +117,11 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
     assert "renderActivation" in workspace_source
     assert "activationAction === 'fund'" in workspace_source
     assert "activationAction === 'channels'" not in workspace_source
-    assert "activationAction === 'integration'" in workspace_source
-    assert "openIntegrationControls" in workspace_source
-    assert "autoChannel.platform !== 'INSTAGRAM' || Boolean(overview.meta.connected)" in workspace_source
-    assert "activationAction === 'limit'" in workspace_source
+    assert "activationAction === 'integration'" not in workspace_source
+    assert "autoChannel.platform !== 'INSTAGRAM' || Boolean(overview.meta.connected)" not in workspace_source
+    assert "activationAction === 'limit'" not in workspace_source
+    assert "See what Partizan found →" in workspace_source
+    assert "You should not have to choose a marketing channel" in workspace.text
     assert "amount.select()" in workspace_source
     assert "RESEARCH_ONLY" in workspace_source
     assert "/autopilot/checkout" not in workspace_source
