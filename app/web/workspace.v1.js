@@ -68,34 +68,12 @@
   };
 
 
-  const openLimitControls = () => {
-    setActiveTab('settings');
-    const card = document.querySelector('.guardrail-card');
-    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    const input = $('max-cac');
-    if (input) window.setTimeout(() => { input.focus(); input.select(); }, 180);
-  };
-
   const openResearchControls = () => {
     setActiveTab('activity');
     const card = document.querySelector('.research-card');
     if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
     const button = $('research-button');
     if (button && !button.classList.contains('hidden') && !button.disabled) button.click();
-  };
-
-  const openChannelControls = () => {
-    setActiveTab('channels');
-    const card = document.querySelector('.channels-card');
-    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  const openIntegrationControls = () => {
-    setActiveTab('settings');
-    const card = document.querySelector('.integrations-card');
-    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    const button = $('meta-connect');
-    if (button && !button.disabled) button.focus();
   };
 
   const setActivationStep = (id, complete, current, stateText) => {
@@ -601,9 +579,6 @@
   $('activation-primary').addEventListener('click', () => {
     if (activationAction === 'fund') return openFundingControls();
     if (activationAction === 'research') return openResearchControls();
-    if (activationAction === 'channels') return openChannelControls();
-    if (activationAction === 'integration') return openIntegrationControls();
-    if (activationAction === 'limit') return openLimitControls();
   });
 
   $('fund-form').addEventListener('submit', async (event) => {
