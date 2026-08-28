@@ -37,7 +37,7 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert 'data-tab="activity"' in workspace.text
     assert 'data-tab="settings"' in workspace.text
     assert 'id="channels-table-body"' in workspace.text
-    assert "Choose where Partizan can work" in workspace.text
+    assert "Partizan recommends. You control the boundaries." in workspace.text
     assert "Research only" in workspace.text
     assert "Off blocks new execution" in workspace.text
     assert 'id="fund-form"' in workspace.text
@@ -53,6 +53,8 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert 'id="overview-fund-button"' in workspace.text
     assert 'id="overview-fund-label"' in workspace.text
     assert "Acquisition budget" in workspace.text
+    assert "Approve only what the next move needs" in workspace.text
+    assert "Full market research" in workspace.text
     assert "Start market research and keep tests funded" in workspace.text
     assert "Tests & decisions" in workspace.text
     assert "AI customer acquisition system" in workspace.text
@@ -114,7 +116,7 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
     assert "$('overview-fund-label').textContent = 'Add funds'" in workspace_source
     assert "renderActivation" in workspace_source
     assert "activationAction === 'fund'" in workspace_source
-    assert "activationAction === 'channels'" in workspace_source
+    assert "activationAction === 'channels'" not in workspace_source
     assert "activationAction === 'integration'" in workspace_source
     assert "openIntegrationControls" in workspace_source
     assert "autoChannel.platform !== 'INSTAGRAM' || Boolean(overview.meta.connected)" in workspace_source
