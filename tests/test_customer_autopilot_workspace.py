@@ -110,6 +110,9 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
     assert "renderActivation" in workspace_source
     assert "activationAction === 'fund'" in workspace_source
     assert "activationAction === 'channels'" in workspace_source
+    assert "activationAction === 'integration'" in workspace_source
+    assert "openIntegrationControls" in workspace_source
+    assert "autoChannel.platform !== 'INSTAGRAM' || Boolean(overview.meta.connected)" in workspace_source
     assert "activationAction === 'limit'" in workspace_source
     assert "amount.select()" in workspace_source
     assert "RESEARCH_ONLY" in workspace_source
