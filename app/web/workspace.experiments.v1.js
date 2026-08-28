@@ -92,10 +92,10 @@
     if (!entitled) {
       return {
         status: 'Waiting for funding',
-        title: 'Fund Growth Balance to start the initial market research.',
-        detail: 'The funded workspace includes the initial research and continuous AutoResearch. Funding does not authorize unrestricted ad spend.',
+        title: 'Add acquisition budget to start the initial market research.',
+        detail: 'A funded workspace includes the initial research and continuous learning. Adding money does not authorize unrestricted ad spend.',
         action: 'fund',
-        actionLabel: 'Fund Growth Balance →',
+        actionLabel: 'Add acquisition budget →',
       };
     }
     if (project.research_state === 'NEEDS_INPUT') {
@@ -110,7 +110,7 @@
     return {
       status: 'Ready to research',
       title: 'Start the initial market research.',
-      detail: 'Partizan will map customer segments and acquisition opportunities first. Continuous AutoResearch starts from that evidence instead of from a guess.',
+      detail: 'Partizan will map customer segments and acquisition opportunities first. Continuous testing starts from that evidence instead of from a guess.',
       action: 'research',
       actionLabel: 'Start market research →',
     };
@@ -232,7 +232,7 @@
       : 'Each decision is stored and feeds the next hypothesis instead of resetting the plan.';
 
     $('autoresearch-overview-boundary').textContent = (
-      'Continuous AutoResearch is included in the funded workspace. Research can suggest what to test; '
+      'Continuous learning is included in the funded workspace. Research can suggest what to test; '
       + 'measured/replay evidence decides winners. Paid execution remains behind settlement and channel-permission gates.'
     );
   };
@@ -271,7 +271,7 @@
       <p>${escapeHtml(state.detail)}</p>
       <div class="ar-prelaunch-actions">
         <button id="autoresearch-prelaunch-action" class="button button-primary" type="button">${escapeHtml(state.actionLabel)}</button>
-        <small>No separate AutoResearch add-on is required.</small>
+        <small>Continuous learning is included — no separate add-on.</small>
       </div>`;
     node.classList.remove('hidden');
     const button = $('autoresearch-prelaunch-action');
@@ -350,7 +350,7 @@
 
     const control = $('autoresearch-control');
     control.classList.toggle('hidden', !data.configured);
-    control.textContent = data.paused ? 'Resume AutoResearch' : 'Pause AutoResearch';
+    control.textContent = data.paused ? 'Resume AutoResearch' : 'Pause testing';
     control.dataset.nextStatus = data.paused ? 'ACTIVE' : 'PAUSED';
     $('autoresearch-boundary').textContent = (
       'Research sources can justify what to test, but never count as visits, conversions, customers, '
@@ -435,7 +435,7 @@
           <div><span>Testing now</span><strong id="autoresearch-overview-test">Loading…</strong><small id="autoresearch-overview-test-detail">Checking the active challenger.</small></div>
           <div><span>Learning</span><strong id="autoresearch-overview-learning">Loading…</strong><small id="autoresearch-overview-learning-detail">Checking recent decisions.</small></div>
         </div>
-        <p id="autoresearch-overview-boundary" class="note ar-overview-boundary">Loading AutoResearch safety state…</p>`;
+        <p id="autoresearch-overview-boundary" class="note ar-overview-boundary">Loading safety state…</p>`;
       const finance = overviewPanel.querySelector('.overview-finance');
       overviewPanel.insertBefore(overviewCard, finance || null);
       $('autoresearch-overview-open').addEventListener('click', () => {
@@ -454,10 +454,10 @@
     panel.dataset.tabPanel = 'experiments';
     panel.innerHTML = `
       <section class="panel ar-hero">
-        <div><span class="eyebrow">Growth AutoResearch</span><h2>Continuous acquisition experiments</h2><p>Partizan proposes one bounded challenger at a time, waits for downstream evidence, learns, then decides what to test next.</p></div>
-        <div class="ar-actions"><span id="autoresearch-status" class="status-pill">Loading</span><button id="autoresearch-control" class="button button-secondary hidden" type="button">Pause AutoResearch</button></div>
+        <div><span class="eyebrow">Continuous learning</span><h2>Continuous customer-acquisition tests</h2><p>Partizan proposes one bounded challenger at a time, waits for downstream evidence, learns, then decides what to test next.</p></div>
+        <div class="ar-actions"><span id="autoresearch-status" class="status-pill">Loading</span><button id="autoresearch-control" class="button button-secondary hidden" type="button">Pause testing</button></div>
       </section>
-      <div id="autoresearch-loading" class="panel ar-loading"><span class="spinner"></span><span>Loading AutoResearch state…</span></div>
+      <div id="autoresearch-loading" class="panel ar-loading"><span class="spinner"></span><span>Loading continuous-learning state…</span></div>
       <div id="autoresearch-error" class="panel ar-error hidden"></div>
       <div id="autoresearch-content" class="hidden">
         <section class="ar-grid">
