@@ -797,8 +797,8 @@ class CustomerFunnelService:
     @staticmethod
     def _understanding(product) -> CustomerProductUnderstandingView:
         what_it_does = (
-            product.value_proposition
-            or product.problem_or_desire
+            product.problem_or_desire
+            or product.value_proposition
             or product.description
             or "Not determined yet"
         )
