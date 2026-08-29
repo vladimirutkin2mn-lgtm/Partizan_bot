@@ -75,6 +75,12 @@ def test_customer_start_makes_partizan_work_before_goal_and_budget() -> None:
     assert "website_url: website || null" in javascript.text
     assert "renderUnderstanding" in javascript.text
     assert "renderFreeOpportunity" in javascript.text
+    assert "renderResearchPending" in javascript.text
+    assert "renderResearchOutcome" in javascript.text
+    assert "/preview-research" in javascript.text
+    assert "Keep researching →" in javascript.text
+    assert "Hypothesis" in javascript.text
+    assert "Partizan will not invent an opportunity" in javascript.text
     assert "recommended_action" in javascript.text
     assert "item.provenance" in javascript.text
     assert "showBriefFallback" in javascript.text
@@ -112,6 +118,9 @@ def test_customer_start_keeps_workspace_primary_and_research_only_plan_secondary
     assert "/customer/account/projects/claim" in javascript.text
     assert "redirectWorkspace" in javascript.text
     assert "No acquisition budget was required to see it." in page.text
+    assert 'id="preview-research-retry"' in page.text
+    assert 'id="preview-title"' in page.text
+    assert 'id="preview-eyebrow"' in page.text
     assert "Research evidence is not a proven acquisition result." in page.text
     start_css = client.get("/start/assets/start.v2.css")
     assert start_css.status_code == 200
