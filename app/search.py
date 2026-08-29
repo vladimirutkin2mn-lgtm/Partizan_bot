@@ -124,8 +124,8 @@ class OpenAIWebSearchProvider(SearchProvider):
             input=prompt,
         )
         hits = self._extract_hits(response, discovery_query)
-        if not hits:
-            raise RuntimeError("Web search returned no URL citations")
+        # No citations is a valid research outcome: the evidence bar was not met.
+        # Transport/provider failures still raise from responses.create above.
         return hits[:limit]
 
     def _extract_hits(
