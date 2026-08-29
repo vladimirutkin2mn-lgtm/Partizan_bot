@@ -84,6 +84,19 @@
     state.textContent = stateText;
   };
 
+  const renderActivationPreview = (directions) => {
+    const container = $('activation-preview-directions');
+    const items = Array.isArray(directions) ? directions.slice(0, 3) : [];
+    $('activation-preview').classList.toggle('hidden', items.length === 0);
+    container.innerHTML = items.map((item) => `
+      <article>
+        <span>${escapeHtml(item.potential === 'HIGH' ? 'Strong starting hypothesis' : 'Worth investigating')}</span>
+        <strong>${escapeHtml(item.name)}</strong>
+        <p>${escapeHtml(item.rationale)}</p>
+      </article>
+    `).join('');
+  };
+
   const renderActivation = (project, overview, data) => {
     const funded = overview.growth_balance.funded_usd > 0;
     const researchReady = project.research_state === 'READY';
@@ -335,12 +348,13 @@
     $('meta-state').classList.toggle('good', overview.meta.connected);
     $('meta-detail').textContent = overview.meta.connected
       ? `Ad account ${overview.meta.ad_account_id}`
-      : 'Connect Meta if Instagram & Facebook is set to Auto. Access alone never starts spend.';
+      : 'Connect Meta only when a recommended Instagram & Facebook action needs execution access. Access alone never starts spend.';
     $('meta-connect').textContent = overview.meta.connected ? 'Reconnect Meta' : 'Connect Meta →';
     $('meta-connect').disabled = false;
 
     renderChannels(data.channels || []);
     renderActivity(overview);
+    renderActivationPreview(data.preview_directions || []);
     renderActivation(project, overview, data);
 
     const paused = overview.autopilot_status === 'PAUSED';
