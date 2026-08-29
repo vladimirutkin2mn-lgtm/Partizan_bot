@@ -248,6 +248,11 @@ class InMemoryProductIntakeService:
             reference_links=reference_links,
             assumptions=analysis.assumptions,
             contradictions=analysis.contradictions,
+            product_type=analysis.product_type,
+            business_model=analysis.business_model,
+            customer_hypotheses=analysis.customer_hypotheses,
+            confidence=analysis.confidence,
+            missing_information=analysis.missing_information,
             status=status,
         )
 
