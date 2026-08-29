@@ -118,6 +118,40 @@ class InMemoryProductIntakeService:
         self._persist_state(state)
         return self._response(state)
 
+    async def apply_context_answer(
+        self,
+        product_id: UUID,
+        *,
+        field_name: str,
+        question: str,
+        answer: str,
+    ) -> ProductIntakeResponse:
+        """Add one progressive founder clarification without requiring a prebuilt form question."""
+        state = self._load_state(product_id)
+        state.answers.append((field_name, question, answer))
+        state.answered_fields.add(field_name)
+        analysis = await self._agent.analyze(
+            brief=state.brief,
+            reference_links=state.reference_links,
+            answers=state.answers,
+            answered_fields=state.answered_fields,
+        )
+        state.questions = self._build_questions(analysis)
+        status = (
+            ProductProfileStatus.NEEDS_CLARIFICATION
+            if state.questions
+            else ProductProfileStatus.DRAFT
+        )
+        state.product = self._build_profile(
+            product_id=product_id,
+            brief=state.brief,
+            reference_links=state.reference_links,
+            analysis=analysis,
+            status=status,
+        )
+        self._persist_state(state)
+        return self._response(state)
+
     def confirm(self, product_id: UUID) -> ProductIntakeResponse:
         state = self._load_state(product_id)
         if state.questions:
@@ -135,6 +169,7 @@ class InMemoryProductIntakeService:
         name: str,
         for_whom: str,
         likely_customer: str,
+        likely_first_audiences: list[str] | None = None,
         market: str,
         goal: str,
         budget: float,
@@ -147,11 +182,16 @@ class InMemoryProductIntakeService:
         """
         state = self._load_state(product_id)
         audience = [likely_customer.strip()] if likely_customer.strip() else []
+        for item in likely_first_audiences or []:
+            value = item.strip()
+            if value and value not in audience:
+                audience.append(value)
         state.product = state.product.model_copy(
             update={
                 "name": name.strip() or state.product.name,
                 "value_proposition": for_whom.strip() or state.product.value_proposition,
                 "known_audience": audience or state.product.known_audience,
+                "customer_hypotheses": audience or state.product.customer_hypotheses,
                 "market": market.strip() or state.product.market,
                 "goal": goal.strip(),
                 "budget": float(budget),
