@@ -133,7 +133,7 @@ class InMemoryProductIntakeService:
         product_id: UUID,
         *,
         name: str,
-        description: str,
+        for_whom: str,
         likely_customer: str,
         market: str,
         goal: str,
@@ -150,7 +150,7 @@ class InMemoryProductIntakeService:
         state.product = state.product.model_copy(
             update={
                 "name": name.strip() or state.product.name,
-                "description": description.strip() or state.product.description,
+                "value_proposition": for_whom.strip() or state.product.value_proposition,
                 "known_audience": audience or state.product.known_audience,
                 "market": market.strip() or state.product.market,
                 "goal": goal.strip(),
