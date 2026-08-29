@@ -10,7 +10,7 @@ class CapturedProductRequest(RuntimeError):
 
 
 @pytest.mark.asyncio
-async def test_customer_website_is_persisted_and_forwarded_to_product_intake(monkeypatch) -> None:
+async def test_customer_product_link_is_persisted_and_forwarded_to_product_intake(monkeypatch) -> None:
     store = MemoryRuntimeStateStore()
     service = CustomerFunnelService(store=store)
     website = "https://example.com/landing"
@@ -52,7 +52,7 @@ async def test_customer_website_is_persisted_and_forwarded_to_product_intake(mon
 
     assert len(seen) == 1
     assert [str(item).rstrip("/") for item in seen[0].reference_links] == [website]
-    assert f"Website: {website}" in seen[0].brief
+    assert f"Product link: {website}" in seen[0].brief
 
 
 def test_customer_preview_accepts_no_website_for_backwards_compatible_plan_only_flow() -> None:
