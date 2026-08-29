@@ -74,8 +74,9 @@ def _project_error(exc: Exception) -> HTTPException:
             pass
         else:
             detail = (
-                "Get the Acquisition Plan or add acquisition budget "
-                "before starting full market research."
+                "The full market map is a separate research upgrade. "
+                "Your free researched opportunity stays available; acquisition budget is only needed "
+                "for a concrete paid move."
             )
         return HTTPException(status_code=402, detail=detail)
     return HTTPException(status_code=409, detail=str(exc))
@@ -224,6 +225,28 @@ def recover_customer_access(
     except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
         raise _project_error(exc) from exc
     return CustomerAccessRecoveryResponse(project_id=project_id, customer_token=customer_token)
+
+
+@router.post(
+    "/customer-projects/{project_id}/preview-research",
+    response_model=CustomerPreviewConfirmationResponse,
+)
+async def continue_customer_preview_research(
+    project_id: UUID,
+    customer_token: Annotated[str | None, Header(alias=CUSTOMER_TOKEN_HEADER)] = None,
+) -> CustomerPreviewConfirmationResponse:
+    try:
+        return await customer_funnel_service.continue_preview_research(
+            project_id,
+            _require_customer_token(customer_token),
+        )
+    except (
+        CustomerProjectNotFoundError,
+        CustomerProjectAccessError,
+    ) as exc:
+        raise _project_error(exc) from exc
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.post(
