@@ -42,6 +42,11 @@ class ProductProfileView(BaseModel):
     reference_links: list[str]
     assumptions: list[str]
     contradictions: list[str]
+    product_type: str | None = None
+    business_model: str | None = None
+    customer_hypotheses: list[str] = Field(default_factory=list)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    missing_information: list[str] = Field(default_factory=list)
     status: ProductProfileStatus
 
 
