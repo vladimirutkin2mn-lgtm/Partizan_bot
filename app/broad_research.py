@@ -38,6 +38,10 @@ class ResearchExecutionStatus(StrEnum):
     MANUAL_HANDOFF = "MANUAL_HANDOFF"
 
 
+class PreviewResearchUnavailableError(RuntimeError):
+    """Raised when real public-web research cannot run at all."""
+
+
 class BroadResearchEvidenceView(BaseModel):
     query: str = Field(min_length=1, max_length=800)
     title: str = Field(min_length=1, max_length=500)
@@ -136,40 +140,54 @@ class BroadResearchService:
         self,
         product: ProductProfileView,
         icp_result: ICPGenerationResponse,
-    ) -> BroadResearchOpportunityView:
+    ) -> BroadResearchOpportunityView | None:
         """Return one bounded real public-web opportunity for the free scan.
 
-        This intentionally does not persist a BroadResearchMap: full research must still
-        run the complete surface set after entitlement. The mock provider is rejected so
-        synthetic evidence can never be presented to customers as free-scan proof.
+        The free scan never falls back to synthetic evidence. If search runs but no
+        evidence-backed opportunity is strong enough, return None so the customer
+        flow can say that more research is needed. If real web search cannot run at all,
+        raise PreviewResearchUnavailableError and keep that state distinct.
         """
         if not icp_result.icps:
-            raise RuntimeError("Partizan could not identify an audience for free research.")
+            return None
         provider = self._search_provider or get_search_provider()
         if isinstance(provider, MockSearchProvider):
-            raise RuntimeError("Public-web research is not configured.")
+            raise PreviewResearchUnavailableError("Public-web research is not configured.")
 
         preferred = (
             ResearchSurface.COMMUNITY,
             ResearchSurface.DIRECTORY,
             ResearchSurface.CREATOR,
+            ResearchSurface.MEDIA,
+            ResearchSurface.PARTNERSHIP,
+            ResearchSurface.SEARCH,
         )
         queries = self._queries(product, icp_result.icps[0])
         by_surface = {query.surface: query for query in queries}
+        attempted = False
+        successful_search = False
         for surface in preferred:
             query = by_surface[surface]
+            attempted = True
             try:
                 hits = await provider.search(query.discovery_query, limit=2)
             except Exception:
                 continue
+            successful_search = True
             if not hits:
                 continue
-            opportunity = self._hit_opportunity(product, query, hits[0])
-            if not opportunity.provenance:
-                continue
-            return opportunity
-        raise RuntimeError("Partizan could not find a strong public-web opportunity yet.")
-
+            opportunity = (
+                self._search_cluster(product, query, list(hits))
+                if surface == ResearchSurface.SEARCH
+                else self._hit_opportunity(product, query, hits[0])
+            )
+            if opportunity.provenance:
+                return opportunity
+        if attempted and not successful_search:
+            raise PreviewResearchUnavailableError(
+                "Public-web research is temporarily unavailable."
+            )
+        return None
     async def discover(
         self,
         product: ProductProfileView,
@@ -245,21 +263,21 @@ class BroadResearchService:
                 ResearchSurface.PARTNERSHIP,
                 "PARTNER_OR_AFFILIATE",
                 icp,
-                SourceClass.NEWSLETTER_SITE,
+                SourceClass.PARTNERSHIP,
                 f"{context} partner affiliate integration marketplace",
             ),
             self._query(
                 ResearchSurface.SEARCH,
                 "QUERY_CLUSTER",
                 icp,
-                SourceClass.NEWSLETTER_SITE,
+                SourceClass.SEARCH,
                 f"{icp.pain} {icp.desired_outcome} alternatives how to",
             ),
             self._query(
                 ResearchSurface.DIRECTORY,
                 "DIRECTORY_OR_REVIEW_SITE",
                 icp,
-                SourceClass.NEWSLETTER_SITE,
+                SourceClass.DIRECTORY,
                 f"{context} directory reviews alternatives comparison",
             ),
             self._query(

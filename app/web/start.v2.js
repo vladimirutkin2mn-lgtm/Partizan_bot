@@ -158,9 +158,24 @@
     COMMUNITY: 'Public community',
     DIRECTORY: 'Directory / review site',
     CREATOR: 'Creator',
+    MEDIA: 'Media / podcast / newsletter',
+    PARTNERSHIP: 'Partnership / affiliate',
+    SEARCH: 'Search / SEO',
   })[surface] || surface;
 
+  const resetResearchOutcomeCopy = () => {
+    $('preview-eyebrow').textContent = 'Real research · before funding';
+    $('preview-title').innerHTML = 'Partizan found a place<br><em>worth investigating.</em>';
+    $('preview-summary').textContent = 'This is public-web research evidence, not a conversion claim. No acquisition budget was required to see it.';
+    $('value-first-title').textContent = 'Keep this opportunity and let Partizan continue from here.';
+    $('value-first-copy').textContent = 'Create a workspace around the researched opportunity. Partizan will only ask for money or channel access when a specific recommended action actually needs it.';
+    $('value-first-note').textContent = 'Research evidence is not a proven acquisition result. Real visits, signups and customers are what Partizan learns from next.';
+    $('autonomous-button').textContent = 'Continue with this move →';
+    $('preview-research-retry').classList.add('hidden');
+  };
+
   const renderFreeOpportunity = (data) => {
+    resetResearchOutcomeCopy();
     managementFeePct = Number(data.managed_spend_fee_pct || managementFeePct);
     pendingUnderstanding = { ...data.understanding };
     const item = data.free_opportunity;
@@ -193,8 +208,59 @@
     showStage(stagePreview);
   };
 
-  const renderPreview = (data) => {
+  const renderResearchPending = (data) => {
+    managementFeePct = Number(data.managed_spend_fee_pct || managementFeePct);
+    pendingUnderstanding = { ...data.understanding };
+    const unavailable = data.research_status === 'UNAVAILABLE';
+    const directions = Array.isArray(data.directions) ? data.directions.slice(0, 3) : [];
+
+    $('preview-eyebrow').textContent = unavailable
+      ? 'Research status · no synthetic results'
+      : 'Research before spend · evidence threshold not met';
+    $('preview-title').innerHTML = unavailable
+      ? 'Public-web research is<br><em>temporarily unavailable.</em>'
+      : 'Partizan found hypotheses,<br><em>but not enough evidence yet.</em>';
+    $('preview-summary').textContent = data.research_message || (
+      unavailable
+        ? 'Partizan will not invent an opportunity. Retry public-web research without adding acquisition funds.'
+        : 'Keep researching without funding. A hypothesis is not presented as a real opportunity until public evidence supports it.'
+    );
+    $('free-opportunity').innerHTML = `
+      <div class="research-pending-head">
+        <span class="eyebrow">${unavailable ? 'No fabricated fallback' : 'Starting hypotheses · not researched opportunities'}</span>
+        <h2>${unavailable ? 'Evidence is unavailable right now.' : 'These are directions to investigate next.'}</h2>
+      </div>
+      <div class="research-hypotheses">${directions.map((item) => `
+        <article>
+          <span>Hypothesis</span>
+          <strong>${escapeHtml(item.name)}</strong>
+          <p>${escapeHtml(item.rationale)}</p>
+        </article>
+      `).join('')}</div>
+      <div class="opportunity-boundary">No acquisition funding is required to continue this research. Partizan will only show a researched opportunity when it has real public-web evidence.</div>
+    `;
+    $('preview-research-retry').classList.remove('hidden');
+    $('value-first-title').textContent = 'Keep this project and continue research in your workspace.';
+    $('value-first-copy').textContent = 'Save the product understanding and research state, then keep looking for evidence when you are ready. Acquisition funding is not required.';
+    $('value-first-note').textContent = 'Partizan will not turn a channel hypothesis into a named opportunity unless the public evidence supports it.';
+    $('autonomous-button').textContent = 'Continue without funding →';
+    $('scope-title').textContent = 'Prefer a full research-only pass?';
+    $('unlock-price').textContent = `Full Acquisition Plan — ${data.launch_price_usd} once`;
+    $('autonomous-price').textContent = 'No acquisition funding required';
+    $('account-gate').classList.add('hidden');
+    const existing = storedPreview(currentProjectId) || {};
+    rememberProject(currentProjectId, currentToken, { ...existing, ...data });
+    showStage(stagePreview);
+  };
+
+  const renderResearchOutcome = (data) => {
     if (data.free_opportunity) renderFreeOpportunity(data);
+    else renderResearchPending(data);
+  };
+
+  const renderPreview = (data) => {
+    if (data.research_status) renderResearchOutcome(data);
+    else if (data.free_opportunity) renderFreeOpportunity(data);
     else renderUnderstanding(data);
   };
 
@@ -303,12 +369,36 @@
           budget_usd: Number($('budget').value),
         }),
       });
-      renderFreeOpportunity(data);
+      renderResearchOutcome(data);
     } catch (error) {
       showNotice(error.message, true);
     } finally {
       button.disabled = false;
       button.textContent = 'Find one real opportunity →';
+    }
+  });
+
+  $('preview-research-retry').addEventListener('click', async () => {
+    if (!currentProjectId || !currentToken) {
+      showNotice('Project session is missing. Run the free scan again.', true);
+      return;
+    }
+    const button = $('preview-research-retry');
+    button.disabled = true;
+    button.textContent = 'Researching public evidence…';
+    try {
+      const data = await api(`/v1/customer-projects/${currentProjectId}/preview-research`, {
+        method: 'POST',
+      });
+      renderResearchOutcome(data);
+      if (!data.free_opportunity) {
+        showNotice(data.research_message || 'Partizan still needs stronger public evidence.');
+      }
+    } catch (error) {
+      showNotice(error.message, true);
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Keep researching →';
     }
   });
 

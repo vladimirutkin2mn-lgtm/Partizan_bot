@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from app.audience_intelligence_service import audience_intelligence_service
-from app.broad_research import BroadResearchService
+from app.broad_research import BroadResearchService, PreviewResearchUnavailableError
 from app.config import get_settings
 from app.customer_schemas import (
     CustomerClarificationAnswerRequest,
@@ -49,11 +49,12 @@ class CustomerPaymentRequiredError(PermissionError):
 
 
 class CustomerFunnelService:
-    """Public customer funnel with bounded real proof before paid deep research.
+    """Public customer funnel with real research before acquisition spend.
 
-    The public start flow may use Product Intake and one bounded public-web opportunity
-    before funding. Full market research remains gated by the Acquisition Plan or a
-    funded workspace, and execution permissions remain separate.
+    The public start flow reads the product and attempts evidence-backed public-web
+    research before any acquisition funding. A full market map is a separate research
+    upgrade, or an included benefit after a concrete paid move funds the workspace.
+    Execution permissions remain separate from both research and money.
     """
 
     def __init__(
@@ -106,6 +107,8 @@ class CustomerFunnelService:
             "preview": {
                 "understanding": understanding.model_dump(mode="json"),
                 "directions": [],
+                "free_research_status": "NOT_RUN",
+                "free_research_message": "",
                 "free_opportunity": None,
             },
         }
@@ -144,8 +147,10 @@ class CustomerFunnelService:
             icp_result = icp_service.get(product_id)
         except KeyError:
             icp_result = await icp_service.generate(product)
-        opportunity = await self._broad_research.discover_preview(product, icp_result)
-        free_opportunity = self._free_opportunity(opportunity)
+        research_status, research_message, free_opportunity = await self._run_free_research(
+            product,
+            icp_result,
+        )
         direction_payload = CustomerPreviewRequest(
             brief=product.description[:6000],
             website_url=project.get("website_url"),
@@ -170,7 +175,13 @@ class CustomerFunnelService:
             "channel_count": len(directions),
             "fastest_signal": directions[0].name,
             "directions": [item.model_dump(mode="json") for item in directions],
-            "free_opportunity": free_opportunity.model_dump(mode="json"),
+            "free_research_status": research_status,
+            "free_research_message": research_message,
+            "free_opportunity": (
+                free_opportunity.model_dump(mode="json")
+                if free_opportunity is not None
+                else None
+            ),
         }
         self._persist(project)
         settings = get_settings()
@@ -179,6 +190,80 @@ class CustomerFunnelService:
             product_id=product_id,
             understanding=understanding,
             directions=directions,
+            research_status=research_status,
+            research_message=research_message,
+            free_opportunity=free_opportunity,
+            launch_price_usd=settings.partizan_launch_price_usd,
+            managed_spend_fee_pct=settings.partizan_managed_spend_fee_pct,
+        )
+
+    async def continue_preview_research(
+        self,
+        project_id: UUID,
+        customer_token: str,
+    ) -> CustomerPreviewConfirmationResponse:
+        """Retry evidence-backed preview research without requiring acquisition funding."""
+        project = self._authorized_project(project_id, customer_token)
+        if not project.get("understanding_confirmed"):
+            raise ValueError("Confirm the product understanding before continuing research.")
+        product_id_raw = project.get("product_id")
+        if not product_id_raw:
+            raise CustomerProjectNotFoundError("Product analysis is missing")
+        product_id = UUID(str(product_id_raw))
+        product = product_intake_service.get_product(product_id)
+        try:
+            icp_result = icp_service.get(product_id)
+        except KeyError:
+            icp_result = await icp_service.generate(product)
+
+        preview = project.get("preview") or {}
+        understanding = CustomerProductUnderstandingView.model_validate(
+            preview.get("understanding") or self._understanding(product).model_dump(mode="json")
+        )
+        directions = [
+            CustomerDirectionView.model_validate(item)
+            for item in preview.get("directions", [])
+            if isinstance(item, dict)
+        ]
+        if not directions:
+            directions = self._directions(
+                CustomerPreviewRequest(
+                    brief=product.description[:6000],
+                    website_url=project.get("website_url"),
+                    market=project.get("market") or understanding.market,
+                    goal=project.get("goal") or "Get first users",
+                    budget_usd=int(project.get("budget_usd") or 10),
+                )
+            )
+
+        existing = preview.get("free_opportunity")
+        if isinstance(existing, dict):
+            free_opportunity = CustomerFreeOpportunityView.model_validate(existing)
+            research_status = "FOUND"
+            research_message = "Partizan already found a concrete public-web opportunity with evidence."
+        else:
+            research_status, research_message, free_opportunity = await self._run_free_research(
+                product,
+                icp_result,
+            )
+            preview["free_research_status"] = research_status
+            preview["free_research_message"] = research_message
+            preview["free_opportunity"] = (
+                free_opportunity.model_dump(mode="json")
+                if free_opportunity is not None
+                else None
+            )
+            project["preview"] = preview
+            self._persist(project)
+
+        settings = get_settings()
+        return CustomerPreviewConfirmationResponse(
+            project_id=project_id,
+            product_id=product_id,
+            understanding=understanding,
+            directions=directions,
+            research_status=research_status,
+            research_message=research_message,
             free_opportunity=free_opportunity,
             launch_price_usd=settings.partizan_launch_price_usd,
             managed_spend_fee_pct=settings.partizan_managed_spend_fee_pct,
@@ -588,6 +673,37 @@ class CustomerFunnelService:
             market=str(product.market or "Needs your confirmation")[:300],
         )
 
+    async def _run_free_research(
+        self,
+        product,
+        icp_result,
+    ) -> tuple[str, str, CustomerFreeOpportunityView | None]:
+        try:
+            opportunity = await self._broad_research.discover_preview(product, icp_result)
+        except PreviewResearchUnavailableError:
+            return (
+                "UNAVAILABLE",
+                (
+                    "Public-web research is temporarily unavailable. Partizan will not invent "
+                    "an opportunity; retry the research without adding acquisition funds."
+                ),
+                None,
+            )
+        if opportunity is None:
+            return (
+                "NEEDS_MORE_RESEARCH",
+                (
+                    "We found starting hypotheses, but not enough public evidence yet to recommend "
+                    "a specific opportunity. Keep researching without adding acquisition funds."
+                ),
+                None,
+            )
+        return (
+            "FOUND",
+            "Partizan found a concrete public-web opportunity with supporting evidence.",
+            self._free_opportunity(opportunity),
+        )
+
     @staticmethod
     def _free_opportunity(opportunity) -> CustomerFreeOpportunityView:
         action = {
@@ -596,18 +712,33 @@ class CustomerFunnelService:
                 "with a useful, non-promotional contribution. Add a tracked link only when appropriate."
             ),
             "DIRECTORY": (
-                "Review the listing requirements and submit a concise product listing manually "
-                "if the directory accepts products like yours."
+                "Review the listing requirements and prepare a concise submission. "
+                "Do not pay a listing fee unless the directory quotes one and you approve it."
             ),
             "CREATOR": (
                 "Prepare a short creator outreach brief and contact the creator only through "
                 "their public business channel."
+            ),
+            "MEDIA": (
+                "Prepare a concise editorial or podcast pitch using the public contact path. "
+                "Sending still requires the normal outreach review and permissions."
+            ),
+            "PARTNERSHIP": (
+                "Prepare a partnership hypothesis and a short outreach note for the public "
+                "business contact. No commercial commitment is implied."
+            ),
+            "SEARCH": (
+                "Turn this evidence into one narrow search/content test brief before spending "
+                "anything on paid search."
             ),
         }[opportunity.surface.value]
         signal = {
             "COMMUNITY": "Relevant replies, tracked visits, signups or direct product questions.",
             "DIRECTORY": "Listing acceptance, qualified referral visits, signups or product inquiries.",
             "CREATOR": "A reply, request for more information, qualified referral visits or signups.",
+            "MEDIA": "A reply, editorial interest, qualified referral visits or signups.",
+            "PARTNERSHIP": "A reply, request for details, referral opportunity or qualified introduction.",
+            "SEARCH": "Search impressions, qualified organic visits, signups or direct product questions.",
         }[opportunity.surface.value]
         return CustomerFreeOpportunityView(
             surface=opportunity.surface.value,

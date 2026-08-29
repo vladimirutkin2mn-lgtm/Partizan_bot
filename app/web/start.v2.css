@@ -69,3 +69,14 @@
   .free-opportunity-head{flex-direction:column}
   .cost-pill{align-self:flex-start}
 }
+
+
+/* Product-truth free research states. */
+.preview-research-retry{margin:18px 0 0}
+.research-pending-head h2{margin:10px 0 0;font-size:clamp(24px,3.2vw,36px);letter-spacing:-.035em}
+.research-hypotheses{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:22px}
+.research-hypotheses article{min-height:145px;padding:16px;border:1px solid rgba(255,255,255,.075);border-radius:14px;background:rgba(0,0,0,.14)}
+.research-hypotheses article>span{display:block;color:#78838d;font-size:8px;font-weight:760;text-transform:uppercase;letter-spacing:.09em}
+.research-hypotheses article>strong{display:block;margin-top:8px;font-size:13px}
+.research-hypotheses article>p{margin:9px 0 0;color:#87919b;font-size:10px;line-height:1.55}
+@media(max-width:760px){.research-hypotheses{grid-template-columns:1fr}.research-hypotheses article{min-height:0}}

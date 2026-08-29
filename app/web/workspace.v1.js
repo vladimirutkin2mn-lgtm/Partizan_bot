@@ -9,6 +9,7 @@
   let activeTab = 'overview';
   let activationAction = null;
   let activationOpportunityUrl = null;
+  let researchAction = 'full';
 
   const api = async (path, options = {}) => {
     const headers = new Headers(options.headers || {});
@@ -85,7 +86,7 @@
     state.textContent = stateText;
   };
 
-  const renderActivationPreview = (directions, opportunity) => {
+  const renderActivationPreview = (directions, opportunity, researchStatus = 'NOT_RUN', researchMessage = '') => {
     const preview = $('activation-preview');
     const opportunityContainer = $('activation-preview-opportunity');
     const directionsContainer = $('activation-preview-directions');
@@ -117,17 +118,24 @@
     }
 
     const items = Array.isArray(directions) ? directions.slice(0, 3) : [];
-    $('activation-preview-label').textContent = 'Starting hypotheses · not public-web proof yet';
+    const researchPending = researchStatus === 'NEEDS_MORE_RESEARCH' || researchStatus === 'UNAVAILABLE';
+    $('activation-preview-label').textContent = researchPending
+      ? (researchStatus === 'UNAVAILABLE'
+        ? 'Public-web research unavailable · no synthetic fallback'
+        : 'Evidence threshold not met · hypotheses only')
+      : 'Starting hypotheses · not public-web proof yet';
     opportunityContainer.innerHTML = '';
     opportunityContainer.classList.add('hidden');
     preview.classList.toggle('hidden', items.length === 0);
     directionsContainer.innerHTML = items.map((item) => `
       <article>
-        <span>${escapeHtml(item.potential === 'HIGH' ? 'Strong starting hypothesis' : 'Worth investigating')}</span>
+        <span>Hypothesis · ${escapeHtml(item.potential === 'HIGH' ? 'strong starting direction' : 'worth investigating')}</span>
         <strong>${escapeHtml(item.name)}</strong>
         <p>${escapeHtml(item.rationale)}</p>
       </article>
-    `).join('');
+    `).join('') + (researchPending && researchMessage
+      ? `<article class="research-state-card"><span>Research status</span><strong>Partizan will not invent an opportunity.</strong><p>${escapeHtml(researchMessage)}</p></article>`
+      : '');
   };
 
   const renderActivation = (project, overview, data) => {
@@ -135,6 +143,8 @@
     const researchReady = project.research_state === 'READY';
     const needsInput = project.research_state === 'NEEDS_INPUT';
     const previewOpportunity = data.preview_opportunity || null;
+    const previewResearchStatus = data.preview_research_status || 'NOT_RUN';
+    const previewResearchMessage = data.preview_research_message || '';
     const testStarted = overview.running_experiments.length > 0 || overview.waiting_experiments.length > 0;
     const noMeasuredActivity = overview.growth_balance.acquisition_spend_usd <= 0
       && overview.paid_customers <= 0;
@@ -155,6 +165,8 @@
     setActivationStep('activation-direction', true, false, 'Done');
 
     if (previewOpportunity) {
+      $('activation-research-title').textContent = 'One real opportunity researched';
+      $('activation-research-copy').textContent = 'Public-web evidence appeared before Partizan asked you to fund anything.';
       setActivationStep('activation-budget', true, false, 'Done');
       setActivationStep('activation-channel', false, true, 'Now');
       setActivationStep('activation-limit', false, false, 'If needed');
@@ -173,6 +185,31 @@
       return;
     }
 
+    if (
+      previewResearchStatus === 'NEEDS_MORE_RESEARCH'
+      || previewResearchStatus === 'UNAVAILABLE'
+    ) {
+      $('activation-research-title').textContent = 'Researching first opportunity';
+      $('activation-research-copy').textContent = previewResearchStatus === 'UNAVAILABLE'
+        ? 'Public-web evidence is temporarily unavailable. Partizan will not invent a result.'
+        : 'Partizan has hypotheses, but it is waiting for stronger public evidence before naming an opportunity.';
+      setActivationStep('activation-budget', false, true, 'Researching');
+      setActivationStep('activation-channel', false, false, 'Waiting');
+      setActivationStep('activation-limit', false, false, 'If needed');
+      setActivationStep('activation-test', false, false, 'Later');
+      $('activation-progress').textContent = '2 of 6';
+      activationAction = 'preview-research';
+      button.textContent = 'Keep researching →';
+      $('activation-note').textContent = previewResearchMessage || 'Partizan needs stronger public evidence before it can recommend a concrete opportunity. No acquisition funding is required.';
+      return;
+    }
+
+    $('activation-research-title').textContent = researchReady
+      ? 'Market research ready'
+      : 'Researching first opportunity';
+    $('activation-research-copy').textContent = researchReady
+      ? 'The broader research is ready to review.'
+      : 'This older project predates evidence-first free research; Partizan will not treat its hypotheses as proof.';
     const current = !researchReady ? 'research' : 'recommendation';
     setActivationStep('activation-budget', researchReady, current === 'research', researchReady ? 'Done' : 'Next');
     setActivationStep('activation-channel', false, current === 'recommendation', researchReady ? 'Review' : 'Waiting');
@@ -195,8 +232,8 @@
       }
       if (funded) {
         activationAction = 'research';
-        button.textContent = 'Continue full market research →';
-        $('activation-note').textContent = 'Your acquisition budget can support the remaining research and later tests. Adding money is still not permission to run ads.';
+        button.textContent = 'Open included full market map →';
+        $('activation-note').textContent = 'The full market map is included after a paid move funds the workspace. The acquisition budget itself remains for paid execution, not for buying research.';
         return;
       }
       activationAction = 'research';
@@ -213,7 +250,7 @@
   const friendlyBlockers = (overview, data) => {
     const items = [];
     if (overview.blockers.some((item) => item.includes('No autonomous execution channel'))) items.push('No execution channel is currently available. Partizan can keep researching; grant channel access only when you want to run a recommended action.');
-    if (overview.growth_balance.funded_usd <= 0 && !data.preview_opportunity) items.push('No paid acquisition budget is funded. Partizan can still show research; add money only for a specific paid move.');
+
     if (overview.blockers.some((item) => item.includes('Website or landing page'))) items.push('Add a live website or landing page before paid traffic starts.');
     if (overview.blockers.some((item) => item.includes('guardrails'))) items.push('Save the maximum cost per customer in Settings.');
     if (overview.blockers.some((item) => item.includes('Meta access'))) items.push('Connect Meta only if a recommended Instagram & Facebook action needs execution access.');
@@ -226,7 +263,7 @@
     if (overview.autopilot_status === 'ACTIVE') return 'Partizan is working on getting you customers.';
     if (overview.autopilot_status === 'PAUSED') return 'Partizan is paused.';
     if (overview.product_id) return 'Partizan is ready for the next acquisition step.';
-    return 'Your free scan is ready. Full market research is the next step.';
+    return 'Partizan is ready to keep researching before spend.';
   };
 
   const renderAccountNav = () => {
@@ -320,6 +357,7 @@
   };
 
   const renderResearchStatus = (project, overview, data) => {
+    researchAction = 'full';
     $('research-state').classList.remove('good', 'warn');
     if (project.research_state === 'READY') {
       $('research-state').textContent = 'Ready';
@@ -337,7 +375,26 @@
       $('research-button').classList.remove('hidden');
       return;
     }
-    const researchEntitled = Boolean(project.launch_unlocked) || overview.growth_balance.funded_usd > 0;
+    const previewResearchStatus = data.preview_research_status || 'NOT_RUN';
+    const previewResearchMessage = data.preview_research_message || '';
+    if (
+      !data.preview_opportunity
+      && (previewResearchStatus === 'NEEDS_MORE_RESEARCH' || previewResearchStatus === 'UNAVAILABLE')
+    ) {
+      researchAction = 'preview';
+      $('research-state').textContent = previewResearchStatus === 'UNAVAILABLE'
+        ? 'Research unavailable'
+        : 'Needs more evidence';
+      $('research-state').classList.add('warn');
+      $('research-title').textContent = previewResearchStatus === 'UNAVAILABLE'
+        ? 'Public-web research is temporarily unavailable'
+        : 'Partizan is still looking for a concrete opportunity';
+      $('research-copy').textContent = previewResearchMessage || 'Partizan will not invent a named opportunity. Keep researching without adding acquisition funding.';
+      $('research-button').textContent = 'Keep free research going →';
+      $('research-button').classList.remove('hidden');
+      return;
+    }
+    const researchEntitled = Boolean(project.launch_unlocked);
     $('research-state').textContent = researchEntitled
       ? 'Ready to expand'
       : (data.preview_opportunity ? 'Free proof ready' : 'Not started');
@@ -345,10 +402,11 @@
       ? 'Partizan can research the rest now'
       : (data.preview_opportunity ? 'One researched opportunity is already available' : 'Full market research is optional');
     $('research-copy').textContent = project.launch_unlocked
-      ? 'Your research-only Acquisition Plan unlocks the full market map without an acquisition budget.'
-      : (overview.growth_balance.funded_usd > 0
-        ? 'Your acquisition budget can support broader research and later eligible tests. Funding is still not permission to spend automatically.'
-        : 'You already received value before funding. Add acquisition budget only when a specific recommended move needs paid budget; full research remains optional.');
+      ? (overview.growth_balance.funded_usd > 0
+        ? 'Because a paid move funded the workspace, the full market map is included. Acquisition money remains for paid execution; research started before spend.'
+        : 'Your research-only Acquisition Plan unlocks the full market map without an acquisition budget.')
+      : 'You already received value before funding. The full market map is an optional research upgrade; add acquisition budget only when a specific recommended move needs paid budget.';
+    $('research-button').textContent = 'Continue full research →';
     $('research-button').classList.toggle('hidden', !researchEntitled);
   };
 
@@ -408,7 +466,12 @@
 
     renderChannels(data.channels || []);
     renderActivity(overview);
-    renderActivationPreview(data.preview_directions || [], data.preview_opportunity || null);
+    renderActivationPreview(
+      data.preview_directions || [],
+      data.preview_opportunity || null,
+      data.preview_research_status || 'NOT_RUN',
+      data.preview_research_message || '',
+    );
     renderActivation(project, overview, data);
 
     const paused = overview.autopilot_status === 'PAUSED';
@@ -654,6 +717,10 @@
       window.open(activationOpportunityUrl, '_blank', 'noopener,noreferrer');
       return;
     }
+    if (activationAction === 'preview-research') {
+      retryPreviewResearch().catch(() => {});
+      return;
+    }
     if (activationAction === 'fund') {
       const recommended = Number(workspace?.preview_opportunity?.estimated_cost_max_usd || 0);
       if (recommended > 0) $('fund-amount').value = String(recommended);
@@ -716,7 +783,42 @@
   };
   $('pause-button').addEventListener('click', () => setStatus('PAUSED'));
   $('resume-button').addEventListener('click', () => setStatus('ACTIVE'));
-  $('research-button').addEventListener('click', () => loadResearch(true).catch(() => {}));
+  const retryPreviewResearch = async () => {
+    const button = $('research-button');
+    const activationButton = $('activation-primary');
+    const originalResearch = button.textContent;
+    const originalActivation = activationButton.textContent;
+    button.disabled = true;
+    activationButton.disabled = true;
+    button.textContent = 'Researching public evidence…';
+    activationButton.textContent = 'Researching public evidence…';
+    try {
+      const result = await api(`/customer/workspace/${projectId}/preview-research`, {
+        method: 'POST',
+      });
+      if (result.free_opportunity) {
+        showNotice('Partizan found a concrete public-web opportunity with evidence.');
+      } else {
+        showNotice(result.research_message || 'Partizan still needs stronger public evidence.');
+      }
+      await loadWorkspace();
+    } catch (error) {
+      showNotice(error.message, true);
+    } finally {
+      button.disabled = false;
+      activationButton.disabled = false;
+      button.textContent = originalResearch;
+      activationButton.textContent = originalActivation;
+    }
+  };
+
+  $('research-button').addEventListener('click', () => {
+    if (researchAction === 'preview') {
+      retryPreviewResearch().catch(() => {});
+      return;
+    }
+    loadResearch(true).catch(() => {});
+  });
 
   $('meta-connect').addEventListener('click', async () => {
     const button = $('meta-connect');

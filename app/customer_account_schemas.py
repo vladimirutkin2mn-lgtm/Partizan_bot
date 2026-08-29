@@ -68,6 +68,8 @@ class CustomerWorkspaceView(BaseModel):
     project: CustomerProjectView
     autopilot: CustomerAutopilotOverview
     preview_directions: list[CustomerDirectionView] = Field(default_factory=list)
+    preview_research_status: str = "NOT_RUN"
+    preview_research_message: str = ""
     preview_opportunity: CustomerFreeOpportunityView | None = None
     autoresearch: GrowthAutoResearchOverviewView | None = None
     target_max_cac: float | None = None

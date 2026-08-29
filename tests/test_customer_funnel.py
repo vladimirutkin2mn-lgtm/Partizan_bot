@@ -198,6 +198,7 @@ def test_confirmed_preview_returns_one_real_opportunity_before_funding(monkeypat
 
     assert confirmed.status_code == 200
     data = confirmed.json()
+    assert data["research_status"] == "FOUND"
     assert data["free_opportunity"]["title"] == "r/freelance"
     assert data["free_opportunity"]["surface"] == "COMMUNITY"
     assert data["free_opportunity"]["estimated_cost_max_usd"] == 0
@@ -210,6 +211,121 @@ def test_confirmed_preview_returns_one_real_opportunity_before_funding(monkeypat
         headers={"X-Partizan-Customer-Token": preview["customer_token"]},
     )
     assert full.status_code == 402
+
+
+def test_free_research_can_need_more_evidence_without_becoming_a_paywall(monkeypatch) -> None:
+    preview = client.post("/v1/customer-projects/preview", json=_preview_payload()).json()
+    monkeypatch.setattr(
+        "app.customer_funnel.icp_service.get",
+        lambda _product_id: SimpleNamespace(icps=[SimpleNamespace(title="Freelancers")]),
+    )
+
+    async def no_strong_evidence(_product, _icp_result):
+        return None
+
+    monkeypatch.setattr(
+        customer_funnel_service._broad_research,
+        "discover_preview",
+        no_strong_evidence,
+    )
+
+    response = client.post(
+        f"/v1/customer-projects/{preview['project_id']}/confirm-preview",
+        headers={"X-Partizan-Customer-Token": preview["customer_token"]},
+        json={
+            "product": "AI bookkeeping assistant",
+            "for_whom": "Automates bookkeeping and tax admin.",
+            "likely_customer": "Independent freelancers",
+            "market": "United States",
+            "goal": "Get first users",
+            "budget_usd": 10,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["research_status"] == "NEEDS_MORE_RESEARCH"
+    assert data["free_opportunity"] is None
+    assert data["directions"]
+    assert "not enough public evidence" in data["research_message"]
+    assert "acquisition funds" in data["research_message"]
+
+
+def test_free_research_retry_can_find_real_evidence_without_funding(monkeypatch) -> None:
+    preview = client.post("/v1/customer-projects/preview", json=_preview_payload()).json()
+    project = client.get(
+        f"/v1/customer-projects/{preview['project_id']}",
+        headers={"X-Partizan-Customer-Token": preview["customer_token"]},
+    ).json()
+    monkeypatch.setattr(
+        "app.customer_funnel.icp_service.get",
+        lambda _product_id: SimpleNamespace(icps=[SimpleNamespace(title="Freelancers")]),
+    )
+
+    opportunity = BroadResearchOpportunityView(
+        id=UUID("33333333-3333-3333-3333-333333333333"),
+        product_id=UUID(project["product_id"]),
+        icp_id=UUID("44444444-4444-4444-4444-444444444444"),
+        surface=ResearchSurface.COMMUNITY,
+        kind="PUBLIC_COMMUNITY",
+        title="r/freelance",
+        url="https://www.reddit.com/r/freelance/",
+        rationale="Independent workers discuss bookkeeping and admin pain here.",
+        relevance_score=91,
+        execution_status=ResearchExecutionStatus.MANUAL_HANDOFF,
+        execution_requirement="Review community rules and participate manually.",
+        provenance=[
+            BroadResearchEvidenceView(
+                query="freelancer bookkeeping community",
+                title="Freelance community",
+                url="https://www.reddit.com/r/freelance/",
+                snippet="Public discussions about freelance operations and admin.",
+            )
+        ],
+    )
+    calls = 0
+
+    async def research_then_find(_product, _icp_result):
+        nonlocal calls
+        calls += 1
+        return None if calls == 1 else opportunity
+
+    monkeypatch.setattr(
+        customer_funnel_service._broad_research,
+        "discover_preview",
+        research_then_find,
+    )
+
+    confirmed = client.post(
+        f"/v1/customer-projects/{preview['project_id']}/confirm-preview",
+        headers={"X-Partizan-Customer-Token": preview["customer_token"]},
+        json={
+            "product": "AI bookkeeping assistant",
+            "for_whom": "Automates bookkeeping and tax admin.",
+            "likely_customer": "Independent freelancers",
+            "market": "United States",
+            "goal": "Get first users",
+            "budget_usd": 10,
+        },
+    )
+    assert confirmed.status_code == 200
+    assert confirmed.json()["research_status"] == "NEEDS_MORE_RESEARCH"
+
+    retried = client.post(
+        f"/v1/customer-projects/{preview['project_id']}/preview-research",
+        headers={"X-Partizan-Customer-Token": preview["customer_token"]},
+    )
+
+    assert retried.status_code == 200
+    data = retried.json()
+    assert data["research_status"] == "FOUND"
+    assert data["free_opportunity"]["title"] == "r/freelance"
+    assert data["free_opportunity"]["estimated_cost_max_usd"] == 0
+    project_after = client.get(
+        f"/v1/customer-projects/{preview['project_id']}",
+        headers={"X-Partizan-Customer-Token": preview["customer_token"]},
+    ).json()
+    assert project_after["launch_unlocked"] is False
 
 
 @pytest.mark.asyncio
@@ -239,7 +355,9 @@ def test_deep_research_is_blocked_before_payment_without_calling_product_intake(
 
     assert response.status_code == 402
     assert response.json()["detail"] == (
-        "Get the Acquisition Plan or add acquisition budget before starting full market research."
+        "The full market map is a separate research upgrade. "
+        "Your free researched opportunity stays available; acquisition budget is only needed "
+        "for a concrete paid move."
     )
 
 

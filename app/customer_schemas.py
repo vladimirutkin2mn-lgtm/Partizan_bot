@@ -113,7 +113,7 @@ class CustomerResearchEvidenceView(BaseModel):
 
 
 class CustomerFreeOpportunityView(BaseModel):
-    surface: Literal["CREATOR", "DIRECTORY", "COMMUNITY"]
+    surface: Literal["CREATOR", "MEDIA", "PARTNERSHIP", "SEARCH", "DIRECTORY", "COMMUNITY"]
     title: str
     url: HttpUrl | None = None
     rationale: str
@@ -132,7 +132,9 @@ class CustomerPreviewConfirmationResponse(BaseModel):
     product_id: UUID
     understanding: CustomerProductUnderstandingView
     directions: list[CustomerDirectionView]
-    free_opportunity: CustomerFreeOpportunityView
+    research_status: Literal["FOUND", "NEEDS_MORE_RESEARCH", "UNAVAILABLE"]
+    research_message: str
+    free_opportunity: CustomerFreeOpportunityView | None = None
     launch_price_usd: int = Field(ge=1)
     managed_spend_fee_pct: int = Field(ge=0, le=100)
 

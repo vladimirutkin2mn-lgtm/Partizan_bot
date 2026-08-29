@@ -12,6 +12,9 @@ class SourceClass(StrEnum):
     COMMUNITY = "community"
     CREATOR = "creator"
     NEWSLETTER_SITE = "newsletter_site"
+    DIRECTORY = "directory"
+    PARTNERSHIP = "partnership"
+    SEARCH = "search"
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,23 +80,42 @@ class OpenAIWebSearchProvider(SearchProvider):
     async def search(self, discovery_query: DiscoveryQuery, limit: int = 5) -> list[SearchHit]:
         source_instruction = {
             SourceClass.COMMUNITY: (
-                "Find public discussion communities, especially relevant Reddit communities "
-                "or forums. Prefer community home pages over individual posts."
+                "Find concrete public communities and recent discussion threads where this "
+                "audience is actively discussing the problem, alternatives or desired outcome. "
+                "Prefer a recent discussion URL when it provides stronger evidence than a generic "
+                "community home page."
             ),
             SourceClass.CREATOR: (
-                "Find concrete creators with a public profile/channel page on platforms such as "
-                "YouTube, TikTok, Instagram, X or blogs."
+                "Find concrete creators whose public profile or recent content demonstrates a "
+                "clear audience overlap with the query. Prefer a source that makes the overlap "
+                "verifiable rather than a generic creator directory."
             ),
             SourceClass.NEWSLETTER_SITE: (
                 "Find concrete newsletters, niche publications or specialist websites with an "
                 "audience relevant to the query."
+            ),
+            SourceClass.DIRECTORY: (
+                "Find concrete public directories, comparison sites, review sites or marketplaces "
+                "where this audience actively evaluates products like the one in the query."
+            ),
+            SourceClass.PARTNERSHIP: (
+                "Find concrete complementary businesses, affiliate programs, integrations or "
+                "distribution partners with a plausible audience overlap."
+            ),
+            SourceClass.SEARCH: (
+                "Find concrete public pages that demonstrate recurring search intent, questions, "
+                "alternatives or how-to demand around the problem in the query."
             ),
         }[discovery_query.source_class]
         prompt = (
             f"{source_instruction}\n\n"
             f"Search query: {discovery_query.query}\n\n"
             f"Return a concise answer citing up to {limit} strong concrete sources. "
-            "Only cite sources that are plausible distribution opportunities."
+            "Every cited source must materially support why this is a plausible distribution "
+            "opportunity: audience overlap, active problem/intent, or a relevant evaluation path. "
+            "Prefer recent public evidence when recency is available. Do not cite a source merely "
+            "because it contains matching keywords. If no source clears that evidence bar, return "
+            "no citations rather than inventing or stretching relevance."
         )
         response = await asyncio.to_thread(
             self._client.responses.create,
@@ -102,8 +124,8 @@ class OpenAIWebSearchProvider(SearchProvider):
             input=prompt,
         )
         hits = self._extract_hits(response, discovery_query)
-        if not hits:
-            raise RuntimeError("Web search returned no URL citations")
+        # No citations is a valid research outcome: the evidence bar was not met.
+        # Transport/provider failures still raise from responses.create above.
         return hits[:limit]
 
     def _extract_hits(
