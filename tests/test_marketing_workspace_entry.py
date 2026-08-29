@@ -19,25 +19,30 @@ def test_marketing_header_exposes_direct_customer_workspace_entry() -> None:
     assert "For solo founders and small teams who built a product but do not know marketing yet" in html
     assert "You do not need to learn marketing first." in html
     assert "Start free · No card required" in html
-    assert "Your marketing budget can start at <em>$10.</em>" in html
-    assert "Partizan may tell you not to spend money." in html
+    assert "Start with what you have." in html
+    assert "Partizan may tell you not to run ads yet." in html
     assert "Maybe you do not need Meta Ads." in html
-    assert "$10</span><span>$50</span><span>$100</span><span>$500</span><span>$1,000" in html
+    assert "$10</span><span>$50</span><span>$100</span><span>$500" in html
+    assert "$1,000</span>" not in html
     assert "Sometimes the best first move costs $0." in html
     assert "See what Partizan actually finds." in html
     assert "r/Freelancers" in html
     assert "Gabrielle Talks Money" in html
     assert "Research evidence is not conversion evidence." in html
     assert "Find → Try → Learn." in html
-    assert 'id="product-demo"' in html
-    assert "Animation shows decision flow only." in html
-    assert "$0–$10" in html
+    assert 'id="product-demo"' not in html
+    assert "Animation shows decision flow only." not in html
     assert "Research across" in html
     assert 'id="pricing"' in html
     assert 'id="safety"' in html
-    assert "Simple pricing." in html
-    assert "No monthly fee" in html
-    assert "Account connection available; paid spend stays gated by the production spend rail." in html
+    assert "Start free. Then choose how far Partizan should go." in html
+    assert "From $10" in html
+    assert "Prefer research only?" in html
+    assert "One real opportunity before funding" in html
+    assert (
+        "Account connection is available; paid actions still require the account, "
+        "budget and permission to be ready."
+    ) in html
     assert "Research only today." in html
     assert "Ask above $200" not in html
     assert "Customers at $24 CAC" not in html
@@ -62,9 +67,8 @@ def test_marketing_account_entry_detects_existing_customer_session_fail_safe() -
     assert "query.set('website', website)" in javascript.text
     assert "customer-count" not in javascript.text
     assert "customersAtExampleCac" not in javascript.text
-    assert "const demoSteps" in javascript.text
-    assert "prefers-reduced-motion: reduce" in javascript.text
-    assert "window.setInterval" in javascript.text
+    assert "const demoSteps" not in javascript.text
+    assert "window.setInterval" not in javascript.text
 
     assert account_css.status_code == 200
     assert "text/css" in account_css.headers["content-type"]
@@ -73,14 +77,13 @@ def test_marketing_account_entry_detects_existing_customer_session_fail_safe() -
 
     landing_css = client.get("/site/assets/landing.v1.css")
     assert landing_css.status_code == 200
-    assert ".small-budget-grid" in landing_css.text
+    assert ".anti-waste-card" in landing_css.text
     assert ".hero-scan-form" in landing_css.text
     assert ".builder-flow" in landing_css.text
     assert ".research-proof-grid" in landing_css.text
     assert ".research-opportunity" in landing_css.text
     assert ".pricing-grid" in landing_css.text
     assert ".capability-matrix" in landing_css.text
-    assert ".product-demo" in landing_css.text
-    assert ".demo-step.is-active" in landing_css.text
+    assert ".pricing-grid-two" in landing_css.text
     assert ".footer-links" in landing_css.text
     assert "@media (max-width: 760px)" in account_css.text

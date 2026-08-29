@@ -10,6 +10,7 @@
   let currentProjectId = null;
   let currentToken = null;
   let managementFeePct = 10;
+  let pendingUnderstanding = null;
 
   const showNotice = (message, error = false) => {
     notice.textContent = message;
@@ -104,44 +105,97 @@
     }
   };
 
+  const setProgress = (step) => {
+    $('progress-2').classList.toggle('on', step >= 2);
+    $('progress-3').classList.toggle('on', step >= 3);
+    $('progress-4').classList.toggle('on', step >= 4);
+  };
+
   const showStage = (stage) => {
     [stageInput, stagePreview, stageUnlocked].forEach((node) => node.classList.add('hidden'));
     stage.classList.remove('hidden');
-    $('progress-2').classList.toggle('on', stage !== stageInput);
-    $('progress-3').classList.toggle('on', stage === stageUnlocked);
+    if (stage === stagePreview || stage === stageUnlocked) setProgress(4);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const verificationCopy = (name) => ({
-    'Niche communities': 'Find named communities and recent public discussions that show the problem is active.',
-    'Creators': 'Find concrete creators whose audience overlaps with the buyer and verify the fit with public evidence.',
-    'Expert / creator partnerships': 'Find niche experts and creators, then verify audience overlap and a realistic outreach path.',
-    'Paid acquisition': 'Verify the audience/message combination before any meaningful paid budget is committed.',
-    'Direct outreach': 'Find a concrete prospect cluster and validate the message with the smallest useful outreach test.',
-    'Partnerships': 'Find adjacent products or publishers with a credible distribution relationship.',
-  })[name] || 'Turn this direction into named opportunities with evidence before treating it as a plan.';
+  const intakeSteps = [
+    $('intake-product-step'),
+    $('intake-understanding-step'),
+    $('intake-goal-step'),
+    $('intake-budget-step'),
+  ];
+
+  const showIntakeStep = (step) => {
+    showStage(stageInput);
+    intakeSteps.forEach((node, index) => node.classList.toggle('hidden', index + 1 !== step));
+    setProgress(step);
+  };
+
+  const renderUnderstanding = (data) => {
+    managementFeePct = Number(data.managed_spend_fee_pct || managementFeePct);
+    pendingUnderstanding = { ...data.understanding };
+    const values = {
+      product: pendingUnderstanding.product,
+      for_whom: pendingUnderstanding.for_whom,
+      likely_customer: pendingUnderstanding.likely_customer,
+      market: pendingUnderstanding.market,
+    };
+    $('understanding-product').textContent = values.product;
+    $('understanding-for').textContent = values.for_whom;
+    $('understanding-customer').textContent = values.likely_customer;
+    $('understanding-market').textContent = values.market;
+    $('understanding-product-input').value = values.product;
+    $('understanding-for-input').value = values.for_whom;
+    $('understanding-customer-input').value = values.likely_customer;
+    $('understanding-market-input').value = values.market;
+    $('understanding-edit').classList.add('hidden');
+    $('understanding-edit-button').textContent = 'Edit';
+    $('understanding-confirm').textContent = 'Looks right →';
+    showIntakeStep(2);
+  };
+
+  const surfaceLabel = (surface) => ({
+    COMMUNITY: 'Public community',
+    DIRECTORY: 'Directory / review site',
+    CREATOR: 'Creator',
+  })[surface] || surface;
+
+  const renderFreeOpportunity = (data) => {
+    managementFeePct = Number(data.managed_spend_fee_pct || managementFeePct);
+    pendingUnderstanding = { ...data.understanding };
+    const item = data.free_opportunity;
+    const maxCost = Number(item.estimated_cost_max_usd || 0);
+    const minCost = Number(item.estimated_cost_min_usd || 0);
+    const cost = maxCost === 0 ? '$0' : (minCost === maxCost ? `$${maxCost}` : `$${minCost}–$${maxCost}`);
+    const evidence = Array.isArray(item.provenance) ? item.provenance.slice(0, 3) : [];
+    $('free-opportunity').innerHTML = `
+      <div class="free-opportunity-head">
+        <div><span class="eyebrow">${escapeHtml(surfaceLabel(item.surface))}</span><h2>${escapeHtml(item.title)}</h2></div>
+        <span class="cost-pill">${escapeHtml(cost)} first move</span>
+      </div>
+      <div class="opportunity-detail"><span>Why Partizan selected it</span><p>${escapeHtml(item.rationale)}</p></div>
+      <div class="opportunity-detail"><span>Recommended first move</span><p>${escapeHtml(item.recommended_action)}</p></div>
+      <div class="opportunity-detail"><span>Signal to watch</span><p>${escapeHtml(item.signal_to_watch)}</p></div>
+      <div class="opportunity-evidence"><span>Evidence</span>${evidence.map((source) => `
+        <a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">
+          <strong>${escapeHtml(source.title || 'Public source')}</strong>
+          ${source.snippet ? `<small>${escapeHtml(source.snippet)}</small>` : ''}
+        </a>`).join('')}</div>
+      <div class="opportunity-boundary">${escapeHtml(item.execution_requirement)}</div>
+      ${item.url ? `<a class="text-button opportunity-open" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Open opportunity ↗</a>` : ''}
+    `;
+    $('scope-title').textContent = 'Want Partizan to research the rest?';
+    $('unlock-price').textContent = `Full Acquisition Plan — $${data.launch_price_usd} once`;
+    $('autonomous-price').textContent = `No monthly fee · ${managementFeePct}% only on acquisition spend`;
+    $('account-gate').classList.add('hidden');
+    const existing = storedPreview(currentProjectId) || {};
+    rememberProject(currentProjectId, currentToken, { ...existing, ...data });
+    showStage(stagePreview);
+  };
 
   const renderPreview = (data) => {
-    managementFeePct = Number(data.managed_spend_fee_pct || 10);
-    const strongCount = data.directions.filter((item) => item.potential === 'HIGH').length;
-    $('preview-summary').textContent = `The free scan suggests ${data.channel_count} acquisition directions worth investigating. ${strongCount} look especially strong as places to investigate first. This is a hypothesis, not public-web research; full market research names and verifies concrete opportunities.`;
-    $('preview-highlights').innerHTML = `
-      <article><strong>${data.channel_count}</strong><span>directions to investigate</span></article>
-      <article><strong>${strongCount}</strong><span>strong first directions</span></article>
-      <article><strong>${escapeHtml(data.fastest_signal)}</strong><span>first direction to verify</span></article>`;
-    $('scope-title').textContent = 'Turn these hypotheses into a full acquisition map';
-    $('unlock-price').textContent = `Get the full Acquisition Plan — $${data.launch_price_usd} once`;
-    $('autonomous-price').textContent = `${managementFeePct}% of acquisition spend`;
-    $('direction-grid').innerHTML = data.directions.map((item) => {
-      const label = item.potential === 'HIGH' ? 'STRONG START' : 'WORTH CHECKING';
-      return `<article class="direction-card result-direction-card">
-        <header><h3>${escapeHtml(item.name)}</h3><span class="potential ${item.potential === 'MEDIUM' ? 'medium' : ''}">${label}</span></header>
-        <div class="direction-result-block"><span>Why it may fit</span><p>${escapeHtml(item.rationale)}</p></div>
-        <div class="direction-result-block"><span>What Partizan verifies next</span><p>${escapeHtml(verificationCopy(item.name))}</p></div>
-      </article>`;
-    }).join('');
-    $('account-gate').classList.add('hidden');
-    showStage(stagePreview);
+    if (data.free_opportunity) renderFreeOpportunity(data);
+    else renderUnderstanding(data);
   };
 
   const showBriefFallback = () => {
@@ -188,25 +242,73 @@
     }
     const button = event.submitter;
     button.disabled = true;
-    button.textContent = 'Running free scan…';
+    button.textContent = website ? 'Reading your product…' : 'Understanding your product…';
     try {
       const data = await api('/v1/customer-projects/preview', {
         method: 'POST',
         body: JSON.stringify({
           brief: brief || null,
           website_url: website || null,
-          market: $('market').value,
-          goal: $('goal').value,
-          budget_usd: Number($('budget').value),
         }),
       });
       rememberProject(data.project_id, data.customer_token, data);
-      renderPreview(data);
+      renderUnderstanding(data);
     } catch (error) {
       showNotice(error.message, true);
     } finally {
       button.disabled = false;
       button.textContent = 'Scan my product →';
+    }
+  });
+
+  $('understanding-edit-button').addEventListener('click', () => {
+    const edit = $('understanding-edit');
+    const opening = edit.classList.contains('hidden');
+    edit.classList.toggle('hidden', !opening);
+    $('understanding-edit-button').textContent = opening ? 'Cancel edit' : 'Edit';
+    $('understanding-confirm').textContent = opening ? 'Save & continue →' : 'Looks right →';
+  });
+
+  $('understanding-confirm').addEventListener('click', () => {
+    pendingUnderstanding = {
+      product: $('understanding-product-input').value.trim(),
+      for_whom: $('understanding-for-input').value.trim(),
+      likely_customer: $('understanding-customer-input').value.trim(),
+      market: $('understanding-market-input').value.trim(),
+    };
+    if (Object.values(pendingUnderstanding).some((value) => !value)) {
+      showNotice('Confirm the product, audience and market before continuing.', true);
+      return;
+    }
+    showIntakeStep(3);
+  });
+
+  $('goal-continue').addEventListener('click', () => showIntakeStep(4));
+
+  $('budget-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!currentProjectId || !currentToken || !pendingUnderstanding) {
+      showNotice('Product understanding is missing. Run the scan again.', true);
+      return;
+    }
+    const button = event.submitter;
+    button.disabled = true;
+    button.textContent = 'Researching one real opportunity…';
+    try {
+      const data = await api(`/v1/customer-projects/${currentProjectId}/confirm-preview`, {
+        method: 'POST',
+        body: JSON.stringify({
+          ...pendingUnderstanding,
+          goal: $('goal').value,
+          budget_usd: Number($('budget').value),
+        }),
+      });
+      renderFreeOpportunity(data);
+    } catch (error) {
+      showNotice(error.message, true);
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Find one real opportunity →';
     }
   });
 
@@ -321,7 +423,7 @@
     } catch (error) {
       showNotice(error.message, true);
       button.disabled = false;
-      button.textContent = 'Unlock & research →';
+      button.textContent = 'Get research-only plan →';
     }
   });
 
@@ -464,7 +566,9 @@
       const preview = storedPreview(storedProjectId);
       if (preview) {
         renderPreview(preview);
-        showNotice('Welcome back. Your acquisition hypotheses are restored.');
+        showNotice(preview.free_opportunity
+          ? 'Welcome back. Your researched opportunity is restored.'
+          : 'Welcome back. Your product understanding is restored.');
       }
     } catch (_) {
       if (await accountOwnsProject(storedProjectId)) {

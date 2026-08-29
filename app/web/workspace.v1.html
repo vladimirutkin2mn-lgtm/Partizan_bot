@@ -88,20 +88,21 @@
           </div>
           <p class="section-copy">You should not have to choose a marketing channel or configure a campaign first. Partizan starts from your product, researches where people may already be and recommends the next useful move.</p>
           <div id="activation-preview" class="activation-preview">
-            <div class="activation-preview-head"><span>From your free scan</span><small>Starting hypotheses · not public-web proof yet</small></div>
+            <div class="activation-preview-head"><span>From your free scan</span><small id="activation-preview-label">Research evidence</small></div>
+            <div id="activation-preview-opportunity" class="activation-preview-opportunity"></div>
             <div id="activation-preview-directions" class="activation-preview-directions"></div>
           </div>
           <ol class="activation-list">
-            <li id="activation-product"><span class="activation-index">1</span><div><strong>Product added</strong><small>Your free scan created the starting product context.</small></div><span class="activation-step-state">Done</span></li>
-            <li id="activation-direction"><span class="activation-index">2</span><div><strong>First directions created</strong><small>These are hypotheses to investigate, not yet public-web research.</small></div><span class="activation-step-state">Done</span></li>
-            <li id="activation-budget"><span class="activation-index">3</span><div><strong>Full market research</strong><small>Partizan verifies concrete communities, creators, directories, search clusters and other opportunities.</small></div><span class="activation-step-state">Next</span></li>
-            <li id="activation-channel"><span class="activation-index">4</span><div><strong>Partizan recommends where to start</strong><small>The recommendation comes from the research; you do not have to design the channel strategy yourself.</small></div><span class="activation-step-state">Waiting</span></li>
-            <li id="activation-limit"><span class="activation-index">5</span><div><strong>Approve only what the next move needs</strong><small>After research, connect an account or set an execution limit only when the recommended action requires it.</small></div><span class="activation-step-state">If needed</span></li>
-            <li id="activation-test"><span class="activation-index">6</span><div><strong>Try, measure and learn</strong><small>Real visits, signups and paying customers determine what Partizan should try next.</small></div><span class="activation-step-state">Partizan</span></li>
+            <li id="activation-product"><span class="activation-index">1</span><div><strong>Product understood</strong><small>Partizan started from the product you already built.</small></div><span class="activation-step-state">Done</span></li>
+            <li id="activation-direction"><span class="activation-index">2</span><div><strong>Initial audience identified</strong><small>You confirmed who Partizan should start from.</small></div><span class="activation-step-state">Done</span></li>
+            <li id="activation-budget"><span class="activation-index">3</span><div><strong>One real opportunity researched</strong><small>Public-web evidence appears before Partizan asks you to fund anything.</small></div><span class="activation-step-state">Done</span></li>
+            <li id="activation-channel"><span class="activation-index">4</span><div><strong>Recommended first move</strong><small>Partizan explains what to try, why and what signal to watch.</small></div><span class="activation-step-state">Now</span></li>
+            <li id="activation-limit"><span class="activation-index">5</span><div><strong>Approve only what the move needs</strong><small>Add money or connect an account only when this specific action requires it.</small></div><span class="activation-step-state">If needed</span></li>
+            <li id="activation-test"><span class="activation-index">6</span><div><strong>Try, measure and learn</strong><small>Real visits, signups and paying customers determine what Partizan should try next.</small></div><span class="activation-step-state">Next</span></li>
           </ol>
           <div class="activation-action">
-            <button id="activation-primary" class="button button-primary" type="button">Unlock full market research →</button>
-            <p id="activation-note" class="note">In a funded workspace, adding acquisition budget unlocks the included full research. It does not authorize paid advertising.</p>
+            <button id="activation-primary" class="button button-primary" type="button">Open recommended move →</button>
+            <p id="activation-note" class="note">Funding is not the next step unless this specific move needs paid budget.</p>
           </div>
         </section>
 
@@ -119,7 +120,7 @@
                 <b aria-hidden="true">→</b>
               </button>
             </div>
-            <div id="overview-balance-benefit" class="growth-balance-benefit"><i aria-hidden="true">✦</i><span>Start market research and keep tests funded</span></div>
+            <div id="overview-balance-benefit" class="growth-balance-benefit"><i aria-hidden="true">✦</i><span>Fund a recommended paid test when needed</span></div>
           </article>
           <article><span>Acquisition spend</span><strong id="metric-spend">$0</strong><small>across channels</small></article>
           <article><span>Customers</span><strong id="metric-customers">0</strong><small>paid customers</small></article>
@@ -164,8 +165,8 @@
 
       <section class="tab-panel hidden" data-tab-panel="activity">
         <section class="panel research-card">
-          <div class="section-head"><div><span class="eyebrow">Market research</span><h2 id="research-title">Partizan will map the market after funding</h2></div><span id="research-state" class="status-pill">Not started</span></div>
-          <p id="research-copy" class="section-copy">Adding an acquisition budget includes the initial market research. There is no separate $49 research charge for a funded workspace.</p>
+          <div class="section-head"><div><span class="eyebrow">Market research</span><h2 id="research-title">One researched opportunity is already available</h2></div><span id="research-state" class="status-pill">Free proof ready</span></div>
+          <p id="research-copy" class="section-copy">Full market research is optional. Add acquisition budget only when you want Partizan to continue with tests that actually need paid budget.</p>
           <button id="research-button" class="button button-secondary hidden" type="button">Continue research →</button>
           <div id="research-progress" class="research-progress hidden"><span class="spinner"></span><div><strong>Partizan is mapping your market…</strong><small>Finding customer segments and concrete acquisition opportunities.</small></div></div>
           <div id="clarification" class="clarification hidden"></div>
@@ -182,7 +183,7 @@
         <section class="settings-grid">
           <article class="panel balance-card">
             <div class="section-head"><div><span class="eyebrow">Acquisition budget</span><h2>Available budget</h2></div><span id="balance-state" class="status-pill">Not funded</span></div>
-            <p class="section-copy">Partizan cannot use more acquisition money than you add here, and paid execution still needs its normal channel and spend permissions.</p>
+            <p class="section-copy">Add money when a specific recommended test needs paid budget. Partizan cannot use more than you add, and paid execution still needs the required account and permission.</p>
             <div class="balance-amount"><span>Available now</span><strong id="balance-available">$0</strong></div>
             <div class="balance-mini"><span><b id="balance-capacity">$0</b> acquisition capacity</span><span><b id="balance-used">$0</b> used</span></div>
             <form id="fund-form" class="inline-form">

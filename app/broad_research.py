@@ -10,7 +10,14 @@ from pydantic import BaseModel, Field
 
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ICPGenerationResponse, ICPView, ProductProfileView
-from app.search import DiscoveryQuery, SearchHit, SearchProvider, SourceClass, get_search_provider
+from app.search import (
+    DiscoveryQuery,
+    MockSearchProvider,
+    SearchHit,
+    SearchProvider,
+    SourceClass,
+    get_search_provider,
+)
 
 BROAD_RESEARCH_NAMESPACE = "broad_research_maps"
 _BROAD_RESEARCH_UUID_NAMESPACE = UUID("5aa1e843-17ee-45b2-99bb-30e91d6efe28")
@@ -124,6 +131,44 @@ class BroadResearchService:
         if payload is None:
             return None
         return BroadResearchMapView.model_validate(payload)
+
+    async def discover_preview(
+        self,
+        product: ProductProfileView,
+        icp_result: ICPGenerationResponse,
+    ) -> BroadResearchOpportunityView:
+        """Return one bounded real public-web opportunity for the free scan.
+
+        This intentionally does not persist a BroadResearchMap: full research must still
+        run the complete surface set after entitlement. The mock provider is rejected so
+        synthetic evidence can never be presented to customers as free-scan proof.
+        """
+        if not icp_result.icps:
+            raise RuntimeError("Partizan could not identify an audience for free research.")
+        provider = self._search_provider or get_search_provider()
+        if isinstance(provider, MockSearchProvider):
+            raise RuntimeError("Public-web research is not configured.")
+
+        preferred = (
+            ResearchSurface.COMMUNITY,
+            ResearchSurface.DIRECTORY,
+            ResearchSurface.CREATOR,
+        )
+        queries = self._queries(product, icp_result.icps[0])
+        by_surface = {query.surface: query for query in queries}
+        for surface in preferred:
+            query = by_surface[surface]
+            try:
+                hits = await provider.search(query.discovery_query, limit=2)
+            except Exception:
+                continue
+            if not hits:
+                continue
+            opportunity = self._hit_opportunity(product, query, hits[0])
+            if not opportunity.provenance:
+                continue
+            return opportunity
+        raise RuntimeError("Partizan could not find a strong public-web opportunity yet.")
 
     async def discover(
         self,

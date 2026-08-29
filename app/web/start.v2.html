@@ -19,76 +19,104 @@
   </header>
 
   <main class="shell main">
-    <div class="progress" aria-label="Customer journey"><i class="on"></i><i id="progress-2"></i><i id="progress-3"></i></div>
+    <div class="progress" aria-label="Customer journey"><i class="on"></i><i id="progress-2"></i><i id="progress-3"></i><i id="progress-4"></i></div>
 
     <section id="stage-input" class="stage">
-      <span class="eyebrow">Start free · no card required</span>
-      <h1>You built the product.<br><em>Let's figure out where to start.</em></h1>
-      <p class="lede">Paste the product you already made. If you do not have a website, describe it instead. The free scan gives a fast first hypothesis; full market research is what verifies concrete communities, creators, directories and other opportunities.</p>
-      <form id="preview-form" class="panel form-panel start-simple-form">
-        <div class="website-first">
-          <label for="website">Paste your website</label>
-          <input id="website" type="url" inputmode="url" placeholder="https://yourproduct.com">
-          <button id="no-website-button" class="text-button inline-toggle" type="button">I don't have a website</button>
-        </div>
-        <div id="brief-fallback" class="brief-fallback hidden">
-          <label for="brief">Describe your product</label>
-          <textarea id="brief" minlength="20" placeholder="Example: AI bookkeeping assistant for freelancers. $19/month."></textarea>
-          <p class="fine">One or two sentences are enough. Partizan will ask for more only when it changes the acquisition plan.</p>
-        </div>
-        <input id="market" type="hidden" value="Auto-detect from product and website">
-        <div class="simple-intake-grid">
-          <div>
-            <label for="budget">How much can you comfortably test with?</label>
-            <div class="budget-presets" role="group" aria-label="Common test budgets">
-              <button class="budget-preset active" type="button" data-budget="10">$10</button>
-              <button class="budget-preset" type="button" data-budget="50">$50</button>
-              <button class="budget-preset" type="button" data-budget="100">$100</button>
-              <button class="budget-preset" type="button" data-budget="500">$500</button>
-              <button class="budget-preset" type="button" data-budget="custom">Custom</button>
-            </div>
-            <div class="money-input budget-custom"><span>$</span><input id="budget" type="number" min="1" max="100000" step="1" value="10" required></div>
-            <p class="fine">This is a planning limit, not a promise that Partizan will spend it. The best first move may cost $0.</p>
+      <div id="intake-product-step" class="intake-step">
+        <span class="eyebrow">Step 1 · Start free · no card required</span>
+        <h1>Paste your product.</h1>
+        <p class="lede">Partizan starts first. Give it the public product page and it will read what you built before asking about marketing goals or budget.</p>
+        <form id="preview-form" class="panel form-panel product-only-form">
+          <div class="website-first">
+            <label for="website">Product website</label>
+            <input id="website" type="url" inputmode="url" placeholder="https://yourproduct.com">
+            <button id="no-website-button" class="text-button inline-toggle" type="button">I don't have a website</button>
           </div>
-          <div>
-            <label for="goal">What would success look like?</label>
-            <select id="goal">
-              <option value="Get first users">First users</option>
-              <option value="Get paying customers">Paid customers</option>
-              <option value="Get leads">Leads</option>
-              <option value="Get signups">Signups</option>
-              <option value="Grow revenue">Revenue</option>
-            </select>
+          <div id="brief-fallback" class="brief-fallback hidden">
+            <label for="brief">Describe your product</label>
+            <textarea id="brief" minlength="20" placeholder="Example: AI bookkeeping assistant for freelancers. $19/month."></textarea>
+            <p class="fine">One or two sentences are enough. No marketing questionnaire.</p>
           </div>
-        </div>
-        <button class="button button-primary" type="submit">Scan my product →</button>
-        <p class="fine">The free scan is a fast hypothesis. It does not pretend that public-web research or paid experiments have already happened.</p>
-      </form>
+          <button class="button button-primary" type="submit">Scan my product →</button>
+          <p class="fine">For a website scan, Partizan reads public page content. It does not treat instructions embedded in a website as trusted commands.</p>
+        </form>
+      </div>
+
+      <div id="intake-understanding-step" class="intake-step hidden">
+        <span class="eyebrow">Step 2 · Partizan understands it</span>
+        <h1>We think you built:</h1>
+        <p class="lede">Confirm the product facts Partizan extracted. Edit only what it misunderstood.</p>
+        <section class="panel understanding-card">
+          <div class="understanding-row"><span>Product</span><strong id="understanding-product">—</strong></div>
+          <div class="understanding-row"><span>For</span><strong id="understanding-for">—</strong></div>
+          <div class="understanding-row"><span>Likely customer</span><strong id="understanding-customer">—</strong></div>
+          <div class="understanding-row"><span>Market</span><strong id="understanding-market">—</strong></div>
+          <div id="understanding-edit" class="understanding-edit hidden">
+            <label for="understanding-product-input">Product</label><input id="understanding-product-input" maxlength="300">
+            <label for="understanding-for-input">For</label><textarea id="understanding-for-input" maxlength="1200"></textarea>
+            <label for="understanding-customer-input">Likely customer</label><input id="understanding-customer-input" maxlength="600">
+            <label for="understanding-market-input">Market</label><input id="understanding-market-input" maxlength="300">
+          </div>
+          <div class="understanding-actions">
+            <button id="understanding-confirm" class="button button-primary" type="button">Looks right →</button>
+            <button id="understanding-edit-button" class="text-button" type="button">Edit</button>
+          </div>
+        </section>
+      </div>
+
+      <div id="intake-goal-step" class="intake-step hidden">
+        <span class="eyebrow">Step 3 · Your outcome</span>
+        <h1>What would success look like?</h1>
+        <p class="lede">This changes how Partizan ranks opportunities. You still do not choose channels.</p>
+        <section class="panel single-question-panel">
+          <label for="goal">Success means</label>
+          <select id="goal">
+            <option value="Get first users">First users</option>
+            <option value="Get paying customers">Paid customers</option>
+            <option value="Get leads">Leads</option>
+            <option value="Get signups">Signups</option>
+            <option value="Grow revenue">Revenue</option>
+          </select>
+          <button id="goal-continue" class="button button-primary" type="button">Continue →</button>
+        </section>
+      </div>
+
+      <div id="intake-budget-step" class="intake-step hidden">
+        <span class="eyebrow">Step 4 · Your boundary</span>
+        <h1>How much can you comfortably test with?</h1>
+        <p class="lede">This is a planning limit, not permission to spend. Partizan will first look for the smallest useful signal — often $0.</p>
+        <form id="budget-form" class="panel single-question-panel">
+          <div class="budget-presets" role="group" aria-label="Common test budgets">
+            <button class="budget-preset active" type="button" data-budget="10">$10</button>
+            <button class="budget-preset" type="button" data-budget="50">$50</button>
+            <button class="budget-preset" type="button" data-budget="100">$100</button>
+            <button class="budget-preset" type="button" data-budget="500">$500</button>
+            <button class="budget-preset" type="button" data-budget="custom">Custom</button>
+          </div>
+          <div class="money-input budget-custom"><span>$</span><input id="budget" type="number" min="1" max="100000" step="1" value="10" required></div>
+          <button class="button button-primary" type="submit">Find one real opportunity →</button>
+          <p class="fine">Partizan will research one concrete public-web opportunity before asking you to fund anything.</p>
+        </form>
+      </div>
     </section>
 
     <section id="stage-preview" class="stage hidden">
-      <span class="eyebrow">Your free scan</span>
-      <h1>Here are the first<br><em>directions worth investigating.</em></h1>
-      <p id="preview-summary" class="lede"></p>
-      <div id="preview-highlights" class="preview-highlights"></div>
-      <div id="direction-grid" class="direction-grid"></div>
+      <span class="eyebrow">Real research · before funding</span>
+      <h1>Partizan found a place<br><em>worth investigating.</em></h1>
+      <p id="preview-summary" class="lede">This is public-web research evidence, not a conversion claim. No acquisition budget was required to see it.</p>
+      <section id="free-opportunity" class="panel free-opportunity"></section>
 
-      <section class="panel autonomous-choice">
+      <section class="panel autonomous-choice value-first-choice">
         <div>
-          <span class="eyebrow">Keep going</span>
-          <h2>Want Partizan to turn these directions into real opportunities?</h2>
-          <p>Create a workspace if you want continuous research and learning. In the funded-workspace path, adding acquisition budget unlocks the full market research; after that, Partizan should ask for channel access or execution permission only when a recommended move actually needs it.</p>
-          <div class="autoresearch-included">
-            <div class="autoresearch-included-head"><span>Included with acquisition budget</span><strong>Continuous learning</strong></div>
-            <div class="autoresearch-loop" aria-label="Partizan continuous learning loop"><span>Find</span><i>→</i><span>Try</span><i>→</i><span>Measure</span><i>→</i><span>Learn</span></div>
-            <p>Research suggests what is worth testing. Only measured customer outcomes decide what worked.</p>
-          </div>
-          <small>No monthly subscription. Initial market research and continuous learning are included in a funded workspace. Funding research is not permission to spend on ads, and Partizan may recommend a non-paid first move.</small>
+          <span class="eyebrow">Next move</span>
+          <h2>Keep this opportunity and let Partizan continue from here.</h2>
+          <p>Create a workspace around the researched opportunity. Partizan will only ask for money or channel access when a specific recommended action actually needs it.</p>
+          <small>Research evidence is not a proven acquisition result. Real visits, signups and customers are what Partizan learns from next.</small>
         </div>
         <div class="autonomous-choice-actions">
-          <div><strong id="autonomous-price">10% of acquisition spend</strong><span>only on money actually put to work · no monthly fee</span></div>
-          <button id="autonomous-button" class="button button-primary" type="button">Create workspace →</button>
-          <button id="research-only-link" class="text-button" type="button">I only want the $49 Acquisition Plan</button>
+          <div><strong id="autonomous-price">No monthly subscription</strong><span>start with the opportunity you already saw</span></div>
+          <button id="autonomous-button" class="button button-primary" type="button">Continue with this move →</button>
+          <button id="research-only-link" class="text-button" type="button">Prefer full research only? See the $49 plan</button>
         </div>
       </section>
 
@@ -118,17 +146,17 @@
       </section>
 
       <section id="acquisition-plan-card" class="locked panel">
-        <div class="locked-head"><div><span class="eyebrow">Acquisition Plan</span><h2 id="scope-title">Go from hypotheses to a full acquisition map</h2></div><span class="lock">⌁</span></div>
+        <div class="locked-head"><div><span class="eyebrow">Research-only alternative</span><h2 id="scope-title">Want Partizan to research the rest?</h2></div><span class="lock">⌁</span></div>
         <div class="research-value-grid">
           <article><strong>Who is most likely to buy</strong><span>Ranked customer segments and the reasons behind them.</span></article>
           <article><strong>Where to reach them</strong><span>Named communities, creators, search clusters and other concrete opportunities when evidence exists.</span></article>
           <article><strong>Why Partizan picked them</strong><span>Supporting public-web evidence and recommended first tests.</span></article>
         </div>
         <div class="unlock-row">
-          <div><strong id="unlock-price">Get the full Acquisition Plan — $49 once</strong><p>For founders who want the research and recommended tests without giving Partizan an acquisition budget.</p></div>
-          <button id="checkout-button" class="button button-primary" type="button">Get full acquisition map →</button>
+          <div><strong id="unlock-price">Full Acquisition Plan — $49 once</strong><p>Secondary path for founders who want standalone deep research without ongoing testing or an acquisition budget.</p></div>
+          <button id="checkout-button" class="button button-primary" type="button">Get research-only plan →</button>
         </div>
-        <p class="fine">One-time purchase: one full market-research pass and its evidence. A funded workspace includes the same initial research plus continuous learning, so there is no separate $49 research charge.</p>
+        <p class="fine">One-time purchase: one full market-research pass and its evidence. This is an alternate research-only path, not the main way to start Partizan.</p>
       </section>
     </section>
 

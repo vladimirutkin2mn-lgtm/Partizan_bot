@@ -760,3 +760,15 @@ body::before {
   .builder-flow{grid-template-columns:1fr}
   .builder-flow>i{transform:rotate(90deg);justify-self:center}
 }
+
+
+/* Value-before-funding homepage tightening. */
+.compact-budget-story{padding-top:var(--section-space);padding-bottom:calc(var(--section-space) * .78)}
+.anti-waste-card{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:36px;align-items:start;margin-top:26px;padding:28px;border:1px solid rgba(200,255,77,.18);border-radius:22px;background:linear-gradient(145deg,rgba(200,255,77,.055),rgba(255,255,255,.018))}
+.anti-waste-card h3{margin:12px 0 0;font-size:clamp(28px,3.6vw,42px);line-height:1.06;letter-spacing:-.045em}
+.anti-waste-card strong{display:block;color:var(--lime);font-size:15px;line-height:1.4}
+.anti-waste-card p{margin:10px 0 0;color:#89939d;font-size:12px;line-height:1.7}
+.pricing-grid-two{grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);max-width:980px}
+@media(max-width:900px){
+  .anti-waste-card,.pricing-grid-two{grid-template-columns:1fr}
+}

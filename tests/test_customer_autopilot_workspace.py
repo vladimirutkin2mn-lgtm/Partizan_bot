@@ -54,9 +54,9 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert 'id="overview-fund-button"' in workspace.text
     assert 'id="overview-fund-label"' in workspace.text
     assert "Acquisition budget" in workspace.text
-    assert "Approve only what the next move needs" in workspace.text
-    assert "Full market research" in workspace.text
-    assert "Start market research and keep tests funded" in workspace.text
+    assert "Approve only what the move needs" in workspace.text
+    assert "One real opportunity researched" in workspace.text
+    assert "Fund a recommended paid test when needed" in workspace.text
     assert "Tests & decisions" in workspace.text
     assert "AI customer acquisition system" in workspace.text
     for href in ("/privacy", "/terms", "/security", "/contact"):
@@ -69,8 +69,10 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert 'id="activation-card"' in workspace.text
     assert 'id="activation-primary"' in workspace.text
     assert 'id="activation-preview"' in workspace.text
+    assert 'id="activation-preview-opportunity"' in workspace.text
     assert 'id="activation-preview-directions"' in workspace.text
-    assert "Starting hypotheses · not public-web proof yet" in workspace.text
+    assert 'id="activation-preview-label"' in workspace.text
+    assert "Research evidence" in workspace.text
     assert "What's the most you'd pay for one new customer?" in workspace.text
     assert 'id="autopilot-budget"' not in workspace.text
     assert "$149" not in workspace.text
@@ -89,6 +91,7 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert ".activation-card" in stylesheet.text
     assert ".activation-list" in stylesheet.text
     assert ".activation-preview-directions" in stylesheet.text
+    assert ".activation-preview-opportunity" in stylesheet.text
     assert ".product-legal-footer" in stylesheet.text
 
 
@@ -97,6 +100,7 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
     workspace_source = WORKSPACE_JS.read_text(encoding="utf-8")
 
     assert "/v1/customer-projects/preview" in start_source
+    assert "/confirm-preview" in start_source
     assert "/customer/account/register" in start_source
     assert "/customer/account/login" in start_source
     assert "/customer/account/projects/claim" in start_source
@@ -126,12 +130,16 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
     assert "renderActivation" in workspace_source
     assert "renderActivationPreview" in workspace_source
     assert "data.preview_directions || []" in workspace_source
+    assert "data.preview_opportunity || null" in workspace_source
+    assert "Real public-web research · not a conversion claim" in workspace_source
     assert (
         "Connect Meta only if a recommended Instagram & Facebook action needs execution access."
         in workspace_source
     )
     assert "project.launch_unlocked" in workspace_source
     assert "activationAction === 'fund'" in workspace_source
+    assert "activationAction === 'opportunity'" in workspace_source
+    assert "Open this $0 move →" in workspace_source
     assert "activationAction === 'channels'" not in workspace_source
     assert "activationAction === 'integration'" not in workspace_source
     assert "autoChannel.platform !== 'INSTAGRAM' || Boolean(overview.meta.connected)" not in workspace_source

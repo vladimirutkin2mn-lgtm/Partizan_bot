@@ -39,12 +39,15 @@ from app.customer_schemas import (
     CustomerMetaConnectionRequest,
     CustomerMetaConnectResponse,
     CustomerMetaOptionsView,
+    CustomerPreviewConfirmationResponse,
+    CustomerPreviewConfirmRequest,
     CustomerPreviewRequest,
     CustomerPreviewResponse,
     CustomerProjectView,
     CustomerResearchResponse,
 )
 from app.growth_balance import growth_balance_service
+from app.website_intake import WebsiteReadError
 
 router = APIRouter(prefix="/v1", tags=["customer"])
 
@@ -103,8 +106,34 @@ def _meta_callback_target(
     response_model=CustomerPreviewResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_customer_preview(payload: CustomerPreviewRequest) -> CustomerPreviewResponse:
-    return customer_funnel_service.create_preview(payload)
+async def create_customer_preview(payload: CustomerPreviewRequest) -> CustomerPreviewResponse:
+    try:
+        return await customer_funnel_service.create_smart_preview(payload)
+    except WebsiteReadError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer-projects/{project_id}/confirm-preview",
+    response_model=CustomerPreviewConfirmationResponse,
+)
+async def confirm_customer_preview(
+    project_id: UUID,
+    payload: CustomerPreviewConfirmRequest,
+    customer_token: Annotated[str | None, Header(alias=CUSTOMER_TOKEN_HEADER)] = None,
+) -> CustomerPreviewConfirmationResponse:
+    try:
+        return await customer_funnel_service.confirm_preview(
+            project_id,
+            _require_customer_token(customer_token),
+            payload,
+        )
+    except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
+        raise _project_error(exc) from exc
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.get("/customer-projects/{project_id}", response_model=CustomerProjectView)

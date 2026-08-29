@@ -55,48 +55,6 @@
   }
 
 
-  const demo = document.getElementById('product-demo');
-  const demoSteps = [...document.querySelectorAll('[data-demo-step]')];
-  const demoProgress = document.getElementById('demo-progress');
-  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  let demoTimer = null;
-  let demoStarted = false;
-
-  const showDemoStep = (index) => {
-    demoSteps.forEach((step, stepIndex) => {
-      step.classList.toggle('is-active', stepIndex === index);
-      step.classList.toggle('is-complete', stepIndex < index);
-    });
-    if (demoProgress) demoProgress.textContent = `${index + 1} / ${demoSteps.length}`;
-  };
-
-  const runDemo = () => {
-    if (demoStarted || reducedMotion || demoSteps.length === 0) return;
-    demoStarted = true;
-    let index = 0;
-    showDemoStep(index);
-    demoTimer = window.setInterval(() => {
-      index += 1;
-      if (index >= demoSteps.length) {
-        window.clearInterval(demoTimer);
-        demoTimer = null;
-        return;
-      }
-      showDemoStep(index);
-    }, 1450);
-  };
-
-  if (demo && !reducedMotion && 'IntersectionObserver' in window) {
-    const demoObserver = new IntersectionObserver((entries, instance) => {
-      if (!entries.some((entry) => entry.isIntersecting)) return;
-      runDemo();
-      instance.disconnect();
-    }, { threshold: 0.35 });
-    demoObserver.observe(demo);
-  } else if (demo && !reducedMotion) {
-    runDemo();
-  }
-
   document.querySelectorAll('.faq-item').forEach((item) => {
     item.addEventListener('toggle', () => {
       if (!item.open) return;

@@ -21,12 +21,12 @@ def test_root_serves_marketing_site() -> None:
         'id="channels"',
         'id="safety"',
         'id="pricing"',
-        'id="product-demo"',
         "/site/assets/landing.v1.css",
         "/site/assets/landing.v1.js",
     ):
         assert anchor in html
     assert 'href="/app"' not in html
+    assert 'id="product-demo"' not in html
     assert "/site/assets/landing.v1.css?v=" in html
     assert "/site/assets/landing.account.v1.css?v=" in html
     assert "/site/assets/landing.v1.js?v=" in html
