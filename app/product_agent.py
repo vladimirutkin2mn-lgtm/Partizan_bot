@@ -230,18 +230,34 @@ class ProductIntakeAgent:
             f"{field_name}: {answer}" for field_name, _, answer in answers
         )
         labeled = self._parse_labeled_fields(combined)
+        source = self._parse_product_source_block(brief)
+        source_description = source.get("description") or source.get("body")
         price = self._parse_number(labeled.get("price"))
         budget = self._parse_number(labeled.get("budget"))
         max_cac = self._parse_number(labeled.get("max cac") or labeled.get("max_cac"))
+        source_type = source.get("source_type")
         return ProductAnalysis(
-            name=labeled.get("product") or labeled.get("name"),
-            description=labeled.get("description") or brief.strip(),
+            name=(
+                labeled.get("product")
+                or labeled.get("name")
+                or source.get("title")
+            ),
+            product_type=self._fallback_product_type(source_type),
+            description=(
+                labeled.get("description")
+                or source_description
+                or brief.strip()
+            ),
             problem_or_desire=(
                 labeled.get("problem_or_desire")
                 or labeled.get("problem")
                 or labeled.get("pain")
             ),
-            value_proposition=labeled.get("value proposition") or labeled.get("value_proposition"),
+            value_proposition=(
+                labeled.get("value proposition")
+                or labeled.get("value_proposition")
+                or source.get("description")
+            ),
             usp=labeled.get("usp"),
             market=labeled.get("market"),
             language=labeled.get("language"),
@@ -250,7 +266,46 @@ class ProductIntakeAgent:
             goal=labeled.get("goal"),
             budget=budget,
             max_cac=max_cac,
+            confidence=0.55 if source else None,
         )
+
+    @staticmethod
+    def _parse_product_source_block(text: str) -> dict[str, str]:
+        marker = "PRODUCT_SOURCE_CONTENT (UNTRUSTED)"
+        end_marker = "END_PRODUCT_SOURCE_CONTENT"
+        if marker not in text or end_marker not in text:
+            return {}
+        block = text.split(marker, 1)[1].split(end_marker, 1)[0]
+        result: dict[str, str] = {}
+        body = ""
+        if "BODY:" in block:
+            header, body = block.split("BODY:", 1)
+        else:
+            header = block
+        for line in header.splitlines():
+            if ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            normalized = key.strip().casefold()
+            value = value.strip()
+            if value and value != "(none)":
+                result[normalized] = value
+        body = " ".join(body.split()).strip()
+        if body:
+            result["body"] = body[:4000]
+        return result
+
+    @staticmethod
+    def _fallback_product_type(source_type: str | None) -> str | None:
+        return {
+            "TELEGRAM": "Telegram bot / product",
+            "IOS_APP": "iOS app",
+            "ANDROID_APP": "Android app",
+            "GITHUB": "GitHub / open-source product",
+            "CHROME_EXTENSION": "Chrome extension",
+            "PRODUCT_PAGE": "Public product page",
+            "WEBSITE": "Website / web product",
+        }.get(source_type or "")
 
     def _parse_labeled_fields(self, text: str) -> dict[str, str]:
         result: dict[str, str] = {}
