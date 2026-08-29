@@ -44,7 +44,8 @@ def test_customer_start_is_website_first_and_honest_about_the_free_scan() -> Non
     assert "I don't have a website" in page.text
     assert 'id="brief-fallback" class="brief-fallback hidden"' in page.text
     assert "How much can you comfortably test with?" in page.text
-    assert "What matters most?" in page.text
+    assert "What would success look like?" in page.text
+    assert '<option value="Get first users">First users</option>' in page.text
     assert 'data-budget="10"' in page.text
     assert 'data-budget="50"' in page.text
     assert 'data-budget="100"' in page.text
@@ -97,7 +98,7 @@ def test_customer_start_sends_autonomous_customers_to_persistent_workspace() -> 
     assert "Continuous learning" in page.text
     assert "Find</span><i>→</i><span>Try" in page.text
     assert "Initial market research and continuous learning are included" in page.text
-    assert "Adding money does not by itself authorize paid advertising" in page.text
+    assert "Funding research is not permission to spend on ads" in page.text
     assert "one full market-research pass" in page.text
     start_css = client.get("/start/assets/start.v2.css")
     assert start_css.status_code == 200
