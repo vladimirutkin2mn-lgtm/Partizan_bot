@@ -39,7 +39,10 @@ def test_marketing_header_exposes_direct_customer_workspace_entry() -> None:
     assert "From $10" in html
     assert "Prefer research only?" in html
     assert "One real opportunity before funding" in html
-    assert "Account connection is available; paid actions still require the account, budget and permission to be ready." in html
+    assert (
+        "Account connection is available; paid actions still require the account, "
+        "budget and permission to be ready."
+    ) in html
     assert "Research only today." in html
     assert "Ask above $200" not in html
     assert "Customers at $24 CAC" not in html
