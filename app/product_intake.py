@@ -128,6 +128,40 @@ class InMemoryProductIntakeService:
         self._persist_state(state)
         return self._response(state)
 
+    def confirm_preview(
+        self,
+        product_id: UUID,
+        *,
+        name: str,
+        description: str,
+        likely_customer: str,
+        market: str,
+        goal: str,
+        budget: float,
+    ) -> ProductIntakeResponse:
+        """Confirm the founder-reviewed free-scan understanding.
+
+        The founder's explicit confirmation is authoritative for the fields exposed in
+        the preview. Any intake clarifications about those fields are therefore resolved
+        by the confirmation rather than being carried into the paid/full research path.
+        """
+        state = self._load_state(product_id)
+        audience = [likely_customer.strip()] if likely_customer.strip() else []
+        state.product = state.product.model_copy(
+            update={
+                "name": name.strip() or state.product.name,
+                "description": description.strip() or state.product.description,
+                "known_audience": audience or state.product.known_audience,
+                "market": market.strip() or state.product.market,
+                "goal": goal.strip(),
+                "budget": float(budget),
+                "status": ProductProfileStatus.CONFIRMED,
+            }
+        )
+        state.questions = []
+        self._persist_state(state)
+        return self._response(state)
+
     def reset(self) -> None:
         self._states.clear()
         if self._store.ephemeral:
