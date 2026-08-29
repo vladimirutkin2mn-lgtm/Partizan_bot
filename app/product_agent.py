@@ -257,6 +257,7 @@ class ProductIntakeAgent:
                 labeled.get("value proposition")
                 or labeled.get("value_proposition")
                 or source.get("description")
+                or (brief.strip() if not source and len(brief.strip()) >= 20 else None)
             ),
             usp=labeled.get("usp"),
             market=labeled.get("market"),
