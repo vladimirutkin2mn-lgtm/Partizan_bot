@@ -9,8 +9,8 @@ class CustomerPreviewRequest(BaseModel):
     brief: str | None = Field(default=None, max_length=6000)
     website_url: HttpUrl | None = None
     market: str = Field(default="Auto-detect from product and website", min_length=2, max_length=160)
-    goal: str = Field(min_length=2, max_length=200)
-    budget_usd: int = Field(ge=1, le=100_000)
+    goal: str | None = Field(default=None, min_length=2, max_length=200)
+    budget_usd: int | None = Field(default=None, ge=1, le=100_000)
 
     @model_validator(mode="after")
     def require_website_or_description(self) -> "CustomerPreviewRequest":
@@ -29,6 +29,22 @@ class CustomerDirectionView(BaseModel):
     rationale: str
 
 
+class CustomerProductUnderstandingView(BaseModel):
+    product: str = Field(min_length=1, max_length=300)
+    for_whom: str = Field(min_length=1, max_length=1200)
+    likely_customer: str = Field(min_length=1, max_length=600)
+    market: str = Field(min_length=1, max_length=300)
+
+
+class CustomerPreviewConfirmRequest(BaseModel):
+    product: str = Field(min_length=1, max_length=300)
+    for_whom: str = Field(min_length=1, max_length=1200)
+    likely_customer: str = Field(min_length=1, max_length=600)
+    market: str = Field(min_length=1, max_length=300)
+    goal: str = Field(min_length=2, max_length=200)
+    budget_usd: int = Field(ge=1, le=100_000)
+
+
 class MaskedOpportunityView(BaseModel):
     category: str
     label: str
@@ -37,11 +53,12 @@ class MaskedOpportunityView(BaseModel):
 class CustomerPreviewResponse(BaseModel):
     project_id: UUID
     customer_token: str
-    channel_count: int = Field(ge=3, le=5)
-    opportunity_scope_estimate: int = Field(ge=1)
-    fastest_signal: str
-    directions: list[CustomerDirectionView]
-    masked_opportunities: list[MaskedOpportunityView]
+    understanding: CustomerProductUnderstandingView
+    channel_count: int = Field(default=0, ge=0, le=5)
+    opportunity_scope_estimate: int = Field(default=0, ge=0)
+    fastest_signal: str = ""
+    directions: list[CustomerDirectionView] = Field(default_factory=list)
+    masked_opportunities: list[MaskedOpportunityView] = Field(default_factory=list)
     launch_price_usd: int = Field(ge=1)
     managed_spend_fee_pct: int = Field(ge=0, le=100)
 
@@ -93,6 +110,31 @@ class CustomerResearchEvidenceView(BaseModel):
     title: str
     url: HttpUrl
     snippet: str = ""
+
+
+class CustomerFreeOpportunityView(BaseModel):
+    surface: Literal["CREATOR", "DIRECTORY", "COMMUNITY"]
+    title: str
+    url: HttpUrl | None = None
+    rationale: str
+    relevance_score: float | None = None
+    execution_status: Literal["RESEARCH_ONLY", "OUTREACH_POSSIBLE", "MANUAL_HANDOFF"]
+    execution_requirement: str
+    provenance: list[CustomerResearchEvidenceView] = Field(min_length=1)
+    recommended_action: str
+    estimated_cost_min_usd: float = Field(ge=0)
+    estimated_cost_max_usd: float = Field(ge=0)
+    signal_to_watch: str
+
+
+class CustomerPreviewConfirmationResponse(BaseModel):
+    project_id: UUID
+    product_id: UUID
+    understanding: CustomerProductUnderstandingView
+    directions: list[CustomerDirectionView]
+    free_opportunity: CustomerFreeOpportunityView
+    launch_price_usd: int = Field(ge=1)
+    managed_spend_fee_pct: int = Field(ge=0, le=100)
 
 
 class CustomerOpportunityView(BaseModel):
