@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.customer_schemas import (
     CustomerAutopilotOverview,
+    CustomerDirectionView,
     CustomerProjectView,
 )
 from app.growth_autoresearch_schemas import GrowthAutoResearchOverviewView
