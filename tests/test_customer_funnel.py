@@ -314,9 +314,9 @@ def test_customer_start_and_workspace_assets_are_served_on_separate_boundaries()
     workspace_javascript = client.get("/workspace/assets/workspace.v1.js")
 
     assert start.status_code == 200
-    assert "Get the full Acquisition Plan — $49 once" in start.text
-    assert "Continuous learning" in start.text
-    assert "Keep going" in start.text
+    assert "Full Acquisition Plan — $49 once" in start.text
+    assert "One real opportunity" in start.text
+    assert "Continue with this move" in start.text
     assert 'id="preview-form"' in start.text
     assert 'id="checkout-button"' in start.text
     assert 'id="autonomous-button"' in start.text
@@ -350,14 +350,14 @@ def test_landing_all_customer_ctas_route_to_start_not_internal_app() -> None:
     assert page.status_code == 200
     assert 'href="/app"' not in page.text
     assert page.text.count('href="/start"') >= 5
-    assert "Simple pricing." in page.text
+    assert "Start free. Then choose how far Partizan should go." in page.text
     assert "You built the product." in page.text
-    assert "Your marketing budget can start at <em>$10.</em>" in page.text
+    assert "Start with what you have." in page.text
     assert "$49 <small>once</small>" in page.text
     assert "10% of actual acquisition spend" in page.text
     assert "Find → Try → Learn." in page.text
     assert "You're always <em>in control.</em>" in page.text
-    assert "Partizan may tell you not to spend money." in page.text
+    assert "Partizan may tell you not to run ads yet." in page.text
     assert "Sometimes the best first move costs $0." in page.text
 
     assert javascript.status_code == 200
