@@ -30,3 +30,42 @@
 .budget-preset:hover{border-color:rgba(201,255,101,.25);color:#dce2e7}
 .budget-preset.active{border-color:rgba(201,255,101,.4);background:rgba(201,255,101,.08);color:var(--accent)}
 .budget-custom{max-width:210px}
+
+
+/* Value-before-funding staged intake. */
+.product-only-form{max-width:760px}
+.intake-step{max-width:980px}
+.understanding-card{max-width:900px;padding:10px 26px 24px}
+.understanding-row{display:grid;grid-template-columns:150px minmax(0,1fr);gap:22px;align-items:start;padding:19px 0;border-bottom:1px solid rgba(255,255,255,.07)}
+.understanding-row>span,.opportunity-detail>span,.opportunity-evidence>span{color:#707b85;font-size:9px;font-weight:760;text-transform:uppercase;letter-spacing:.1em}
+.understanding-row>strong{font-size:15px;line-height:1.55;font-weight:650}
+.understanding-edit{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px 22px;padding:22px 0;border-bottom:1px solid rgba(255,255,255,.07)}
+.understanding-edit label{align-self:center;color:#75808a;font-size:10px;font-weight:730;text-transform:uppercase;letter-spacing:.08em}
+.understanding-edit input,.understanding-edit textarea{width:100%;border:1px solid rgba(255,255,255,.11);border-radius:12px;background:rgba(255,255,255,.035);color:#eef2f4;padding:12px 14px;font:inherit}
+.understanding-edit textarea{min-height:96px;resize:vertical}
+.understanding-actions{display:flex;align-items:center;gap:18px;padding-top:22px}
+.single-question-panel{max-width:760px;display:grid;gap:18px;padding:26px}
+.single-question-panel>label{color:#87919b;font-size:11px;font-weight:730}
+.single-question-panel select{min-height:52px}
+.single-question-panel .button{justify-self:start}
+.free-opportunity{padding:30px;max-width:980px;border-color:rgba(200,255,77,.2);background:radial-gradient(circle at 88% 12%,rgba(200,255,77,.07),transparent 28%),linear-gradient(150deg,rgba(255,255,255,.055),rgba(255,255,255,.018))}
+.free-opportunity-head{display:flex;justify-content:space-between;align-items:flex-start;gap:26px}
+.free-opportunity-head h2{margin:9px 0 0;font-size:clamp(28px,4vw,44px);letter-spacing:-.045em}
+.cost-pill{flex:0 0 auto;border:1px solid rgba(200,255,77,.24);border-radius:999px;padding:9px 12px;background:rgba(200,255,77,.055);color:var(--lime);font-size:10px;font-weight:800}
+.opportunity-detail,.opportunity-evidence{margin-top:24px;padding-top:20px;border-top:1px solid rgba(255,255,255,.07)}
+.opportunity-detail p{margin:9px 0 0;color:#a0a9b2;font-size:13px;line-height:1.7}
+.opportunity-evidence{display:grid;gap:9px}
+.opportunity-evidence>a{display:grid;gap:5px;padding:13px 14px;border:1px solid rgba(255,255,255,.075);border-radius:12px;background:rgba(0,0,0,.14)}
+.opportunity-evidence>a strong{font-size:11px;color:#dce2e7}
+.opportunity-evidence>a small{color:#75808a;font-size:9px;line-height:1.5}
+.opportunity-boundary{margin-top:20px;padding:13px 15px;border-radius:12px;background:rgba(255,255,255,.025);color:#737e88;font-size:10px;line-height:1.55}
+.opportunity-open{display:inline-flex;margin-top:18px}
+.value-first-choice{margin-top:22px}
+@media(max-width:760px){
+  .understanding-card{padding:8px 20px 20px}
+  .understanding-row,.understanding-edit{grid-template-columns:1fr;gap:8px}
+  .understanding-actions{align-items:flex-start;flex-direction:column}
+  .free-opportunity{padding:22px}
+  .free-opportunity-head{flex-direction:column}
+  .cost-pill{align-self:flex-start}
+}
