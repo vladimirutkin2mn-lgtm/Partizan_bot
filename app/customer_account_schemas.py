@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 from app.customer_schemas import (
     CustomerAutopilotOverview,
     CustomerDirectionView,
+    CustomerFreeOpportunityView,
     CustomerProjectView,
 )
 from app.growth_autoresearch_schemas import GrowthAutoResearchOverviewView
@@ -67,6 +68,7 @@ class CustomerWorkspaceView(BaseModel):
     project: CustomerProjectView
     autopilot: CustomerAutopilotOverview
     preview_directions: list[CustomerDirectionView] = Field(default_factory=list)
+    preview_opportunity: CustomerFreeOpportunityView | None = None
     autoresearch: GrowthAutoResearchOverviewView | None = None
     target_max_cac: float | None = None
     autonomous_spend_confirmed: bool = False
