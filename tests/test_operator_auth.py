@@ -38,6 +38,9 @@ def test_global_control_plane_guard_is_installed() -> None:
         ("POST", "/v1/products/{product_id}/distribution-events/verify"),
         ("GET", "/v1/public/creative-blobs/{blob_id}"),
         ("POST", "/v1/customer-projects/preview"),
+        ("POST", "/v1/customer-projects/{project_id}/product-clarification"),
+        ("POST", "/v1/customer-projects/{project_id}/confirm-preview"),
+        ("POST", "/v1/customer-projects/{project_id}/preview-research"),
         ("GET", "/v1/customer-projects/{project_id}"),
         ("POST", "/v1/customer-projects/{project_id}/checkout"),
         ("POST", "/v1/customer-projects/{project_id}/recover-access"),
@@ -200,6 +203,41 @@ def test_customer_boundary_bypasses_operator_key_but_keeps_customer_token_auth()
     assert growth_balance_without_customer_token.status_code == 401
     assert growth_balance_without_customer_token.json()["detail"] == "Customer project token required"
     assert recovery_without_billing.status_code == 503
+
+
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        (
+            lambda project_id: f"/v1/customer-projects/{project_id}/product-clarification",
+            {"answer": "It helps users automate bookkeeping."},
+        ),
+        (
+            lambda project_id: f"/v1/customer-projects/{project_id}/confirm-preview",
+            {
+                "product": "AI bookkeeping assistant",
+                "for_whom": "Automates bookkeeping and tax admin.",
+                "likely_customer": "Independent freelancers",
+                "likely_first_audiences": ["Independent freelancers"],
+                "market": "United States",
+                "goal": "Get first users",
+                "budget_usd": 10,
+            },
+        ),
+        (
+            lambda project_id: f"/v1/customer-projects/{project_id}/preview-research",
+            None,
+        ),
+    ],
+)
+def test_new_onboarding_steps_bypass_operator_auth_but_require_customer_token(path, body) -> None:
+    _override(_settings(app_env="production", operator_api_key="correct-secret"))
+    project_id = uuid4()
+
+    response = client.post(path(project_id), json=body)
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Customer project token required"
 
 
 def test_public_creative_blob_route_bypasses_operator_boundary() -> None:
