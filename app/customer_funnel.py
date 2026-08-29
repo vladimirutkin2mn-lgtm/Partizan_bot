@@ -716,7 +716,14 @@ class CustomerFunnelService:
             status=project["status"],
             brief=project["brief"],
             product_link=project.get("product_link") or project.get("website_url"),
-            source_type=project.get("source_type") or ProductSourceType.WEBSITE.value,
+            source_type=(
+                project.get("source_type")
+                or (
+                    ProductSourceType.WEBSITE.value
+                    if project.get("website_url")
+                    else ProductSourceType.DESCRIPTION.value
+                )
+            ),
             website_url=project.get("website_url"),
             market=project["market"],
             goal=project["goal"],
@@ -739,10 +746,15 @@ class CustomerFunnelService:
 
     @staticmethod
     def _stored_source_context(project: dict) -> ProductSourceContext:
-        try:
-            source_type = ProductSourceType(
-                str(project.get("source_type") or ProductSourceType.DESCRIPTION.value)
+        source_type_raw = project.get("source_type")
+        if not source_type_raw:
+            source_type_raw = (
+                ProductSourceType.WEBSITE.value
+                if project.get("website_url")
+                else ProductSourceType.DESCRIPTION.value
             )
+        try:
+            source_type = ProductSourceType(str(source_type_raw))
         except ValueError:
             source_type = ProductSourceType.OTHER_PUBLIC_URL
         return ProductSourceContext(
