@@ -156,7 +156,7 @@ async def read_public_product_source(raw_link: str) -> ProductSourceContext:
             source_type=source_type,
             source_label=_SOURCE_LABELS[source_type],
             link=normalized,
-            title="",
+            title=_source_title_hint(normalized, source_type),
             description="",
             text="",
             needs_founder_context=True,
@@ -188,6 +188,16 @@ def _context_from_snapshot(
             _clarification_question(source_type) if needs_context else None
         ),
     )
+
+
+def _source_title_hint(url: str, source_type: ProductSourceType) -> str:
+    parts = urlsplit(url)
+    segments = [segment for segment in parts.path.split("/") if segment]
+    if source_type == ProductSourceType.TELEGRAM and segments:
+        return f"@{segments[0].lstrip('@')}"[:300]
+    if source_type == ProductSourceType.GITHUB and len(segments) >= 2:
+        return segments[1][:300]
+    return ""
 
 
 def _minimum_context_chars(source_type: ProductSourceType) -> int:
