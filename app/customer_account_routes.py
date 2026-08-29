@@ -47,6 +47,7 @@ from app.customer_schemas import (
     CustomerMetaConnectionRequest,
     CustomerMetaConnectResponse,
     CustomerMetaOptionsView,
+    CustomerPreviewConfirmationResponse,
     CustomerResearchResponse,
 )
 from app.growth_balance import growth_balance_service
