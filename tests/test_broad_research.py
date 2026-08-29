@@ -6,6 +6,7 @@ import pytest
 
 from app.broad_research import (
     BroadResearchService,
+    PreviewResearchUnavailableError,
     ResearchExecutionStatus,
     ResearchSurface,
 )
@@ -18,7 +19,7 @@ from app.schemas import (
     ICPView,
     ProductProfileView,
 )
-from app.search import DiscoveryQuery, MockSearchProvider, SearchHit, SearchProvider
+from app.search import DiscoveryQuery, MockSearchProvider, SearchHit, SearchProvider, SourceClass
 
 PRODUCT_ID = UUID("11111111-1111-4111-8111-111111111111")
 
@@ -87,6 +88,53 @@ def _icp_result() -> ICPGenerationResponse:
         ranked_count=10,
         icps=icps,
     )
+
+
+class RecordingProvider(SearchProvider):
+    def __init__(self) -> None:
+        self.source_classes: list[SourceClass] = []
+        self._fallback = MockSearchProvider()
+
+    async def search(self, discovery_query: DiscoveryQuery, limit: int = 5) -> list[SearchHit]:
+        self.source_classes.append(discovery_query.source_class)
+        return await self._fallback.search(discovery_query, limit)
+
+
+@pytest.mark.asyncio
+async def test_broad_research_routes_specialized_surfaces_to_matching_search_instructions() -> None:
+    provider = RecordingProvider()
+    service = BroadResearchService(MemoryRuntimeStateStore(), provider)
+
+    await service.discover(_product(), _icp_result())
+
+    assert SourceClass.COMMUNITY in provider.source_classes
+    assert SourceClass.CREATOR in provider.source_classes
+    assert SourceClass.NEWSLETTER_SITE in provider.source_classes
+    assert SourceClass.DIRECTORY in provider.source_classes
+    assert SourceClass.PARTNERSHIP in provider.source_classes
+    assert SourceClass.SEARCH in provider.source_classes
+
+
+class EmptyProvider(SearchProvider):
+    async def search(self, discovery_query: DiscoveryQuery, limit: int = 5) -> list[SearchHit]:
+        del discovery_query, limit
+        return []
+
+
+class FailingProvider(SearchProvider):
+    async def search(self, discovery_query: DiscoveryQuery, limit: int = 5) -> list[SearchHit]:
+        del discovery_query, limit
+        raise RuntimeError("search unavailable")
+
+
+@pytest.mark.asyncio
+async def test_preview_research_distinguishes_weak_evidence_from_provider_outage() -> None:
+    empty = BroadResearchService(MemoryRuntimeStateStore(), EmptyProvider())
+    failing = BroadResearchService(MemoryRuntimeStateStore(), FailingProvider())
+
+    assert await empty.discover_preview(_product(), _icp_result()) is None
+    with pytest.raises(PreviewResearchUnavailableError, match="temporarily unavailable"):
+        await failing.discover_preview(_product(), _icp_result())
 
 
 @pytest.mark.asyncio
