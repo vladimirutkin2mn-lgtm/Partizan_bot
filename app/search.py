@@ -12,6 +12,9 @@ class SourceClass(StrEnum):
     COMMUNITY = "community"
     CREATOR = "creator"
     NEWSLETTER_SITE = "newsletter_site"
+    DIRECTORY = "directory"
+    PARTNERSHIP = "partnership"
+    SEARCH = "search"
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +90,18 @@ class OpenAIWebSearchProvider(SearchProvider):
             SourceClass.NEWSLETTER_SITE: (
                 "Find concrete newsletters, niche publications or specialist websites with an "
                 "audience relevant to the query."
+            ),
+            SourceClass.DIRECTORY: (
+                "Find concrete public directories, comparison sites, review sites or marketplaces "
+                "where this audience actively evaluates products like the one in the query."
+            ),
+            SourceClass.PARTNERSHIP: (
+                "Find concrete complementary businesses, affiliate programs, integrations or "
+                "distribution partners with a plausible audience overlap."
+            ),
+            SourceClass.SEARCH: (
+                "Find concrete public pages that demonstrate recurring search intent, questions, "
+                "alternatives or how-to demand around the problem in the query."
             ),
         }[discovery_query.source_class]
         prompt = (
