@@ -325,7 +325,7 @@
       $('research-state').textContent = 'Ready';
       $('research-state').classList.add('good');
       $('research-title').textContent = 'Market mapped';
-      $('research-copy').textContent = 'Partizan has mapped customer segments and broader acquisition opportunities. Research findings remain separate from execution permission.';
+      $('research-copy').textContent = 'Partizan has mapped customer segments and broader acquisition opportunities. Research-only findings stay visible independently; execution still requires permission.';
       $('research-button').classList.add('hidden');
       return;
     }
