@@ -3,13 +3,14 @@ from __future__ import annotations
 import pytest
 
 from app.product_source import (
+    ProductSourceReadError,
     ProductSourceType,
     description_source_context,
     detect_product_source_type,
     normalize_product_link,
     read_public_product_source,
 )
-from app.website_intake import WebsiteSnapshot
+from app.website_intake import WebsiteReadError, WebsiteSnapshot
 
 
 @pytest.mark.parametrize(
@@ -110,3 +111,35 @@ async def test_rich_public_metadata_can_build_understanding_without_source_quest
     assert "PRODUCT_SOURCE_CONTENT (UNTRUSTED)" in brief
     assert f"SOURCE_TYPE: {expected_type.value}" in brief
     assert title in brief
+
+
+
+@pytest.mark.asyncio
+async def test_recognized_product_source_uses_targeted_question_when_public_metadata_is_unavailable(
+    monkeypatch,
+) -> None:
+    async def fail_reader(_url: str, *, minimum_text_chars: int = 80) -> WebsiteSnapshot:
+        assert minimum_text_chars == 0
+        raise WebsiteReadError("Public page returned HTTP 403.")
+
+    monkeypatch.setattr("app.product_source.read_public_website", fail_reader)
+
+    context = await read_public_product_source("https://t.me/example_bot")
+
+    assert context.source_type == ProductSourceType.TELEGRAM
+    assert context.needs_founder_context is True
+    assert context.clarification_question == "What does this bot help users do?"
+    assert context.title == ""
+    assert context.text == ""
+
+
+@pytest.mark.asyncio
+async def test_product_source_fallback_never_masks_unsafe_or_unresolved_target(monkeypatch) -> None:
+    async def fail_reader(_url: str, *, minimum_text_chars: int = 80) -> WebsiteSnapshot:
+        assert minimum_text_chars == 0
+        raise WebsiteReadError("Only public websites are allowed.")
+
+    monkeypatch.setattr("app.product_source.read_public_website", fail_reader)
+
+    with pytest.raises(ProductSourceReadError, match="Only public websites"):
+        await read_public_product_source("https://t.me/example_bot")
