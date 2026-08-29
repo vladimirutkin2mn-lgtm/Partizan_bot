@@ -200,6 +200,12 @@ class CustomerFunnelService:
         preview_brief = self._preview_brief(payload)
         directions = self._directions(payload)
         scope_estimate = self._scope_estimate(payload)
+        understanding = CustomerProductUnderstandingView(
+            product=(payload.brief or "Product").strip().splitlines()[0][:300] or "Product",
+            for_whom=(payload.brief or self._preview_brief(payload))[:1200],
+            likely_customer="Needs your confirmation",
+            market=(payload.market or "Needs your confirmation")[:300],
+        )
         settings = get_settings()
         project = {
             "id": str(project_id),
@@ -218,6 +224,7 @@ class CustomerFunnelService:
             "created_at": datetime.now(UTC).isoformat(),
             "updated_at": datetime.now(UTC).isoformat(),
             "preview": {
+                "understanding": understanding.model_dump(mode="json"),
                 "channel_count": len(directions),
                 "opportunity_scope_estimate": scope_estimate,
                 "fastest_signal": directions[0].name,
@@ -228,6 +235,7 @@ class CustomerFunnelService:
         return CustomerPreviewResponse(
             project_id=project_id,
             customer_token=customer_token,
+            understanding=understanding,
             channel_count=len(directions),
             opportunity_scope_estimate=scope_estimate,
             fastest_signal=directions[0].name,
