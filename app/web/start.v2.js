@@ -413,7 +413,7 @@
   $('budget-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!currentProjectId || !currentToken || !pendingUnderstanding) {
-      showNotice('Product understanding is missing. Run the scan again.', true);
+      showNotice('Product understanding is missing. Analyze the product again.', true);
       return;
     }
     const button = event.submitter;
@@ -439,7 +439,7 @@
 
   $('preview-research-retry').addEventListener('click', async () => {
     if (!currentProjectId || !currentToken) {
-      showNotice('Project session is missing. Run the free scan again.', true);
+      showNotice('Project session is missing. Analyze the product again.', true);
       return;
     }
     const button = $('preview-research-retry');
@@ -467,7 +467,7 @@
   };
 
   const claimIntoCurrentAccount = async () => {
-    if (!currentProjectId || !currentToken) throw new Error('Project session is missing. Run the free scan again.');
+    if (!currentProjectId || !currentToken) throw new Error('Project session is missing. Analyze the product again.');
     const account = await accountApi('/customer/account/me');
     if (account.projects.some((item) => item.project_id === currentProjectId)) {
       redirectWorkspace(currentProjectId);
@@ -483,7 +483,7 @@
 
   const openAccountGate = async () => {
     if (!currentProjectId || !currentToken) {
-      showNotice('Project session is missing. Run the free scan again.', true);
+      showNotice('Project session is missing. Analyze the product again.', true);
       return;
     }
     try {
@@ -512,7 +512,7 @@
 
   $('register-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the free scan again.', true);
+    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Analyze the product again.', true);
     const button = event.submitter;
     button.disabled = true;
     button.textContent = 'Creating workspace…';
@@ -536,7 +536,7 @@
 
   $('login-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the free scan again.', true);
+    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Analyze the product again.', true);
     const button = event.submitter;
     button.disabled = true;
     button.textContent = 'Signing in…';
@@ -557,7 +557,7 @@
   });
 
   $('checkout-button').addEventListener('click', async () => {
-    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the free scan again.', true);
+    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Analyze the product again.', true);
     const button = $('checkout-button');
     button.disabled = true;
     button.textContent = 'Opening secure checkout…';
@@ -796,7 +796,7 @@
           const preview = storedPreview(projectId);
           if (preview) renderPreview(preview);
         }
-        showNotice('Checkout cancelled. Your free scan is still here whenever you’re ready.');
+        showNotice('Checkout cancelled. Your product analysis is still here whenever you’re ready.');
         return true;
       }
     }
@@ -804,7 +804,7 @@
   };
 
   const bootstrap = async () => {
-    if (params.get('login') === 'required') showNotice('Sign in or create a workspace after running a free scan.');
+    if (params.get('login') === 'required') showNotice('Sign in or create a workspace after analyzing your product.');
     const callbackHandled = await bootstrapCallbacks();
     if (!callbackHandled) await resumeStoredProject();
   };
