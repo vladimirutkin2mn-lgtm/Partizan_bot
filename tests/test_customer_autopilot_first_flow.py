@@ -171,7 +171,7 @@ def test_start_page_routes_autonomous_execution_into_customer_workspace() -> Non
     assert "No monthly subscription" in page.text
     assert "Continue with this move" in page.text
     assert "one concrete public-web opportunity" in page.text
-    assert "Recommended first move" in page.text
+    assert "Next move" in page.text
     assert "only ask for money or channel access" in page.text
 
     assert start_javascript.status_code == 200
