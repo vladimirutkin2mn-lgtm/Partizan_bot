@@ -104,6 +104,7 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
 
     assert "/v1/customer-projects/preview" in start_source
     assert "/confirm-preview" in start_source
+    assert "/product-clarification" in start_source
     assert "/preview-research" in start_source
     assert "/customer/account/register" in start_source
     assert "/customer/account/login" in start_source
