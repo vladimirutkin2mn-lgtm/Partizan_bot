@@ -68,6 +68,9 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     )
     assert 'id="activation-card"' in workspace.text
     assert 'id="activation-primary"' in workspace.text
+    assert 'id="activation-preview"' in workspace.text
+    assert 'id="activation-preview-directions"' in workspace.text
+    assert "Starting hypotheses · not public-web proof yet" in workspace.text
     assert "What's the most you'd pay for one new customer?" in workspace.text
     assert 'id="autopilot-budget"' not in workspace.text
     assert "$149" not in workspace.text
@@ -85,6 +88,7 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert ".channel-table" in stylesheet.text
     assert ".activation-card" in stylesheet.text
     assert ".activation-list" in stylesheet.text
+    assert ".activation-preview-directions" in stylesheet.text
     assert ".product-legal-footer" in stylesheet.text
 
 
@@ -120,6 +124,10 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
     assert "$('overview-fund-button').addEventListener('click', openFundingControls)" in workspace_source
     assert "$('overview-fund-label').textContent = 'Add funds'" in workspace_source
     assert "renderActivation" in workspace_source
+    assert "renderActivationPreview" in workspace_source
+    assert "data.preview_directions || []" in workspace_source
+    assert "Connect Meta only if a recommended Instagram & Facebook action needs execution access." in workspace_source
+    assert "project.launch_unlocked" in workspace_source
     assert "activationAction === 'fund'" in workspace_source
     assert "activationAction === 'channels'" not in workspace_source
     assert "activationAction === 'integration'" not in workspace_source
