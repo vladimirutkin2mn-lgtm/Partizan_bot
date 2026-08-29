@@ -8,6 +8,7 @@
   let lastResearchResult = null;
   let activeTab = 'overview';
   let activationAction = null;
+  let activationOpportunityUrl = null;
 
   const api = async (path, options = {}) => {
     const headers = new Headers(options.headers || {});
@@ -84,11 +85,43 @@
     state.textContent = stateText;
   };
 
-  const renderActivationPreview = (directions) => {
-    const container = $('activation-preview-directions');
+  const renderActivationPreview = (directions, opportunity) => {
+    const preview = $('activation-preview');
+    const opportunityContainer = $('activation-preview-opportunity');
+    const directionsContainer = $('activation-preview-directions');
+    activationOpportunityUrl = null;
+
+    if (opportunity) {
+      const maxCost = Number(opportunity.estimated_cost_max_usd || 0);
+      const minCost = Number(opportunity.estimated_cost_min_usd || 0);
+      const cost = maxCost === 0
+        ? '$0'
+        : (minCost === maxCost ? money(maxCost) : `${money(minCost)}–${money(maxCost)}`);
+      const evidence = Array.isArray(opportunity.provenance) ? opportunity.provenance[0] : null;
+      activationOpportunityUrl = opportunity.url || (evidence && evidence.url) || null;
+      $('activation-preview-label').textContent = 'Real public-web research · not a conversion claim';
+      opportunityContainer.innerHTML = `
+        <article>
+          <span>${escapeHtml(opportunity.surface.replaceAll('_', ' ').toLowerCase())}</span>
+          <strong>${escapeHtml(opportunity.title)}</strong>
+          <p>${escapeHtml(opportunity.rationale)}</p>
+          <div><b>Recommended move</b><small>${escapeHtml(opportunity.recommended_action)}</small></div>
+          <div><b>Estimated cash cost</b><small>${escapeHtml(cost)}</small></div>
+          <div><b>Signal to watch</b><small>${escapeHtml(opportunity.signal_to_watch)}</small></div>
+          ${evidence ? `<a href="${escapeHtml(evidence.url)}" target="_blank" rel="noopener noreferrer">Evidence · ${escapeHtml(evidence.title || 'public source')} ↗</a>` : ''}
+        </article>`;
+      directionsContainer.innerHTML = '';
+      opportunityContainer.classList.remove('hidden');
+      preview.classList.remove('hidden');
+      return;
+    }
+
     const items = Array.isArray(directions) ? directions.slice(0, 3) : [];
-    $('activation-preview').classList.toggle('hidden', items.length === 0);
-    container.innerHTML = items.map((item) => `
+    $('activation-preview-label').textContent = 'Starting hypotheses · not public-web proof yet';
+    opportunityContainer.innerHTML = '';
+    opportunityContainer.classList.add('hidden');
+    preview.classList.toggle('hidden', items.length === 0);
+    directionsContainer.innerHTML = items.map((item) => `
       <article>
         <span>${escapeHtml(item.potential === 'HIGH' ? 'Strong starting hypothesis' : 'Worth investigating')}</span>
         <strong>${escapeHtml(item.name)}</strong>
@@ -101,6 +134,7 @@
     const funded = overview.growth_balance.funded_usd > 0;
     const researchReady = project.research_state === 'READY';
     const needsInput = project.research_state === 'NEEDS_INPUT';
+    const previewOpportunity = data.preview_opportunity || null;
     const testStarted = overview.running_experiments.length > 0 || overview.waiting_experiments.length > 0;
     const noMeasuredActivity = overview.growth_balance.acquisition_spend_usd <= 0
       && overview.paid_customers <= 0;
@@ -115,19 +149,36 @@
       return;
     }
 
-    const current = !researchReady ? 'research' : 'recommendation';
+    const button = $('activation-primary');
+    button.disabled = false;
     setActivationStep('activation-product', true, false, 'Done');
     setActivationStep('activation-direction', true, false, 'Done');
+
+    if (previewOpportunity) {
+      setActivationStep('activation-budget', true, false, 'Done');
+      setActivationStep('activation-channel', false, true, 'Now');
+      setActivationStep('activation-limit', false, false, 'If needed');
+      setActivationStep('activation-test', false, false, 'Next');
+      $('activation-progress').textContent = '3 of 6';
+      const maxCost = Number(previewOpportunity.estimated_cost_max_usd || 0);
+      if (maxCost <= 0) {
+        activationAction = 'opportunity';
+        button.textContent = 'Open this $0 move →';
+        $('activation-note').textContent = `Recommended first move: ${previewOpportunity.recommended_action} No acquisition funding is required for this step.`;
+      } else {
+        activationAction = 'fund';
+        button.textContent = `Run this ${money(maxCost)} test →`;
+        $('activation-note').textContent = `This specific move needs up to ${money(maxCost)}. Partizan will ask you to fund the test because the action is now concrete.`;
+      }
+      return;
+    }
+
+    const current = !researchReady ? 'research' : 'recommendation';
     setActivationStep('activation-budget', researchReady, current === 'research', researchReady ? 'Done' : 'Next');
     setActivationStep('activation-channel', false, current === 'recommendation', researchReady ? 'Review' : 'Waiting');
     setActivationStep('activation-limit', false, false, 'If needed');
     setActivationStep('activation-test', false, false, 'Partizan');
-
-    const completed = 2 + Number(researchReady);
-    $('activation-progress').textContent = `${completed} of 6`;
-
-    const button = $('activation-primary');
-    button.disabled = false;
+    $('activation-progress').textContent = `${2 + Number(researchReady)} of 6`;
 
     if (needsInput) {
       activationAction = 'research';
@@ -135,39 +186,38 @@
       $('activation-note').textContent = 'Partizan only asks when one product detail materially changes the research.';
       return;
     }
-
     if (!researchReady) {
       if (project.launch_unlocked) {
         activationAction = 'research';
         button.textContent = 'Start full market research →';
-        $('activation-note').textContent = 'Your Acquisition Plan already unlocks the full research. No acquisition budget is required for this research-only path.';
+        $('activation-note').textContent = 'Your research-only Acquisition Plan already unlocks the full research.';
         return;
       }
       if (funded) {
         activationAction = 'research';
         button.textContent = 'Continue full market research →';
-        $('activation-note').textContent = 'Your funded workspace includes the full research. Adding money still does not authorize paid advertising.';
+        $('activation-note').textContent = 'Your acquisition budget can support the remaining research and later tests. Adding money is still not permission to run ads.';
         return;
       }
-      activationAction = 'fund';
-      button.textContent = 'Unlock full market research →';
-      $('activation-note').textContent = 'This workspace path unlocks full research when you add acquisition budget. You already saw the free scan first; paid execution remains a separate permission.';
+      activationAction = 'research';
+      button.textContent = 'Review the free scan →';
+      $('activation-note').textContent = 'This older project does not have the new free researched opportunity yet. Funding is not shown as the default next step.';
       return;
     }
 
     activationAction = 'research';
     button.textContent = 'See what Partizan found →';
-    $('activation-note').textContent = 'Partizan should recommend the next move from the research. Connect a channel, set a limit or add more money only if that specific move actually needs it.';
+    $('activation-note').textContent = 'Use the research to choose the smallest useful move. Add budget or access only if that specific move needs it.';
   };
 
-  const friendlyBlockers = (overview) => {
+  const friendlyBlockers = (overview, data) => {
     const items = [];
     if (overview.blockers.some((item) => item.includes('No autonomous execution channel'))) items.push('No execution channel is currently available. Partizan can keep researching; grant channel access only when you want to run a recommended action.');
-    if (overview.growth_balance.funded_usd <= 0) items.push('Add acquisition budget to start the included market research.');
+    if (overview.growth_balance.funded_usd <= 0 && !data.preview_opportunity) items.push('No paid acquisition budget is funded. Partizan can still show research; add money only for a specific paid move.');
     if (overview.blockers.some((item) => item.includes('Website or landing page'))) items.push('Add a live website or landing page before paid traffic starts.');
     if (overview.blockers.some((item) => item.includes('guardrails'))) items.push('Save the maximum cost per customer in Settings.');
     if (overview.blockers.some((item) => item.includes('Meta access'))) items.push('Connect Meta only if a recommended Instagram & Facebook action needs execution access.');
-    if (overview.growth_balance.funded_usd > 0 && !overview.growth_balance.settlement_ready) items.push('Paid spend is paused until Partizan’s ad-spend rail is ready. Research and planning remain available.');
+    if (overview.growth_balance.funded_usd > 0 && !overview.growth_balance.settlement_ready) items.push('Paid tests are paused until Partizan’s payment path is ready. Research and planning remain available.');
     return items.join(' ');
   };
 
@@ -327,19 +377,19 @@
     $('growth-balance-metric').classList.toggle('is-funded', funded);
     $('overview-fund-label').textContent = 'Add funds';
     $('overview-balance-benefit').querySelector('span').textContent = funded
-      ? 'Keep research and tests funded'
-      : 'Start market research and keep tests funded';
+      ? 'Available for recommended paid tests'
+      : 'Fund a recommended paid test when needed';
     $('balance-state').textContent = funded ? 'Funded' : 'Not funded';
     $('balance-state').classList.toggle('good', funded);
-    $('fund-button').textContent = 'Add funds securely →';
+    $('fund-button').textContent = 'Add funds for a paid test →';
     $('balance-note').textContent = funded
-      ? `${money(balance.funded_usd)} added. Unused money remains in your acquisition budget.${balance.settlement_ready ? ' Paid execution rail is ready.' : ' Paid tests are still paused until the ad-spend rail is ready.'}`
-      : 'Adding funds starts the initial market research. Partizan charges its fee only on acquisition money actually spent.';
+      ? `${money(balance.funded_usd)} added. Unused money remains in your acquisition budget.${balance.settlement_ready ? ' Paid execution is available when a recommended action and permission are ready.' : ' Paid tests are still paused until the payment path is ready.'}`
+      : 'Add money only when a recommended action needs paid budget. Partizan charges its fee only on acquisition money actually spent.';
     $('balance-note').classList.toggle('warning', funded && !balance.settlement_ready);
 
     $('work-state').textContent = overview.autopilot_status === 'ACTIVE' ? 'Working' : (overview.autopilot_status === 'PAUSED' ? 'Paused' : 'Preparing');
     $('work-state').classList.toggle('good', overview.autopilot_status === 'ACTIVE');
-    $('blockers').textContent = friendlyBlockers(overview);
+    $('blockers').textContent = friendlyBlockers(overview, data);
 
     if (data.target_max_cac != null) $('max-cac').value = String(data.target_max_cac);
     $('spend-confirm').checked = Boolean(data.autonomous_spend_confirmed);
@@ -354,7 +404,7 @@
 
     renderChannels(data.channels || []);
     renderActivity(overview);
-    renderActivationPreview(data.preview_directions || []);
+    renderActivationPreview(data.preview_directions || [], data.preview_opportunity || null);
     renderActivation(project, overview, data);
 
     const paused = overview.autopilot_status === 'PAUSED';
