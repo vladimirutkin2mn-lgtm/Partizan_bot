@@ -16,7 +16,7 @@ def test_marketing_header_exposes_direct_customer_workspace_entry() -> None:
     assert 'href="/start"' in html
     assert ">Scan my product <span>↗</span></a>" in html
     assert "You built the product." in html
-    assert "For people who built a product but do not know marketing yet" in html
+    assert "For solo founders and small teams who built a product but do not know marketing yet" in html
     assert "You do not need to learn marketing first." in html
     assert "Start free · No card required" in html
     assert "Your marketing budget can start at <em>$10.</em>" in html
@@ -31,6 +31,7 @@ def test_marketing_header_exposes_direct_customer_workspace_entry() -> None:
     assert "Find → Try → Learn." in html
     assert 'id="product-demo"' in html
     assert "Animation shows decision flow only." in html
+    assert "$0–$10" in html
     assert "Research across" in html
     assert 'id="pricing"' in html
     assert 'id="safety"' in html
