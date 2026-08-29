@@ -124,11 +124,11 @@
   const renderPreview = (data) => {
     managementFeePct = Number(data.managed_spend_fee_pct || 10);
     const strongCount = data.directions.filter((item) => item.potential === 'HIGH').length;
-    $('preview-summary').textContent = `Partizan found ${data.channel_count} acquisition directions worth investigating. ${strongCount} look especially strong for a first test. The free scan is the starting hypothesis; full market research names and verifies the concrete opportunities.`;
+    $('preview-summary').textContent = `The free scan suggests ${data.channel_count} acquisition directions worth investigating. ${strongCount} look especially strong as places to investigate first. This is a hypothesis, not public-web research; full market research names and verifies concrete opportunities.`;
     $('preview-highlights').innerHTML = `
       <article><strong>${data.channel_count}</strong><span>directions to investigate</span></article>
-      <article><strong>${strongCount}</strong><span>strong starting hypotheses</span></article>
-      <article><strong>${escapeHtml(data.fastest_signal)}</strong><span>fastest signal to verify</span></article>`;
+      <article><strong>${strongCount}</strong><span>strong first directions</span></article>
+      <article><strong>${escapeHtml(data.fastest_signal)}</strong><span>first direction to verify</span></article>`;
     $('scope-title').textContent = 'Turn these hypotheses into a full acquisition map';
     $('unlock-price').textContent = `Get the full Acquisition Plan — $${data.launch_price_usd} once`;
     $('autonomous-price').textContent = `${managementFeePct}% of acquisition spend`;
@@ -153,6 +153,28 @@
   $('no-website-button').addEventListener('click', showBriefFallback);
   $('website').addEventListener('input', () => {
     if ($('website').value.trim()) $('brief-fallback').classList.add('hidden');
+  });
+
+  const budgetInput = $('budget');
+  const budgetPresets = [...document.querySelectorAll('.budget-preset')];
+
+  const selectBudgetPreset = (button) => {
+    budgetPresets.forEach((item) => item.classList.toggle('active', item === button));
+    const value = button.dataset.budget;
+    if (value === 'custom') {
+      budgetInput.focus();
+      budgetInput.select();
+      return;
+    }
+    budgetInput.value = value;
+  };
+
+  budgetPresets.forEach((button) => {
+    button.addEventListener('click', () => selectBudgetPreset(button));
+  });
+  budgetInput.addEventListener('input', () => {
+    const matching = budgetPresets.find((button) => button.dataset.budget === budgetInput.value);
+    budgetPresets.forEach((button) => button.classList.toggle('active', button === matching));
   });
 
   $('preview-form').addEventListener('submit', async (event) => {
@@ -184,7 +206,7 @@
       showNotice(error.message, true);
     } finally {
       button.disabled = false;
-      button.textContent = 'Run free scan →';
+      button.textContent = 'Scan my product →';
     }
   });
 
@@ -455,8 +477,16 @@
   };
 
   const params = new URLSearchParams(window.location.search);
+  const initialWebsite = String(params.get('website') || '').trim();
+  if (initialWebsite) $('website').value = initialWebsite;
   const initialBudget = Number(params.get('budget'));
-  if (Number.isFinite(initialBudget) && initialBudget >= 1) $('budget').value = String(initialBudget);
+  if (Number.isFinite(initialBudget) && initialBudget >= 1) {
+    $('budget').value = String(initialBudget);
+    const matchingPreset = budgetPresets.find(
+      (button) => button.dataset.budget === String(initialBudget),
+    );
+    budgetPresets.forEach((button) => button.classList.toggle('active', button === matchingPreset));
+  }
 
   const bootstrapCallbacks = async () => {
     const projectId = params.get('project');

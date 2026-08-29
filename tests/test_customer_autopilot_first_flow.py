@@ -170,11 +170,10 @@ def test_start_page_routes_autonomous_execution_into_customer_workspace() -> Non
     assert "$149" not in page.text
     assert "No monthly subscription" in page.text
     assert "10% of acquisition spend" in page.text
-    assert "Acquisition budget" in page.text
-    assert "Current work" in page.text
-    assert "Results" in page.text
-    assert "Channels" in page.text
-    assert "Limits" in page.text
+    assert "Keep going" in page.text
+    assert "Continuous learning" in page.text
+    assert "Recommended next move" in page.text
+    assert "Budget controls" in page.text
 
     assert start_javascript.status_code == 200
     assert "/autopilot/checkout" not in start_javascript.text
@@ -183,7 +182,7 @@ def test_start_page_routes_autonomous_execution_into_customer_workspace() -> Non
     assert "marketing_budget_usd" not in start_javascript.text
 
     assert workspace.status_code == 200
-    assert "Choose where Partizan can work" in workspace.text
+    assert "Partizan recommends. You control the boundaries." in workspace.text
     assert "Account access" in workspace.text
     assert "Market research" in workspace.text
     assert workspace_javascript.status_code == 200

@@ -37,9 +37,10 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert 'data-tab="activity"' in workspace.text
     assert 'data-tab="settings"' in workspace.text
     assert 'id="channels-table-body"' in workspace.text
-    assert "Choose where Partizan can work" in workspace.text
+    assert "Partizan recommends. You control the boundaries." in workspace.text
     assert "Research only" in workspace.text
-    assert "Off blocks new execution" in workspace.text
+    assert "Allow execution" in workspace.text
+    assert "do not use" in workspace.text
     assert 'id="fund-form"' in workspace.text
     assert 'id="guardrail-form"' in workspace.text
     assert 'id="workspace-summary" class="lede hidden" aria-hidden="true"' in workspace.text
@@ -53,14 +54,23 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert 'id="overview-fund-button"' in workspace.text
     assert 'id="overview-fund-label"' in workspace.text
     assert "Acquisition budget" in workspace.text
+    assert "Approve only what the next move needs" in workspace.text
+    assert "Full market research" in workspace.text
     assert "Start market research and keep tests funded" in workspace.text
     assert "Tests & decisions" in workspace.text
     assert "AI customer acquisition system" in workspace.text
     for href in ("/privacy", "/terms", "/security", "/contact"):
         assert f'href="{href}"' in workspace.text
-    assert "Let's get your first acquisition test running." in workspace.text
+    assert "Let's find your first users." in workspace.text
+    assert (
+        "You should not have to choose a marketing channel or configure a campaign first."
+        in workspace.text
+    )
     assert 'id="activation-card"' in workspace.text
     assert 'id="activation-primary"' in workspace.text
+    assert 'id="activation-preview"' in workspace.text
+    assert 'id="activation-preview-directions"' in workspace.text
+    assert "Starting hypotheses · not public-web proof yet" in workspace.text
     assert "What's the most you'd pay for one new customer?" in workspace.text
     assert 'id="autopilot-budget"' not in workspace.text
     assert "$149" not in workspace.text
@@ -78,6 +88,7 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert ".channel-table" in stylesheet.text
     assert ".activation-card" in stylesheet.text
     assert ".activation-list" in stylesheet.text
+    assert ".activation-preview-directions" in stylesheet.text
     assert ".product-legal-footer" in stylesheet.text
 
 
@@ -113,12 +124,19 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
     assert "$('overview-fund-button').addEventListener('click', openFundingControls)" in workspace_source
     assert "$('overview-fund-label').textContent = 'Add funds'" in workspace_source
     assert "renderActivation" in workspace_source
+    assert "renderActivationPreview" in workspace_source
+    assert "data.preview_directions || []" in workspace_source
+    assert (
+        "Connect Meta only if a recommended Instagram & Facebook action needs execution access."
+        in workspace_source
+    )
+    assert "project.launch_unlocked" in workspace_source
     assert "activationAction === 'fund'" in workspace_source
-    assert "activationAction === 'channels'" in workspace_source
-    assert "activationAction === 'integration'" in workspace_source
-    assert "openIntegrationControls" in workspace_source
-    assert "autoChannel.platform !== 'INSTAGRAM' || Boolean(overview.meta.connected)" in workspace_source
-    assert "activationAction === 'limit'" in workspace_source
+    assert "activationAction === 'channels'" not in workspace_source
+    assert "activationAction === 'integration'" not in workspace_source
+    assert "autoChannel.platform !== 'INSTAGRAM' || Boolean(overview.meta.connected)" not in workspace_source
+    assert "activationAction === 'limit'" not in workspace_source
+    assert "See what Partizan found →" in workspace_source
     assert "amount.select()" in workspace_source
     assert "RESEARCH_ONLY" in workspace_source
     assert "/autopilot/checkout" not in workspace_source

@@ -72,6 +72,9 @@ def test_registration_claims_project_rotates_browser_token_and_sets_http_only_se
     assert workspace.status_code == 200
     assert workspace.json()["project"]["project_id"] == str(preview.project_id)
     assert workspace.json()["account"]["email"] == "founder@example.com"
+    assert workspace.json()["preview_directions"]
+    assert workspace.json()["preview_directions"][0]["name"] == preview.directions[0].name
+    assert workspace.json()["preview_directions"][0]["rationale"] == preview.directions[0].rationale
 
 
 def test_registration_retry_with_same_credentials_resumes_existing_account() -> None:
@@ -277,7 +280,7 @@ def test_customer_workspace_page_is_separate_from_internal_operator_app() -> Non
     assert "Current work" in page.text
     assert "Account access" in page.text
     assert "What's the most you'd pay for one new customer?" in page.text
-    assert "Let's get your first acquisition test running." in page.text
+    assert "Let's find your first users." in page.text
     assert "dogfooding workspace" not in page.text
     assert "/app/assets/" not in page.text
     assert javascript.status_code == 200

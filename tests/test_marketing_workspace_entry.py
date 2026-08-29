@@ -14,20 +14,24 @@ def test_marketing_header_exposes_direct_customer_workspace_entry() -> None:
     assert 'href="/workspace"' in html
     assert ">Sign in</a>" in html
     assert 'href="/start"' in html
-    assert ">Start free <span>↗</span></a>" in html
-    assert "Tell Partizan what you sell." in html
-    assert "Partizan is an AI customer acquisition system" in html
-    assert "It finds where your customers are — and tests what works." in html
-    assert "No card required." in html
-    assert "You have $1,000." in html
-    assert "This is math, not a Partizan forecast." in html
+    assert ">Scan my product <span>↗</span></a>" in html
+    assert "You built the product." in html
+    assert "For solo founders and small teams who built a product but do not know marketing yet" in html
+    assert "You do not need to learn marketing first." in html
+    assert "Start free · No card required" in html
+    assert "Your marketing budget can start at <em>$10.</em>" in html
+    assert "Partizan may tell you not to spend money." in html
+    assert "Maybe you do not need Meta Ads." in html
+    assert "$10</span><span>$50</span><span>$100</span><span>$500</span><span>$1,000" in html
+    assert "Sometimes the best first move costs $0." in html
     assert "See what Partizan actually finds." in html
     assert "r/Freelancers" in html
     assert "Gabrielle Talks Money" in html
     assert "Research evidence is not conversion evidence." in html
-    assert "Find → Test → Learn." in html
+    assert "Find → Try → Learn." in html
     assert 'id="product-demo"' in html
     assert "Animation shows decision flow only." in html
+    assert "$0–$10" in html
     assert "Research across" in html
     assert 'id="pricing"' in html
     assert 'id="safety"' in html
@@ -53,7 +57,9 @@ def test_marketing_account_entry_detects_existing_customer_session_fail_safe() -
     assert "cache: 'no-store'" in javascript.text
     assert "Open workspace" in javascript.text
     assert "nav-account-link" in javascript.text
-    assert "const defaultBudget = 1000;" in javascript.text
+    assert "const defaultBudget = 10;" in javascript.text
+    assert "hero-scan-form" in javascript.text
+    assert "query.set('website', website)" in javascript.text
     assert "customer-count" not in javascript.text
     assert "customersAtExampleCac" not in javascript.text
     assert "const demoSteps" in javascript.text
@@ -67,7 +73,9 @@ def test_marketing_account_entry_detects_existing_customer_session_fail_safe() -
 
     landing_css = client.get("/site/assets/landing.v1.css")
     assert landing_css.status_code == 200
-    assert ".budget-story-grid" in landing_css.text
+    assert ".small-budget-grid" in landing_css.text
+    assert ".hero-scan-form" in landing_css.text
+    assert ".builder-flow" in landing_css.text
     assert ".research-proof-grid" in landing_css.text
     assert ".research-opportunity" in landing_css.text
     assert ".pricing-grid" in landing_css.text

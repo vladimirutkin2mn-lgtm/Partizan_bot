@@ -208,7 +208,8 @@ def test_customer_start_and_workspace_assets_are_served_on_separate_boundaries()
 
     assert start.status_code == 200
     assert "Get the full Acquisition Plan — $49 once" in start.text
-    assert "Acquisition budget" in start.text
+    assert "Continuous learning" in start.text
+    assert "Keep going" in start.text
     assert 'id="preview-form"' in start.text
     assert 'id="checkout-button"' in start.text
     assert 'id="autonomous-button"' in start.text
@@ -243,13 +244,14 @@ def test_landing_all_customer_ctas_route_to_start_not_internal_app() -> None:
     assert 'href="/app"' not in page.text
     assert page.text.count('href="/start"') >= 5
     assert "Simple pricing." in page.text
+    assert "You built the product." in page.text
+    assert "Your marketing budget can start at <em>$10.</em>" in page.text
     assert "$49 <small>once</small>" in page.text
     assert "10% of actual acquisition spend" in page.text
-    assert "Find → Test → Learn." in page.text
+    assert "Find → Try → Learn." in page.text
     assert "You're always <em>in control.</em>" in page.text
-    assert "Example target customer cost" in page.text
-    assert "$1,000 budget capacity: up to" in page.text
-    assert "This is math, not a Partizan forecast." in page.text
+    assert "Partizan may tell you not to spend money." in page.text
+    assert "Sometimes the best first move costs $0." in page.text
 
     assert javascript.status_code == 200
     assert 'a[href="/start"]' in javascript.text

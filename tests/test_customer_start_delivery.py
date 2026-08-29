@@ -43,9 +43,15 @@ def test_customer_start_is_website_first_and_honest_about_the_free_scan() -> Non
     assert "Paste your website" in page.text
     assert "I don't have a website" in page.text
     assert 'id="brief-fallback" class="brief-fallback hidden"' in page.text
-    assert "How much can Partizan test with?" in page.text
-    assert "What matters most?" in page.text
-    assert "Run free scan" in page.text
+    assert "How much can you comfortably test with?" in page.text
+    assert "What would success look like?" in page.text
+    assert '<option value="Get first users">First users</option>' in page.text
+    assert 'data-budget="10"' in page.text
+    assert 'data-budget="50"' in page.text
+    assert 'data-budget="100"' in page.text
+    assert 'data-budget="500"' in page.text
+    assert "The best first move may cost $0." in page.text
+    assert "Scan my product" in page.text
     assert "The free scan is a fast hypothesis" in page.text
     assert "fake" not in page.text.lower()
     assert 'id="website" type="url" inputmode="url" placeholder=' in page.text
@@ -53,6 +59,10 @@ def test_customer_start_is_website_first_and_honest_about_the_free_scan() -> Non
     assert "brief: brief || null" in javascript.text
     assert "website_url: website || null" in javascript.text
     assert "showBriefFallback" in javascript.text
+    assert "const budgetPresets" in javascript.text
+    assert "selectBudgetPreset" in javascript.text
+    assert "initialWebsite" in javascript.text
+    assert "$('website').value = initialWebsite" in javascript.text
     assert "masked_opportunities.map" not in javascript.text
     assert "Creator @••" not in page.text
 
@@ -65,11 +75,10 @@ def test_customer_start_sends_autonomous_customers_to_persistent_workspace() -> 
     assert page.status_code == 200
     assert "10% of acquisition spend" in page.text
     assert "Create workspace" in page.text
-    assert "Acquisition budget" in page.text
-    assert "Current work" in page.text
-    assert "Results" in page.text
-    assert "Channels" in page.text
-    assert "Limits" in page.text
+    assert "Keep going" in page.text
+    assert "Continuous learning" in page.text
+    assert "Recommended next move" in page.text
+    assert "Budget controls" in page.text
     assert 'id="register-form"' in page.text
     assert 'id="login-form"' in page.text
     assert 'href="/workspace"' in page.text
@@ -87,9 +96,9 @@ def test_customer_start_sends_autonomous_customers_to_persistent_workspace() -> 
     assert "redirectWorkspace" in javascript.text
 
     assert "Continuous learning" in page.text
-    assert "Find</span><i>→</i><span>Test" in page.text
+    assert "Find</span><i>→</i><span>Try" in page.text
     assert "Initial market research and continuous learning are included" in page.text
-    assert "Adding money does not by itself authorize paid advertising" in page.text
+    assert "Funding research is not permission to spend on ads" in page.text
     assert "one full market-research pass" in page.text
     start_css = client.get("/start/assets/start.v2.css")
     assert start_css.status_code == 200

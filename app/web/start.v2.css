@@ -24,3 +24,9 @@
 .product-legal-footer a{color:#7f8993;text-decoration:none}
 .product-legal-footer a:hover{color:var(--accent)}
 @media(max-width:680px){.product-legal-footer{width:min(calc(100% - 28px),1120px);align-items:flex-start;flex-direction:column;gap:14px}}
+
+.budget-presets{display:flex;gap:7px;flex-wrap:wrap;margin:8px 0 10px}
+.budget-preset{appearance:none;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.02);color:var(--muted);padding:8px 12px;font:inherit;font-size:10px;font-weight:760;cursor:pointer}
+.budget-preset:hover{border-color:rgba(201,255,101,.25);color:#dce2e7}
+.budget-preset.active{border-color:rgba(201,255,101,.4);background:rgba(201,255,101,.08);color:var(--accent)}
+.budget-custom{max-width:210px}

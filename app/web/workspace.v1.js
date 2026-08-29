@@ -68,34 +68,12 @@
   };
 
 
-  const openLimitControls = () => {
-    setActiveTab('settings');
-    const card = document.querySelector('.guardrail-card');
-    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    const input = $('max-cac');
-    if (input) window.setTimeout(() => { input.focus(); input.select(); }, 180);
-  };
-
   const openResearchControls = () => {
     setActiveTab('activity');
     const card = document.querySelector('.research-card');
     if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
     const button = $('research-button');
     if (button && !button.classList.contains('hidden') && !button.disabled) button.click();
-  };
-
-  const openChannelControls = () => {
-    setActiveTab('channels');
-    const card = document.querySelector('.channels-card');
-    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  const openIntegrationControls = () => {
-    setActiveTab('settings');
-    const card = document.querySelector('.integrations-card');
-    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    const button = $('meta-connect');
-    if (button && !button.disabled) button.focus();
   };
 
   const setActivationStep = (id, complete, current, stateText) => {
@@ -106,22 +84,27 @@
     state.textContent = stateText;
   };
 
+  const renderActivationPreview = (directions) => {
+    const container = $('activation-preview-directions');
+    const items = Array.isArray(directions) ? directions.slice(0, 3) : [];
+    $('activation-preview').classList.toggle('hidden', items.length === 0);
+    container.innerHTML = items.map((item) => `
+      <article>
+        <span>${escapeHtml(item.potential === 'HIGH' ? 'Strong starting hypothesis' : 'Worth investigating')}</span>
+        <strong>${escapeHtml(item.name)}</strong>
+        <p>${escapeHtml(item.rationale)}</p>
+      </article>
+    `).join('');
+  };
+
   const renderActivation = (project, overview, data) => {
     const funded = overview.growth_balance.funded_usd > 0;
-    const autoChannel = (data.channels || []).find((item) => item.mode === 'AUTO');
-    const autoEnabled = Boolean(autoChannel);
-    const channelReady = Boolean(autoChannel) && (
-      autoChannel.platform !== 'INSTAGRAM' || Boolean(overview.meta.connected)
-    );
-    const limitSaved = data.target_max_cac != null && Boolean(data.autonomous_spend_confirmed);
-    const testStarted = overview.running_experiments.length > 0 || overview.waiting_experiments.length > 0;
     const researchReady = project.research_state === 'READY';
     const needsInput = project.research_state === 'NEEDS_INPUT';
+    const testStarted = overview.running_experiments.length > 0 || overview.waiting_experiments.length > 0;
     const noMeasuredActivity = overview.growth_balance.acquisition_spend_usd <= 0
-      && overview.paid_customers <= 0
-      && !testStarted;
-    const userSetupComplete = funded && channelReady && limitSaved;
-    const showActivation = noMeasuredActivity && (!userSetupComplete || !researchReady);
+      && overview.paid_customers <= 0;
+    const showActivation = noMeasuredActivity && !testStarted;
 
     $('activation-card').classList.toggle('hidden', !showActivation);
     ['performance-metrics', 'performance-overview', 'performance-finance'].forEach((id) => {
@@ -132,62 +115,58 @@
       return;
     }
 
-    let current = !funded ? 'budget' : (
-      needsInput ? 'research' : (!channelReady ? 'channel' : (!limitSaved ? 'limit' : 'research'))
-    );
+    const current = !researchReady ? 'research' : 'recommendation';
     setActivationStep('activation-product', true, false, 'Done');
     setActivationStep('activation-direction', true, false, 'Done');
-    setActivationStep('activation-budget', funded, current === 'budget', funded ? 'Done' : 'Next');
-    setActivationStep('activation-channel', channelReady, current === 'channel', channelReady ? 'Done' : 'Waiting');
-    setActivationStep('activation-limit', limitSaved, current === 'limit', limitSaved ? 'Done' : 'Waiting');
-    setActivationStep('activation-test', testStarted, false, testStarted ? 'Running' : 'Partizan');
+    setActivationStep('activation-budget', researchReady, current === 'research', researchReady ? 'Done' : 'Next');
+    setActivationStep('activation-channel', false, current === 'recommendation', researchReady ? 'Review' : 'Waiting');
+    setActivationStep('activation-limit', false, false, 'If needed');
+    setActivationStep('activation-test', false, false, 'Partizan');
 
-    const completed = 2 + Number(funded) + Number(autoEnabled) + Number(limitSaved) + Number(testStarted);
+    const completed = 2 + Number(researchReady);
     $('activation-progress').textContent = `${completed} of 6`;
 
     const button = $('activation-primary');
     button.disabled = false;
-    if (!funded) {
-      activationAction = 'fund';
-      button.textContent = 'Add acquisition budget →';
-      $('activation-note').textContent = 'Adding money starts the included market research. It does not by itself authorize paid advertising.';
-      return;
-    }
+
     if (needsInput) {
       activationAction = 'research';
       button.textContent = 'Answer one question →';
-      $('activation-note').textContent = 'Partizan needs one product detail because it materially changes the acquisition plan.';
+      $('activation-note').textContent = 'Partizan only asks when one product detail materially changes the research.';
       return;
     }
-    if (!channelReady) {
-      activationAction = autoEnabled && autoChannel.platform === 'INSTAGRAM' ? 'integration' : 'channels';
-      button.textContent = activationAction === 'integration' ? 'Connect Instagram & Facebook →' : 'Choose a channel →';
-      $('activation-note').textContent = activationAction === 'integration'
-        ? 'The channel is selected, but Partizan still needs real account access before it can execute there.'
-        : 'Auto means Partizan may execute only when that channel and its permissions are actually ready.';
+
+    if (!researchReady) {
+      if (project.launch_unlocked) {
+        activationAction = 'research';
+        button.textContent = 'Start full market research →';
+        $('activation-note').textContent = 'Your Acquisition Plan already unlocks the full research. No acquisition budget is required for this research-only path.';
+        return;
+      }
+      if (funded) {
+        activationAction = 'research';
+        button.textContent = 'Continue full market research →';
+        $('activation-note').textContent = 'Your funded workspace includes the full research. Adding money still does not authorize paid advertising.';
+        return;
+      }
+      activationAction = 'fund';
+      button.textContent = 'Unlock full market research →';
+      $('activation-note').textContent = 'This workspace path unlocks full research when you add acquisition budget. You already saw the free scan first; paid execution remains a separate permission.';
       return;
     }
-    if (!limitSaved) {
-      activationAction = 'limit';
-      button.textContent = 'Set customer-cost limit →';
-      $('activation-note').textContent = 'You decide what one new customer is worth. Partizan cannot make that business decision for you.';
-      return;
-    }
-    activationAction = null;
-    button.disabled = true;
-    button.textContent = researchReady ? 'Partizan is preparing the first test…' : 'Market research in progress…';
-    $('activation-note').textContent = researchReady
-      ? 'Your setup is complete. Partizan will surface the first eligible test when the execution path is ready.'
-      : 'Your setup is complete. Partizan is finishing the included market research now.';
+
+    activationAction = 'research';
+    button.textContent = 'See what Partizan found →';
+    $('activation-note').textContent = 'Partizan should recommend the next move from the research. Connect a channel, set a limit or add more money only if that specific move actually needs it.';
   };
 
   const friendlyBlockers = (overview) => {
     const items = [];
-    if (overview.blockers.some((item) => item.includes('No autonomous execution channel'))) items.push('Choose a channel with execution enabled when you want Partizan to act, or keep channels in Research only.');
+    if (overview.blockers.some((item) => item.includes('No autonomous execution channel'))) items.push('No execution channel is currently available. Partizan can keep researching; grant channel access only when you want to run a recommended action.');
     if (overview.growth_balance.funded_usd <= 0) items.push('Add acquisition budget to start the included market research.');
     if (overview.blockers.some((item) => item.includes('Website or landing page'))) items.push('Add a live website or landing page before paid traffic starts.');
     if (overview.blockers.some((item) => item.includes('guardrails'))) items.push('Save the maximum cost per customer in Settings.');
-    if (overview.blockers.some((item) => item.includes('Meta access'))) items.push('Connect Meta in Settings for Auto Instagram & Facebook execution.');
+    if (overview.blockers.some((item) => item.includes('Meta access'))) items.push('Connect Meta only if a recommended Instagram & Facebook action needs execution access.');
     if (overview.growth_balance.funded_usd > 0 && !overview.growth_balance.settlement_ready) items.push('Paid spend is paused until Partizan’s ad-spend rail is ready. Research and planning remain available.');
     return items.join(' ');
   };
@@ -197,7 +176,7 @@
     if (overview.autopilot_status === 'ACTIVE') return 'Partizan is working on getting you customers.';
     if (overview.autopilot_status === 'PAUSED') return 'Partizan is paused.';
     if (overview.product_id) return 'Partizan is ready for the next acquisition step.';
-    return 'Add acquisition budget to start.';
+    return 'Your free scan is ready. Full market research is the next step.';
   };
 
   const renderAccountNav = () => {
@@ -256,11 +235,11 @@
       : '<div><strong>Waiting for the first signal</strong><span>Acquisition and learning decisions will appear here.</span></div>';
   };
 
-  const channelModeLabel = (mode) => ({ AUTO: 'Auto', RESEARCH_ONLY: 'Research only', OFF: 'Off' })[mode] || mode;
+  const channelModeLabel = (mode) => ({ AUTO: 'Execution allowed', RESEARCH_ONLY: 'Research only', OFF: 'Off' })[mode] || mode;
 
   const channelModeOptions = (channel) => {
     const modes = channel.autonomous_execution_available
-      ? [['AUTO', 'Auto'], ['RESEARCH_ONLY', 'Research only'], ['OFF', 'Off']]
+      ? [['AUTO', 'Allow execution'], ['RESEARCH_ONLY', 'Research only'], ['OFF', 'Off']]
       : [['RESEARCH_ONLY', 'Research only'], ['OFF', 'Off']];
     return modes.map(([value, label]) => `<option value="${value}"${channel.mode === value ? ' selected' : ''}>${label}</option>`).join('');
   };
@@ -308,10 +287,15 @@
       $('research-button').classList.remove('hidden');
       return;
     }
-    $('research-state').textContent = overview.growth_balance.funded_usd > 0 ? 'Ready to start' : 'Not started';
-    $('research-title').textContent = overview.growth_balance.funded_usd > 0 ? 'Partizan can start mapping the market now' : 'Partizan will map the market after funding';
-    $('research-copy').textContent = 'Adding an acquisition budget includes the initial market research. There is no separate $49 research charge for a funded workspace.';
-    $('research-button').classList.toggle('hidden', overview.growth_balance.funded_usd <= 0);
+    const researchEntitled = Boolean(project.launch_unlocked) || overview.growth_balance.funded_usd > 0;
+    $('research-state').textContent = researchEntitled ? 'Ready to start' : 'Not started';
+    $('research-title').textContent = researchEntitled
+      ? 'Partizan can start mapping the market now'
+      : 'Full market research is the next step';
+    $('research-copy').textContent = project.launch_unlocked
+      ? 'Your Acquisition Plan already unlocks the full market research. No acquisition budget is required for this research-only path.'
+      : 'In a funded workspace, adding acquisition budget includes the initial market research. Funding research does not authorize paid advertising.';
+    $('research-button').classList.toggle('hidden', !researchEntitled);
   };
 
   const renderWorkspace = (data) => {
@@ -364,12 +348,13 @@
     $('meta-state').classList.toggle('good', overview.meta.connected);
     $('meta-detail').textContent = overview.meta.connected
       ? `Ad account ${overview.meta.ad_account_id}`
-      : 'Connect Meta if Instagram & Facebook is set to Auto. Access alone never starts spend.';
+      : 'Connect Meta only when a recommended Instagram & Facebook action needs execution access. Access alone never starts spend.';
     $('meta-connect').textContent = overview.meta.connected ? 'Reconnect Meta' : 'Connect Meta →';
     $('meta-connect').disabled = false;
 
     renderChannels(data.channels || []);
     renderActivity(overview);
+    renderActivationPreview(data.preview_directions || []);
     renderActivation(project, overview, data);
 
     const paused = overview.autopilot_status === 'PAUSED';
@@ -613,9 +598,6 @@
   $('activation-primary').addEventListener('click', () => {
     if (activationAction === 'fund') return openFundingControls();
     if (activationAction === 'research') return openResearchControls();
-    if (activationAction === 'channels') return openChannelControls();
-    if (activationAction === 'integration') return openIntegrationControls();
-    if (activationAction === 'limit') return openLimitControls();
   });
 
   $('fund-form').addEventListener('submit', async (event) => {

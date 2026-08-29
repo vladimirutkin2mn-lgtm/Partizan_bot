@@ -40,6 +40,7 @@ from app.customer_schemas import (
     CustomerAutopilotOverview,
     CustomerAutopilotStatusRequest,
     CustomerClarificationAnswerRequest,
+    CustomerDirectionView,
     CustomerGrowthBalanceTopUpRequest,
     CustomerGrowthBalanceVerifyRequest,
     CustomerMetaConnectionRequest,
@@ -195,10 +196,17 @@ def get_customer_workspace(
     except (CustomerProjectNotFoundError, CustomerProjectAccessError, ValueError) as exc:
         raise _account_error(exc) from exc
     target_max_cac_raw = project_payload.get("autopilot_target_max_cac")
+    preview_payload = project_payload.get("preview") or {}
+    preview_directions = [
+        CustomerDirectionView.model_validate(item)
+        for item in preview_payload.get("directions", [])
+        if isinstance(item, dict)
+    ]
     return CustomerWorkspaceView(
         account=account,
         project=project,
         autopilot=autopilot,
+        preview_directions=preview_directions,
         target_max_cac=float(target_max_cac_raw) if target_max_cac_raw is not None else None,
         autonomous_spend_confirmed=bool(project_payload.get("autopilot_spend_confirmed")),
     )

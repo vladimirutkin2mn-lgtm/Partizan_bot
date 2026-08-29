@@ -63,7 +63,7 @@ def test_channel_controls_require_customer_session() -> None:
     assert response.status_code == 401
 
 
-def test_channel_controls_default_to_meta_auto_and_other_surfaces_research_only() -> None:
+def test_channel_controls_default_every_surface_to_research_only() -> None:
     client, preview = _registered_client()
 
     response = client.get(f"/customer/workspace/{preview.project_id}/channels")
@@ -71,7 +71,7 @@ def test_channel_controls_default_to_meta_auto_and_other_surfaces_research_only(
     assert response.status_code == 200
     channels = {item["platform"]: item for item in response.json()}
     assert set(channels) == {"INSTAGRAM", "TIKTOK", "REDDIT", "TELEGRAM"}
-    assert channels["INSTAGRAM"]["mode"] == "AUTO"
+    assert channels["INSTAGRAM"]["mode"] == "RESEARCH_ONLY"
     assert channels["INSTAGRAM"]["autonomous_execution_available"] is True
     for platform in ("TIKTOK", "REDDIT", "TELEGRAM"):
         assert channels[platform]["mode"] == "RESEARCH_ONLY"

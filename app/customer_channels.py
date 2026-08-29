@@ -25,15 +25,15 @@ CHANNEL_LABELS: dict[DistributionPlatform, str] = {
 }
 
 DEFAULT_CHANNEL_MODES: dict[DistributionPlatform, str] = {
-    DistributionPlatform.INSTAGRAM: "AUTO",
+    DistributionPlatform.INSTAGRAM: "RESEARCH_ONLY",
     DistributionPlatform.TIKTOK: "RESEARCH_ONLY",
     DistributionPlatform.REDDIT: "RESEARCH_ONLY",
     DistributionPlatform.TELEGRAM: "RESEARCH_ONLY",
 }
 
-# Customer-facing autonomous execution is intentionally narrower than the
-# research surface. Additional platforms can become AUTO only after their
-# customer authorization + execution + spend-control path is production-ready.
+# Research is enabled by default, but no acquisition channel is pre-authorized
+# for execution. A platform may become AUTO only after an explicit customer
+# action and only when its execution + spend-control path is production-ready.
 AUTONOMOUS_EXECUTION_PLATFORMS = frozenset({DistributionPlatform.INSTAGRAM})
 
 

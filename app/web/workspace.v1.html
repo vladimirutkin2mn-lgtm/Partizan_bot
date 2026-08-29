@@ -53,7 +53,7 @@
           </div>
           <button class="button button-primary auth-submit" type="submit">Sign in →</button>
         </form>
-        <p class="auth-new">New to Partizan?<a href="/start">Run the free pre-scan →</a></p>
+        <p class="auth-new">New to Partizan?<a href="/start">Run the free scan →</a></p>
       </div>
     </section>
 
@@ -83,21 +83,25 @@
 
         <section id="activation-card" class="panel activation-card hidden">
           <div class="activation-head">
-            <div><span class="eyebrow">Get started</span><h2>Let's get your first acquisition test running.</h2></div>
+            <div><span class="eyebrow">Get started</span><h2>Let's find your first users.</h2></div>
             <span id="activation-progress" class="status-pill">2 of 6</span>
           </div>
-          <p class="section-copy">Partizan already has your product and first acquisition direction. Finish the few decisions only you can make; Partizan handles the research and next-test logic.</p>
+          <p class="section-copy">You should not have to choose a marketing channel or configure a campaign first. Partizan starts from your product, researches where people may already be and recommends the next useful move.</p>
+          <div id="activation-preview" class="activation-preview">
+            <div class="activation-preview-head"><span>From your free scan</span><small>Starting hypotheses · not public-web proof yet</small></div>
+            <div id="activation-preview-directions" class="activation-preview-directions"></div>
+          </div>
           <ol class="activation-list">
-            <li id="activation-product"><span class="activation-index">1</span><div><strong>Product understood</strong><small>Your free scan created the project context.</small></div><span class="activation-step-state">Done</span></li>
-            <li id="activation-direction"><span class="activation-index">2</span><div><strong>Initial direction mapped</strong><small>Partizan has the first channel hypotheses to investigate.</small></div><span class="activation-step-state">Done</span></li>
-            <li id="activation-budget"><span class="activation-index">3</span><div><strong>Add acquisition budget</strong><small>Funding starts the included market research and gives Partizan a limited budget to work with.</small></div><span class="activation-step-state">Next</span></li>
-            <li id="activation-channel"><span class="activation-index">4</span><div><strong>Connect a channel</strong><small>Choose where Partizan may test, then connect the account when that channel requires access.</small></div><span class="activation-step-state">Waiting</span></li>
-            <li id="activation-limit"><span class="activation-index">5</span><div><strong>Set the most you'd pay for one customer</strong><small>You decide the economic limit. Partizan decides which eligible test fits inside it.</small></div><span class="activation-step-state">Waiting</span></li>
-            <li id="activation-test"><span class="activation-index">6</span><div><strong>Partizan starts the first eligible test</strong><small>Research, channel access and safety gates must be ready first.</small></div><span class="activation-step-state">Partizan</span></li>
+            <li id="activation-product"><span class="activation-index">1</span><div><strong>Product added</strong><small>Your free scan created the starting product context.</small></div><span class="activation-step-state">Done</span></li>
+            <li id="activation-direction"><span class="activation-index">2</span><div><strong>First directions created</strong><small>These are hypotheses to investigate, not yet public-web research.</small></div><span class="activation-step-state">Done</span></li>
+            <li id="activation-budget"><span class="activation-index">3</span><div><strong>Full market research</strong><small>Partizan verifies concrete communities, creators, directories, search clusters and other opportunities.</small></div><span class="activation-step-state">Next</span></li>
+            <li id="activation-channel"><span class="activation-index">4</span><div><strong>Partizan recommends where to start</strong><small>The recommendation comes from the research; you do not have to design the channel strategy yourself.</small></div><span class="activation-step-state">Waiting</span></li>
+            <li id="activation-limit"><span class="activation-index">5</span><div><strong>Approve only what the next move needs</strong><small>After research, connect an account or set an execution limit only when the recommended action requires it.</small></div><span class="activation-step-state">If needed</span></li>
+            <li id="activation-test"><span class="activation-index">6</span><div><strong>Try, measure and learn</strong><small>Real visits, signups and paying customers determine what Partizan should try next.</small></div><span class="activation-step-state">Partizan</span></li>
           </ol>
           <div class="activation-action">
-            <button id="activation-primary" class="button button-primary" type="button">Add acquisition budget →</button>
-            <p id="activation-note" class="note">Adding budget does not by itself authorize paid advertising.</p>
+            <button id="activation-primary" class="button button-primary" type="button">Unlock full market research →</button>
+            <p id="activation-note" class="note">In a funded workspace, adding acquisition budget unlocks the included full research. It does not authorize paid advertising.</p>
           </div>
         </section>
 
@@ -145,9 +149,9 @@
       <section class="tab-panel hidden" data-tab-panel="channels">
         <section class="panel channels-card">
           <div class="section-head channels-head">
-            <div><span class="eyebrow">Channels</span><h2>Choose where Partizan can work</h2><p class="section-copy">Auto lets Partizan execute when that channel is supported and your spend controls allow it. Research only can study the channel but cannot run there. Off blocks new execution.</p></div>
+            <div><span class="eyebrow">Channels</span><h2>Partizan recommends. You control the boundaries.</h2><p class="section-copy">You do not need to choose a marketing strategy here. Research tells Partizan where to start; these controls let you restrict execution or grant access only when a recommended action needs it.</p></div>
           </div>
-          <div class="channel-legend"><span><b>Auto</b> execute when eligible</span><span><b>Research only</b> no execution</span><span><b>Off</b> disabled</span></div>
+          <div class="channel-legend"><span><b>Allow execution</b> Partizan may act when eligible</span><span><b>Research only</b> study without execution</span><span><b>Off</b> do not use</span></div>
           <div class="channel-table-wrap">
             <table class="channel-table">
               <thead><tr><th>Channel</th><th>Mode</th><th>Spend</th><th>Customers</th><th>CAC</th><th>Revenue</th><th>ROAS</th></tr></thead>
@@ -183,7 +187,7 @@
             <div class="balance-mini"><span><b id="balance-capacity">$0</b> acquisition capacity</span><span><b id="balance-used">$0</b> used</span></div>
             <form id="fund-form" class="inline-form">
               <label for="fund-amount">Add funds</label>
-              <div class="money-field"><span>$</span><input id="fund-amount" type="number" min="1" max="100000" step="1" value="1000" required></div>
+              <div class="money-field"><span>$</span><input id="fund-amount" type="number" min="1" max="100000" step="1" value="10" required></div>
               <button id="fund-button" class="button button-primary" type="submit">Add funds securely →</button>
             </form>
             <p id="balance-note" class="note"></p>
