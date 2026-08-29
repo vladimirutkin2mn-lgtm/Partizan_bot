@@ -23,13 +23,13 @@
   updateAccountEntry();
 
   const heroScanForm = document.getElementById('hero-scan-form');
-  const heroWebsite = document.getElementById('hero-website');
+  const heroProductLink = document.getElementById('hero-product-link');
   heroScanForm?.addEventListener('submit', (event) => {
     event.preventDefault();
     const query = new URLSearchParams();
     query.set('budget', String(defaultBudget));
-    const website = heroWebsite?.value.trim();
-    if (website) query.set('website', website);
+    const productLink = heroProductLink?.value.trim();
+    if (productLink) query.set('product', productLink);
     window.location.assign(`/start?${query.toString()}`);
   });
 
