@@ -315,7 +315,7 @@ def test_customer_start_and_workspace_assets_are_served_on_separate_boundaries()
 
     assert start.status_code == 200
     assert "Full Acquisition Plan — $49 once" in start.text
-    assert "One real opportunity" in start.text
+    assert "one real opportunity" in start.text
     assert "Continue with this move" in start.text
     assert 'id="preview-form"' in start.text
     assert 'id="checkout-button"' in start.text
