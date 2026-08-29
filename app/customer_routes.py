@@ -43,11 +43,12 @@ from app.customer_schemas import (
     CustomerPreviewConfirmRequest,
     CustomerPreviewRequest,
     CustomerPreviewResponse,
+    CustomerProductClarificationAnswerRequest,
     CustomerProjectView,
     CustomerResearchResponse,
 )
 from app.growth_balance import growth_balance_service
-from app.website_intake import WebsiteReadError
+from app.product_source import ProductSourceReadError
 
 router = APIRouter(prefix="/v1", tags=["customer"])
 
@@ -110,8 +111,29 @@ def _meta_callback_target(
 async def create_customer_preview(payload: CustomerPreviewRequest) -> CustomerPreviewResponse:
     try:
         return await customer_funnel_service.create_smart_preview(payload)
-    except WebsiteReadError as exc:
+    except ProductSourceReadError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer-projects/{project_id}/product-clarification",
+    response_model=CustomerPreviewResponse,
+)
+async def answer_customer_product_clarification(
+    project_id: UUID,
+    payload: CustomerProductClarificationAnswerRequest,
+    customer_token: Annotated[str | None, Header(alias=CUSTOMER_TOKEN_HEADER)] = None,
+) -> CustomerPreviewResponse:
+    try:
+        return await customer_funnel_service.answer_product_clarification(
+            project_id,
+            _require_customer_token(customer_token),
+            payload.answer,
+        )
+    except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
+        raise _project_error(exc) from exc
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 

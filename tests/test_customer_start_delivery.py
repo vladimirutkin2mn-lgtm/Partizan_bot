@@ -41,9 +41,9 @@ def test_customer_start_makes_partizan_work_before_goal_and_budget() -> None:
 
     assert page.status_code == 200
     assert "Step 1 · Start free · no card required" in page.text
-    assert "Paste your product." in page.text
-    assert "Product website" in page.text
-    assert "I don't have a website" in page.text
+    assert "Show Partizan what you built." in page.text
+    assert "Product link" in page.text
+    assert "No public link? Describe what you built" in page.text
     assert 'id="brief-fallback" class="brief-fallback hidden"' in page.text
     assert "Step 2 · Partizan understands it" in page.text
     assert "We think you built:" in page.text
@@ -59,10 +59,15 @@ def test_customer_start_makes_partizan_work_before_goal_and_budget() -> None:
     assert 'data-budget="500"' in page.text
     assert "Find one real opportunity" in page.text
     assert "before asking you to fund anything" in page.text
-    assert "Scan my product" in page.text
+    assert "Analyze my product" in page.text
     assert "fake" not in page.text.lower()
-    assert 'id="website" type="url" inputmode="url" placeholder=' in page.text
-    assert 'id="website" type="url" inputmode="url" required' not in page.text
+    assert 'id="product-link" type="text" inputmode="url"' in page.text
+    assert "t.me/yourbot" in page.text
+    assert "App Store" in page.text
+    assert "GitHub" in page.text
+    assert 'id="intake-clarification-step"' in page.text
+    assert 'id="product-clarification-form"' in page.text
+    assert "Likely first audiences" in page.text
 
     preview_call = javascript.text.index("'/v1/customer-projects/preview'")
     goal_read = javascript.text.index("goal: $('goal').value")
@@ -72,8 +77,10 @@ def test_customer_start_makes_partizan_work_before_goal_and_budget() -> None:
     assert goal_read > preview_call
     assert budget_read > preview_call
     assert "brief: brief || null" in javascript.text
-    assert "website_url: website || null" in javascript.text
+    assert "product_link: productLink || null" in javascript.text
     assert "renderUnderstanding" in javascript.text
+    assert "renderProductClarification" in javascript.text
+    assert "/product-clarification" in javascript.text
     assert "renderFreeOpportunity" in javascript.text
     assert "renderResearchPending" in javascript.text
     assert "renderResearchOutcome" in javascript.text
@@ -86,8 +93,8 @@ def test_customer_start_makes_partizan_work_before_goal_and_budget() -> None:
     assert "showBriefFallback" in javascript.text
     assert "const budgetPresets" in javascript.text
     assert "selectBudgetPreset" in javascript.text
-    assert "initialWebsite" in javascript.text
-    assert "$('website').value = initialWebsite" in javascript.text
+    assert "initialProductLink" in javascript.text
+    assert "$('product-link').value = initialProductLink" in javascript.text
     assert "masked_opportunities.map" not in javascript.text
 
 

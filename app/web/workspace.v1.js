@@ -237,7 +237,7 @@
         return;
       }
       activationAction = 'research';
-      button.textContent = 'Review the free scan →';
+      button.textContent = 'Review product analysis →';
       $('activation-note').textContent = 'This older project does not have the new free researched opportunity yet. Funding is not shown as the default next step.';
       return;
     }

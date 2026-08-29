@@ -120,15 +120,28 @@
 
   const intakeSteps = [
     $('intake-product-step'),
+    $('intake-clarification-step'),
     $('intake-understanding-step'),
     $('intake-goal-step'),
     $('intake-budget-step'),
   ];
+  const intakeProgress = [1, 1, 2, 3, 4];
 
   const showIntakeStep = (step) => {
     showStage(stageInput);
     intakeSteps.forEach((node, index) => node.classList.toggle('hidden', index + 1 !== step));
-    setProgress(step);
+    setProgress(intakeProgress[step - 1] || 1);
+  };
+
+  const renderProductClarification = (data) => {
+    managementFeePct = Number(data.managed_spend_fee_pct || managementFeePct);
+    pendingUnderstanding = { ...data.understanding };
+    const clarification = data.clarification;
+    $('product-clarification-question').textContent = clarification.question;
+    $('product-clarification-rationale').textContent = clarification.rationale
+      || 'Partizan only asks when this detail materially changes the product understanding.';
+    $('product-clarification-answer').value = '';
+    showIntakeStep(2);
   };
 
   const renderUnderstanding = (data) => {
@@ -138,20 +151,33 @@
       product: pendingUnderstanding.product,
       for_whom: pendingUnderstanding.for_whom,
       likely_customer: pendingUnderstanding.likely_customer,
+      likely_first_audiences: Array.isArray(pendingUnderstanding.likely_first_audiences)
+        ? pendingUnderstanding.likely_first_audiences
+        : [],
       market: pendingUnderstanding.market,
     };
+    $('understanding-source-label').textContent = data.source_label || 'Product source';
+    $('understanding-product-type').textContent = [
+      pendingUnderstanding.product_type,
+      pendingUnderstanding.language,
+      pendingUnderstanding.business_model,
+    ].filter(Boolean).join(' · ');
     $('understanding-product').textContent = values.product;
     $('understanding-for').textContent = values.for_whom;
     $('understanding-customer').textContent = values.likely_customer;
+    $('understanding-audiences').textContent = values.likely_first_audiences.length
+      ? values.likely_first_audiences.join(' · ')
+      : 'Not determined yet';
     $('understanding-market').textContent = values.market;
     $('understanding-product-input').value = values.product;
     $('understanding-for-input').value = values.for_whom;
     $('understanding-customer-input').value = values.likely_customer;
+    $('understanding-audiences-input').value = values.likely_first_audiences.join('\n');
     $('understanding-market-input').value = values.market;
     $('understanding-edit').classList.add('hidden');
     $('understanding-edit-button').textContent = 'Edit';
     $('understanding-confirm').textContent = 'Looks right →';
-    showIntakeStep(2);
+    showIntakeStep(3);
   };
 
   const surfaceLabel = (surface) => ({
@@ -261,18 +287,19 @@
   const renderPreview = (data) => {
     if (data.research_status) renderResearchOutcome(data);
     else if (data.free_opportunity) renderFreeOpportunity(data);
+    else if (data.clarification) renderProductClarification(data);
     else renderUnderstanding(data);
   };
 
   const showBriefFallback = () => {
     $('brief-fallback').classList.remove('hidden');
-    $('no-website-button').classList.add('hidden');
+    $('no-public-link-button').classList.add('hidden');
     $('brief').focus();
   };
 
-  $('no-website-button').addEventListener('click', showBriefFallback);
-  $('website').addEventListener('input', () => {
-    if ($('website').value.trim()) $('brief-fallback').classList.add('hidden');
+  $('no-public-link-button').addEventListener('click', showBriefFallback);
+  $('product-link').addEventListener('input', () => {
+    if ($('product-link').value.trim()) $('brief-fallback').classList.add('hidden');
   });
 
   const budgetInput = $('budget');
@@ -299,31 +326,58 @@
 
   $('preview-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    const website = $('website').value.trim();
+    const productLink = $('product-link').value.trim();
     const brief = $('brief').value.trim();
-    if (!website && !brief) {
+    if (!productLink && !brief) {
       showBriefFallback();
-      showNotice('Paste a website or describe your product.', true);
+      showNotice('Paste a product link or describe what you built.', true);
       return;
     }
     const button = event.submitter;
     button.disabled = true;
-    button.textContent = website ? 'Reading your product…' : 'Understanding your product…';
+    button.textContent = productLink ? 'Analyzing your product…' : 'Understanding your product…';
     try {
       const data = await api('/v1/customer-projects/preview', {
         method: 'POST',
         body: JSON.stringify({
           brief: brief || null,
-          website_url: website || null,
+          product_link: productLink || null,
         }),
       });
       rememberProject(data.project_id, data.customer_token, data);
-      renderUnderstanding(data);
+      renderPreview(data);
     } catch (error) {
       showNotice(error.message, true);
     } finally {
       button.disabled = false;
-      button.textContent = 'Scan my product →';
+      button.textContent = 'Analyze my product →';
+    }
+  });
+
+  $('product-clarification-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!currentProjectId || !currentToken) {
+      showNotice('Product session is missing. Analyze the product again.', true);
+      return;
+    }
+    const answer = $('product-clarification-answer').value.trim();
+    if (!answer) return;
+    const button = event.submitter;
+    button.disabled = true;
+    button.textContent = 'Updating product understanding…';
+    try {
+      const data = await api(`/v1/customer-projects/${currentProjectId}/product-clarification`, {
+        method: 'POST',
+        body: JSON.stringify({ answer }),
+      });
+      const existing = storedPreview(currentProjectId) || {};
+      rememberProject(currentProjectId, currentToken, { ...existing, ...data });
+      renderPreview(data);
+    } catch (error) {
+      showNotice(error.message, true);
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Continue analysis →';
     }
   });
 
@@ -340,21 +394,26 @@
       product: $('understanding-product-input').value.trim(),
       for_whom: $('understanding-for-input').value.trim(),
       likely_customer: $('understanding-customer-input').value.trim(),
+      likely_first_audiences: $('understanding-audiences-input').value
+        .split('\n')
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 5),
       market: $('understanding-market-input').value.trim(),
     };
     if (Object.values(pendingUnderstanding).some((value) => !value)) {
       showNotice('Confirm the product, audience and market before continuing.', true);
       return;
     }
-    showIntakeStep(3);
+    showIntakeStep(4);
   });
 
-  $('goal-continue').addEventListener('click', () => showIntakeStep(4));
+  $('goal-continue').addEventListener('click', () => showIntakeStep(5));
 
   $('budget-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!currentProjectId || !currentToken || !pendingUnderstanding) {
-      showNotice('Product understanding is missing. Run the scan again.', true);
+      showNotice('Product understanding is missing. Analyze the product again.', true);
       return;
     }
     const button = event.submitter;
@@ -380,7 +439,7 @@
 
   $('preview-research-retry').addEventListener('click', async () => {
     if (!currentProjectId || !currentToken) {
-      showNotice('Project session is missing. Run the free scan again.', true);
+      showNotice('Project session is missing. Analyze the product again.', true);
       return;
     }
     const button = $('preview-research-retry');
@@ -408,7 +467,7 @@
   };
 
   const claimIntoCurrentAccount = async () => {
-    if (!currentProjectId || !currentToken) throw new Error('Project session is missing. Run the free scan again.');
+    if (!currentProjectId || !currentToken) throw new Error('Project session is missing. Analyze the product again.');
     const account = await accountApi('/customer/account/me');
     if (account.projects.some((item) => item.project_id === currentProjectId)) {
       redirectWorkspace(currentProjectId);
@@ -424,7 +483,7 @@
 
   const openAccountGate = async () => {
     if (!currentProjectId || !currentToken) {
-      showNotice('Project session is missing. Run the free scan again.', true);
+      showNotice('Project session is missing. Analyze the product again.', true);
       return;
     }
     try {
@@ -453,7 +512,7 @@
 
   $('register-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the free scan again.', true);
+    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Analyze the product again.', true);
     const button = event.submitter;
     button.disabled = true;
     button.textContent = 'Creating workspace…';
@@ -477,7 +536,7 @@
 
   $('login-form').addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the free scan again.', true);
+    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Analyze the product again.', true);
     const button = event.submitter;
     button.disabled = true;
     button.textContent = 'Signing in…';
@@ -498,7 +557,7 @@
   });
 
   $('checkout-button').addEventListener('click', async () => {
-    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Run the free scan again.', true);
+    if (!currentProjectId || !currentToken) return showNotice('Project session is missing. Analyze the product again.', true);
     const button = $('checkout-button');
     button.disabled = true;
     button.textContent = 'Opening secure checkout…';
@@ -671,8 +730,8 @@
   };
 
   const params = new URLSearchParams(window.location.search);
-  const initialWebsite = String(params.get('website') || '').trim();
-  if (initialWebsite) $('website').value = initialWebsite;
+  const initialProductLink = String(params.get('product') || params.get('website') || '').trim();
+  if (initialProductLink) $('product-link').value = initialProductLink;
   const initialBudget = Number(params.get('budget'));
   if (Number.isFinite(initialBudget) && initialBudget >= 1) {
     $('budget').value = String(initialBudget);
@@ -737,7 +796,7 @@
           const preview = storedPreview(projectId);
           if (preview) renderPreview(preview);
         }
-        showNotice('Checkout cancelled. Your free scan is still here whenever you’re ready.');
+        showNotice('Checkout cancelled. Your product analysis is still here whenever you’re ready.');
         return true;
       }
     }
@@ -745,7 +804,7 @@
   };
 
   const bootstrap = async () => {
-    if (params.get('login') === 'required') showNotice('Sign in or create a workspace after running a free scan.');
+    if (params.get('login') === 'required') showNotice('Sign in or create a workspace after analyzing your product.');
     const callbackHandled = await bootstrapCallbacks();
     if (!callbackHandled) await resumeStoredProject();
   };

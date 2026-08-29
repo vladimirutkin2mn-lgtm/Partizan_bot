@@ -24,37 +24,51 @@
     <section id="stage-input" class="stage">
       <div id="intake-product-step" class="intake-step">
         <span class="eyebrow">Step 1 · Start free · no card required</span>
-        <h1>Paste your product.</h1>
-        <p class="lede">Partizan starts first. Give it the public product page and it will read what you built before asking about marketing goals or budget.</p>
+        <h1>Show Partizan what you built.</h1>
+        <p class="lede">Paste a website, app, bot or product link. Partizan will figure out what you built and who may need it.</p>
         <form id="preview-form" class="panel form-panel product-only-form">
           <div class="website-first">
-            <label for="website">Product website</label>
-            <input id="website" type="url" inputmode="url" placeholder="https://yourproduct.com">
-            <button id="no-website-button" class="text-button inline-toggle" type="button">I don't have a website</button>
+            <label for="product-link">Product link</label>
+            <input id="product-link" type="text" inputmode="url" autocomplete="url" placeholder="yourproduct.com · t.me/yourbot · App Store · GitHub · Chrome extension...">
+            <button id="no-public-link-button" class="text-button inline-toggle" type="button">No public link? Describe what you built</button>
           </div>
           <div id="brief-fallback" class="brief-fallback hidden">
-            <label for="brief">Describe your product</label>
-            <textarea id="brief" minlength="20" placeholder="Example: AI bookkeeping assistant for freelancers. $19/month."></textarea>
-            <p class="fine">One or two sentences are enough. No marketing questionnaire.</p>
+            <label for="brief">What did you build?</label>
+            <textarea id="brief" minlength="20" placeholder="For example: An AI Telegram bot that gives personalized astrology readings and daily horoscopes."></textarea>
+            <p class="fine">One or two sentences are enough. Partizan will infer what it can before asking anything else.</p>
           </div>
-          <button class="button button-primary" type="submit">Scan my product →</button>
-          <p class="fine">For a website scan, Partizan reads public page content. It does not treat instructions embedded in a website as trusted commands.</p>
+          <button class="button button-primary" type="submit">Analyze my product →</button>
+          <p class="fine">Partizan reads only public source content and treats it as untrusted input. A link is never treated as an instruction.</p>
+        </form>
+      </div>
+
+      <div id="intake-clarification-step" class="intake-step hidden">
+        <span class="eyebrow">Product understanding · one missing detail</span>
+        <h1 id="product-clarification-question">I understand most of the product, but one thing is unclear.</h1>
+        <p id="product-clarification-rationale" class="lede">Partizan only asks when the missing detail materially changes who the product is for or what it does.</p>
+        <form id="product-clarification-form" class="panel single-question-panel">
+          <label for="product-clarification-answer">Your answer</label>
+          <textarea id="product-clarification-answer" maxlength="2000" required placeholder="A short answer is enough."></textarea>
+          <button class="button button-primary" type="submit">Continue analysis →</button>
         </form>
       </div>
 
       <div id="intake-understanding-step" class="intake-step hidden">
         <span class="eyebrow">Step 2 · Partizan understands it</span>
         <h1>We think you built:</h1>
-        <p class="lede">Confirm the product facts Partizan extracted. Edit only what it misunderstood.</p>
+        <p class="lede">Confirm the product understanding Partizan extracted. Edit only what it misunderstood.</p>
         <section class="panel understanding-card">
+          <div class="understanding-source"><span id="understanding-source-label">Product source</span><small id="understanding-product-type"></small></div>
           <div class="understanding-row"><span>Product</span><strong id="understanding-product">—</strong></div>
-          <div class="understanding-row"><span>For</span><strong id="understanding-for">—</strong></div>
-          <div class="understanding-row"><span>Likely customer</span><strong id="understanding-customer">—</strong></div>
+          <div class="understanding-row"><span>What it does</span><strong id="understanding-for">—</strong></div>
+          <div class="understanding-row"><span>Likely users</span><strong id="understanding-customer">—</strong></div>
+          <div class="understanding-row understanding-audiences-row"><span>Likely first audiences</span><strong id="understanding-audiences">—</strong></div>
           <div class="understanding-row"><span>Market</span><strong id="understanding-market">—</strong></div>
           <div id="understanding-edit" class="understanding-edit hidden">
             <label for="understanding-product-input">Product</label><input id="understanding-product-input" maxlength="300">
             <label for="understanding-for-input">For</label><textarea id="understanding-for-input" maxlength="1200"></textarea>
-            <label for="understanding-customer-input">Likely customer</label><input id="understanding-customer-input" maxlength="600">
+            <label for="understanding-customer-input">Likely users</label><input id="understanding-customer-input" maxlength="600">
+            <label for="understanding-audiences-input">Likely first audiences <small>one per line</small></label><textarea id="understanding-audiences-input" maxlength="1600"></textarea>
             <label for="understanding-market-input">Market</label><input id="understanding-market-input" maxlength="300">
           </div>
           <div class="understanding-actions">

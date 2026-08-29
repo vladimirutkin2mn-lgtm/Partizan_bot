@@ -225,7 +225,7 @@ async def _fetch_public_page(url: str) -> _PinnedResponse:
     raise WebsiteReadError("Partizan could not read this website right now.") from last_error
 
 
-async def read_public_website(url: str) -> WebsiteSnapshot:
+async def read_public_website(url: str, *, minimum_text_chars: int = 80) -> WebsiteSnapshot:
     current = url
     for _ in range(_MAX_REDIRECTS + 1):
         response = await _fetch_public_page(current)
@@ -253,7 +253,7 @@ async def read_public_website(url: str) -> WebsiteSnapshot:
         text = " ".join(parser.text_parts)
         if len(text) > _MAX_TEXT:
             text = text[:_MAX_TEXT]
-        if len(text.strip()) < 80:
+        if len(text.strip()) < minimum_text_chars:
             raise WebsiteReadError(
                 "Partizan could not extract enough public product information from this page."
             )

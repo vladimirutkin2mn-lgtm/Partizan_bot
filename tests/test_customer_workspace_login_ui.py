@@ -17,7 +17,7 @@ def test_customer_workspace_login_is_compact_and_focused() -> None:
     assert 'id="workspace-login-password"' in html
     assert "Sign in to Partizan." in html
     assert "Continue to your customer acquisition workspace." in html
-    assert "Run the free scan →" in html
+    assert "Analyze your product →" in html
     assert "login-pills" not in html
     assert "Performance</span><span>Channels" not in html
 
