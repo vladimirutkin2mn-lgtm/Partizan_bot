@@ -319,13 +319,13 @@
       : '<div class="channel-snapshot-empty">No channel data yet.</div>';
   };
 
-  const renderResearchStatus = (project, overview) => {
+  const renderResearchStatus = (project, overview, data) => {
     $('research-state').classList.remove('good', 'warn');
     if (project.research_state === 'READY') {
       $('research-state').textContent = 'Ready';
       $('research-state').classList.add('good');
       $('research-title').textContent = 'Market mapped';
-      $('research-copy').textContent = 'Partizan has mapped customer segments and broad acquisition surfaces. Research-only findings stay visible independently; execution-platform opportunities still respect channel controls and execution prerequisites.';
+      $('research-copy').textContent = 'Partizan has mapped customer segments and broader acquisition opportunities. Research findings remain separate from execution permission.';
       $('research-button').classList.add('hidden');
       return;
     }
@@ -333,18 +333,22 @@
       $('research-state').textContent = 'Needs one detail';
       $('research-state').classList.add('warn');
       $('research-title').textContent = 'One useful clarification is needed';
-      $('research-copy').textContent = 'Partizan asks only when one product detail materially changes the acquisition plan.';
+      $('research-copy').textContent = 'Partizan asks only when one product detail materially changes the research.';
       $('research-button').classList.remove('hidden');
       return;
     }
     const researchEntitled = Boolean(project.launch_unlocked) || overview.growth_balance.funded_usd > 0;
-    $('research-state').textContent = researchEntitled ? 'Ready to start' : 'Not started';
+    $('research-state').textContent = researchEntitled
+      ? 'Ready to expand'
+      : (data.preview_opportunity ? 'Free proof ready' : 'Not started');
     $('research-title').textContent = researchEntitled
-      ? 'Partizan can start mapping the market now'
-      : 'Full market research is the next step';
+      ? 'Partizan can research the rest now'
+      : (data.preview_opportunity ? 'One researched opportunity is already available' : 'Full market research is optional');
     $('research-copy').textContent = project.launch_unlocked
-      ? 'Your Acquisition Plan already unlocks the full market research. No acquisition budget is required for this research-only path.'
-      : 'In a funded workspace, adding acquisition budget includes the initial market research. Funding research does not authorize paid advertising.';
+      ? 'Your research-only Acquisition Plan unlocks the full market map without an acquisition budget.'
+      : (overview.growth_balance.funded_usd > 0
+        ? 'Your acquisition budget can support broader research and later eligible tests. Funding is still not permission to spend automatically.'
+        : 'You already received value before funding. Add acquisition budget only when a specific recommended move needs paid budget; full research remains optional.');
     $('research-button').classList.toggle('hidden', !researchEntitled);
   };
 
@@ -411,7 +415,7 @@
     $('pause-button').classList.toggle('hidden', paused || overview.autopilot_status === 'NOT_CONFIGURED' || overview.autopilot_status === 'RESEARCHING');
     $('resume-button').classList.toggle('hidden', !paused);
 
-    renderResearchStatus(project, overview);
+    renderResearchStatus(project, overview, data);
     if (lastResearchResult) renderResearch(lastResearchResult);
     $('loading').classList.add('hidden');
     $('login-gate').classList.add('hidden');
@@ -646,7 +650,15 @@
 
   $('overview-fund-button').addEventListener('click', openFundingControls);
   $('activation-primary').addEventListener('click', () => {
-    if (activationAction === 'fund') return openFundingControls();
+    if (activationAction === 'opportunity' && activationOpportunityUrl) {
+      window.open(activationOpportunityUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (activationAction === 'fund') {
+      const recommended = Number(workspace?.preview_opportunity?.estimated_cost_max_usd || 0);
+      if (recommended > 0) $('fund-amount').value = String(recommended);
+      return openFundingControls();
+    }
     if (activationAction === 'research') return openResearchControls();
   });
 
