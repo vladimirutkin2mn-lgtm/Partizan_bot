@@ -106,7 +106,7 @@
     setActivationStep('activation-product', true, false, 'Done');
     setActivationStep('activation-direction', true, false, 'Done');
     setActivationStep('activation-budget', researchReady, current === 'research', researchReady ? 'Done' : 'Next');
-    setActivationStep('activation-channel', researchReady, current === 'recommendation', researchReady ? 'Review' : 'Waiting');
+    setActivationStep('activation-channel', false, current === 'recommendation', researchReady ? 'Review' : 'Waiting');
     setActivationStep('activation-limit', false, false, 'If needed');
     setActivationStep('activation-test', false, false, 'Partizan');
 
@@ -153,7 +153,7 @@
     if (overview.growth_balance.funded_usd <= 0) items.push('Add acquisition budget to start the included market research.');
     if (overview.blockers.some((item) => item.includes('Website or landing page'))) items.push('Add a live website or landing page before paid traffic starts.');
     if (overview.blockers.some((item) => item.includes('guardrails'))) items.push('Save the maximum cost per customer in Settings.');
-    if (overview.blockers.some((item) => item.includes('Meta access'))) items.push('Connect Meta in Settings for Auto Instagram & Facebook execution.');
+    if (overview.blockers.some((item) => item.includes('Meta access'))) items.push('Connect Meta only if a recommended Instagram & Facebook action needs execution access.');
     if (overview.growth_balance.funded_usd > 0 && !overview.growth_balance.settlement_ready) items.push('Paid spend is paused until Partizan’s ad-spend rail is ready. Research and planning remain available.');
     return items.join(' ');
   };
@@ -163,7 +163,7 @@
     if (overview.autopilot_status === 'ACTIVE') return 'Partizan is working on getting you customers.';
     if (overview.autopilot_status === 'PAUSED') return 'Partizan is paused.';
     if (overview.product_id) return 'Partizan is ready for the next acquisition step.';
-    return 'Add acquisition budget to start.';
+    return 'Your free scan is ready. Full market research is the next step.';
   };
 
   const renderAccountNav = () => {
@@ -274,10 +274,15 @@
       $('research-button').classList.remove('hidden');
       return;
     }
-    $('research-state').textContent = overview.growth_balance.funded_usd > 0 ? 'Ready to start' : 'Not started';
-    $('research-title').textContent = overview.growth_balance.funded_usd > 0 ? 'Partizan can start mapping the market now' : 'Partizan will map the market after funding';
-    $('research-copy').textContent = 'Adding an acquisition budget includes the initial market research. There is no separate $49 research charge for a funded workspace.';
-    $('research-button').classList.toggle('hidden', overview.growth_balance.funded_usd <= 0);
+    const researchEntitled = Boolean(project.launch_unlocked) || overview.growth_balance.funded_usd > 0;
+    $('research-state').textContent = researchEntitled ? 'Ready to start' : 'Not started';
+    $('research-title').textContent = researchEntitled
+      ? 'Partizan can start mapping the market now'
+      : 'Full market research is the next step';
+    $('research-copy').textContent = project.launch_unlocked
+      ? 'Your Acquisition Plan already unlocks the full market research. No acquisition budget is required for this research-only path.'
+      : 'In a funded workspace, adding acquisition budget includes the initial market research. Funding research does not authorize paid advertising.';
+    $('research-button').classList.toggle('hidden', !researchEntitled);
   };
 
   const renderWorkspace = (data) => {
