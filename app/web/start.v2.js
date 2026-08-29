@@ -223,7 +223,7 @@
     $('preview-summary').textContent = data.research_message || (
       unavailable
         ? 'Partizan will not invent an opportunity. Retry public-web research without adding acquisition funds.'
-        : 'Partizan will keep researching. A hypothesis is not presented as a real opportunity until public evidence supports it.'
+        : 'Keep researching without funding. A hypothesis is not presented as a real opportunity until public evidence supports it.'
     );
     $('free-opportunity').innerHTML = `
       <div class="research-pending-head">
@@ -240,8 +240,8 @@
       <div class="opportunity-boundary">No acquisition funding is required to continue this research. Partizan will only show a researched opportunity when it has real public-web evidence.</div>
     `;
     $('preview-research-retry').classList.remove('hidden');
-    $('value-first-title').textContent = 'Keep this project and let Partizan continue researching.';
-    $('value-first-copy').textContent = 'Save the product understanding and research state in a workspace. Acquisition funding is not required to keep looking for evidence.';
+    $('value-first-title').textContent = 'Keep this project and continue research in your workspace.';
+    $('value-first-copy').textContent = 'Save the product understanding and research state, then keep looking for evidence when you are ready. Acquisition funding is not required.';
     $('value-first-note').textContent = 'Partizan will not turn a channel hypothesis into a named opportunity unless the public evidence supports it.';
     $('autonomous-button').textContent = 'Continue without funding →';
     $('scope-title').textContent = 'Prefer a full research-only pass?';
