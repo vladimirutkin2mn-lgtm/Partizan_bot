@@ -55,7 +55,10 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert 'id="overview-fund-label"' in workspace.text
     assert "Acquisition budget" in workspace.text
     assert "Approve only what the move needs" in workspace.text
+    assert 'id="activation-research-title"' in workspace.text
+    assert 'id="activation-research-copy"' in workspace.text
     assert "One real opportunity researched" in workspace.text
+    assert "Research starts before spend." in workspace.text
     assert "Fund a recommended paid test when needed" in workspace.text
     assert "Tests & decisions" in workspace.text
     assert "AI customer acquisition system" in workspace.text
@@ -101,6 +104,7 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
 
     assert "/v1/customer-projects/preview" in start_source
     assert "/confirm-preview" in start_source
+    assert "/preview-research" in start_source
     assert "/customer/account/register" in start_source
     assert "/customer/account/login" in start_source
     assert "/customer/account/projects/claim" in start_source
@@ -139,12 +143,18 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
     assert "project.launch_unlocked" in workspace_source
     assert "activationAction === 'fund'" in workspace_source
     assert "activationAction === 'opportunity'" in workspace_source
+    assert "activationAction === 'preview-research'" in workspace_source
+    assert "/preview-research" in workspace_source
+    assert "Keep researching →" in workspace_source
+    assert "Partizan will not invent an opportunity." in workspace_source
     assert "Open this $0 move →" in workspace_source
     assert "activationAction === 'channels'" not in workspace_source
     assert "activationAction === 'integration'" not in workspace_source
     assert "autoChannel.platform !== 'INSTAGRAM' || Boolean(overview.meta.connected)" not in workspace_source
     assert "activationAction === 'limit'" not in workspace_source
     assert "See what Partizan found →" in workspace_source
+    assert "Your acquisition budget can support broader research" not in workspace_source
+    assert "Fund Growth Balance before starting the included deep research" not in workspace_source
     assert "amount.select()" in workspace_source
     assert "RESEARCH_ONLY" in workspace_source
     assert "/autopilot/checkout" not in workspace_source
