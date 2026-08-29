@@ -41,6 +41,7 @@ from app.customer_schemas import (
     CustomerAutopilotStatusRequest,
     CustomerClarificationAnswerRequest,
     CustomerDirectionView,
+    CustomerFreeOpportunityView,
     CustomerGrowthBalanceTopUpRequest,
     CustomerGrowthBalanceVerifyRequest,
     CustomerMetaConnectionRequest,
@@ -202,11 +203,18 @@ def get_customer_workspace(
         for item in preview_payload.get("directions", [])
         if isinstance(item, dict)
     ]
+    preview_opportunity_payload = preview_payload.get("free_opportunity")
+    preview_opportunity = (
+        CustomerFreeOpportunityView.model_validate(preview_opportunity_payload)
+        if isinstance(preview_opportunity_payload, dict)
+        else None
+    )
     return CustomerWorkspaceView(
         account=account,
         project=project,
         autopilot=autopilot,
         preview_directions=preview_directions,
+        preview_opportunity=preview_opportunity,
         target_max_cac=float(target_max_cac_raw) if target_max_cac_raw is not None else None,
         autonomous_spend_confirmed=bool(project_payload.get("autopilot_spend_confirmed")),
     )
