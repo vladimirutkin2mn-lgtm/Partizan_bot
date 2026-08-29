@@ -214,7 +214,8 @@ def test_sparse_telegram_source_asks_one_question_then_continues(monkeypatch) ->
     second = answered.json()
     assert second["source_type"] == "TELEGRAM"
     assert second["clarification"] is None
-    assert second["understanding"]["for_whom"]
+    assert "astrology" in second["understanding"]["for_whom"].casefold()
+    assert "daily horoscopes" in second["understanding"]["for_whom"].casefold()
     assert second["understanding"]["product"]
 
 
