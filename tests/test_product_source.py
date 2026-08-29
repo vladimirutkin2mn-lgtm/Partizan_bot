@@ -129,7 +129,7 @@ async def test_recognized_product_source_uses_targeted_question_when_public_meta
     assert context.source_type == ProductSourceType.TELEGRAM
     assert context.needs_founder_context is True
     assert context.clarification_question == "What does this bot help users do?"
-    assert context.title == ""
+    assert context.title == "@example_bot"
     assert context.text == ""
 
 
