@@ -80,12 +80,15 @@ class OpenAIWebSearchProvider(SearchProvider):
     async def search(self, discovery_query: DiscoveryQuery, limit: int = 5) -> list[SearchHit]:
         source_instruction = {
             SourceClass.COMMUNITY: (
-                "Find public discussion communities, especially relevant Reddit communities "
-                "or forums. Prefer community home pages over individual posts."
+                "Find concrete public communities and recent discussion threads where this "
+                "audience is actively discussing the problem, alternatives or desired outcome. "
+                "Prefer a recent discussion URL when it provides stronger evidence than a generic "
+                "community home page."
             ),
             SourceClass.CREATOR: (
-                "Find concrete creators with a public profile/channel page on platforms such as "
-                "YouTube, TikTok, Instagram, X or blogs."
+                "Find concrete creators whose public profile or recent content demonstrates a "
+                "clear audience overlap with the query. Prefer a source that makes the overlap "
+                "verifiable rather than a generic creator directory."
             ),
             SourceClass.NEWSLETTER_SITE: (
                 "Find concrete newsletters, niche publications or specialist websites with an "
@@ -108,7 +111,11 @@ class OpenAIWebSearchProvider(SearchProvider):
             f"{source_instruction}\n\n"
             f"Search query: {discovery_query.query}\n\n"
             f"Return a concise answer citing up to {limit} strong concrete sources. "
-            "Only cite sources that are plausible distribution opportunities."
+            "Every cited source must materially support why this is a plausible distribution "
+            "opportunity: audience overlap, active problem/intent, or a relevant evaluation path. "
+            "Prefer recent public evidence when recency is available. Do not cite a source merely "
+            "because it contains matching keywords. If no source clears that evidence bar, return "
+            "no citations rather than inventing or stretching relevance."
         )
         response = await asyncio.to_thread(
             self._client.responses.create,
