@@ -64,10 +64,10 @@ def test_customer_start_makes_partizan_work_before_goal_and_budget() -> None:
     assert 'id="website" type="url" inputmode="url" placeholder=' in page.text
     assert 'id="website" type="url" inputmode="url" required' not in page.text
 
-    preview_call = javascript.index("'/v1/customer-projects/preview'")
-    goal_read = javascript.index("goal: $('goal').value")
-    budget_read = javascript.index("budget_usd: Number($('budget').value)")
-    confirm_call = javascript.index("/confirm-preview")
+    preview_call = javascript.text.index("'/v1/customer-projects/preview'")
+    goal_read = javascript.text.index("goal: $('goal').value")
+    budget_read = javascript.text.index("budget_usd: Number($('budget').value)")
+    confirm_call = javascript.text.index("/confirm-preview")
     assert preview_call < confirm_call
     assert goal_read > preview_call
     assert budget_read > preview_call
