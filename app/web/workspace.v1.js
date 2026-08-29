@@ -165,6 +165,8 @@
     setActivationStep('activation-direction', true, false, 'Done');
 
     if (previewOpportunity) {
+      $('activation-research-title').textContent = 'One real opportunity researched';
+      $('activation-research-copy').textContent = 'Public-web evidence appeared before Partizan asked you to fund anything.';
       setActivationStep('activation-budget', true, false, 'Done');
       setActivationStep('activation-channel', false, true, 'Now');
       setActivationStep('activation-limit', false, false, 'If needed');
@@ -187,6 +189,10 @@
       previewResearchStatus === 'NEEDS_MORE_RESEARCH'
       || previewResearchStatus === 'UNAVAILABLE'
     ) {
+      $('activation-research-title').textContent = 'Researching first opportunity';
+      $('activation-research-copy').textContent = previewResearchStatus === 'UNAVAILABLE'
+        ? 'Public-web evidence is temporarily unavailable. Partizan will not invent a result.'
+        : 'Partizan has hypotheses, but it is waiting for stronger public evidence before naming an opportunity.';
       setActivationStep('activation-budget', false, true, 'Researching');
       setActivationStep('activation-channel', false, false, 'Waiting');
       setActivationStep('activation-limit', false, false, 'If needed');
@@ -198,6 +204,12 @@
       return;
     }
 
+    $('activation-research-title').textContent = researchReady
+      ? 'Market research ready'
+      : 'Researching first opportunity';
+    $('activation-research-copy').textContent = researchReady
+      ? 'The broader research is ready to review.'
+      : 'This older project predates evidence-first free research; Partizan will not treat its hypotheses as proof.';
     const current = !researchReady ? 'research' : 'recommendation';
     setActivationStep('activation-budget', researchReady, current === 'research', researchReady ? 'Done' : 'Next');
     setActivationStep('activation-channel', false, current === 'recommendation', researchReady ? 'Review' : 'Waiting');
