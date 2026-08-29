@@ -84,7 +84,11 @@ def _account_error(exc: Exception) -> HTTPException:
     if isinstance(exc, CustomerPaymentRequiredError):
         return HTTPException(
             status_code=402,
-            detail="Fund Growth Balance before starting the included deep research.",
+            detail=(
+                "The full market map is a separate research upgrade. "
+                "Your free researched opportunity remains available; add acquisition money "
+                "only for a concrete paid move."
+            ),
         )
     return HTTPException(status_code=409, detail=str(exc))
 
@@ -214,6 +218,8 @@ def get_customer_workspace(
         project=project,
         autopilot=autopilot,
         preview_directions=preview_directions,
+        preview_research_status=str(preview_payload.get("free_research_status") or "NOT_RUN"),
+        preview_research_message=str(preview_payload.get("free_research_message") or ""),
         preview_opportunity=preview_opportunity,
         target_max_cac=float(target_max_cac_raw) if target_max_cac_raw is not None else None,
         autonomous_spend_confirmed=bool(project_payload.get("autopilot_spend_confirmed")),
@@ -354,6 +360,26 @@ def verify_workspace_growth_balance_checkout(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except stripe.StripeError as exc:
         raise HTTPException(status_code=502, detail="Stripe Growth Balance verification failed") from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/preview-research",
+    response_model=CustomerPreviewConfirmationResponse,
+)
+async def continue_workspace_preview_research(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> CustomerPreviewConfirmationResponse:
+    _, customer_token = _project_access(session_token, project_id)
+    try:
+        return await customer_funnel_service.continue_preview_research(project_id, customer_token)
+    except (
+        CustomerProjectNotFoundError,
+        CustomerProjectAccessError,
+        ValueError,
+        RuntimeError,
+    ) as exc:
+        raise _account_error(exc) from exc
 
 
 @router.post(
