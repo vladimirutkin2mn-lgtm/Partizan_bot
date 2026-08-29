@@ -126,7 +126,10 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
     assert "renderActivation" in workspace_source
     assert "renderActivationPreview" in workspace_source
     assert "data.preview_directions || []" in workspace_source
-    assert "Connect Meta only if a recommended Instagram & Facebook action needs execution access." in workspace_source
+    assert (
+        "Connect Meta only if a recommended Instagram & Facebook action needs execution access."
+        in workspace_source
+    )
     assert "project.launch_unlocked" in workspace_source
     assert "activationAction === 'fund'" in workspace_source
     assert "activationAction === 'channels'" not in workspace_source
