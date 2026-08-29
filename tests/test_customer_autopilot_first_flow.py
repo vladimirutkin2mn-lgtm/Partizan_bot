@@ -171,6 +171,7 @@ def test_start_page_routes_autonomous_execution_into_customer_workspace() -> Non
     assert "No monthly subscription" in page.text
     assert "Continue with this move" in page.text
     assert "one concrete public-web opportunity" in page.text
+    assert 'id="preview-research-retry"' in page.text
     assert "Next move" in page.text
     assert "only ask for money or channel access" in page.text
 
@@ -178,6 +179,8 @@ def test_start_page_routes_autonomous_execution_into_customer_workspace() -> Non
     assert "/autopilot/checkout" not in start_javascript.text
     assert "/customer/account/register" in start_javascript.text
     assert "/customer/account/projects/claim" in start_javascript.text
+    assert "/preview-research" in start_javascript.text
+    assert "renderResearchPending" in start_javascript.text
     assert "marketing_budget_usd" not in start_javascript.text
 
     assert workspace.status_code == 200
@@ -188,4 +191,7 @@ def test_start_page_routes_autonomous_execution_into_customer_workspace() -> Non
     assert "/growth-balance/checkout" in workspace_javascript.text
     assert "/meta/connect" in workspace_javascript.text
     assert "/channels" in workspace_javascript.text
+    assert "/preview-research" in workspace_javascript.text
+    assert "Researching first opportunity" in workspace_javascript.text
+    assert "Your acquisition budget can support broader research" not in workspace_javascript.text
     assert "Paid tests are paused until Partizan’s payment path is ready" in workspace_javascript.text
