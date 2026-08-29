@@ -169,11 +169,10 @@ def test_start_page_routes_autonomous_execution_into_customer_workspace() -> Non
     assert 'id="execution-access-step"' not in page.text
     assert "$149" not in page.text
     assert "No monthly subscription" in page.text
-    assert "10% of acquisition spend" in page.text
-    assert "Keep going" in page.text
-    assert "Continuous learning" in page.text
-    assert "Recommended next move" in page.text
-    assert "Budget controls" in page.text
+    assert "Continue with this move" in page.text
+    assert "one real researched opportunity" in page.text
+    assert "Recommended first move" in page.text
+    assert "only ask for money or channel access" in page.text
 
     assert start_javascript.status_code == 200
     assert "/autopilot/checkout" not in start_javascript.text
@@ -189,4 +188,4 @@ def test_start_page_routes_autonomous_execution_into_customer_workspace() -> Non
     assert "/growth-balance/checkout" in workspace_javascript.text
     assert "/meta/connect" in workspace_javascript.text
     assert "/channels" in workspace_javascript.text
-    assert "Paid spend is paused until Partizan’s ad-spend rail is ready" in workspace_javascript.text
+    assert "Paid tests are paused until Partizan’s payment path is ready" in workspace_javascript.text
