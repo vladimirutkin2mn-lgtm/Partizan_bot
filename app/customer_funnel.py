@@ -20,6 +20,7 @@ from app.customer_schemas import (
     CustomerPreviewConfirmRequest,
     CustomerPreviewRequest,
     CustomerPreviewResponse,
+    CustomerProductClarificationView,
     CustomerProductUnderstandingView,
     CustomerProjectView,
     CustomerResearchEvidenceView,
@@ -28,9 +29,14 @@ from app.customer_schemas import (
 )
 from app.icp_service import icp_service
 from app.product_intake import product_intake_service
+from app.product_source import (
+    ProductSourceContext,
+    ProductSourceType,
+    description_source_context,
+    read_public_product_source,
+)
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ClarificationAnswerRequest, ProductCreateRequest
-from app.website_intake import WebsiteSnapshot, read_public_website
 
 CUSTOMER_PROJECT_NAMESPACE = "customer_acquisition_projects"
 CUSTOMER_TOKEN_HEADER = "X-Partizan-Customer-Token"
@@ -69,29 +75,44 @@ class CustomerFunnelService:
         self,
         payload: CustomerPreviewRequest,
     ) -> CustomerPreviewResponse:
-        """Read the founder's product before asking for goal or budget."""
+        """Understand the founder's product before asking for goal or budget."""
         project_id = uuid4()
         customer_token = secrets.token_urlsafe(32)
-        website_url = str(payload.website_url or "").strip()
         founder_brief = (payload.brief or "").strip()
-        reference_links: list[str] = []
-        if website_url:
-            snapshot = await read_public_website(website_url)
-            reference_links = [snapshot.url]
-            founder_brief = self._website_snapshot_brief(snapshot)
+        product_link = (payload.product_link or "").strip()
+
+        source = (
+            await read_public_product_source(product_link)
+            if product_link
+            else description_source_context(founder_brief)
+        )
+        reference_links = [source.link] if source.link else []
         intake = await product_intake_service.create_draft(
             ProductCreateRequest(
-                brief=founder_brief,
+                brief=source.render_untrusted_brief(),
                 reference_links=reference_links,
             )
         )
         understanding = self._understanding(intake.product)
+        clarification = self._preview_clarification(
+            intake.product.id,
+            intake.clarifications,
+            source,
+        )
         settings = get_settings()
+        legacy_website_url = (
+            source.link if source.source_type == ProductSourceType.WEBSITE else None
+        )
         project = {
             "id": str(project_id),
             "customer_token_hash": self._hash_token(customer_token),
             "brief": intake.product.description,
-            "website_url": website_url or None,
+            "product_link": source.link,
+            "source_type": source.source_type.value,
+            "source_label": source.source_label,
+            "source_needs_founder_context": source.needs_founder_context,
+            "source_clarification_question": source.clarification_question,
+            "website_url": legacy_website_url,
             "market": understanding.market,
             "goal": payload.goal or "Get first users",
             "budget_usd": payload.budget_usd or 10,
@@ -106,6 +127,9 @@ class CustomerFunnelService:
             "updated_at": datetime.now(UTC).isoformat(),
             "preview": {
                 "understanding": understanding.model_dump(mode="json"),
+                "product_clarification": (
+                    clarification.model_dump(mode="json") if clarification else None
+                ),
                 "directions": [],
                 "free_research_status": "NOT_RUN",
                 "free_research_message": "",
@@ -116,6 +140,61 @@ class CustomerFunnelService:
         return CustomerPreviewResponse(
             project_id=project_id,
             customer_token=customer_token,
+            source_type=source.source_type.value,
+            source_label=source.source_label,
+            product_link=source.link,
+            clarification=clarification,
+            understanding=understanding,
+            launch_price_usd=settings.partizan_launch_price_usd,
+            managed_spend_fee_pct=settings.partizan_managed_spend_fee_pct,
+        )
+
+    async def answer_product_clarification(
+        self,
+        project_id: UUID,
+        customer_token: str,
+        answer: str,
+    ) -> CustomerPreviewResponse:
+        """Apply one high-value clarification and continue product understanding."""
+        project = self._authorized_project(project_id, customer_token)
+        preview = project.get("preview") or {}
+        clarification_payload = preview.get("product_clarification")
+        if not isinstance(clarification_payload, dict):
+            raise ValueError("No product clarification is currently required.")
+        product_id_raw = project.get("product_id")
+        if not product_id_raw:
+            raise CustomerProjectNotFoundError("Product analysis is missing")
+        product_id = UUID(str(product_id_raw))
+        clarification = CustomerProductClarificationView.model_validate(clarification_payload)
+        intake = await product_intake_service.apply_context_answer(
+            product_id,
+            field_name=clarification.field_name,
+            question=clarification.question,
+            answer=answer.strip(),
+        )
+        source = self._stored_source_context(project)
+        next_clarification = self._preview_clarification(
+            product_id,
+            intake.clarifications,
+            source,
+        )
+        understanding = self._understanding(intake.product)
+        preview["understanding"] = understanding.model_dump(mode="json")
+        preview["product_clarification"] = (
+            next_clarification.model_dump(mode="json") if next_clarification else None
+        )
+        project["preview"] = preview
+        project["brief"] = intake.product.description
+        project["market"] = understanding.market
+        self._persist(project)
+        settings = get_settings()
+        return CustomerPreviewResponse(
+            project_id=project_id,
+            customer_token=customer_token,
+            source_type=project.get("source_type") or ProductSourceType.DESCRIPTION.value,
+            source_label=project.get("source_label") or "Product description",
+            product_link=project.get("product_link"),
+            clarification=next_clarification,
             understanding=understanding,
             launch_price_usd=settings.partizan_launch_price_usd,
             managed_spend_fee_pct=settings.partizan_managed_spend_fee_pct,
@@ -138,6 +217,7 @@ class CustomerFunnelService:
             name=payload.product,
             for_whom=payload.for_whom,
             likely_customer=payload.likely_customer,
+            likely_first_audiences=payload.likely_first_audiences,
             market=payload.market,
             goal=payload.goal,
             budget=float(payload.budget_usd),
@@ -153,7 +233,7 @@ class CustomerFunnelService:
         )
         direction_payload = CustomerPreviewRequest(
             brief=product.description[:6000],
-            website_url=project.get("website_url"),
+            product_link=project.get("product_link"),
             market=payload.market,
             goal=payload.goal,
             budget_usd=payload.budget_usd,
@@ -163,7 +243,11 @@ class CustomerFunnelService:
             product=payload.product.strip(),
             for_whom=payload.for_whom.strip(),
             likely_customer=payload.likely_customer.strip(),
+            likely_first_audiences=payload.likely_first_audiences,
             market=payload.market.strip(),
+            product_type=product.product_type,
+            business_model=product.business_model,
+            language=product.language,
         )
         project["brief"] = product.description
         project["market"] = payload.market.strip()
@@ -229,7 +313,7 @@ class CustomerFunnelService:
             directions = self._directions(
                 CustomerPreviewRequest(
                     brief=product.description[:6000],
-                    website_url=project.get("website_url"),
+                    product_link=project.get("product_link"),
                     market=project.get("market") or understanding.market,
                     goal=project.get("goal") or "Get first users",
                     budget_usd=int(project.get("budget_usd") or 10),
