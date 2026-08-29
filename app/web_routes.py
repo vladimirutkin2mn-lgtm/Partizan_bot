@@ -100,7 +100,19 @@ def _workspace_asset_revision() -> str:
 
 
 _CUSTOMER_WORKSPACE_ASSET_REVISION = _workspace_asset_revision()
+
+
+def _landing_asset_revision() -> str:
+    digest = hashlib.sha256()
+    for asset_name in ("landing.v1.css", "landing.account.v1.css", "landing.v1.js"):
+        digest.update(asset_name.encode("utf-8"))
+        digest.update((_WEB_DIR / asset_name).read_bytes())
+    return digest.hexdigest()[:12]
+
+
+_LANDING_ASSET_REVISION = _landing_asset_revision()
 _LANDING_STYLESHEET_MARKER = '<link rel="stylesheet" href="/site/assets/landing.v1.css">'
+_LANDING_SCRIPT_MARKER = '<script src="/site/assets/landing.v1.js" defer></script>'
 _LANDING_ACCOUNT_STYLESHEET = (
     '<link rel="stylesheet" href="/site/assets/landing.account.v1.css">'
 )
@@ -121,15 +133,39 @@ router.include_router(tracking_router)
 @router.get("/", include_in_schema=False)
 async def marketing_site() -> HTMLResponse:
     html = (_WEB_DIR / "landing.v1.html").read_text(encoding="utf-8")
-    if _LANDING_STYLESHEET_MARKER not in html or _LANDING_START_CTA not in html:
+    if (
+        _LANDING_STYLESHEET_MARKER not in html
+        or _LANDING_SCRIPT_MARKER not in html
+        or _LANDING_START_CTA not in html
+    ):
         raise HTTPException(status_code=500, detail="Marketing navigation marker missing")
+    landing_stylesheet = _LANDING_STYLESHEET_MARKER.replace(
+        "/site/assets/landing.v1.css",
+        f"/site/assets/landing.v1.css?v={_LANDING_ASSET_REVISION}",
+    )
+    account_stylesheet = _LANDING_ACCOUNT_STYLESHEET.replace(
+        "/site/assets/landing.account.v1.css",
+        f"/site/assets/landing.account.v1.css?v={_LANDING_ASSET_REVISION}",
+    )
+    landing_script = _LANDING_SCRIPT_MARKER.replace(
+        "/site/assets/landing.v1.js",
+        f"/site/assets/landing.v1.js?v={_LANDING_ASSET_REVISION}",
+    )
     html = html.replace(
         _LANDING_STYLESHEET_MARKER,
-        f"{_LANDING_STYLESHEET_MARKER}\n  {_LANDING_ACCOUNT_STYLESHEET}",
+        f"{landing_stylesheet}\n  {account_stylesheet}",
         1,
     )
+    html = html.replace(_LANDING_SCRIPT_MARKER, landing_script, 1)
     html = html.replace(_LANDING_START_CTA, _LANDING_NAV_ACTIONS, 1)
-    return HTMLResponse(html, media_type="text/html; charset=utf-8")
+    return HTMLResponse(
+        html,
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Cache-Control": "no-store, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @router.get("/site/assets/{asset_name}", include_in_schema=False)

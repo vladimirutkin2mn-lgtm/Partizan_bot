@@ -10,6 +10,8 @@ def test_root_serves_marketing_site() -> None:
 
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
+    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert response.headers["pragma"] == "no-cache"
     html = response.text
     for anchor in (
         "<title>Partizan — you built the product, now find the customers</title>",
@@ -25,6 +27,9 @@ def test_root_serves_marketing_site() -> None:
     ):
         assert anchor in html
     assert 'href="/app"' not in html
+    assert "/site/assets/landing.v1.css?v=" in html
+    assert "/site/assets/landing.account.v1.css?v=" in html
+    assert "/site/assets/landing.v1.js?v=" in html
 
 
 def test_marketing_assets_are_allowlisted_and_served() -> None:
