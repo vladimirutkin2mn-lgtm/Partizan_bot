@@ -14,10 +14,11 @@ def test_marketing_header_exposes_direct_customer_workspace_entry() -> None:
     assert 'href="/workspace"' in html
     assert ">Sign in</a>" in html
     assert 'href="/start"' in html
-    assert ">Scan my product <span>↗</span></a>" in html
+    assert ">Analyze my product <span>↗</span></a>" in html
     assert "You built the product." in html
     assert "For solo founders and small teams who built a product but do not know marketing yet" in html
-    assert "You do not need to learn marketing first." in html
+    assert "Show Partizan what you built." in html
+    assert "A website, app, bot or even a short description is enough to start." in html
     assert "Start free · No card required" in html
     assert "Start with what you have." in html
     assert "Partizan may tell you not to run ads yet." in html
@@ -72,7 +73,8 @@ def test_marketing_account_entry_detects_existing_customer_session_fail_safe() -
     assert "nav-account-link" in javascript.text
     assert "const defaultBudget = 10;" in javascript.text
     assert "hero-scan-form" in javascript.text
-    assert "query.set('website', website)" in javascript.text
+    assert "query.set('product', productLink)" in javascript.text
+    assert "hero-product-link" in javascript.text
     assert "customer-count" not in javascript.text
     assert "customersAtExampleCac" not in javascript.text
     assert "const demoSteps" not in javascript.text
