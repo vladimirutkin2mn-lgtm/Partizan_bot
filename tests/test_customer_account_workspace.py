@@ -72,6 +72,9 @@ def test_registration_claims_project_rotates_browser_token_and_sets_http_only_se
     assert workspace.status_code == 200
     assert workspace.json()["project"]["project_id"] == str(preview.project_id)
     assert workspace.json()["account"]["email"] == "founder@example.com"
+    assert workspace.json()["preview_directions"]
+    assert workspace.json()["preview_directions"][0]["name"] == preview.directions[0].name
+    assert workspace.json()["preview_directions"][0]["rationale"] == preview.directions[0].rationale
 
 
 def test_registration_retry_with_same_credentials_resumes_existing_account() -> None:
