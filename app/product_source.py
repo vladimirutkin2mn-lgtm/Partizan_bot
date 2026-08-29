@@ -129,7 +129,39 @@ async def read_public_product_source(raw_link: str) -> ProductSourceContext:
     try:
         snapshot = await read_public_website(normalized, minimum_text_chars=0)
     except WebsiteReadError as exc:
-        raise ProductSourceReadError(str(exc)) from exc
+        message = str(exc)
+        recognized_non_web = source_type in {
+            ProductSourceType.TELEGRAM,
+            ProductSourceType.IOS_APP,
+            ProductSourceType.ANDROID_APP,
+            ProductSourceType.GITHUB,
+            ProductSourceType.CHROME_EXTENSION,
+            ProductSourceType.PRODUCT_PAGE,
+        }
+        unsafe_or_unresolved = any(
+            marker in message.casefold()
+            for marker in (
+                "only public websites",
+                "credentials are not allowed",
+                "control characters",
+                "port is invalid",
+                "standard port",
+                "could not resolve",
+                "invalid website address",
+            )
+        )
+        if not recognized_non_web or unsafe_or_unresolved:
+            raise ProductSourceReadError(message) from exc
+        return ProductSourceContext(
+            source_type=source_type,
+            source_label=_SOURCE_LABELS[source_type],
+            link=normalized,
+            title="",
+            description="",
+            text="",
+            needs_founder_context=True,
+            clarification_question=_clarification_question(source_type),
+        )
     return _context_from_snapshot(source_type, snapshot)
 
 
