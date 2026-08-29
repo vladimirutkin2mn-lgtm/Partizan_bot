@@ -7,19 +7,24 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, mod
 
 class CustomerPreviewRequest(BaseModel):
     brief: str | None = Field(default=None, max_length=6000)
+    product_link: str | None = Field(default=None, max_length=2000)
     website_url: HttpUrl | None = None
-    market: str = Field(default="Auto-detect from product and website", min_length=2, max_length=160)
+    market: str = Field(default="Auto-detect from product", min_length=2, max_length=160)
     goal: str | None = Field(default=None, min_length=2, max_length=200)
     budget_usd: int | None = Field(default=None, ge=1, le=100_000)
 
     @model_validator(mode="after")
-    def require_website_or_description(self) -> "CustomerPreviewRequest":
+    def require_product_source_or_description(self) -> "CustomerPreviewRequest":
         brief = (self.brief or "").strip()
+        product_link = (self.product_link or "").strip()
+        if not product_link and self.website_url is not None:
+            product_link = str(self.website_url)
         if brief and len(brief) < 20:
             raise ValueError("Product description must be at least 20 characters")
-        if not brief and self.website_url is None:
-            raise ValueError("Paste a website or describe your product")
+        if not brief and not product_link:
+            raise ValueError("Paste a product link or describe what you built")
         self.brief = brief or None
+        self.product_link = product_link or None
         return self
 
 
@@ -33,16 +38,31 @@ class CustomerProductUnderstandingView(BaseModel):
     product: str = Field(min_length=1, max_length=300)
     for_whom: str = Field(min_length=1, max_length=1200)
     likely_customer: str = Field(min_length=1, max_length=600)
+    likely_first_audiences: list[str] = Field(default_factory=list, max_length=5)
     market: str = Field(min_length=1, max_length=300)
+    product_type: str | None = Field(default=None, max_length=160)
+    business_model: str | None = Field(default=None, max_length=160)
+    language: str | None = Field(default=None, max_length=80)
 
 
 class CustomerPreviewConfirmRequest(BaseModel):
     product: str = Field(min_length=1, max_length=300)
     for_whom: str = Field(min_length=1, max_length=1200)
     likely_customer: str = Field(min_length=1, max_length=600)
+    likely_first_audiences: list[str] = Field(default_factory=list, max_length=5)
     market: str = Field(min_length=1, max_length=300)
     goal: str = Field(min_length=2, max_length=200)
     budget_usd: int = Field(ge=1, le=100_000)
+
+
+class CustomerProductClarificationView(BaseModel):
+    field_name: str = Field(min_length=1, max_length=120)
+    question: str = Field(min_length=1, max_length=500)
+    rationale: str = Field(default="", max_length=600)
+
+
+class CustomerProductClarificationAnswerRequest(BaseModel):
+    answer: str = Field(min_length=2, max_length=2000)
 
 
 class MaskedOpportunityView(BaseModel):
@@ -53,6 +73,10 @@ class MaskedOpportunityView(BaseModel):
 class CustomerPreviewResponse(BaseModel):
     project_id: UUID
     customer_token: str
+    source_type: str = "DESCRIPTION"
+    source_label: str = "Product description"
+    product_link: str | None = None
+    clarification: CustomerProductClarificationView | None = None
     understanding: CustomerProductUnderstandingView
     channel_count: int = Field(default=0, ge=0, le=5)
     opportunity_scope_estimate: int = Field(default=0, ge=0)
@@ -67,6 +91,8 @@ class CustomerProjectView(BaseModel):
     project_id: UUID
     status: Literal["PREVIEW", "CHECKOUT_PENDING", "UNLOCKED", "RESEARCH_READY"]
     brief: str
+    product_link: str | None = None
+    source_type: str = "DESCRIPTION"
     website_url: HttpUrl | None = None
     market: str
     goal: str
