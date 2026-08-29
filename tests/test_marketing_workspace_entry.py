@@ -30,6 +30,14 @@ def test_marketing_header_exposes_direct_customer_workspace_entry() -> None:
     assert "Gabrielle Talks Money" in html
     assert "Research evidence is not conversion evidence." in html
     assert "Find → Try → Learn." in html
+    assert 'class="loop-compact"' in html
+    assert 'class="founder-problem-layout"' in html
+    assert 'class="budget-story-layout"' in html
+    assert 'class="channel-grid"' in html
+    assert 'class="capability-details"' in html
+    assert 'class="safety-trust' in html
+    assert 'class="channel-stage' not in html
+    assert 'class="control-demo' not in html
     assert 'id="product-demo"' not in html
     assert "Animation shows decision flow only." not in html
     assert "Research across" in html
@@ -77,9 +85,17 @@ def test_marketing_account_entry_detects_existing_customer_session_fail_safe() -
 
     landing_css = client.get("/site/assets/landing.v1.css")
     assert landing_css.status_code == 200
-    assert ".anti-waste-card" in landing_css.text
+    assert ".anti-waste-panel" in landing_css.text
+    assert ".budget-story-layout" in landing_css.text
     assert ".hero-scan-form" in landing_css.text
     assert ".builder-flow" in landing_css.text
+    assert ".problem-points" in landing_css.text
+    assert ".loop-compact" in landing_css.text
+    assert ".channel-grid" in landing_css.text
+    assert ".safety-trust" in landing_css.text
+    assert "--density-tier-1" in landing_css.text
+    assert "--density-tier-2" in landing_css.text
+    assert "--density-tier-3" in landing_css.text
     assert ".research-proof-grid" in landing_css.text
     assert ".research-opportunity" in landing_css.text
     assert ".pricing-grid" in landing_css.text
