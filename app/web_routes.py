@@ -1,9 +1,10 @@
 import hashlib
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 
+from app.config import Settings, get_settings
 from app.tracking_routes import router as tracking_router
 
 _WEB_DIR = Path(__file__).resolve().parent / "web"
@@ -59,6 +60,17 @@ _START_ASSETS = {
     "goal-dropdown.v1.js": "text/javascript; charset=utf-8",
     "customer-account.v1.css": "text/css; charset=utf-8",
 }
+
+def _start_asset_revision() -> str:
+    digest = hashlib.sha256()
+    digest.update((_WEB_DIR / "start.v2.html").read_bytes())
+    for asset_name in sorted(_START_ASSETS):
+        digest.update(asset_name.encode("utf-8"))
+        digest.update((_WEB_DIR / asset_name).read_bytes())
+    return digest.hexdigest()[:12]
+
+
+_START_ASSET_REVISION = _start_asset_revision()
 _CUSTOMER_WORKSPACE_ASSETS = {
     "workspace.v1.css": "text/css; charset=utf-8",
     "workspace.v1.js": "text/javascript; charset=utf-8",
@@ -158,6 +170,10 @@ async def marketing_site() -> HTMLResponse:
     )
     html = html.replace(_LANDING_SCRIPT_MARKER, landing_script, 1)
     html = html.replace(_LANDING_START_CTA, _LANDING_NAV_ACTIONS, 1)
+    html = html.replace(
+        'href="/start"',
+        f'href="/start?release={_START_ASSET_REVISION}"',
+    )
     return HTMLResponse(
         html,
         media_type="text/html; charset=utf-8",
@@ -204,14 +220,27 @@ async def contact_page() -> HTMLResponse:
 
 
 @router.get("/start", include_in_schema=False)
-async def customer_start() -> HTMLResponse:
+async def customer_start(
+    settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
     html = (_WEB_DIR / "start.v2.html").read_text(encoding="utf-8")
+    for asset_name in _START_ASSETS:
+        asset_url = f"/start/assets/{asset_name}"
+        if asset_url in html:
+            html = html.replace(
+                asset_url,
+                f"{asset_url}?v={_START_ASSET_REVISION}",
+            )
     return HTMLResponse(
         html,
         media_type="text/html; charset=utf-8",
         headers={
-            "Cache-Control": "no-store, max-age=0",
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
             "Pragma": "no-cache",
+            "Expires": "0",
+            "Surrogate-Control": "no-store",
+            "X-Partizan-Release-SHA": settings.partizan_release_sha,
+            "X-Partizan-Onboarding-Revision": _START_ASSET_REVISION,
         },
     )
 
@@ -221,7 +250,11 @@ async def customer_start_asset(asset_name: str) -> FileResponse:
     media_type = _START_ASSETS.get(asset_name)
     if media_type is None:
         raise HTTPException(status_code=404, detail="Customer onboarding asset not found")
-    return FileResponse(_WEB_DIR / asset_name, media_type=media_type)
+    return FileResponse(
+        _WEB_DIR / asset_name,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
 
 
 @router.get("/workspace", include_in_schema=False)
