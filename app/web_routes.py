@@ -1,5 +1,6 @@
 import hashlib
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
@@ -221,7 +222,7 @@ async def contact_page() -> HTMLResponse:
 
 @router.get("/start", include_in_schema=False)
 async def customer_start(
-    settings: Settings = Depends(get_settings),
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> HTMLResponse:
     html = (_WEB_DIR / "start.v2.html").read_text(encoding="utf-8")
     for asset_name in _START_ASSETS:
