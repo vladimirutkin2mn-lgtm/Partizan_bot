@@ -51,6 +51,25 @@ _LEGAL_PAGES = {
     "/security": "security.v1.html",
     "/contact": "contact.v1.html",
 }
+def _content_revision(*paths: str) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(paths):
+        digest.update(path.encode("utf-8"))
+        digest.update((_WEB_DIR / path).read_bytes())
+    return digest.hexdigest()[:12]
+
+
+def _release_headers(settings: Settings, *, revision_name: str, revision: str) -> dict[str, str]:
+    return {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0",
+        "Surrogate-Control": "no-store",
+        "X-Partizan-Release-SHA": settings.partizan_release_sha,
+        revision_name: revision,
+    }
+
+
 _START_ASSETS = {
     "start.v1.css": "text/css; charset=utf-8",
     "start.autopilot.v1.css": "text/css; charset=utf-8",
@@ -62,16 +81,7 @@ _START_ASSETS = {
     "customer-account.v1.css": "text/css; charset=utf-8",
 }
 
-def _start_asset_revision() -> str:
-    digest = hashlib.sha256()
-    digest.update((_WEB_DIR / "start.v2.html").read_bytes())
-    for asset_name in sorted(_START_ASSETS):
-        digest.update(asset_name.encode("utf-8"))
-        digest.update((_WEB_DIR / asset_name).read_bytes())
-    return digest.hexdigest()[:12]
-
-
-_START_ASSET_REVISION = _start_asset_revision()
+_START_ASSET_REVISION = _content_revision("start.v2.html", *_START_ASSETS)
 _CUSTOMER_WORKSPACE_ASSETS = {
     "workspace.v1.css": "text/css; charset=utf-8",
     "workspace.v1.js": "text/javascript; charset=utf-8",
@@ -104,26 +114,21 @@ _WORKSPACE_EXPERIMENT_SCRIPT = (
 )
 
 
-def _workspace_asset_revision() -> str:
-    digest = hashlib.sha256()
-    for asset_name in sorted(_CUSTOMER_WORKSPACE_ASSETS):
-        digest.update(asset_name.encode("utf-8"))
-        digest.update((_WEB_DIR / asset_name).read_bytes())
-    return digest.hexdigest()[:12]
-
-
-_CUSTOMER_WORKSPACE_ASSET_REVISION = _workspace_asset_revision()
-
-
-def _landing_asset_revision() -> str:
-    digest = hashlib.sha256()
-    for asset_name in ("landing.v1.css", "landing.account.v1.css", "landing.v1.js"):
-        digest.update(asset_name.encode("utf-8"))
-        digest.update((_WEB_DIR / asset_name).read_bytes())
-    return digest.hexdigest()[:12]
-
-
-_LANDING_ASSET_REVISION = _landing_asset_revision()
+_CUSTOMER_WORKSPACE_ASSET_REVISION = _content_revision(
+    "workspace.v1.html",
+    *_CUSTOMER_WORKSPACE_ASSETS,
+)
+_LANDING_ASSET_REVISION = _content_revision(
+    "landing.v1.html",
+    "landing.v1.css",
+    "landing.account.v1.css",
+    "landing.v1.js",
+)
+_LEGAL_ASSET_REVISION = _content_revision(
+    "legal.v1.css",
+    *_LEGAL_PAGES.values(),
+)
+_APP_ASSET_REVISION = _content_revision("index.v2.html", *_ASSETS)
 _LANDING_STYLESHEET_MARKER = '<link rel="stylesheet" href="/site/assets/landing.v1.css">'
 _LANDING_SCRIPT_MARKER = '<script src="/site/assets/landing.v1.js" defer></script>'
 _LANDING_ACCOUNT_STYLESHEET = (
@@ -144,7 +149,9 @@ router.include_router(tracking_router)
 
 
 @router.get("/", include_in_schema=False)
-async def marketing_site() -> HTMLResponse:
+async def marketing_site(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
     html = (_WEB_DIR / "landing.v1.html").read_text(encoding="utf-8")
     if (
         _LANDING_STYLESHEET_MARKER not in html
@@ -178,10 +185,11 @@ async def marketing_site() -> HTMLResponse:
     return HTMLResponse(
         html,
         media_type="text/html; charset=utf-8",
-        headers={
-            "Cache-Control": "no-store, max-age=0",
-            "Pragma": "no-cache",
-        },
+        headers=_release_headers(
+            settings,
+            revision_name="X-Partizan-Marketing-Revision",
+            revision=_LANDING_ASSET_REVISION,
+        ),
     )
 
 
@@ -193,31 +201,49 @@ async def marketing_asset(asset_name: str) -> FileResponse:
     return FileResponse(_WEB_DIR / asset_name, media_type=media_type)
 
 
-def _legal_page(filename: str) -> HTMLResponse:
+def _legal_page(filename: str, settings: Settings) -> HTMLResponse:
+    html = (_WEB_DIR / filename).read_text(encoding="utf-8")
+    html = html.replace(
+        "/site/assets/legal.v1.css",
+        f"/site/assets/legal.v1.css?v={_LEGAL_ASSET_REVISION}",
+    )
     return HTMLResponse(
-        (_WEB_DIR / filename).read_text(encoding="utf-8"),
+        html,
         media_type="text/html; charset=utf-8",
+        headers=_release_headers(
+            settings,
+            revision_name="X-Partizan-Legal-Revision",
+            revision=_LEGAL_ASSET_REVISION,
+        ),
     )
 
 
 @router.get("/privacy", include_in_schema=False)
-async def privacy_page() -> HTMLResponse:
-    return _legal_page(_LEGAL_PAGES["/privacy"])
+async def privacy_page(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    return _legal_page(_LEGAL_PAGES["/privacy"], settings)
 
 
 @router.get("/terms", include_in_schema=False)
-async def terms_page() -> HTMLResponse:
-    return _legal_page(_LEGAL_PAGES["/terms"])
+async def terms_page(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    return _legal_page(_LEGAL_PAGES["/terms"], settings)
 
 
 @router.get("/security", include_in_schema=False)
-async def security_page() -> HTMLResponse:
-    return _legal_page(_LEGAL_PAGES["/security"])
+async def security_page(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    return _legal_page(_LEGAL_PAGES["/security"], settings)
 
 
 @router.get("/contact", include_in_schema=False)
-async def contact_page() -> HTMLResponse:
-    return _legal_page(_LEGAL_PAGES["/contact"])
+async def contact_page(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
+    return _legal_page(_LEGAL_PAGES["/contact"], settings)
 
 
 @router.get("/start", include_in_schema=False)
@@ -235,14 +261,11 @@ async def customer_start(
     return HTMLResponse(
         html,
         media_type="text/html; charset=utf-8",
-        headers={
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-            "Expires": "0",
-            "Surrogate-Control": "no-store",
-            "X-Partizan-Release-SHA": settings.partizan_release_sha,
-            "X-Partizan-Onboarding-Revision": _START_ASSET_REVISION,
-        },
+        headers=_release_headers(
+            settings,
+            revision_name="X-Partizan-Onboarding-Revision",
+            revision=_START_ASSET_REVISION,
+        ),
     )
 
 
@@ -259,7 +282,9 @@ async def customer_start_asset(asset_name: str) -> FileResponse:
 
 
 @router.get("/workspace", include_in_schema=False)
-async def customer_workspace() -> HTMLResponse:
+async def customer_workspace(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
     html = (_WEB_DIR / "workspace.v1.html").read_text(encoding="utf-8")
     if _WORKSPACE_STYLESHEET_MARKER not in html or _WORKSPACE_SCRIPT_MARKER not in html:
         raise HTTPException(status_code=500, detail="Customer workspace enhancement marker missing")
@@ -290,10 +315,11 @@ async def customer_workspace() -> HTMLResponse:
     return HTMLResponse(
         html,
         media_type="text/html; charset=utf-8",
-        headers={
-            "Cache-Control": "no-store, max-age=0",
-            "Pragma": "no-cache",
-        },
+        headers=_release_headers(
+            settings,
+            revision_name="X-Partizan-Workspace-Revision",
+            revision=_CUSTOMER_WORKSPACE_ASSET_REVISION,
+        ),
     )
 
 
@@ -313,13 +339,27 @@ async def customer_workspace_asset(asset_name: str) -> FileResponse:
 
 
 @router.get("/app", include_in_schema=False)
-async def workspace() -> HTMLResponse:
+async def workspace(
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> HTMLResponse:
     html = (_WEB_DIR / "index.v2.html").read_text(encoding="utf-8")
     marker = '<script src="/app/assets/partizan.v1.js" defer></script>'
     if marker not in html:
         raise HTTPException(status_code=500, detail="Workspace bootstrap marker missing")
     html = html.replace(marker, f"{_OPERATOR_AUTH_SCRIPT}\n  {marker}", 1)
-    return HTMLResponse(html, media_type="text/html; charset=utf-8")
+    for asset_name in _ASSETS:
+        asset_url = f"/app/assets/{asset_name}"
+        if asset_url in html:
+            html = html.replace(asset_url, f"{asset_url}?v={_APP_ASSET_REVISION}")
+    return HTMLResponse(
+        html,
+        media_type="text/html; charset=utf-8",
+        headers=_release_headers(
+            settings,
+            revision_name="X-Partizan-App-Revision",
+            revision=_APP_ASSET_REVISION,
+        ),
+    )
 
 
 @router.get("/app/assets/{asset_name}", include_in_schema=False)
@@ -327,4 +367,8 @@ async def workspace_asset(asset_name: str) -> FileResponse:
     media_type = _ASSETS.get(asset_name)
     if media_type is None:
         raise HTTPException(status_code=404, detail="Workspace asset not found")
-    return FileResponse(_WEB_DIR / asset_name, media_type=media_type)
+    return FileResponse(
+        _WEB_DIR / asset_name,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
