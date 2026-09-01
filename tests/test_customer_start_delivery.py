@@ -10,7 +10,18 @@ def test_customer_start_is_no_store_and_references_custom_goal_assets() -> None:
 
     assert response.status_code == 200
     assert "no-store" in response.headers["cache-control"]
+    assert "must-revalidate" in response.headers["cache-control"]
     assert response.headers["pragma"] == "no-cache"
+    assert response.headers["expires"] == "0"
+    assert response.headers["surrogate-control"] == "no-store"
+    assert response.headers["x-partizan-release-sha"]
+    onboarding_revision = response.headers["x-partizan-onboarding-revision"]
+    assert len(onboarding_revision) == 12
+    assert all(char in "0123456789abcdef" for char in onboarding_revision)
+    assert f"/start/assets/start.v2.css?v={onboarding_revision}" in response.text
+    assert f"/start/assets/start.v2.js?v={onboarding_revision}" in response.text
+    assert f"/start/assets/goal-dropdown.v1.css?v={onboarding_revision}" in response.text
+    assert f"/start/assets/goal-dropdown.v1.js?v={onboarding_revision}" in response.text
     assert '/start/assets/goal-dropdown.v1.css' in response.text
     assert '/start/assets/goal-dropdown.v1.js' in response.text
     assert '/start/assets/customer-account.v1.css' in response.text
@@ -31,6 +42,7 @@ def test_custom_goal_assets_are_allowlisted_and_served() -> None:
 
     assert javascript.status_code == 200
     assert "javascript" in javascript.headers["content-type"]
+    assert "immutable" in javascript.headers["cache-control"]
     assert "goal-trigger" in javascript.text
     assert "aria-selected" in javascript.text
 

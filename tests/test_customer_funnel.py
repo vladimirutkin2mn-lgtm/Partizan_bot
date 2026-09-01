@@ -609,7 +609,7 @@ def test_landing_all_customer_ctas_route_to_start_not_internal_app() -> None:
 
     assert page.status_code == 200
     assert 'href="/app"' not in page.text
-    assert page.text.count('href="/start"') >= 5
+    assert page.text.count('href="/start?release=') >= 5
     assert "Start free. Then choose how far Partizan should go." in page.text
     assert "You built the product." in page.text
     assert "Start with what you have." in page.text
@@ -621,6 +621,7 @@ def test_landing_all_customer_ctas_route_to_start_not_internal_app() -> None:
     assert "Sometimes the best first move costs $0." in page.text
 
     assert javascript.status_code == 200
-    assert 'a[href="/start"]' in javascript.text
-    assert "/start?budget=" in javascript.text
+    assert 'a[href^="/start"]' in javascript.text
+    assert "startDestination" in javascript.text
+    assert "query.set('release', startRelease)" in javascript.text
     assert 'a.button-primary[href="/app"]' not in javascript.text

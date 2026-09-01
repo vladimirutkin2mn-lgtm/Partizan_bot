@@ -15,7 +15,7 @@ def test_root_serves_marketing_site() -> None:
     html = response.text
     for anchor in (
         "<title>Partizan — you built the product, now find the customers</title>",
-        'href="/start"',
+        'href="/start?release=',
         'id="budget-story"',
         'id="how"',
         'id="channels"',
@@ -25,6 +25,7 @@ def test_root_serves_marketing_site() -> None:
         "/site/assets/landing.v1.js",
     ):
         assert anchor in html
+    assert 'href="/start"' not in html
     assert 'href="/app"' not in html
     assert 'id="product-demo"' not in html
     assert "/site/assets/landing.v1.css?v=" in html
