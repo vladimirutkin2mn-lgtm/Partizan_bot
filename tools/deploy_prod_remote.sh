@@ -157,28 +157,63 @@ if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
   smoke_dir="$(mktemp -d)"
   start_headers="${smoke_dir}/start.headers"
   start_html="${smoke_dir}/start.html"
+  onboarding_url="${base}/start?release=${PARTIZAN_RELEASE_SHA}"
   curl --fail --silent --show-error --max-time 15 \
     --header 'Cache-Control: no-cache' \
+    --header 'Pragma: no-cache' \
     --dump-header "${start_headers}" \
     --output "${start_html}" \
-    "${base}/start"
-  if ! grep -Fq '/start/assets/goal-dropdown.v1.css' "${start_html}" || \
-     ! grep -Fq '/start/assets/goal-dropdown.v1.js' "${start_html}"; then
-    echo "Public smoke failed: ${base}/start is serving stale onboarding HTML" >&2
+    "${onboarding_url}"
+
+  served_page_release="$(awk 'BEGIN{IGNORECASE=1} /^x-partizan-release-sha:/ {gsub("\\r", "", $2); print $2}' "${start_headers}" | tail -n 1)"
+  onboarding_revision="$(awk 'BEGIN{IGNORECASE=1} /^x-partizan-onboarding-revision:/ {gsub("\\r", "", $2); print $2}' "${start_headers}" | tail -n 1)"
+  if [[ "${served_page_release}" != "${PARTIZAN_RELEASE_SHA}" ]]; then
+    echo "Public smoke failed: ${base}/start reached release ${served_page_release:-unknown}, expected ${PARTIZAN_RELEASE_SHA}" >&2
     rm -rf "${smoke_dir}"
     exit 1
   fi
-  if ! grep -Eiq '^cache-control:.*no-store' "${start_headers}"; then
+  if [[ ! "${onboarding_revision}" =~ ^[0-9a-f]{12}$ ]]; then
+    echo "Public smoke failed: ${base}/start is missing a valid onboarding revision" >&2
+    rm -rf "${smoke_dir}"
+    exit 1
+  fi
+  if ! grep -Eiq '^cache-control:.*no-store' "${start_headers}" || \
+     ! grep -Eiq '^surrogate-control:.*no-store' "${start_headers}"; then
     echo "Public smoke failed: ${base}/start is missing no-store cache protection" >&2
     rm -rf "${smoke_dir}"
     exit 1
   fi
 
-  for asset in goal-dropdown.v1.css goal-dropdown.v1.js; do
+  for marker in \
+    'Show Partizan what you built.' \
+    'Product link' \
+    'Analyze my product' \
+    'Likely first audiences' \
+    'id="intake-clarification-step"'; do
+    if ! grep -Fq "${marker}" "${start_html}"; then
+      echo "Public smoke failed: ${base}/start is missing current onboarding marker: ${marker}" >&2
+      rm -rf "${smoke_dir}"
+      exit 1
+    fi
+  done
+  for stale_marker in 'Paste your product.' 'Product website' 'Scan my product'; do
+    if grep -Fq "${stale_marker}" "${start_html}"; then
+      echo "Public smoke failed: ${base}/start is serving stale onboarding marker: ${stale_marker}" >&2
+      rm -rf "${smoke_dir}"
+      exit 1
+    fi
+  done
+
+  for asset in start.v2.js start.v2.css goal-dropdown.v1.css goal-dropdown.v1.js; do
+    if ! grep -Fq "/start/assets/${asset}?v=${onboarding_revision}" "${start_html}"; then
+      echo "Public smoke failed: ${base}/start does not reference versioned ${asset}" >&2
+      rm -rf "${smoke_dir}"
+      exit 1
+    fi
     curl --fail --silent --show-error --max-time 15 \
       --header 'Cache-Control: no-cache' \
       --output "${smoke_dir}/${asset}" \
-      "${base}/start/assets/${asset}"
+      "${base}/start/assets/${asset}?v=${onboarding_revision}"
     if ! cmp -s "app/web/${asset}" "${smoke_dir}/${asset}"; then
       echo "Public smoke failed: ${base}/start/assets/${asset} does not match the release being deployed" >&2
       rm -rf "${smoke_dir}"
@@ -186,6 +221,7 @@ if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
     fi
     echo "${base}/start/assets/${asset} exact release bytes verified"
   done
+  echo "${base}/start release ${served_page_release}, onboarding revision ${onboarding_revision} verified"
   rm -rf "${smoke_dir}"
 fi
 
