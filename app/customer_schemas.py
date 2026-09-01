@@ -62,7 +62,29 @@ class CustomerProductClarificationView(BaseModel):
 
 
 class CustomerProductClarificationAnswerRequest(BaseModel):
-    answer: str = Field(min_length=2, max_length=2000)
+    answer: str | None = Field(default=None, min_length=2, max_length=2000)
+    product: str | None = Field(default=None, min_length=1, max_length=300)
+    what_it_does: str | None = Field(default=None, min_length=2, max_length=1200)
+    likely_customer: str | None = Field(default=None, min_length=2, max_length=600)
+    business_model: str | None = Field(default=None, max_length=160)
+    market: str | None = Field(default=None, max_length=300)
+
+    @model_validator(mode="after")
+    def require_single_answer_or_founder_context(
+        self,
+    ) -> "CustomerProductClarificationAnswerRequest":
+        if self.answer:
+            return self
+        if self.product and self.what_it_does and self.likely_customer:
+            self.product = self.product.strip()
+            self.what_it_does = self.what_it_does.strip()
+            self.likely_customer = self.likely_customer.strip()
+            self.business_model = (self.business_model or "").strip() or None
+            self.market = (self.market or "").strip() or None
+            return self
+        raise ValueError(
+            "Provide an answer, or product, what_it_does and likely_customer."
+        )
 
 
 class MaskedOpportunityView(BaseModel):
