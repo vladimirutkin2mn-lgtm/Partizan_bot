@@ -15,7 +15,7 @@
   const roas = (value) => value == null ? '—' : `${Number(value).toFixed(2)}×`;
   const currentProjectId = () => new URLSearchParams(window.location.search).get('project');
   const channelEnabled = (channel) => channel.mode !== 'OFF';
-  const enabledMode = (channel) => channel.autonomous_execution_available ? 'AUTO' : 'RESEARCH_ONLY';
+  const enabledMode = (channel) => channel.execution_ready ? 'AUTO' : 'RESEARCH_ONLY';
 
   const api = async (path, options = {}) => {
     const response = await fetch(path, {
@@ -50,7 +50,8 @@
     if (channel.platform === 'INSTAGRAM') {
       if (!channel.connected) return ['Needs connection', 'needs'];
       if (!channelEnabled(channel)) return ['Connected · Off', 'off'];
-      return ['Connected · Enabled', 'connected'];
+      if (!channel.execution_ready) return ['Connected · Research only', 'needs'];
+      return ['Paid execution ready', 'connected'];
     }
     if (!channelEnabled(channel)) return ['Off', 'off'];
     return ['Research enabled', 'enabled'];
@@ -58,7 +59,11 @@
 
   const channelSubline = (channel) => {
     if (channel.platform === 'INSTAGRAM') {
-      return channel.connected ? 'Paid execution supported' : 'Connect Meta before paid execution';
+      if (!channel.connected) return 'Connect Meta before paid execution';
+      if (!channel.execution_ready) {
+        return channel.execution_blocker || 'Connected · paid execution is not ready yet';
+      }
+      return 'Paid execution ready';
     }
     return 'Research surface · execution not available yet';
   };
