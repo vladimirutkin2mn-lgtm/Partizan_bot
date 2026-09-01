@@ -123,15 +123,9 @@ class CustomerChannelService:
         return self.list(project_id, customer_token)
 
     def autonomous_platforms(self, project: dict) -> list[DistributionPlatform]:
+        """Return customer AUTO intent; runtime readiness is enforced separately."""
+
         preferences = self._preferences(project)
-        try:
-            project_id = UUID(str(project["id"]))
-        except (KeyError, ValueError):
-            return []
-        meta_connected = self._meta_connected(project)
-        settlement_ready = bool(
-            self._balance.rail_view(project_id).get("settlement_ready")
-        )
         return [
             platform
             for platform in (
@@ -141,11 +135,7 @@ class CustomerChannelService:
                 DistributionPlatform.TELEGRAM,
             )
             if preferences[platform] == "AUTO"
-            and self._execution_readiness(
-                platform,
-                meta_connected=meta_connected,
-                settlement_ready=settlement_ready,
-            )[0]
+            and platform in AUTONOMOUS_EXECUTION_PLATFORMS
         ]
 
     def filter_research(
