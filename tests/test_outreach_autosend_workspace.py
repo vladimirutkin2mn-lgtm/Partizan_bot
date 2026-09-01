@@ -23,7 +23,7 @@ def test_execution_bootstrap_loads_autosend_after_founder_outreach() -> None:
 
     assert 'script.src = versionedAsset("/app/assets/outreach.v1.js")' in javascript
     assert 'script.addEventListener("load", loadOutreachAutosendAssets)' in javascript
-    assert 'script.src = "/app/assets/outreach-autosend.v1.js"' in javascript
+    assert 'script.src = versionedAsset("/app/assets/outreach-autosend.v1.js")' in javascript
     assert "/app/assets/outreach-autosend.v1.css" in javascript
 
 
