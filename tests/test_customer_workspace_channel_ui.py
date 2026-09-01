@@ -24,7 +24,10 @@ def test_overview_channels_use_simple_toggles_and_real_meta_connection_state() -
     javascript = _channel_javascript()
 
     assert "channel.mode !== 'OFF'" in javascript
-    assert "channel.autonomous_execution_available ? 'AUTO' : 'RESEARCH_ONLY'" in javascript
+    assert "channel.execution_ready ? 'AUTO' : 'RESEARCH_ONLY'" in javascript
+    assert "Paid execution ready" in javascript
+    assert "Paid execution supported" not in javascript
+    assert "channel.execution_blocker" in javascript
     assert "channel.platform === 'INSTAGRAM' && !channel.connected" in javascript
     assert 'data-channel-connect="INSTAGRAM"' in javascript
     assert 'class="channel-toggle"' in javascript
