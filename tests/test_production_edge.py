@@ -61,3 +61,24 @@ def test_public_deploy_smoke_verifies_exact_current_onboarding_release() -> None
     assert 'start.v2.js start.v2.css goal-dropdown.v1.css goal-dropdown.v1.js' in deploy
     assert 'cmp -s "app/web/${asset}"' in deploy
     assert '/start?release=${PARTIZAN_RELEASE_SHA}' in deploy
+
+
+
+def test_public_deploy_smoke_verifies_every_primary_browser_surface() -> None:
+    deploy = (ROOT / "tools" / "deploy_prod_remote.sh").read_text(encoding="utf-8")
+
+    assert "Verifying all browser surfaces belong to the release" in deploy
+    assert "x-partizan-marketing-revision" in deploy
+    assert "x-partizan-workspace-revision" in deploy
+    assert "x-partizan-app-revision" in deploy
+    assert "x-partizan-legal-revision" in deploy
+    assert "landing.v1.css landing.v1.js" in deploy
+    assert (
+        "workspace.v1.js workspace.channels.v1.js "
+        "workspace.projects.v1.js workspace.experiments.v1.js"
+    ) in deploy
+    assert "partizan.v1.js execution.v2.js paid-control.v1.js" in deploy
+    assert "/privacy|What Partizan stores|privacy" in deploy
+    assert "/terms|Use Partizan with clear boundaries.|terms" in deploy
+    assert "/security|Execution should fail closed|security" in deploy
+    assert "/contact|Need help with Partizan?|contact" in deploy

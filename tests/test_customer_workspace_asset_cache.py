@@ -11,7 +11,12 @@ def test_customer_workspace_versions_css_and_javascript_by_content() -> None:
     response = client.get("/workspace")
 
     assert response.status_code == 200
-    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert "no-store" in response.headers["cache-control"]
+    assert "must-revalidate" in response.headers["cache-control"]
+    assert response.headers["surrogate-control"] == "no-store"
+    assert response.headers["x-partizan-release-sha"]
+    workspace_revision = response.headers["x-partizan-workspace-revision"]
+    assert len(workspace_revision) == 12
 
     patterns = [
         r'/workspace/assets/workspace\.v1\.css\?v=([a-f0-9]{12})',
@@ -26,6 +31,7 @@ def test_customer_workspace_versions_css_and_javascript_by_content() -> None:
         revisions.append(match.group(1))
 
     assert len(set(revisions)) == 1
+    assert revisions[0] == workspace_revision
 
 
 def test_customer_workspace_assets_are_never_served_from_stale_browser_cache() -> None:
