@@ -2,6 +2,15 @@
 
 This document is the current source of truth for implementation progress. `PRODUCT_PLAN.md` remains the long-form product vision and historical roadmap.
 
+## Current customer / production truth — 1 September 2026
+
+- Partizan production is live. Milestone #121 is closed; releases deploy through the production workflow and public HTTPS/shared-host smoke verifies the exact release SHA.
+- Customer onboarding is universal Product Understanding: website, app, bot, repository, other public product link or a short founder description.
+- Research starts before spend. The customer can see Product Understanding and a real evidence-backed opportunity before acquisition funding is required.
+- Growth Balance funding and paid-execution readiness are separate capabilities.
+- **Issue #160 remains open.** Autonomous paid acquisition must stay fail-closed while the production provider-spend rail is unavailable or the project is not settlement-ready. `settlement_ready=false` is a hard blocker even when budget exists and Meta is connected.
+- Do not describe a funded project as autonomous-paid-ready until #160 exit criteria are satisfied and real end-to-end dogfood proves provider spend and fee reconciliation.
+
 ## Repository boundary
 
 When Partizan work depends on another product or repository, that dependency is an external blocker only. Partizan must not modify, deploy or migrate another project unless the product owner gives explicit permission for that specific external project/action.
@@ -15,8 +24,8 @@ The intended integration model is self-service:
 ## Current production architecture
 
 ```text
-Product brief
-  -> ProductProfile + clarifications
+Product source / founder description
+  -> Product Understanding / ProductProfile + targeted clarifications
   -> ranked ICPs
   -> Audience Intelligence / concrete Distribution Opportunities
   -> platform-aware Distribution Plays
@@ -57,7 +66,7 @@ Audit fixes are documented in `docs/CODE_AUDIT.md`. The launch-critical findings
 - readiness tied unnecessarily to async event-loop lifecycle;
 - autonomous growth serialized only by a process-local lock even though API and worker run as separate processes.
 
-Production control-plane access is now deny-by-default for internal `/v1` reads and writes. Explicit public exceptions are limited to the Product Event Key conversion data plane and intentionally public opaque creative blobs; health, workspace and tracking routes remain outside the internal `/v1` operator boundary.
+Production control-plane access is deny-by-default for internal `/v1` reads and writes. Explicit public exceptions include the Product Event Key conversion data plane, intentionally public opaque creative blobs, customer-bound onboarding/project routes that enforce their own opaque customer token, the Meta OAuth callback, and Stripe-signed billing webhooks. Health, customer account/workspace routes and tracking routes live outside the internal `/v1` operator boundary.
 
 The final cleanup retires the obsolete pre-distribution runtime (`ChannelHunter -> GrowthPlay -> ExecutionPackage -> legacy analytics/GrowthManager`), old mock/job scaffolding and product-specific dogfood compatibility code. The current browser workspace, generic growth runner and workers use the durable distribution domain only. A regression test prevents the retired runtime/routes from being reintroduced accidentally.
 
@@ -115,9 +124,9 @@ The deterministic proof uses three synthetic complete funnels, $30 total spend a
 
 This is an internal correctness proof only. It does **not** count as real acquisition performance and does not satisfy dogfood #10.
 
-## Milestone 13 — Productionize Partizan (#121) — repository work complete, real infrastructure pending
+## Milestone 13 — Productionize Partizan (#121) — completed
 
-All repository/code-side production work is implemented.
+Issue #121 closed on 27 August 2026. Production infrastructure is configured and the application deploys from `main` through the fail-closed GitHub Actions production workflow.
 
 Runtime/deployment foundation:
 
@@ -141,38 +150,25 @@ Canonical public-origin safety is fail-closed: GitHub `PARTIZAN_PUBLIC_URL`, hos
 
 Without Partizan-specific deployment secrets, SSH agent setup, host-key pinning, host verification and deploy/migrate/smoke are skipped. No host is guessed and no other project's deployment credentials are reused.
 
-There is no remaining honest repository-only implementation step for #121. Completion now requires explicit real infrastructure:
-
-1. provision/select a **dedicated Partizan production host**;
-2. configure Partizan-specific GitHub deployment secrets (`DEPLOY_HOST`, `DEPLOY_SSH_KEY`, `DEPLOY_SSH_KNOWN_HOSTS`, `DEPLOY_PATH`);
-3. run the host-local bootstrap and intentionally configure live providers/secrets in `.env.prod`;
-4. choose a Partizan DNS hostname, point it to the host and allow inbound 80/443;
-5. configure matching `PARTIZAN_PUBLIC_URL`, `PARTIZAN_PUBLIC_BASE_URL` and `PARTIZAN_PUBLIC_HOST`;
-6. execute the first real deploy from `main`;
-7. prove public HTTPS `/health/live` and `/health/ready`;
-8. prove both recurring worker heartbeats remain healthy across one actual deployment/restart cycle.
-
-Until those infrastructure inputs are explicitly supplied, #121 remains open rather than inventing another code milestone.
+The infrastructure steps above have been completed. Production now runs in shared-host mode behind the existing HTTPS proxy. Deployment verifies the exact `PARTIZAN_RELEASE_SHA`, public health/readiness and worker health before declaring a release successful. Browser-surface release integrity is a separate delivery invariant and is being hardened so a current `/version` cannot mask stale UI.
 
 ## Milestone 8 — real-product dogfood (#10) — remains open
 
 Real dogfood still requires real users, at least one real `PAID` conversion, calculable CAC and a data-backed Growth Manager decision.
 
-Start it only after:
+Start it with the live production origin, but keep execution honest:
 
-1. #121 is completed and Partizan has its own public production origin;
-2. the chosen product is connected through the Integration Kit;
-3. any required work in that external product is explicitly authorized by its owner;
-4. provider/account execution prerequisites for the chosen experiment are intentionally configured.
+1. choose real external products and run the universal Product Understanding + research flow;
+2. obtain explicit authorization before any required external-product modification;
+3. measure source recognition, clarification rate, Product Understanding corrections, evidence quality and useful-opportunity rate;
+4. for paid dogfood, complete #160 first and verify the project-specific provider-spend rail is settlement-ready before activating autonomous paid acquisition.
 
 ## Next order of work
 
-1. complete the real infrastructure proof for #121: dedicated Partizan host, deployment secrets, DNS/public URL and first production deploy;
-2. verify current-process worker heartbeats after a real restart and public HTTPS health;
-3. connect a chosen real product through the Integration Kit;
-4. ask for explicit permission before any required external-project modification;
-5. run real dogfood #10 to a real PAID conversion, CAC and Growth Manager decision;
-6. use real dogfood evidence—not architecture speculation—to choose subsequent provider/channel integrations.
+1. close #160 by production-enabling and monitoring the provider-spend rail, project isolation/limits, provider billing binding and authoritative spend/refund reconciliation;
+2. run external Product Understanding/research dogfood across real products now, without pretending paid execution is available;
+3. once #160 is complete, run a funded end-to-end paid dogfood cycle to real provider spend, PAID conversion, CAC, fee reconciliation and Growth Manager decision;
+4. use real dogfood evidence—not architecture speculation—to choose subsequent provider/channel integrations.
 
 `partizan-sandbox-run` can still be used as a synthetic release proof, but its results never count as real dogfood or acquisition performance.
 
