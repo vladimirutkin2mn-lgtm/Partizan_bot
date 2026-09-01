@@ -136,11 +136,20 @@
   const renderProductClarification = (data) => {
     managementFeePct = Number(data.managed_spend_fee_pct || managementFeePct);
     pendingUnderstanding = { ...data.understanding };
-    const clarification = data.clarification;
-    $('product-clarification-question').textContent = clarification.question;
+    const clarification = data.clarification || {};
+    const knownValue = (value, fallbackValues = []) => {
+      const text = String(value || '').trim();
+      return !text || text === 'Not determined yet' || fallbackValues.includes(text) ? '' : text;
+    };
     $('product-clarification-rationale').textContent = clarification.rationale
-      || 'Partizan only asks when this detail materially changes the product understanding.';
-    $('product-clarification-answer').value = '';
+      || 'The public source did not contain enough product context. Fill in the basics and review the result next.';
+    $('product-context-name').value = knownValue(pendingUnderstanding.product, ['Product']);
+    $('product-context-what').value = clarification.field_name === 'problem_or_desire'
+      ? ''
+      : knownValue(pendingUnderstanding.for_whom);
+    $('product-context-customer').value = knownValue(pendingUnderstanding.likely_customer);
+    $('product-context-business').value = knownValue(pendingUnderstanding.business_model);
+    $('product-context-market').value = knownValue(pendingUnderstanding.market);
     showIntakeStep(2);
   };
 
@@ -360,15 +369,28 @@
       showNotice('Product session is missing. Analyze the product again.', true);
       return;
     }
-    const answer = $('product-clarification-answer').value.trim();
-    if (!answer) return;
+    const product = $('product-context-name').value.trim();
+    const whatItDoes = $('product-context-what').value.trim();
+    const likelyCustomer = $('product-context-customer').value.trim();
+    const businessModel = $('product-context-business').value.trim();
+    const market = $('product-context-market').value.trim();
+    if (!product || !whatItDoes || !likelyCustomer) {
+      showNotice('Add the product, what it does, and who it is for.', true);
+      return;
+    }
     const button = event.submitter;
     button.disabled = true;
-    button.textContent = 'Updating product understanding…';
+    button.textContent = 'Saving product context…';
     try {
       const data = await api(`/v1/customer-projects/${currentProjectId}/product-clarification`, {
         method: 'POST',
-        body: JSON.stringify({ answer }),
+        body: JSON.stringify({
+          product,
+          what_it_does: whatItDoes,
+          likely_customer: likelyCustomer,
+          business_model: businessModel || null,
+          market: market || null,
+        }),
       });
       const existing = storedPreview(currentProjectId) || {};
       rememberProject(currentProjectId, currentToken, { ...existing, ...data });
@@ -377,7 +399,7 @@
       showNotice(error.message, true);
     } finally {
       button.disabled = false;
-      button.textContent = 'Continue analysis →';
+      button.textContent = 'Continue to review →';
     }
   });
 
