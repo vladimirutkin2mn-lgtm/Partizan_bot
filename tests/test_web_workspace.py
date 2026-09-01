@@ -10,8 +10,13 @@ def test_root_serves_marketing_site() -> None:
 
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
-    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert "no-store" in response.headers["cache-control"]
+    assert "must-revalidate" in response.headers["cache-control"]
     assert response.headers["pragma"] == "no-cache"
+    assert response.headers["surrogate-control"] == "no-store"
+    assert response.headers["x-partizan-release-sha"]
+    marketing_revision = response.headers["x-partizan-marketing-revision"]
+    assert len(marketing_revision) == 12
     html = response.text
     for anchor in (
         "<title>Partizan — you built the product, now find the customers</title>",
@@ -64,7 +69,11 @@ def test_first_party_legal_and_security_pages_are_served() -> None:
         response = client.get(path)
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
-        assert "/site/assets/legal.v1.css" in response.text
+        assert "/site/assets/legal.v1.css?v=" in response.text
+        assert "no-store" in response.headers["cache-control"]
+        assert response.headers["surrogate-control"] == "no-store"
+        assert response.headers["x-partizan-release-sha"]
+        assert len(response.headers["x-partizan-legal-revision"]) == 12
         for phrase in phrases:
             assert phrase in response.text
 
@@ -80,6 +89,11 @@ def test_workspace_shell_contains_core_growth_and_execution_surfaces() -> None:
 
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
+    assert "no-store" in response.headers["cache-control"]
+    assert response.headers["surrogate-control"] == "no-store"
+    assert response.headers["x-partizan-release-sha"]
+    app_revision = response.headers["x-partizan-app-revision"]
+    assert len(app_revision) == 12
     html = response.text
     for anchor in (
         'id="product-form"',
@@ -105,7 +119,7 @@ def test_workspace_shell_contains_core_growth_and_execution_surfaces() -> None:
         "/app/assets/paid-control.v1.css",
         "/app/assets/paid-control.v1.js",
     ):
-        assert asset in html
+        assert f"{asset}?v={app_revision}" in html
     assert html.index("/app/assets/operator-auth.v1.js") < html.index(
         "/app/assets/partizan.v1.js"
     )
@@ -168,8 +182,10 @@ def test_workspace_assets_and_live_api_contracts_are_served() -> None:
     assert "Расход не запускается" in execution_js.text
 
     assert execution_bootstrap.status_code == 200
-    assert "/app/assets/execution.v1.js" in execution_bootstrap.text
-    assert "/app/assets/results.v1.js" in execution_bootstrap.text
+    assert "immutable" in execution_bootstrap.headers["cache-control"]
+    assert 'const assetRevision = bootstrapUrl.searchParams.get("v")' in execution_bootstrap.text
+    assert 'versionedAsset("/app/assets/execution.v1.js")' in execution_bootstrap.text
+    assert 'versionedAsset("/app/assets/results.v1.js")' in execution_bootstrap.text
 
     assert paid_control.status_code == 200
     assert "/v1/ops/paid-control/lifecycle/" in paid_control.text
