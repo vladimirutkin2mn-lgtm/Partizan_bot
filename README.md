@@ -50,12 +50,16 @@ Partizan Bot should evolve from “here is what you could do” to **“here is 
 
 The public marketing site is served at `/`. Customer onboarding, the optional `$49` Acquisition Plan and Growth Balance execution setup live at `/start`. The advanced/operator workspace remains at `/app`.
 
-The customer has two monetization paths after the free pre-scan:
+The customer sees Product Understanding and a real evidence-backed acquisition opportunity before acquisition funding is required.
 
-- pay `$49` once for the Acquisition Plan only; or
-- fund Growth Balance and let Partizan execute autonomously. There is no monthly execution subscription. Partizan earns a 10% management fee only on actual acquisition spend, taken from the same prepaid Growth Balance.
+After that, the two paid paths are:
 
-Funding Growth Balance includes the same Product/ICP/Audience research Partizan needs for execution, so an execution customer does not also pay `$49`. `/start` connects that customer project to the existing growth engine rather than implementing a parallel execution path: paid entitlement creates the Product/ICP/Audience state, guardrails create a bounded Growth Mandate, and the existing workers/adapters own execution, paid control, analytics and learning.
+- pay `$49` once for the deeper Acquisition Plan research-only upgrade; or
+- add Growth Balance only when a concrete recommended move needs paid budget. There is no monthly execution subscription. Partizan's 10% management fee applies only to actual acquisition spend.
+
+Research starts before spend. Funding a paid move can include the deeper Product/ICP/Audience research needed by the workspace, so that customer does not also need to buy the `$49` research-only upgrade.
+
+**Current paid-execution boundary:** Growth Balance funding is not proof that Partizan can spend it. Issue #160 remains open; autonomous paid activation must stay fail-closed while the production provider-spend rail is not ready (`settlement_ready=false`). `/start` and `/workspace` must not promise autonomous paid acquisition before that boundary is satisfied.
 
 The customer surface never exposes provider credentials or the operator key. Customer project access uses an opaque project token; Meta access tokens stay server-side and are encrypted at rest. The operator workspace keeps its existing production operator-auth boundary.
 
