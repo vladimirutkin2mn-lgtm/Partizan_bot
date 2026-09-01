@@ -114,6 +114,59 @@ async def test_rich_public_metadata_can_build_understanding_without_source_quest
 
 
 
+
+
+@pytest.mark.asyncio
+async def test_telegram_boilerplate_does_not_count_as_product_context(monkeypatch) -> None:
+    async def fake_reader(url: str, *, minimum_text_chars: int = 80) -> WebsiteSnapshot:
+        assert url == "https://t.me/NUMASocialBot"
+        assert minimum_text_chars == 0
+        return WebsiteSnapshot(
+            url=url,
+            title="Telegram: Launch @NUMASocialBot",
+            description="NUMA - Scratch That!",
+            text=(
+                "Telegram: Launch @NUMASocialBot NUMA @NUMASocialBot NUMA - Scratch That! "
+                "Start Bot If you have Telegram, you can launch NUMA right away. "
+                "Open App View in Telegram "
+                "If you have Telegram, you can launch NUMA right away."
+            ),
+        )
+
+    monkeypatch.setattr("app.product_source.read_public_website", fake_reader)
+    context = await read_public_product_source("https://t.me/NUMASocialBot")
+
+    assert context.source_type == ProductSourceType.TELEGRAM
+    assert context.needs_founder_context is True
+    assert context.clarification_question == "What does this bot help users do?"
+
+
+@pytest.mark.asyncio
+async def test_telegram_product_specific_description_can_skip_clarification(monkeypatch) -> None:
+    async def fake_reader(url: str, *, minimum_text_chars: int = 80) -> WebsiteSnapshot:
+        assert minimum_text_chars == 0
+        return WebsiteSnapshot(
+            url=url,
+            title="Telegram: Launch @useful_bot",
+            description=(
+                "Automates invoice reminders, tracks overdue payments, and sends freelancers "
+                "a concise daily cash-flow summary inside Telegram."
+            ),
+            text=(
+                "Useful Bot @useful_bot Automates invoice reminders, tracks overdue payments, "
+                "and sends freelancers a concise daily cash-flow summary inside Telegram. "
+                "Start Bot If you have Telegram, you can launch Useful Bot right away."
+            ),
+        )
+
+    monkeypatch.setattr("app.product_source.read_public_website", fake_reader)
+    context = await read_public_product_source("https://t.me/useful_bot")
+
+    assert context.source_type == ProductSourceType.TELEGRAM
+    assert context.needs_founder_context is False
+    assert context.clarification_question is None
+
+
 @pytest.mark.asyncio
 async def test_recognized_product_source_uses_targeted_question_when_public_metadata_is_unavailable(
     monkeypatch,
