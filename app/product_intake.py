@@ -152,6 +152,63 @@ class InMemoryProductIntakeService:
         self._persist_state(state)
         return self._response(state)
 
+    def apply_founder_context(
+        self,
+        product_id: UUID,
+        *,
+        name: str,
+        what_it_does: str,
+        likely_customer: str,
+        business_model: str | None = None,
+        market: str | None = None,
+    ) -> ProductIntakeResponse:
+        """Apply explicit founder facts without another inference round.
+
+        This is the deterministic fallback for sparse public sources. Once the founder
+        supplies the product basics, those facts are authoritative until the review
+        screen where they can be edited again.
+        """
+        state = self._load_state(product_id)
+        name_value = name.strip()
+        what_value = what_it_does.strip()
+        customer_value = likely_customer.strip()
+        business_value = (business_model or "").strip()
+        market_value = (market or "").strip()
+
+        updates = {
+            "name": name_value or state.product.name,
+            "problem_or_desire": what_value,
+            "value_proposition": what_value,
+            "known_audience": [customer_value],
+            "customer_hypotheses": [customer_value],
+            "status": ProductProfileStatus.DRAFT,
+        }
+        if business_value:
+            updates["business_model"] = business_value
+        if market_value:
+            updates["market"] = market_value
+
+        state.product = state.product.model_copy(update=updates)
+        founder_answers = (
+            ("name", "What is the product?", name_value),
+            ("problem_or_desire", "What does it help people do?", what_value),
+            ("known_audience", "Who is it for?", customer_value),
+        )
+        state.answers.extend(founder_answers)
+        state.answered_fields.update(field_name for field_name, _question, _answer in founder_answers)
+        if business_value:
+            state.answers.append(("business_model", "How does the product make money?", business_value))
+            state.answered_fields.add("business_model")
+        if market_value:
+            state.answers.append(("market", "What is the primary market?", market_value))
+            state.answered_fields.add("market")
+
+        # The next screen is an explicit founder review of Product Understanding.
+        # Do not trap the user in another clarification loop after they filled the form.
+        state.questions = []
+        self._persist_state(state)
+        return self._response(state)
+
     def confirm(self, product_id: UUID) -> ProductIntakeResponse:
         state = self._load_state(product_id)
         if state.questions:
