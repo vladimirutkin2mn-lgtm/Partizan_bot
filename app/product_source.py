@@ -211,11 +211,11 @@ def _source_evidence_text(
     # "If you have Telegram...") that says nothing about the product. Counting that
     # chrome as product evidence makes sparse bot/channel pages look deceptively rich
     # and suppresses the targeted founder clarification.
-    text = " ".join(
-        part.strip()
-        for part in (snapshot.description, snapshot.text)
-        if part and part.strip()
-    )
+    # Telegram's body repeats the bot/channel name and page chrome enough times to
+    # cross a character threshold even when the actual product bio says almost nothing.
+    # Treat the public meta description/bio as the evidence boundary; the body remains
+    # available to Product Intake as untrusted context, but it cannot suppress clarification.
+    text = snapshot.description.strip()
     patterns = (
         r"Telegram:\s*(?:Launch|View)\s+@[A-Za-z0-9_]+",
         r"\bStart Bot\b",

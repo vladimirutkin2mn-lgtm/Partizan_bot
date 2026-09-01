@@ -126,10 +126,11 @@ async def test_telegram_boilerplate_does_not_count_as_product_context(monkeypatc
             title="Telegram: Launch @NUMASocialBot",
             description="NUMA - Scratch That!",
             text=(
-                "Telegram: Launch @NUMASocialBot NUMA @NUMASocialBot NUMA - Scratch That! "
-                "Start Bot If you have Telegram, you can launch NUMA right away. "
-                "Open App View in Telegram "
-                "If you have Telegram, you can launch NUMA right away."
+                "NUMA NUMA - Scratch That! NUMA NUMA - Scratch That! "
+                "Telegram: Launch @NUMASocialBot Start Bot Open App View in Telegram "
+                "If you have Telegram, you can launch NUMA right away. "
+                "NUMA NUMA - Scratch That! NUMA NUMA - Scratch That! "
+                "This repeated Telegram body is intentionally long enough to exceed the threshold."
             ),
         )
 
