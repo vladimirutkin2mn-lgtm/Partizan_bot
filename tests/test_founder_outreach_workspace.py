@@ -24,7 +24,7 @@ def test_execution_bootstrap_loads_outreach_after_publishing() -> None:
 
     assert 'script.src = versionedAsset("/app/assets/publishing.v1.js")' in javascript
     assert 'script.addEventListener("load", loadOutreachAssets)' in javascript
-    assert 'script.src = "/app/assets/outreach.v1.js"' in javascript
+    assert 'script.src = versionedAsset("/app/assets/outreach.v1.js")' in javascript
     assert "/app/assets/outreach.v1.css" in javascript
     assert "else {\n      loadOutreachAssets();\n    }" in javascript
 
