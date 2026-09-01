@@ -177,6 +177,7 @@ class InMemoryProductIntakeService:
 
         updates = {
             "name": name_value or state.product.name,
+            "description": what_value,
             "problem_or_desire": what_value,
             "value_proposition": what_value,
             "known_audience": [customer_value],
