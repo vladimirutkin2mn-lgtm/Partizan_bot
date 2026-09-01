@@ -169,11 +169,7 @@ def _context_from_snapshot(
     source_type: ProductSourceType,
     snapshot: WebsiteSnapshot,
 ) -> ProductSourceContext:
-    evidence_text = " ".join(
-        part.strip()
-        for part in (snapshot.title, snapshot.description, snapshot.text)
-        if part and part.strip()
-    )
+    evidence_text = _source_evidence_text(source_type, snapshot)
     useful_chars = len(re.sub(r"\s+", " ", evidence_text).strip())
     needs_context = useful_chars < _minimum_context_chars(source_type)
     return ProductSourceContext(
@@ -200,9 +196,42 @@ def _source_title_hint(url: str, source_type: ProductSourceType) -> str:
     return ""
 
 
+def _source_evidence_text(
+    source_type: ProductSourceType,
+    snapshot: WebsiteSnapshot,
+) -> str:
+    if source_type != ProductSourceType.TELEGRAM:
+        return " ".join(
+            part.strip()
+            for part in (snapshot.title, snapshot.description, snapshot.text)
+            if part and part.strip()
+        )
+
+    # Telegram public pages contain a large amount of UI boilerplate ("Start Bot",
+    # "If you have Telegram...") that says nothing about the product. Counting that
+    # chrome as product evidence makes sparse bot/channel pages look deceptively rich
+    # and suppresses the targeted founder clarification.
+    text = " ".join(
+        part.strip()
+        for part in (snapshot.description, snapshot.text)
+        if part and part.strip()
+    )
+    patterns = (
+        r"Telegram:\s*(?:Launch|View)\s+@[A-Za-z0-9_]+",
+        r"\bStart Bot\b",
+        r"\bOpen App\b",
+        r"\bView in Telegram\b",
+        r"If you have Telegram,\s+you can\s+(?:launch|view(?: and join)?)\s+.*?\s+right away\.?",
+        r"@[A-Za-z0-9_]+",
+    )
+    for pattern in patterns:
+        text = re.sub(pattern, " ", text, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def _minimum_context_chars(source_type: ProductSourceType) -> int:
     if source_type == ProductSourceType.TELEGRAM:
-        return 180
+        return 80
     if source_type in {
         ProductSourceType.IOS_APP,
         ProductSourceType.ANDROID_APP,
