@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import Settings, get_settings
+from app.customer_routes import router as customer_router
 from app.main import app
 from app.operator_auth import (
     OPERATOR_KEY_HEADER,
@@ -59,6 +60,23 @@ def test_global_control_plane_guard_is_installed() -> None:
         ("POST", "/v1/billing/stripe/issuing-authorizations"),
         ("POST", "/v1/billing/stripe/issuing-events"),
     }
+
+
+def test_customer_v1_routes_and_public_operator_registry_cannot_drift() -> None:
+    live_customer_routes = {
+        (method, route.path)
+        for route in customer_router.routes
+        for method in route.methods
+        if method not in {"HEAD", "OPTIONS"}
+    }
+    registered_customer_routes = {
+        item
+        for item in PUBLIC_API_ROUTE_TEMPLATES
+        if item[1].startswith("/v1/customer")
+        or item[1] == "/v1/billing/stripe/webhook"
+    }
+
+    assert live_customer_routes == registered_customer_routes
 
 
 def test_local_default_allows_operator_route_without_key() -> None:
