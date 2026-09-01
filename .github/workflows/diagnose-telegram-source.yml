@@ -1,0 +1,56 @@
+name: Diagnose Telegram source
+
+on:
+  push:
+    branches:
+      - diag/telegram-source-prod
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe Telegram public page
+        shell: bash
+        run: |
+          set -u
+          code="$(curl -sS -L --max-time 20 -o /tmp/telegram.html -w '%{http_code}' 'https://t.me/NUMASocialBot' || true)"
+          echo "telegram_http_status=$code"
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('/tmp/telegram.html').read_text('utf-8', errors='replace') if Path('/tmp/telegram.html').exists() else ''
+          title = re.search(r'<title[^>]*>(.*?)</title>', html, flags=re.I|re.S)
+          desc = re.search(r'<meta[^>]+(?:name|property)=["\'](?:description|og:description)["\'][^>]+content=["\'](.*?)["\']', html, flags=re.I|re.S)
+          print('telegram_bytes=', len(html.encode('utf-8')))
+          print('telegram_title=', re.sub(r'\s+', ' ', title.group(1)).strip()[:300] if title else '')
+          print('telegram_description=', re.sub(r'\s+', ' ', desc.group(1)).strip()[:500] if desc else '')
+          PY
+
+      - name: Reproduce production Analyze my product
+        shell: bash
+        run: |
+          set -u
+          code="$(curl -sS --max-time 90 -o /tmp/partizan.json -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -X POST 'https://partizanlabs.com/v1/customer-projects/preview' \
+            --data '{"product_link":"https://t.me/NUMASocialBot"}' || true)"
+          echo "partizan_http_status=$code"
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          raw = Path('/tmp/partizan.json').read_text('utf-8', errors='replace') if Path('/tmp/partizan.json').exists() else ''
+          try:
+              payload = json.loads(raw)
+          except Exception:
+              print('partizan_non_json=', raw[:1000])
+              raise SystemExit(0)
+          safe = {
+              'detail': payload.get('detail'),
+              'source_type': payload.get('source_type'),
+              'source_label': payload.get('source_label'),
+              'product_link': payload.get('product_link'),
+              'clarification': payload.get('clarification'),
+              'understanding': payload.get('understanding'),
+          }
+          print(json.dumps(safe, ensure_ascii=False, indent=2)[:6000])
+          PY
