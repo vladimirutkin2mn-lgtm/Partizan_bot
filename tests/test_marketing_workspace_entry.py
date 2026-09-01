@@ -13,7 +13,8 @@ def test_marketing_header_exposes_direct_customer_workspace_entry() -> None:
     assert 'id="nav-account-link"' in html
     assert 'href="/workspace"' in html
     assert ">Sign in</a>" in html
-    assert 'href="/start"' in html
+    assert 'href="/start?release=' in html
+    assert 'href="/start"' not in html
     assert ">Analyze my product <span>↗</span></a>" in html
     assert "You built the product." in html
     assert "For solo founders and small teams who built a product but do not know marketing yet" in html
@@ -75,6 +76,9 @@ def test_marketing_account_entry_detects_existing_customer_session_fail_safe() -
     assert "hero-scan-form" in javascript.text
     assert "query.set('product', productLink)" in javascript.text
     assert "hero-product-link" in javascript.text
+    assert "startRelease" in javascript.text
+    assert "query.set('release', startRelease)" in javascript.text
+    assert 'a[href^="/start"]' in javascript.text
     assert "customer-count" not in javascript.text
     assert "customersAtExampleCac" not in javascript.text
     assert "const demoSteps" not in javascript.text
