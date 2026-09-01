@@ -222,6 +222,128 @@ if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
     echo "${base}/start/assets/${asset} exact release bytes verified"
   done
   echo "${base}/start release ${served_page_release}, onboarding revision ${onboarding_revision} verified"
+
+  echo "==> Verifying all browser surfaces belong to the release"
+  verify_release_surface() {
+    local path="$1"
+    local revision_header="$2"
+    local marker_text="$3"
+    local prefix="$4"
+    local headers="${smoke_dir}/${prefix}.headers"
+    local body="${smoke_dir}/${prefix}.html"
+    curl --fail --silent --show-error --max-time 15 \
+      --header 'Cache-Control: no-cache' \
+      --header 'Pragma: no-cache' \
+      --dump-header "${headers}" \
+      --output "${body}" \
+      "${base}${path}"
+
+    local release
+    local revision
+    release="$(awk 'BEGIN{IGNORECASE=1} /^x-partizan-release-sha:/ {gsub("\\r", "", $2); print $2}' "${headers}" | tail -n 1)"
+    revision="$(awk -v header="${revision_header}" 'BEGIN{IGNORECASE=1} tolower($1) == tolower(header ":") {gsub("\\r", "", $2); print $2}' "${headers}" | tail -n 1)"
+    if [[ "${release}" != "${PARTIZAN_RELEASE_SHA}" ]]; then
+      echo "Public smoke failed: ${base}${path} reached release ${release:-unknown}, expected ${PARTIZAN_RELEASE_SHA}" >&2
+      return 1
+    fi
+    if [[ ! "${revision}" =~ ^[0-9a-f]{12}$ ]]; then
+      echo "Public smoke failed: ${base}${path} is missing ${revision_header}" >&2
+      return 1
+    fi
+    if ! grep -Eiq '^cache-control:.*no-store' "${headers}" || \
+       ! grep -Eiq '^surrogate-control:.*no-store' "${headers}"; then
+      echo "Public smoke failed: ${base}${path} is missing shared-proxy no-store protection" >&2
+      return 1
+    fi
+    if ! grep -Fq "${marker_text}" "${body}"; then
+      echo "Public smoke failed: ${base}${path} is missing current release marker: ${marker_text}" >&2
+      return 1
+    fi
+    printf '%s' "${revision}"
+  }
+
+  marketing_revision="$(verify_release_surface '/?release='${PARTIZAN_RELEASE_SHA} 'x-partizan-marketing-revision' 'You built the product.' 'marketing')"
+  for asset in landing.v1.css landing.v1.js; do
+    if ! grep -Fq "/site/assets/${asset}?v=${marketing_revision}" "${smoke_dir}/marketing.html"; then
+      echo "Public smoke failed: homepage does not reference versioned ${asset}" >&2
+      rm -rf "${smoke_dir}"
+      exit 1
+    fi
+    curl --fail --silent --show-error --max-time 15 \
+      --output "${smoke_dir}/marketing-${asset}" \
+      "${base}/site/assets/${asset}?v=${marketing_revision}"
+    if ! cmp -s "app/web/${asset}" "${smoke_dir}/marketing-${asset}"; then
+      echo "Public smoke failed: public ${asset} does not match the release" >&2
+      rm -rf "${smoke_dir}"
+      exit 1
+    fi
+  done
+
+  workspace_revision="$(verify_release_surface '/workspace?release='${PARTIZAN_RELEASE_SHA} 'x-partizan-workspace-revision' 'id="workspace-login-title"' 'workspace')"
+  for asset in workspace.v1.js workspace.channels.v1.js workspace.projects.v1.js workspace.experiments.v1.js; do
+    if ! grep -Fq "/workspace/assets/${asset}?v=${workspace_revision}" "${smoke_dir}/workspace.html"; then
+      echo "Public smoke failed: workspace does not reference versioned ${asset}" >&2
+      rm -rf "${smoke_dir}"
+      exit 1
+    fi
+    curl --fail --silent --show-error --max-time 15 \
+      --output "${smoke_dir}/workspace-${asset}" \
+      "${base}/workspace/assets/${asset}?v=${workspace_revision}"
+    if ! cmp -s "app/web/${asset}" "${smoke_dir}/workspace-${asset}"; then
+      echo "Public smoke failed: public workspace ${asset} does not match the release" >&2
+      rm -rf "${smoke_dir}"
+      exit 1
+    fi
+  done
+
+  app_revision="$(verify_release_surface '/app?release='${PARTIZAN_RELEASE_SHA} 'x-partizan-app-revision' 'id="product-form"' 'app')"
+  for asset in partizan.v1.js execution.v2.js paid-control.v1.js; do
+    if ! grep -Fq "/app/assets/${asset}?v=${app_revision}" "${smoke_dir}/app.html"; then
+      echo "Public smoke failed: operator app does not reference versioned ${asset}" >&2
+      rm -rf "${smoke_dir}"
+      exit 1
+    fi
+    curl --fail --silent --show-error --max-time 15 \
+      --output "${smoke_dir}/app-${asset}" \
+      "${base}/app/assets/${asset}?v=${app_revision}"
+    if ! cmp -s "app/web/${asset}" "${smoke_dir}/app-${asset}"; then
+      echo "Public smoke failed: public operator ${asset} does not match the release" >&2
+      rm -rf "${smoke_dir}"
+      exit 1
+    fi
+  done
+
+  legal_revision=""
+  for entry in \
+    '/privacy|What Partizan stores|privacy' \
+    '/terms|Use Partizan with clear boundaries.|terms' \
+    '/security|Execution should fail closed|security' \
+    '/contact|Need help with Partizan?|contact'; do
+    IFS='|' read -r legal_path legal_marker legal_prefix <<< "${entry}"
+    revision="$(verify_release_surface "${legal_path}?release=${PARTIZAN_RELEASE_SHA}" 'x-partizan-legal-revision' "${legal_marker}" "${legal_prefix}")"
+    if [[ -z "${legal_revision}" ]]; then
+      legal_revision="${revision}"
+    elif [[ "${legal_revision}" != "${revision}" ]]; then
+      echo "Public smoke failed: legal surfaces disagree on release revision" >&2
+      rm -rf "${smoke_dir}"
+      exit 1
+    fi
+    if ! grep -Fq "/site/assets/legal.v1.css?v=${revision}" "${smoke_dir}/${legal_prefix}.html"; then
+      echo "Public smoke failed: ${legal_path} does not reference versioned legal CSS" >&2
+      rm -rf "${smoke_dir}"
+      exit 1
+    fi
+  done
+  curl --fail --silent --show-error --max-time 15 \
+    --output "${smoke_dir}/legal.v1.css" \
+    "${base}/site/assets/legal.v1.css?v=${legal_revision}"
+  if ! cmp -s app/web/legal.v1.css "${smoke_dir}/legal.v1.css"; then
+    echo "Public smoke failed: public legal CSS does not match the release" >&2
+    rm -rf "${smoke_dir}"
+    exit 1
+  fi
+
+  echo "${base} marketing/workspace/app/legal release identity verified"
   rm -rf "${smoke_dir}"
 fi
 

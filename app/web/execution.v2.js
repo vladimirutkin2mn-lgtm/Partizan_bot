@@ -20,10 +20,19 @@
   const OUTREACH_SCRIPT_ID = "partizan-outreach-script";
   const OUTREACH_AUTOSEND_STYLE_ID = "partizan-outreach-autosend-style";
   const OUTREACH_AUTOSEND_SCRIPT_ID = "partizan-outreach-autosend-script";
+  const bootstrapUrl = new URL(document.currentScript?.src || window.location.href);
+  const assetRevision = bootstrapUrl.searchParams.get("v");
+
+  const versionedAsset = (path) => {
+    if (!assetRevision) return path;
+    const url = new URL(path, window.location.origin);
+    url.searchParams.set("v", assetRevision);
+    return `${url.pathname}?${url.searchParams.toString()}`;
+  };
 
   function loadExecutionV1() {
     const script = document.createElement("script");
-    script.src = "/app/assets/execution.v1.js";
+    script.src = versionedAsset("/app/assets/execution.v1.js");
     script.async = false;
     script.addEventListener("load", reopenAfterPaidActivation);
     document.head.append(script);
@@ -34,13 +43,13 @@
       const style = document.createElement("link");
       style.id = OUTREACH_AUTOSEND_STYLE_ID;
       style.rel = "stylesheet";
-      style.href = "/app/assets/outreach-autosend.v1.css";
+      style.href = versionedAsset("/app/assets/outreach-autosend.v1.css");
       document.head.append(style);
     }
     if (!document.getElementById(OUTREACH_AUTOSEND_SCRIPT_ID)) {
       const script = document.createElement("script");
       script.id = OUTREACH_AUTOSEND_SCRIPT_ID;
-      script.src = "/app/assets/outreach-autosend.v1.js";
+      script.src = versionedAsset("/app/assets/outreach-autosend.v1.js");
       script.async = false;
       document.head.append(script);
     }
@@ -51,13 +60,13 @@
       const style = document.createElement("link");
       style.id = OUTREACH_STYLE_ID;
       style.rel = "stylesheet";
-      style.href = "/app/assets/outreach.v1.css";
+      style.href = versionedAsset("/app/assets/outreach.v1.css");
       document.head.append(style);
     }
     if (!document.getElementById(OUTREACH_SCRIPT_ID)) {
       const script = document.createElement("script");
       script.id = OUTREACH_SCRIPT_ID;
-      script.src = "/app/assets/outreach.v1.js";
+      script.src = versionedAsset("/app/assets/outreach.v1.js");
       script.async = false;
       script.addEventListener("load", loadOutreachAutosendAssets);
       document.head.append(script);
@@ -71,13 +80,13 @@
       const style = document.createElement("link");
       style.id = PUBLISHING_STYLE_ID;
       style.rel = "stylesheet";
-      style.href = "/app/assets/publishing.v1.css";
+      style.href = versionedAsset("/app/assets/publishing.v1.css");
       document.head.append(style);
     }
     if (!document.getElementById(PUBLISHING_SCRIPT_ID)) {
       const script = document.createElement("script");
       script.id = PUBLISHING_SCRIPT_ID;
-      script.src = "/app/assets/publishing.v1.js";
+      script.src = versionedAsset("/app/assets/publishing.v1.js");
       script.async = false;
       script.addEventListener("load", loadOutreachAssets);
       document.head.append(script);
@@ -91,13 +100,13 @@
       const style = document.createElement("link");
       style.id = CREATIVE_STYLE_ID;
       style.rel = "stylesheet";
-      style.href = "/app/assets/creative.v1.css";
+      style.href = versionedAsset("/app/assets/creative.v1.css");
       document.head.append(style);
     }
     if (!document.getElementById(CREATIVE_SCRIPT_ID)) {
       const script = document.createElement("script");
       script.id = CREATIVE_SCRIPT_ID;
-      script.src = "/app/assets/creative.v1.js";
+      script.src = versionedAsset("/app/assets/creative.v1.js");
       script.async = false;
       script.addEventListener("load", loadPublishingAssets);
       document.head.append(script);
@@ -111,13 +120,13 @@
       const style = document.createElement("link");
       style.id = AUTONOMY_STYLE_ID;
       style.rel = "stylesheet";
-      style.href = "/app/assets/autonomy.v1.css";
+      style.href = versionedAsset("/app/assets/autonomy.v1.css");
       document.head.append(style);
     }
     if (!document.getElementById(AUTONOMY_SCRIPT_ID)) {
       const script = document.createElement("script");
       script.id = AUTONOMY_SCRIPT_ID;
-      script.src = "/app/assets/autonomy.v1.js";
+      script.src = versionedAsset("/app/assets/autonomy.v1.js");
       script.async = false;
       script.addEventListener("load", loadCreativeAssets);
       document.head.append(script);
@@ -131,13 +140,13 @@
       const style = document.createElement("link");
       style.id = INTEGRATION_GUIDE_STYLE_ID;
       style.rel = "stylesheet";
-      style.href = "/app/assets/integration-guide.v1.css";
+      style.href = versionedAsset("/app/assets/integration-guide.v1.css");
       document.head.append(style);
     }
     if (!document.getElementById(INTEGRATION_GUIDE_SCRIPT_ID)) {
       const script = document.createElement("script");
       script.id = INTEGRATION_GUIDE_SCRIPT_ID;
-      script.src = "/app/assets/integration-guide.v1.js";
+      script.src = versionedAsset("/app/assets/integration-guide.v1.js");
       script.async = false;
       script.addEventListener("load", loadAutonomyAssets);
       document.head.append(script);
@@ -151,13 +160,13 @@
       const style = document.createElement("link");
       style.id = INTEGRATION_STATUS_STYLE_ID;
       style.rel = "stylesheet";
-      style.href = "/app/assets/integration-status.v1.css";
+      style.href = versionedAsset("/app/assets/integration-status.v1.css");
       document.head.append(style);
     }
     if (!document.getElementById(INTEGRATION_STATUS_SCRIPT_ID)) {
       const script = document.createElement("script");
       script.id = INTEGRATION_STATUS_SCRIPT_ID;
-      script.src = "/app/assets/integration-status.v1.js";
+      script.src = versionedAsset("/app/assets/integration-status.v1.js");
       script.async = false;
       script.addEventListener("load", loadIntegrationGuideAssets);
       document.head.append(script);
@@ -171,13 +180,13 @@
       const style = document.createElement("link");
       style.id = INTEGRATION_STYLE_ID;
       style.rel = "stylesheet";
-      style.href = "/app/assets/integration.v1.css";
+      style.href = versionedAsset("/app/assets/integration.v1.css");
       document.head.append(style);
     }
     if (!document.getElementById(INTEGRATION_SCRIPT_ID)) {
       const script = document.createElement("script");
       script.id = INTEGRATION_SCRIPT_ID;
-      script.src = "/app/assets/integration.v1.js";
+      script.src = versionedAsset("/app/assets/integration.v1.js");
       script.async = false;
       script.addEventListener("load", loadIntegrationStatusAssets);
       document.head.append(script);
@@ -191,13 +200,13 @@
       const style = document.createElement("link");
       style.id = RESULTS_STYLE_ID;
       style.rel = "stylesheet";
-      style.href = "/app/assets/results.v1.css";
+      style.href = versionedAsset("/app/assets/results.v1.css");
       document.head.append(style);
     }
     if (!document.getElementById(RESULTS_SCRIPT_ID)) {
       const script = document.createElement("script");
       script.id = RESULTS_SCRIPT_ID;
-      script.src = "/app/assets/results.v1.js";
+      script.src = versionedAsset("/app/assets/results.v1.js");
       script.async = false;
       script.addEventListener("load", loadIntegrationAssets);
       document.head.append(script);

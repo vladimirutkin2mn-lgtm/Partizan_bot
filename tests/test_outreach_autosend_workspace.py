@@ -21,9 +21,9 @@ def test_outreach_autosend_workspace_assets_are_served() -> None:
 def test_execution_bootstrap_loads_autosend_after_founder_outreach() -> None:
     javascript = client.get("/app/assets/execution.v2.js").text
 
-    assert 'script.src = "/app/assets/outreach.v1.js"' in javascript
+    assert 'script.src = versionedAsset("/app/assets/outreach.v1.js")' in javascript
     assert 'script.addEventListener("load", loadOutreachAutosendAssets)' in javascript
-    assert 'script.src = "/app/assets/outreach-autosend.v1.js"' in javascript
+    assert 'script.src = versionedAsset("/app/assets/outreach-autosend.v1.js")' in javascript
     assert "/app/assets/outreach-autosend.v1.css" in javascript
 
 

@@ -160,7 +160,8 @@ def test_experiments_assets_are_versioned_and_no_store() -> None:
     html = response.text
     assert "/workspace/assets/workspace.experiments.v1.css?v=" in html
     assert "/workspace/assets/workspace.experiments.v1.js?v=" in html
-    assert response.headers["cache-control"] == "no-store, max-age=0"
+    assert "no-store" in response.headers["cache-control"]
+    assert "must-revalidate" in response.headers["cache-control"]
 
     script = client.get("/workspace/assets/workspace.experiments.v1.js")
     assert script.status_code == 200

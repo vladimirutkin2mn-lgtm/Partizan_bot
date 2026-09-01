@@ -39,22 +39,9 @@ jobs:
         run: ruff check .
       - name: Check browser JavaScript
         run: |
-          node --check app/web/start.v2.js
-          node --check app/web/workspace.v1.js
-          node --check app/web/start.channels.v1.js
-          node --check app/web/goal-dropdown.v1.js
-          node --check app/web/operator-auth.v1.js
-          node --check app/web/partizan.v1.js
-          node --check app/web/execution.v1.js
-          node --check app/web/execution.v2.js
-          node --check app/web/paid-control.v1.js
-          node --check app/web/results.v1.js
-          node --check app/web/integration.v1.js
-          node --check app/web/integration-status.v1.js
-          node --check app/web/integration-guide.v1.js
-          node --check app/web/autonomy.v1.js
-          node --check app/web/creative.v1.js
-          node --check app/web/publishing.v1.js
+          for javascript in app/web/*.js; do
+            node --check "${javascript}"
+          done
       - name: Check production shell scripts
         run: |
           bash -n tools/deploy_prod_remote.sh
