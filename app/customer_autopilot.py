@@ -103,7 +103,7 @@ class CustomerAutopilotService:
             if balance.remaining_acquisition_capacity_usd <= 0:
                 raise ValueError("Fund the Growth Balance before activating Autopilot")
             if not balance.settlement_ready:
-                raise ValueError("Growth Balance funding is not available for paid activation yet")
+                raise ValueError("Paid execution payment path is not ready yet")
             if (
                 DistributionPlatform.INSTAGRAM in auto_platforms
                 and paid_provider_connection_service.get_meta(product_id) is None
@@ -187,9 +187,9 @@ class CustomerAutopilotService:
             if balance.funded_usd <= 0:
                 blockers.append("Growth Balance is not funded")
             if not balance.settlement_ready:
-                blockers.append("Growth Balance funding is not available yet")
+                blockers.append("Paid execution payment path is not ready yet")
             blockers.append(
-                "Acquisition research starts automatically after Growth Balance funding"
+                "Partizan is researching before spend; add acquisition budget only for a concrete paid move"
                 if balance.funded_usd <= 0
                 else "Partizan is mapping the audience and acquisition strategy"
             )
@@ -234,7 +234,7 @@ class CustomerAutopilotService:
         elif balance.remaining_acquisition_capacity_usd <= 0:
             blockers.append("Growth Balance has no acquisition capacity remaining")
         if not balance.settlement_ready:
-            blockers.append("Growth Balance funding is not available yet")
+            blockers.append("Paid execution payment path is not ready yet")
         if not guardrails_saved:
             blockers.append("Maximum CAC and autonomous-spend guardrails are not saved")
         elif mandate is None and balance.funded_usd > 0 and auto_platforms:
