@@ -24,6 +24,7 @@ partizan-autonomous-growth = "app.autonomous_growth_worker:main"
 partizan-growth-run = "app.growth_run_cli:main"
 partizan-sandbox-run = "app.growth_sandbox:main"
 partizan-autopilot-dogfood = "app.autopilot_dogfood:main"
+partizan-self-dogfood = "app.self_dogfood:main"
 
 [project.optional-dependencies]
 dev = [
