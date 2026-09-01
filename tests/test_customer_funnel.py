@@ -15,6 +15,7 @@ from app.customer_funnel import CustomerFunnelService, customer_funnel_service
 from app.customer_schemas import CustomerPreviewRequest
 from app.main import app
 from app.product_source import ProductSourceContext, ProductSourceType
+from app.website_intake import WebsiteSnapshot
 from app.runtime_store import MemoryRuntimeStateStore
 from app.search import MockSearchProvider
 
@@ -117,6 +118,40 @@ def test_free_preview_reads_product_source_before_goal_or_budget(monkeypatch) ->
     assert project.json()["goal"] == "Get first users"
     assert project.json()["budget_usd"] == 10
     assert project.json()["product_id"] is not None
+
+
+
+
+def test_telegram_preview_uses_bot_specific_clarification_when_page_is_only_chrome(
+    monkeypatch,
+) -> None:
+    async def fake_read(url: str, *, minimum_text_chars: int = 80) -> WebsiteSnapshot:
+        assert url == "https://t.me/NUMASocialBot"
+        assert minimum_text_chars == 0
+        return WebsiteSnapshot(
+            url=url,
+            title="Telegram: Launch @NUMASocialBot",
+            description="NUMA - Scratch That!",
+            text=(
+                "Telegram: Launch @NUMASocialBot NUMA @NUMASocialBot NUMA - Scratch That! "
+                "Start Bot If you have Telegram, you can launch NUMA right away."
+            ),
+        )
+
+    monkeypatch.setattr("app.product_source.read_public_website", fake_read)
+    response = client.post(
+        "/v1/customer-projects/preview",
+        json={"product_link": "https://t.me/NUMASocialBot"},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["source_type"] == "TELEGRAM"
+    assert data["source_label"] == "Telegram product"
+    assert data["clarification"]["question"] == "What does this bot help users do?"
+    assert data["clarification"]["rationale"] == (
+        "The public source does not explain the product well enough yet."
+    )
 
 
 def test_free_preview_requires_a_product_link_or_description() -> None:
