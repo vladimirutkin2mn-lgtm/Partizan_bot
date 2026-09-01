@@ -73,9 +73,12 @@ def test_channel_controls_default_every_surface_to_research_only() -> None:
     assert set(channels) == {"INSTAGRAM", "TIKTOK", "REDDIT", "TELEGRAM"}
     assert channels["INSTAGRAM"]["mode"] == "RESEARCH_ONLY"
     assert channels["INSTAGRAM"]["autonomous_execution_available"] is True
+    assert channels["INSTAGRAM"]["execution_ready"] is False
+    assert channels["INSTAGRAM"]["execution_blocker"] == "connect Meta first"
     for platform in ("TIKTOK", "REDDIT", "TELEGRAM"):
         assert channels[platform]["mode"] == "RESEARCH_ONLY"
         assert channels[platform]["autonomous_execution_available"] is False
+        assert channels[platform]["execution_ready"] is False
 
 
 def test_customer_can_turn_channels_off_and_policy_persists() -> None:
@@ -183,3 +186,41 @@ def test_channel_view_exposes_per_platform_spend_customers_cac_revenue_and_roas(
     assert reddit["cac_usd"] == 20.0
     assert reddit["revenue_usd"] == 240.0
     assert reddit["roas"] == 3.0
+
+
+
+def test_customer_cannot_enable_auto_until_connection_and_payment_path_are_ready(
+    monkeypatch,
+) -> None:
+    client, preview = _registered_client()
+
+    monkeypatch.setattr(customer_channel_service, "_meta_connected", lambda _project: True)
+    monkeypatch.setattr(
+        customer_channel_service._balance,
+        "rail_view",
+        lambda _project_id: {"settlement_ready": False},
+    )
+
+    blocked = client.put(
+        f"/customer/workspace/{preview.project_id}/channels",
+        json={"channels": [{"platform": "INSTAGRAM", "mode": "AUTO"}]},
+    )
+
+    assert blocked.status_code == 409
+    assert "payment path is not ready" in blocked.json()["detail"]
+
+    monkeypatch.setattr(
+        customer_channel_service._balance,
+        "rail_view",
+        lambda _project_id: {"settlement_ready": True},
+    )
+    ready = client.put(
+        f"/customer/workspace/{preview.project_id}/channels",
+        json={"channels": [{"platform": "INSTAGRAM", "mode": "AUTO"}]},
+    )
+
+    assert ready.status_code == 200
+    instagram = next(item for item in ready.json() if item["platform"] == "INSTAGRAM")
+    assert instagram["mode"] == "AUTO"
+    assert instagram["execution_ready"] is True
+    assert instagram["execution_blocker"] is None
