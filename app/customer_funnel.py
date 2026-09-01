@@ -202,6 +202,56 @@ class CustomerFunnelService:
             managed_spend_fee_pct=settings.partizan_managed_spend_fee_pct,
         )
 
+    def apply_product_context(
+        self,
+        project_id: UUID,
+        customer_token: str,
+        *,
+        product: str,
+        what_it_does: str,
+        likely_customer: str,
+        business_model: str | None = None,
+        market: str | None = None,
+    ) -> CustomerPreviewResponse:
+        """Accept the founder's missing product basics and continue to review."""
+        project = self._authorized_project(project_id, customer_token)
+        preview = project.get("preview") or {}
+        if not isinstance(preview.get("product_clarification"), dict):
+            raise ValueError("No product clarification is currently required.")
+        product_id_raw = project.get("product_id")
+        if not product_id_raw:
+            raise CustomerProjectNotFoundError("Product analysis is missing")
+        product_id = UUID(str(product_id_raw))
+        intake = product_intake_service.apply_founder_context(
+            product_id,
+            name=product,
+            what_it_does=what_it_does,
+            likely_customer=likely_customer,
+            business_model=business_model,
+            market=market,
+        )
+        understanding = self._understanding(intake.product)
+        preview["understanding"] = understanding.model_dump(mode="json")
+        preview["product_clarification"] = None
+        project["preview"] = preview
+        project["brief"] = intake.product.description
+        project["market"] = understanding.market
+        project["source_needs_founder_context"] = False
+        project["source_clarification_question"] = None
+        self._persist(project)
+        settings = get_settings()
+        return CustomerPreviewResponse(
+            project_id=project_id,
+            customer_token=customer_token,
+            source_type=project.get("source_type") or ProductSourceType.DESCRIPTION.value,
+            source_label=project.get("source_label") or "Product description",
+            product_link=project.get("product_link"),
+            clarification=None,
+            understanding=understanding,
+            launch_price_usd=settings.partizan_launch_price_usd,
+            managed_spend_fee_pct=settings.partizan_managed_spend_fee_pct,
+        )
+
     async def confirm_preview(
         self,
         project_id: UUID,
