@@ -1,5 +1,6 @@
 from functools import lru_cache
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,6 +26,7 @@ class Settings(BaseSettings):
     operator_auth_required: bool = False
     operator_api_key: SecretStr | None = None
     partizan_public_base_url: str | None = None
+    partizan_self_dogfood_product_id: UUID | None = None
     partizan_release_sha: str = "unknown"
     stripe_secret_key: SecretStr | None = None
     stripe_webhook_secret: SecretStr | None = None
@@ -65,6 +67,14 @@ class Settings(BaseSettings):
     def normalize_secret(cls, value: object) -> object:
         if isinstance(value, str) and not value.strip():
             return None
+        return value
+
+    @field_validator("partizan_self_dogfood_product_id", mode="before")
+    @classmethod
+    def normalize_optional_uuid(cls, value: object) -> object:
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
         return value
 
     @field_validator(
