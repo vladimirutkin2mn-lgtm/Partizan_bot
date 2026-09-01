@@ -79,6 +79,14 @@ def test_customer_start_makes_partizan_work_before_goal_and_budget() -> None:
     assert "GitHub" in page.text
     assert 'id="intake-clarification-step"' in page.text
     assert 'id="product-clarification-form"' in page.text
+    assert "Product understanding · fill the gaps" in page.text
+    assert 'id="product-context-name"' in page.text
+    assert 'id="product-context-what"' in page.text
+    assert 'id="product-context-customer"' in page.text
+    assert 'id="product-context-business"' in page.text
+    assert 'id="product-context-market"' in page.text
+    assert "Continue to review" in page.text
+    assert "one missing detail" not in page.text
     assert "Likely first audiences" in page.text
 
     preview_call = javascript.text.index("'/v1/customer-projects/preview'")
@@ -93,6 +101,11 @@ def test_customer_start_makes_partizan_work_before_goal_and_budget() -> None:
     assert "renderUnderstanding" in javascript.text
     assert "renderProductClarification" in javascript.text
     assert "/product-clarification" in javascript.text
+    assert "what_it_does: whatItDoes" in javascript.text
+    assert "likely_customer: likelyCustomer" in javascript.text
+    assert "business_model: businessModel || null" in javascript.text
+    assert "market: market || null" in javascript.text
+    assert "product-clarification-answer" not in javascript.text
     assert "renderFreeOpportunity" in javascript.text
     assert "renderResearchPending" in javascript.text
     assert "renderResearchOutcome" in javascript.text
