@@ -279,7 +279,7 @@ if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
     fi
   done
 
-  workspace_revision="$(verify_release_surface '/workspace?release='${PARTIZAN_RELEASE_SHA} 'x-partizan-workspace-revision' 'id="workspace-overview"' 'workspace')"
+  workspace_revision="$(verify_release_surface '/workspace?release='${PARTIZAN_RELEASE_SHA} 'x-partizan-workspace-revision' 'id="workspace-login-title"' 'workspace')"
   for asset in workspace.v1.js workspace.channels.v1.js workspace.projects.v1.js workspace.experiments.v1.js; do
     if ! grep -Fq "/workspace/assets/${asset}?v=${workspace_revision}" "${smoke_dir}/workspace.html"; then
       echo "Public smoke failed: workspace does not reference versioned ${asset}" >&2
