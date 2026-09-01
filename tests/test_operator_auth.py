@@ -46,8 +46,6 @@ def test_global_control_plane_guard_is_installed() -> None:
         ("POST", "/v1/customer-projects/{project_id}/recover-access"),
         ("POST", "/v1/customer-projects/{project_id}/deep-research"),
         ("POST", "/v1/customer-projects/{project_id}/clarifications"),
-        ("POST", "/v1/customer-projects/{project_id}/autopilot/checkout"),
-        ("POST", "/v1/customer-projects/{project_id}/autopilot/verify"),
         ("POST", "/v1/customer-projects/{project_id}/growth-balance/checkout"),
         ("POST", "/v1/customer-projects/{project_id}/growth-balance/verify"),
         ("PUT", "/v1/customer-projects/{project_id}/autopilot"),
