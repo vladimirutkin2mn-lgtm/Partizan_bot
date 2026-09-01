@@ -24,19 +24,30 @@
 
   const heroScanForm = document.getElementById('hero-scan-form');
   const heroProductLink = document.getElementById('hero-product-link');
+  const versionedStartLink = document.querySelector('a[href^="/start"]');
+  const startRelease = versionedStartLink
+    ? new URL(versionedStartLink.href, window.location.origin).searchParams.get('release')
+    : null;
+
+  const startDestination = (query) => {
+    if (startRelease) query.set('release', startRelease);
+    return `/start?${query.toString()}`;
+  };
   heroScanForm?.addEventListener('submit', (event) => {
     event.preventDefault();
     const query = new URLSearchParams();
     query.set('budget', String(defaultBudget));
     const productLink = heroProductLink?.value.trim();
     if (productLink) query.set('product', productLink);
-    window.location.assign(`/start?${query.toString()}`);
+    window.location.assign(startDestination(query));
   });
 
-  document.querySelectorAll('a[href="/start"]').forEach((link) => {
+  document.querySelectorAll('a[href^="/start"]').forEach((link) => {
     link.addEventListener('click', (event) => {
       event.preventDefault();
-      window.location.assign(`/start?budget=${encodeURIComponent(defaultBudget)}`);
+      const query = new URLSearchParams();
+      query.set('budget', String(defaultBudget));
+      window.location.assign(startDestination(query));
     });
   });
 
