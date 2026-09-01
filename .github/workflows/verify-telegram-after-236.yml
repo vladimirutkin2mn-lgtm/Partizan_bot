@@ -1,0 +1,37 @@
+name: Verify Telegram source after 236
+
+on:
+  push:
+    branches:
+      - diag/telegram-after-236
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify production Telegram onboarding
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl -sS --max-time 90 -o /tmp/partizan.json -w '%{http_code}' \
+            -H 'Content-Type: application/json' \
+            -X POST 'https://partizanlabs.com/v1/customer-projects/preview' \
+            --data '{"product_link":"https://t.me/NUMASocialBot"}')"
+          echo "partizan_http_status=$code"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload=json.loads(Path('/tmp/partizan.json').read_text('utf-8'))
+          safe={
+            'source_type': payload.get('source_type'),
+            'source_label': payload.get('source_label'),
+            'product_link': payload.get('product_link'),
+            'clarification': payload.get('clarification'),
+            'understanding': payload.get('understanding'),
+          }
+          print(json.dumps(safe, ensure_ascii=False, indent=2))
+          assert str(payload.get('source_type')) == 'TELEGRAM'
+          clarification = payload.get('clarification') or {}
+          assert clarification.get('question') == 'What does this bot help users do?'
+          assert clarification.get('rationale') == 'The public source does not explain the product well enough yet.'
+          PY
