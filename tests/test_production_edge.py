@@ -45,3 +45,19 @@ def test_bootstrap_and_preflight_pin_public_hostname_to_origin() -> None:
     assert "PARTIZAN_PUBLIC_HOST=${PUBLIC_HOST}" in bootstrap
     assert "PARTIZAN_PUBLIC_HOST must exactly match" in preflight
     assert "docker-compose.edge.yml" in preflight
+
+
+
+def test_public_deploy_smoke_verifies_exact_current_onboarding_release() -> None:
+    deploy = (ROOT / "tools" / "deploy_prod_remote.sh").read_text(encoding="utf-8")
+
+    assert 'X-Partizan-Release-SHA'.casefold() in deploy.casefold()
+    assert 'x-partizan-onboarding-revision' in deploy.casefold()
+    assert 'Show Partizan what you built.' in deploy
+    assert 'Likely first audiences' in deploy
+    assert "'Paste your product.'" in deploy
+    assert "'Product website'" in deploy
+    assert "'Scan my product'" in deploy
+    assert 'start.v2.js start.v2.css goal-dropdown.v1.css goal-dropdown.v1.js' in deploy
+    assert 'cmp -s "app/web/${asset}"' in deploy
+    assert '/start?release=${PARTIZAN_RELEASE_SHA}' in deploy
