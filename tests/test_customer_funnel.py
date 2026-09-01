@@ -15,9 +15,9 @@ from app.customer_funnel import CustomerFunnelService, customer_funnel_service
 from app.customer_schemas import CustomerPreviewRequest
 from app.main import app
 from app.product_source import ProductSourceContext, ProductSourceType
-from app.website_intake import WebsiteSnapshot
 from app.runtime_store import MemoryRuntimeStateStore
 from app.search import MockSearchProvider
+from app.website_intake import WebsiteSnapshot
 
 client = TestClient(app)
 
