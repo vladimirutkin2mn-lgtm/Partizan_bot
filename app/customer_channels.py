@@ -11,6 +11,7 @@ from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE, customer_funnel_serv
 from app.customer_schemas import CustomerResearchResponse
 from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_types import DistributionPlatform
+from app.growth_balance import GrowthBalanceService
 from app.paid_provider_connections import paid_provider_connection_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
@@ -40,12 +41,16 @@ AUTONOMOUS_EXECUTION_PLATFORMS = frozenset({DistributionPlatform.INSTAGRAM})
 class CustomerChannelService:
     def __init__(self, store: RuntimeStateStore | None = None) -> None:
         self._store = store or get_runtime_store()
+        self._balance = GrowthBalanceService(self._store)
 
     def list(self, project_id: UUID, customer_token: str) -> list[CustomerChannelView]:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         preferences = self._preferences(project)
         metrics = self._metrics_by_platform(project)
         meta_connected = self._meta_connected(project)
+        settlement_ready = bool(
+            self._balance.rail_view(project_id).get("settlement_ready")
+        )
 
         rows: list[CustomerChannelView] = []
         for platform in (
@@ -55,6 +60,11 @@ class CustomerChannelService:
             DistributionPlatform.TELEGRAM,
         ):
             item = metrics.get(platform)
+            execution_ready, execution_blocker = self._execution_readiness(
+                platform,
+                meta_connected=meta_connected,
+                settlement_ready=settlement_ready,
+            )
             rows.append(
                 CustomerChannelView(
                     platform=platform,
@@ -63,6 +73,8 @@ class CustomerChannelService:
                     autonomous_execution_available=(
                         platform in AUTONOMOUS_EXECUTION_PLATFORMS
                     ),
+                    execution_ready=execution_ready,
+                    execution_blocker=execution_blocker,
                     connected=(meta_connected if platform == DistributionPlatform.INSTAGRAM else None),
                     experiment_count=(item.experiment_count if item is not None else 0),
                     spend_usd=(item.spend if item is not None else 0.0),
@@ -82,15 +94,27 @@ class CustomerChannelService:
     ) -> list[CustomerChannelView]:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         preferences = self._preferences(project)
+        meta_connected = self._meta_connected(project)
+        settlement_ready = bool(
+            self._balance.rail_view(project_id).get("settlement_ready")
+        )
         for item in payload.channels:
-            if (
-                item.mode == "AUTO"
-                and item.platform not in AUTONOMOUS_EXECUTION_PLATFORMS
-            ):
-                raise ValueError(
-                    f"Autonomous execution is not available for {CHANNEL_LABELS[item.platform]} yet. "
-                    "Use Research only or Off."
+            if item.mode == "AUTO":
+                execution_ready, blocker = self._execution_readiness(
+                    item.platform,
+                    meta_connected=meta_connected,
+                    settlement_ready=settlement_ready,
                 )
+                if not execution_ready:
+                    if item.platform not in AUTONOMOUS_EXECUTION_PLATFORMS:
+                        raise ValueError(
+                            f"Autonomous execution is not available for {CHANNEL_LABELS[item.platform]} yet. "
+                            "Use Research only or Off."
+                        )
+                    raise ValueError(
+                        f"Auto is not ready for {CHANNEL_LABELS[item.platform]}: {blocker}. "
+                        "Keep Research only until the required execution path is ready."
+                    )
             preferences[item.platform] = item.mode
         project[CHANNEL_PREFERENCES_KEY] = {
             platform.value: mode for platform, mode in preferences.items()
@@ -99,6 +123,8 @@ class CustomerChannelService:
         return self.list(project_id, customer_token)
 
     def autonomous_platforms(self, project: dict) -> list[DistributionPlatform]:
+        """Return customer AUTO intent; runtime readiness is enforced separately."""
+
         preferences = self._preferences(project)
         return [
             platform
@@ -165,6 +191,21 @@ class CustomerChannelService:
                 continue
             rows[platform] = item
         return rows
+
+    @staticmethod
+    def _execution_readiness(
+        platform: DistributionPlatform,
+        *,
+        meta_connected: bool,
+        settlement_ready: bool,
+    ) -> tuple[bool, str | None]:
+        if platform not in AUTONOMOUS_EXECUTION_PLATFORMS:
+            return False, "autonomous execution is not supported for this channel"
+        if platform == DistributionPlatform.INSTAGRAM and not meta_connected:
+            return False, "connect Meta first"
+        if not settlement_ready:
+            return False, "Partizan's paid-execution payment path is not ready"
+        return True, None
 
     def _meta_connected(self, project: dict) -> bool:
         if isinstance(project.get(STAGED_META_CONNECTION_KEY), dict):

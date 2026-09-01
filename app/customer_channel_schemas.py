@@ -30,6 +30,8 @@ class CustomerChannelView(BaseModel):
     label: str
     mode: CustomerChannelMode
     autonomous_execution_available: bool
+    execution_ready: bool = False
+    execution_blocker: str | None = None
     connected: bool | None = None
     experiment_count: int = Field(default=0, ge=0)
     spend_usd: float = Field(default=0, ge=0)

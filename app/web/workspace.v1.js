@@ -308,7 +308,7 @@
         title: !autoEnabled ? 'No Auto channel enabled' : (overview.product_id ? 'Comparing the first executable paths' : 'Waiting for market research'),
         detail: !autoEnabled
           ? 'Partizan can keep researching. Choose Auto in Channels when you want execution.'
-          : (overview.growth_balance.funded_usd > 0 ? 'Partizan will surface the first eligible test here.' : 'Adding budget starts the included market research.'),
+          : (overview.growth_balance.funded_usd > 0 ? 'Partizan will surface the first eligible test here.' : 'Partizan keeps researching before spend. Add budget only when a concrete paid move needs it.'),
       });
     }
     $('current-work').innerHTML = work.map((item) => `<div><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail)}</span></div>`).join('');

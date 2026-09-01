@@ -5,15 +5,17 @@
 Turn the customer funnel into a real execution path without creating a second growth engine or a recurring execution subscription.
 
 ```text
-Free pre-scan
+Product Understanding + one evidence-backed opportunity before funding
   ├─→ $49 Acquisition Plan only
-  │    → Product / ICP / Audience Intelligence
-  │    → strategy for the customer
+  │    → deeper Product / ICP / Audience Intelligence
+  │    → research-only strategy for the customer
   │
-  └─→ Fund Growth Balance
-       → Product / ICP / Audience Intelligence included
+  └─→ Concrete paid move needs budget
+       → add Growth Balance for that move
+       → deeper Product / ICP / Audience Intelligence included
        → self-service Meta connection
        → max CAC + explicit autonomous-spend consent
+       → wait for production spend rail readiness
        → existing Growth Mandate
        → existing autonomous-growth worker
        → Meta staging / exact-budget activation / paid control
@@ -25,10 +27,14 @@ The customer surface is `/start`. The operator workspace remains `/app`.
 
 ## Monetization
 
-There are exactly two customer choices after the free pre-scan:
+The free product analysis produces Product Understanding and attempts to find a real evidence-backed acquisition opportunity before asking for funding.
 
-1. **Acquisition Plan — $49 one time.** The customer buys the audience/channel research without autonomous execution.
-2. **Autonomous execution — Growth Balance + 10% of actual acquisition spend.** There is no monthly subscription. Funding Growth Balance includes the Product/ICP/Audience research required for execution, so this customer does not also pay $49.
+The paid paths are:
+
+1. **Acquisition Plan — $49 one time.** The customer buys the deeper audience/channel research without autonomous execution.
+2. **Growth Balance for a concrete paid move — 10% of actual acquisition spend.** There is no monthly subscription. Funding a paid move includes the deeper Product/ICP/Audience research required by the workspace, so this customer does not also need the $49 research-only upgrade.
+
+**Current production truth:** Growth Balance funding and autonomous paid execution are separate capabilities. Issue #160 remains open. Until the production provider-spend rail is configured, bound and reconciled, `settlement_ready=false` must keep autonomous paid activation blocked. The UI and docs must not describe a funded project as paid-execution-ready merely because Meta is connected or budget exists.
 
 Growth Balance is an all-in prepaid acquisition budget. If a customer funds `$1,000` and the management fee is 10%, the maximum acquisition capacity is `$909.09`; the remaining `$90.91` is the maximum fee only if all that acquisition capacity is actually spent. If Partizan spends only `$600`, the fee is `$60` and `$340` remains in Growth Balance.
 
