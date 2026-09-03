@@ -281,9 +281,16 @@ def test_customer_workspace_page_is_separate_from_internal_operator_app() -> Non
     assert "Account access" in page.text
     assert "What's the most you'd pay for one new customer?" in page.text
     assert "Let's find your first users." in page.text
+    assert "Your next step" in page.text
+    assert page.text.index("Your next step") < page.text.index("From your product analysis")
     assert "dogfooding workspace" not in page.text
     assert "/app/assets/" not in page.text
     assert javascript.status_code == 200
     assert "/customer/workspace/" in javascript.text
+    assert "Find my first real opportunity →" in javascript.text
+    assert "Free research. No acquisition funding or channel connection is required" in javascript.text
+    assert "Ready to research your first opportunity." in javascript.text
+    assert "Review product analysis →" not in javascript.text
+    assert "activationAction = 'preview-research'" in javascript.text
     assert "X-Partizan-Customer-Token" not in javascript.text
     assert css.status_code == 200
