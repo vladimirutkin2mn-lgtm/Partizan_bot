@@ -35,6 +35,10 @@
 .activation-list li.current .activation-index{background:var(--accent);border-color:var(--accent);color:#111}
 .activation-list li.current .activation-step-state{color:var(--accent)}
 .activation-action{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:20px;padding-top:18px;border-top:1px solid rgba(255,255,255,.07)}
+.activation-action-primary{justify-content:space-between;margin-top:18px;padding:16px;border:1px solid rgba(201,255,101,.25);border-radius:14px;background:rgba(201,255,101,.045)}
+.activation-action-primary>div{display:grid;gap:8px}
+.activation-action-primary .eyebrow{font-size:8px}
+.activation-action-primary .button{min-width:250px}
 .activation-action .note{margin:0;max-width:650px}
 .guardrail-form label small{display:block;margin-top:3px;color:var(--muted2);font-size:8px;font-weight:500}
 @media(max-width:700px){

@@ -83,10 +83,14 @@
 
         <section id="activation-card" class="panel activation-card hidden">
           <div class="activation-head">
-            <div><span class="eyebrow">Get started</span><h2>Let's find your first users.</h2></div>
+            <div><span class="eyebrow">Get started</span><h2 id="activation-heading">Let's find your first users.</h2></div>
             <span id="activation-progress" class="status-pill">2 of 6</span>
           </div>
-          <p class="section-copy">You should not have to choose a marketing channel or configure a campaign first. Partizan starts from your product, researches where people may already be and recommends the next useful move.</p>
+          <p id="activation-copy" class="section-copy">You should not have to choose a marketing channel or configure a campaign first. Partizan starts from your product, researches where people may already be and recommends the next useful move.</p>
+          <div class="activation-action activation-action-primary">
+            <div><span class="eyebrow">Your next step</span><button id="activation-primary" class="button button-primary" type="button">Open recommended move →</button></div>
+            <p id="activation-note" class="note">Funding is not the next step unless this specific move needs paid budget.</p>
+          </div>
           <div id="activation-preview" class="activation-preview">
             <div class="activation-preview-head"><span>From your product analysis</span><small id="activation-preview-label">Research evidence</small></div>
             <div id="activation-preview-opportunity" class="activation-preview-opportunity"></div>
@@ -100,10 +104,6 @@
             <li id="activation-limit"><span class="activation-index">5</span><div><strong>Approve only what the move needs</strong><small>Add money or connect an account only when this specific action requires it.</small></div><span class="activation-step-state">If needed</span></li>
             <li id="activation-test"><span class="activation-index">6</span><div><strong>Try, measure and learn</strong><small>Real visits, signups and paying customers determine what Partizan should try next.</small></div><span class="activation-step-state">Next</span></li>
           </ol>
-          <div class="activation-action">
-            <button id="activation-primary" class="button button-primary" type="button">Open recommended move →</button>
-            <p id="activation-note" class="note">Funding is not the next step unless this specific move needs paid budget.</p>
-          </div>
         </section>
 
         <section id="performance-metrics" class="metric-grid metric-grid-primary" aria-label="Acquisition results">
