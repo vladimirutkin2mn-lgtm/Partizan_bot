@@ -28,6 +28,7 @@ from app.customer_schemas import (
     MaskedOpportunityView,
 )
 from app.icp_service import icp_service
+from app.models import ProductProfileStatus
 from app.product_intake import product_intake_service
 from app.product_source import (
     ProductSourceContext,
@@ -340,13 +341,28 @@ class CustomerFunnelService:
     ) -> CustomerPreviewConfirmationResponse:
         """Retry evidence-backed preview research without requiring acquisition funding."""
         project = self._authorized_project(project_id, customer_token)
-        if not project.get("understanding_confirmed"):
-            raise ValueError("Confirm the product understanding before continuing research.")
         product_id_raw = project.get("product_id")
         if not product_id_raw:
             raise CustomerProjectNotFoundError("Product analysis is missing")
         product_id = UUID(str(product_id_raw))
         product = product_intake_service.get_product(product_id)
+
+        if project.get("understanding_confirmed") is not True:
+            # New Product Understanding projects always persist an explicit boolean.
+            # Never bypass an explicit False: the founder still needs to review it.
+            # Older projects predate this project-level flag, but their ProductProfile
+            # was already marked CONFIRMED by the old onboarding/research flow. Backfill
+            # only that unambiguous legacy state so the new free-research CTA works.
+            if (
+                "understanding_confirmed" in project
+                or product.status != ProductProfileStatus.CONFIRMED
+            ):
+                raise ValueError(
+                    "Confirm the product understanding before continuing research."
+                )
+            project["understanding_confirmed"] = True
+            project["understanding_confirmed_backfilled_at"] = datetime.now(UTC).isoformat()
+            self._persist(project)
         try:
             icp_result = icp_service.get(product_id)
         except KeyError:

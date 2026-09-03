@@ -11,7 +11,11 @@ from app.broad_research import (
     ResearchExecutionStatus,
     ResearchSurface,
 )
-from app.customer_funnel import CustomerFunnelService, customer_funnel_service
+from app.customer_funnel import (
+    CUSTOMER_PROJECT_NAMESPACE,
+    CustomerFunnelService,
+    customer_funnel_service,
+)
 from app.customer_schemas import CustomerPreviewRequest
 from app.main import app
 from app.product_source import ProductSourceContext, ProductSourceType
@@ -572,6 +576,97 @@ def test_free_research_retry_can_find_real_evidence_without_funding(monkeypatch)
         headers={"X-Partizan-Customer-Token": preview["customer_token"]},
     ).json()
     assert project_after["launch_unlocked"] is False
+
+
+def test_preview_research_backfills_missing_confirmation_for_confirmed_legacy_project(
+    monkeypatch,
+) -> None:
+    async def no_opportunity(_product, _icp_result):
+        return ("NEEDS_MORE_RESEARCH", "Keep researching.", None)
+
+    monkeypatch.setattr(customer_funnel_service, "_run_free_research", no_opportunity)
+    preview = client.post(
+        "/v1/customer-projects/preview",
+        json={
+            "brief": (
+                "AI bookkeeping assistant that helps independent freelancers organize "
+                "expenses, invoices and tax admin."
+            )
+        },
+    ).json()
+
+    confirmed = client.post(
+        f"/v1/customer-projects/{preview['project_id']}/confirm-preview",
+        headers={"X-Partizan-Customer-Token": preview["customer_token"]},
+        json={
+            "product": "Freelancer Books",
+            "for_whom": "Automates bookkeeping and tax admin for solo professionals.",
+            "likely_customer": "Independent freelancers",
+            "market": "United States",
+            "goal": "Get first users",
+            "budget_usd": 10,
+        },
+    )
+    assert confirmed.status_code == 200
+
+    project = customer_funnel_service._store.get(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        preview["project_id"],
+    )
+    assert project is not None
+    project.pop("understanding_confirmed")
+    customer_funnel_service._store.put(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        preview["project_id"],
+        project,
+    )
+
+    retried = client.post(
+        f"/v1/customer-projects/{preview['project_id']}/preview-research",
+        headers={"X-Partizan-Customer-Token": preview["customer_token"]},
+    )
+
+    assert retried.status_code == 200
+    backfilled = customer_funnel_service._store.get(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        preview["project_id"],
+    )
+    assert backfilled is not None
+    assert backfilled["understanding_confirmed"] is True
+    assert backfilled["understanding_confirmed_backfilled_at"]
+
+
+def test_preview_research_never_bypasses_explicit_unconfirmed_flag(monkeypatch) -> None:
+    async def no_opportunity(_product, _icp_result):
+        return ("NEEDS_MORE_RESEARCH", "Keep researching.", None)
+
+    monkeypatch.setattr(customer_funnel_service, "_run_free_research", no_opportunity)
+    preview = client.post(
+        "/v1/customer-projects/preview",
+        json={
+            "brief": (
+                "AI bookkeeping assistant that helps independent freelancers organize "
+                "expenses, invoices and tax admin."
+            )
+        },
+    ).json()
+
+    project = customer_funnel_service._store.get(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        preview["project_id"],
+    )
+    assert project is not None
+    assert project["understanding_confirmed"] is False
+
+    retried = client.post(
+        f"/v1/customer-projects/{preview['project_id']}/preview-research",
+        headers={"X-Partizan-Customer-Token": preview["customer_token"]},
+    )
+
+    assert retried.status_code == 502
+    assert retried.json()["detail"] == (
+        "Confirm the product understanding before continuing research."
+    )
 
 
 @pytest.mark.asyncio
