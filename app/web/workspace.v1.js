@@ -161,10 +161,14 @@
 
     const button = $('activation-primary');
     button.disabled = false;
+    $('activation-heading').textContent = "Let's find your first users.";
+    $('activation-copy').textContent = 'Partizan starts from your product, researches where people may already be and recommends the next useful move. You only add money or access when a specific move needs it.';
     setActivationStep('activation-product', true, false, 'Done');
     setActivationStep('activation-direction', true, false, 'Done');
 
     if (previewOpportunity) {
+      $('activation-heading').textContent = 'Partizan found your first concrete move.';
+      $('activation-copy').textContent = 'Review the researched opportunity below and take the smallest useful action. Funding or account access is only requested when this specific move needs it.';
       $('activation-research-title').textContent = 'One real opportunity researched';
       $('activation-research-copy').textContent = 'Public-web evidence appeared before Partizan asked you to fund anything.';
       setActivationStep('activation-budget', true, false, 'Done');
@@ -189,6 +193,8 @@
       previewResearchStatus === 'NEEDS_MORE_RESEARCH'
       || previewResearchStatus === 'UNAVAILABLE'
     ) {
+      $('activation-heading').textContent = 'Partizan still needs stronger evidence.';
+      $('activation-copy').textContent = 'The starting directions below are hypotheses, not proof. Keep the research going until Partizan can name a concrete public-web opportunity.';
       $('activation-research-title').textContent = 'Researching first opportunity';
       $('activation-research-copy').textContent = previewResearchStatus === 'UNAVAILABLE'
         ? 'Public-web evidence is temporarily unavailable. Partizan will not invent a result.'
@@ -236,9 +242,14 @@
         $('activation-note').textContent = 'The full market map is included after a paid move funds the workspace. The acquisition budget itself remains for paid execution, not for buying research.';
         return;
       }
-      activationAction = 'research';
-      button.textContent = 'Review product analysis →';
-      $('activation-note').textContent = 'This older project does not have the new free researched opportunity yet. Funding is not shown as the default next step.';
+      $('activation-heading').textContent = 'Your next step: find one real opportunity.';
+      $('activation-copy').textContent = 'Partizan already has starting hypotheses from your product. Now let it verify one concrete public-web opportunity before you fund or connect anything.';
+      $('activation-research-title').textContent = 'Find one real opportunity';
+      $('activation-research-copy').textContent = 'Partizan will research public-web evidence now instead of treating the starting hypotheses above as proof.';
+      setActivationStep('activation-budget', false, true, 'Start');
+      activationAction = 'preview-research';
+      button.textContent = 'Find my first real opportunity →';
+      $('activation-note').textContent = 'Free research. No acquisition funding or channel connection is required for this step.';
       return;
     }
 
@@ -258,7 +269,14 @@
     return items.join(' ');
   };
 
-  const statusText = (overview) => {
+  const statusText = (overview, project, data) => {
+    const previewStatus = data.preview_research_status || 'NOT_RUN';
+    const needsFirstOpportunity = !data.preview_opportunity
+      && previewStatus === 'NOT_RUN'
+      && project.research_state !== 'READY'
+      && overview.growth_balance.acquisition_spend_usd <= 0
+      && overview.paid_customers <= 0;
+    if (needsFirstOpportunity) return 'Ready to research your first opportunity.';
     if (overview.autopilot_status === 'RESEARCHING') return 'Partizan is mapping your market.';
     if (overview.autopilot_status === 'ACTIVE') return 'Partizan is working on getting you customers.';
     if (overview.autopilot_status === 'PAUSED') return 'Partizan is paused.';
@@ -418,7 +436,7 @@
     const balance = overview.growth_balance;
 
     renderAccountNav();
-    $('workspace-status').textContent = statusText(overview);
+    $('workspace-status').textContent = statusText(overview, project, data);
     $('workspace-summary').textContent = '';
     $('project-market').textContent = project.market;
     $('project-goal').textContent = project.goal;
