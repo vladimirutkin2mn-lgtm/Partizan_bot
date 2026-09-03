@@ -43,13 +43,34 @@
       </div>
 
       <div id="intake-clarification-step" class="intake-step hidden">
-        <span class="eyebrow">Product understanding · one missing detail</span>
-        <h1 id="product-clarification-question">I understand most of the product, but one thing is unclear.</h1>
-        <p id="product-clarification-rationale" class="lede">Partizan only asks when the missing detail materially changes who the product is for or what it does.</p>
-        <form id="product-clarification-form" class="panel single-question-panel">
-          <label for="product-clarification-answer">Your answer</label>
-          <textarea id="product-clarification-answer" maxlength="2000" required placeholder="A short answer is enough."></textarea>
-          <button class="button button-primary" type="submit">Continue analysis →</button>
+        <span class="eyebrow">Product understanding · fill the gaps</span>
+        <h1>We found the product. Add the basics we could not verify.</h1>
+        <p id="product-clarification-rationale" class="lede">Partizan filled in what it could from the public source. Check the product name and add the missing customer context.</p>
+        <form id="product-clarification-form" class="panel product-context-form">
+          <div class="context-field">
+            <label for="product-context-name">Product</label>
+            <input id="product-context-name" maxlength="300" required placeholder="Product name">
+          </div>
+          <div class="context-field">
+            <label for="product-context-what">What does it help people do?</label>
+            <textarea id="product-context-what" maxlength="1200" required placeholder="For example: Gives personalized relationship advice and helps users think through difficult conversations."></textarea>
+          </div>
+          <div class="context-field">
+            <label for="product-context-customer">Who is it for?</label>
+            <input id="product-context-customer" maxlength="600" required placeholder="For example: English-speaking adults looking for relationship guidance">
+          </div>
+          <div class="context-grid">
+            <div class="context-field">
+              <label for="product-context-business">Business model <small>optional</small></label>
+              <input id="product-context-business" maxlength="160" placeholder="Subscription, free, one-time, marketplace...">
+            </div>
+            <div class="context-field">
+              <label for="product-context-market">Primary market <small>optional</small></label>
+              <input id="product-context-market" maxlength="300" placeholder="United States, global, Europe...">
+            </div>
+          </div>
+          <p class="fine">This is product context, not a channel choice. You can review and edit Partizan's understanding on the next screen.</p>
+          <button class="button button-primary" type="submit">Continue to review →</button>
         </form>
       </div>
 

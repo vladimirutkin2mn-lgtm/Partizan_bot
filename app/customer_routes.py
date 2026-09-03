@@ -141,10 +141,21 @@ async def answer_customer_product_clarification(
     customer_token: Annotated[str | None, Header(alias=CUSTOMER_TOKEN_HEADER)] = None,
 ) -> CustomerPreviewResponse:
     try:
-        return await customer_funnel_service.answer_product_clarification(
+        token = _require_customer_token(customer_token)
+        if payload.answer is not None:
+            return await customer_funnel_service.answer_product_clarification(
+                project_id,
+                token,
+                payload.answer,
+            )
+        return customer_funnel_service.apply_product_context(
             project_id,
-            _require_customer_token(customer_token),
-            payload.answer,
+            token,
+            product=payload.product or "",
+            what_it_does=payload.what_it_does or "",
+            likely_customer=payload.likely_customer or "",
+            business_model=payload.business_model,
+            market=payload.market,
         )
     except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
         raise _project_error(exc) from exc

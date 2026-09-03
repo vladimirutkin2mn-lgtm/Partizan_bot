@@ -254,6 +254,95 @@ def test_sparse_telegram_source_asks_one_question_then_continues(monkeypatch) ->
     assert second["understanding"]["product"]
 
 
+def test_sparse_telegram_source_accepts_structured_founder_context_in_one_step(
+    monkeypatch,
+) -> None:
+    async def fake_read(url: str) -> ProductSourceContext:
+        assert url == "https://t.me/NUMASocialBot"
+        return ProductSourceContext(
+            source_type=ProductSourceType.TELEGRAM,
+            source_label="Telegram product",
+            link=url,
+            title="NUMA",
+            description="NUMA - Scratch That!",
+            text="Telegram: Launch @NUMASocialBot",
+            needs_founder_context=True,
+            clarification_question="What does this bot help users do?",
+        )
+
+    monkeypatch.setattr("app.customer_funnel.read_public_product_source", fake_read)
+    preview = client.post(
+        "/v1/customer-projects/preview",
+        json={"product_link": "https://t.me/NUMASocialBot"},
+    )
+
+    assert preview.status_code == 201
+    first = preview.json()
+    assert first["clarification"] is not None
+
+    completed = client.post(
+        f"/v1/customer-projects/{first['project_id']}/product-clarification",
+        headers={"X-Partizan-Customer-Token": first["customer_token"]},
+        json={
+            "product": "NUMA",
+            "what_it_does": (
+                "Gives people personalized relationship guidance and helps them "
+                "think through difficult conversations."
+            ),
+            "likely_customer": "English-speaking adults looking for relationship guidance",
+            "business_model": "Subscription",
+            "market": "United States",
+        },
+    )
+
+    assert completed.status_code == 200
+    data = completed.json()
+    assert data["clarification"] is None
+    assert data["understanding"]["product"] == "NUMA"
+    assert "relationship guidance" in data["understanding"]["for_whom"]
+    assert data["understanding"]["likely_customer"] == (
+        "English-speaking adults looking for relationship guidance"
+    )
+    assert data["understanding"]["business_model"] == "Subscription"
+    assert data["understanding"]["market"] == "United States"
+
+    project = client.get(
+        f"/v1/customer-projects/{first['project_id']}",
+        headers={"X-Partizan-Customer-Token": first["customer_token"]},
+    )
+    assert project.status_code == 200
+    assert "relationship guidance" in project.json()["brief"]
+
+
+def test_structured_founder_context_requires_product_action_and_customer(monkeypatch) -> None:
+    async def fake_read(url: str) -> ProductSourceContext:
+        return ProductSourceContext(
+            source_type=ProductSourceType.TELEGRAM,
+            source_label="Telegram product",
+            link=url,
+            title="NUMA",
+            description="NUMA - Scratch That!",
+            text="Telegram",
+            needs_founder_context=True,
+            clarification_question="What does this bot help users do?",
+        )
+
+    monkeypatch.setattr("app.customer_funnel.read_public_product_source", fake_read)
+    preview = client.post(
+        "/v1/customer-projects/preview",
+        json={"product_link": "https://t.me/NUMASocialBot"},
+    )
+    first = preview.json()
+
+    incomplete = client.post(
+        f"/v1/customer-projects/{first['project_id']}/product-clarification",
+        headers={"X-Partizan-Customer-Token": first["customer_token"]},
+        json={"product": "NUMA", "what_it_does": "Relationship guidance"},
+    )
+
+    assert incomplete.status_code == 422
+
+
 def test_text_only_product_uses_same_understanding_flow() -> None:
     response = client.post(
         "/v1/customer-projects/preview",
