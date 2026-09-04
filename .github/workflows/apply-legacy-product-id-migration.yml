@@ -1,0 +1,67 @@
+name: Apply legacy product migration edit
+
+on:
+  push:
+    branches:
+      - fix/legacy-project-without-product-id
+
+permissions:
+  contents: write
+
+jobs:
+  edit:
+    if: github.event.head_commit.message == 'Add temporary legacy product migration editor'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/legacy-project-without-product-id
+          fetch-depth: 0
+      - name: Apply migration and regression coverage
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          funnel_path = Path('app/customer_funnel.py')
+          funnel = funnel_path.read_text()
+          old = '''        project = self._authorized_project(project_id, customer_token)\n        product_id_raw = project.get("product_id")\n        if not product_id_raw:\n            raise CustomerProjectNotFoundError("Product analysis is missing")\n        product_id = UUID(str(product_id_raw))\n        product = product_intake_service.get_product(product_id)\n\n        if project.get("understanding_confirmed") is not True:\n            # New Product Understanding projects always persist an explicit boolean.\n            # Never bypass an explicit False: the founder still needs to review it.\n            # Older projects predate this project-level flag, but their ProductProfile\n            # was already marked CONFIRMED by the old onboarding/research flow. Backfill\n            # only that unambiguous legacy state so the new free-research CTA works.\n            if (\n                "understanding_confirmed" in project\n                or product.status != ProductProfileStatus.CONFIRMED\n            ):\n                raise ValueError(\n                    "Confirm the product understanding before continuing research."\n                )\n            project["understanding_confirmed"] = True\n            project["understanding_confirmed_backfilled_at"] = datetime.now(UTC).isoformat()\n            self._persist(project)\n'''
+          new = '''        project = self._authorized_project(project_id, customer_token)\n        if project.get("understanding_confirmed") is False:\n            raise ValueError(\n                "Confirm the product understanding before continuing research."\n            )\n\n        product_id_raw = project.get("product_id")\n        if product_id_raw:\n            product_id = UUID(str(product_id_raw))\n            product = product_intake_service.get_product(product_id)\n            if project.get("understanding_confirmed") is not True:\n                # Projects from the intermediate legacy flow already have a confirmed\n                # ProductProfile but predate the project-level confirmation boolean.\n                if product.status != ProductProfileStatus.CONFIRMED:\n                    raise ValueError(\n                        "Confirm the product understanding before continuing research."\n                    )\n                project["understanding_confirmed"] = True\n                project["understanding_confirmed_backfilled_at"] = datetime.now(UTC).isoformat()\n                self._persist(project)\n        else:\n            # The oldest customer projects predate ProductProfile snapshots entirely.\n            # They still contain the founder-authored brief that powered the original\n            # product analysis. Rehydrate that explicit founder context into the current\n            # ProductProfile model instead of pretending the project itself is missing.\n            if "understanding_confirmed" in project:\n                raise ValueError(\n                    "Confirm the product understanding before continuing research."\n                )\n            legacy_brief = str(project.get("brief") or "").strip()\n            if len(legacy_brief) < 20:\n                raise ValueError(\n                    "Review the product understanding before continuing research."\n                )\n            preview = project.get("preview") or {}\n            stored_understanding = (\n                preview.get("understanding")\n                if isinstance(preview.get("understanding"), dict)\n                else {}\n            )\n\n            def legacy_value(key: str, fallback: str = "") -> str:\n                value = str(stored_understanding.get(key) or fallback).strip()\n                return "" if value.casefold() in {"not determined yet", "unknown"} else value\n\n            product_name = legacy_value("product", legacy_brief.splitlines()[0][:300])\n            for_whom = legacy_value("for_whom", legacy_brief)\n            likely_customer = legacy_value("likely_customer")\n            market = legacy_value("market", str(project.get("market") or ""))\n            product_link = str(\n                project.get("product_link") or project.get("website_url") or ""\n            ).strip()\n            intake = await product_intake_service.create_draft(\n                ProductCreateRequest(\n                    brief=legacy_brief,\n                    reference_links=[product_link] if product_link else [],\n                )\n            )\n            confirmed = product_intake_service.confirm_preview(\n                intake.product.id,\n                name=product_name,\n                for_whom=for_whom,\n                likely_customer=likely_customer,\n                market=market,\n                goal=str(project.get("goal") or "Get first users"),\n                budget=float(project.get("budget_usd") or 10),\n            )\n            product_id = confirmed.product.id\n            product = confirmed.product\n            project["product_id"] = str(product_id)\n            project["understanding_confirmed"] = True\n            project["understanding_confirmed_backfilled_at"] = datetime.now(UTC).isoformat()\n            project["legacy_product_migrated_at"] = datetime.now(UTC).isoformat()\n            project["legacy_product_migration_source"] = "FOUNDER_BRIEF"\n            preview["understanding"] = self._understanding(product).model_dump(mode="json")\n            project["preview"] = preview\n            self._persist(project)\n'''
+          if old not in funnel:
+              raise SystemExit('customer_funnel migration anchor not found')
+          funnel_path.write_text(funnel.replace(old, new, 1))
+
+          tests_path = Path('tests/test_customer_funnel.py')
+          tests = tests_path.read_text()
+          anchor = '''def test_preview_research_never_bypasses_explicit_unconfirmed_flag(monkeypatch) -> None:\n'''
+          insert = '''def test_preview_research_migrates_oldest_project_without_product_id(monkeypatch) -> None:\n    async def fake_icp(_product):\n        return SimpleNamespace(icps=[])\n\n    async def no_opportunity(_product, _icp_result):\n        return ("NEEDS_MORE_RESEARCH", "Keep researching.", None)\n\n    monkeypatch.setattr("app.customer_funnel.icp_service.generate", fake_icp)\n    monkeypatch.setattr(customer_funnel_service, "_run_free_research", no_opportunity)\n    preview = customer_funnel_service.create_preview(\n        CustomerPreviewRequest(\n            brief=(\n                "AI bookkeeping assistant for independent freelancers that organizes "\n                "expenses, invoices and tax admin."\n            ),\n            website_url="https://example.com",\n            market="United States",\n            goal="Get first users",\n            budget_usd=1000,\n        )\n    )\n    before = customer_funnel_service._store.get(  # noqa: SLF001\n        CUSTOMER_PROJECT_NAMESPACE,\n        str(preview.project_id),\n    )\n    assert before is not None\n    assert before["product_id"] is None\n    assert "understanding_confirmed" not in before\n\n    retried = client.post(\n        f"/v1/customer-projects/{preview.project_id}/preview-research",\n        headers={"X-Partizan-Customer-Token": preview.customer_token},\n    )\n\n    assert retried.status_code == 200\n    migrated = customer_funnel_service._store.get(  # noqa: SLF001\n        CUSTOMER_PROJECT_NAMESPACE,\n        str(preview.project_id),\n    )\n    assert migrated is not None\n    assert migrated["product_id"]\n    assert migrated["understanding_confirmed"] is True\n    assert migrated["legacy_product_migration_source"] == "FOUNDER_BRIEF"\n    assert migrated["legacy_product_migrated_at"]\n    product = product_intake_service.get_product(UUID(migrated["product_id"]))\n    assert product.status == ProductProfileStatus.CONFIRMED\n    assert retried.json()["product_id"] == migrated["product_id"]\n\n\ndef test_oldest_project_with_explicit_false_confirmation_is_not_migrated(monkeypatch) -> None:\n    preview = customer_funnel_service.create_preview(\n        CustomerPreviewRequest(\n            brief=(\n                "AI bookkeeping assistant for independent freelancers that organizes "\n                "expenses, invoices and tax admin."\n            ),\n            market="United States",\n            goal="Get first users",\n            budget_usd=1000,\n        )\n    )\n    project = customer_funnel_service._store.get(  # noqa: SLF001\n        CUSTOMER_PROJECT_NAMESPACE,\n        str(preview.project_id),\n    )\n    assert project is not None\n    project["understanding_confirmed"] = False\n    customer_funnel_service._store.put(  # noqa: SLF001\n        CUSTOMER_PROJECT_NAMESPACE,\n        str(preview.project_id),\n        project,\n    )\n\n    retried = client.post(\n        f"/v1/customer-projects/{preview.project_id}/preview-research",\n        headers={"X-Partizan-Customer-Token": preview.customer_token},\n    )\n\n    assert retried.status_code == 502\n    assert retried.json()["detail"] == (\n        "Confirm the product understanding before continuing research."\n    )\n    after = customer_funnel_service._store.get(  # noqa: SLF001\n        CUSTOMER_PROJECT_NAMESPACE,\n        str(preview.project_id),\n    )\n    assert after is not None\n    assert after["product_id"] is None\n\n\n'''
+          if anchor not in tests:
+              raise SystemExit('customer funnel test anchor not found')
+          tests = tests.replace(anchor, insert + anchor, 1)
+          tests = tests.replace(
+              'from app.main import app\n',
+              'from app.main import app\nfrom app.models import ProductProfileStatus\nfrom app.product_intake import product_intake_service\n',
+              1,
+          )
+          tests_path.write_text(tests)
+
+          account_path = Path('tests/test_customer_account_workspace.py')
+          account = account_path.read_text()
+          account_anchor = '''def test_registration_retry_with_same_credentials_resumes_existing_account() -> None:\n'''
+          account_insert = '''def test_legacy_workspace_preview_research_migrates_project_without_product_id(\n    monkeypatch,\n) -> None:\n    async def fake_icp(_product):\n        return SimpleNamespace(icps=[])\n\n    async def no_opportunity(_product, _icp_result):\n        return ("NEEDS_MORE_RESEARCH", "Keep researching.", None)\n\n    monkeypatch.setattr("app.customer_funnel.icp_service.generate", fake_icp)\n    monkeypatch.setattr(customer_funnel_service, "_run_free_research", no_opportunity)\n    client = TestClient(app)\n    preview, created = _register(client)\n    assert created.status_code == 200\n    stored = get_runtime_store().get(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id))\n    assert stored is not None\n    assert stored["product_id"] is None\n\n    response = client.post(\n        f"/customer/workspace/{preview.project_id}/preview-research"\n    )\n\n    assert response.status_code == 200\n    migrated = get_runtime_store().get(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id))\n    assert migrated is not None\n    assert migrated["product_id"]\n    assert migrated["understanding_confirmed"] is True\n    assert migrated["legacy_product_migration_source"] == "FOUNDER_BRIEF"\n\n\n'''
+          if account_anchor not in account:
+              raise SystemExit('account workspace test anchor not found')
+          account = account.replace(account_anchor, account_insert + account_anchor, 1)
+          account = account.replace(
+              'from __future__ import annotations\n\n',
+              'from __future__ import annotations\n\nfrom types import SimpleNamespace\n\n',
+              1,
+          )
+          account_path.write_text(account)
+          PY
+          rm .github/workflows/apply-legacy-product-id-migration.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/customer_funnel.py tests/test_customer_funnel.py tests/test_customer_account_workspace.py .github/workflows/apply-legacy-product-id-migration.yml
+          git commit -m 'Migrate oldest customer projects before preview research'
+          git push origin HEAD:fix/legacy-project-without-product-id
