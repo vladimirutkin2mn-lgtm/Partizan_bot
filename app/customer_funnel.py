@@ -341,27 +341,81 @@ class CustomerFunnelService:
     ) -> CustomerPreviewConfirmationResponse:
         """Retry evidence-backed preview research without requiring acquisition funding."""
         project = self._authorized_project(project_id, customer_token)
-        product_id_raw = project.get("product_id")
-        if not product_id_raw:
-            raise CustomerProjectNotFoundError("Product analysis is missing")
-        product_id = UUID(str(product_id_raw))
-        product = product_intake_service.get_product(product_id)
+        if project.get("understanding_confirmed") is False:
+            raise ValueError(
+                "Confirm the product understanding before continuing research."
+            )
 
-        if project.get("understanding_confirmed") is not True:
-            # New Product Understanding projects always persist an explicit boolean.
-            # Never bypass an explicit False: the founder still needs to review it.
-            # Older projects predate this project-level flag, but their ProductProfile
-            # was already marked CONFIRMED by the old onboarding/research flow. Backfill
-            # only that unambiguous legacy state so the new free-research CTA works.
-            if (
-                "understanding_confirmed" in project
-                or product.status != ProductProfileStatus.CONFIRMED
-            ):
+        product_id_raw = project.get("product_id")
+        if product_id_raw:
+            product_id = UUID(str(product_id_raw))
+            product = product_intake_service.get_product(product_id)
+            if project.get("understanding_confirmed") is not True:
+                # Projects from the intermediate legacy flow already have a confirmed
+                # ProductProfile but predate the project-level confirmation boolean.
+                if product.status != ProductProfileStatus.CONFIRMED:
+                    raise ValueError(
+                        "Confirm the product understanding before continuing research."
+                    )
+                project["understanding_confirmed"] = True
+                project["understanding_confirmed_backfilled_at"] = datetime.now(UTC).isoformat()
+                self._persist(project)
+        else:
+            # The oldest customer projects predate ProductProfile snapshots entirely.
+            # They still contain the founder-authored brief that powered the original
+            # product analysis. Rehydrate that explicit founder context into the current
+            # ProductProfile model instead of pretending the project itself is missing.
+            if "understanding_confirmed" in project:
                 raise ValueError(
                     "Confirm the product understanding before continuing research."
                 )
+            legacy_brief = str(project.get("brief") or "").strip()
+            if len(legacy_brief) < 20:
+                raise ValueError(
+                    "Review the product understanding before continuing research."
+                )
+            preview = project.get("preview") or {}
+            stored_understanding = (
+                preview.get("understanding")
+                if isinstance(preview.get("understanding"), dict)
+                else {}
+            )
+
+            def legacy_value(key: str, fallback: str = "") -> str:
+                value = str(stored_understanding.get(key) or fallback).strip()
+                return "" if value.casefold() in {"not determined yet", "unknown"} else value
+
+            product_name = legacy_value("product", legacy_brief.splitlines()[0][:300])
+            for_whom = legacy_value("for_whom", legacy_brief)
+            likely_customer = legacy_value("likely_customer")
+            market = legacy_value("market", str(project.get("market") or ""))
+            product_link = str(
+                project.get("product_link") or project.get("website_url") or ""
+            ).strip()
+            intake = await product_intake_service.create_draft(
+                ProductCreateRequest(
+                    brief=legacy_brief,
+                    reference_links=[product_link] if product_link else [],
+                )
+            )
+            confirmed = product_intake_service.confirm_preview(
+                intake.product.id,
+                name=product_name,
+                for_whom=for_whom,
+                likely_customer=likely_customer,
+                market=market,
+                goal=str(project.get("goal") or "Get first users"),
+                budget=float(project.get("budget_usd") or 10),
+            )
+            product_id = confirmed.product.id
+            product = confirmed.product
+            project["product_id"] = str(product_id)
             project["understanding_confirmed"] = True
             project["understanding_confirmed_backfilled_at"] = datetime.now(UTC).isoformat()
+            project["legacy_product_migrated_at"] = datetime.now(UTC).isoformat()
+            project["legacy_product_migration_source"] = "FOUNDER_BRIEF"
+            preview["understanding"] = self._understanding(product).model_dump(mode="json")
+            project["preview"] = preview
             self._persist(project)
         try:
             icp_result = icp_service.get(product_id)

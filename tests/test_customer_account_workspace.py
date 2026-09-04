@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -75,6 +77,36 @@ def test_registration_claims_project_rotates_browser_token_and_sets_http_only_se
     assert workspace.json()["preview_directions"]
     assert workspace.json()["preview_directions"][0]["name"] == preview.directions[0].name
     assert workspace.json()["preview_directions"][0]["rationale"] == preview.directions[0].rationale
+
+
+def test_legacy_workspace_preview_research_migrates_project_without_product_id(
+    monkeypatch,
+) -> None:
+    async def fake_icp(_product):
+        return SimpleNamespace(icps=[])
+
+    async def no_opportunity(_product, _icp_result):
+        return ("NEEDS_MORE_RESEARCH", "Keep researching.", None)
+
+    monkeypatch.setattr("app.customer_funnel.icp_service.generate", fake_icp)
+    monkeypatch.setattr(customer_funnel_service, "_run_free_research", no_opportunity)
+    client = TestClient(app)
+    preview, created = _register(client)
+    assert created.status_code == 200
+    stored = get_runtime_store().get(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id))
+    assert stored is not None
+    assert stored["product_id"] is None
+
+    response = client.post(
+        f"/customer/workspace/{preview.project_id}/preview-research"
+    )
+
+    assert response.status_code == 200
+    migrated = get_runtime_store().get(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id))
+    assert migrated is not None
+    assert migrated["product_id"]
+    assert migrated["understanding_confirmed"] is True
+    assert migrated["legacy_product_migration_source"] == "FOUNDER_BRIEF"
 
 
 def test_registration_retry_with_same_credentials_resumes_existing_account() -> None:

@@ -18,6 +18,8 @@ from app.customer_funnel import (
 )
 from app.customer_schemas import CustomerPreviewRequest
 from app.main import app
+from app.models import ProductProfileStatus
+from app.product_intake import product_intake_service
 from app.product_source import ProductSourceContext, ProductSourceType
 from app.runtime_store import MemoryRuntimeStateStore
 from app.search import MockSearchProvider
@@ -634,6 +636,96 @@ def test_preview_research_backfills_missing_confirmation_for_confirmed_legacy_pr
     assert backfilled is not None
     assert backfilled["understanding_confirmed"] is True
     assert backfilled["understanding_confirmed_backfilled_at"]
+
+
+def test_preview_research_migrates_oldest_project_without_product_id(monkeypatch) -> None:
+    async def fake_icp(_product):
+        return SimpleNamespace(icps=[])
+
+    async def no_opportunity(_product, _icp_result):
+        return ("NEEDS_MORE_RESEARCH", "Keep researching.", None)
+
+    monkeypatch.setattr("app.customer_funnel.icp_service.generate", fake_icp)
+    monkeypatch.setattr(customer_funnel_service, "_run_free_research", no_opportunity)
+    preview = customer_funnel_service.create_preview(
+        CustomerPreviewRequest(
+            brief=(
+                "AI bookkeeping assistant for independent freelancers that organizes "
+                "expenses, invoices and tax admin."
+            ),
+            website_url="https://example.com",
+            market="United States",
+            goal="Get first users",
+            budget_usd=1000,
+        )
+    )
+    before = customer_funnel_service._store.get(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(preview.project_id),
+    )
+    assert before is not None
+    assert before["product_id"] is None
+    assert "understanding_confirmed" not in before
+
+    retried = client.post(
+        f"/v1/customer-projects/{preview.project_id}/preview-research",
+        headers={"X-Partizan-Customer-Token": preview.customer_token},
+    )
+
+    assert retried.status_code == 200
+    migrated = customer_funnel_service._store.get(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(preview.project_id),
+    )
+    assert migrated is not None
+    assert migrated["product_id"]
+    assert migrated["understanding_confirmed"] is True
+    assert migrated["legacy_product_migration_source"] == "FOUNDER_BRIEF"
+    assert migrated["legacy_product_migrated_at"]
+    product = product_intake_service.get_product(UUID(migrated["product_id"]))
+    assert product.status == ProductProfileStatus.CONFIRMED
+    assert retried.json()["product_id"] == migrated["product_id"]
+
+
+def test_oldest_project_with_explicit_false_confirmation_is_not_migrated(monkeypatch) -> None:
+    preview = customer_funnel_service.create_preview(
+        CustomerPreviewRequest(
+            brief=(
+                "AI bookkeeping assistant for independent freelancers that organizes "
+                "expenses, invoices and tax admin."
+            ),
+            market="United States",
+            goal="Get first users",
+            budget_usd=1000,
+        )
+    )
+    project = customer_funnel_service._store.get(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(preview.project_id),
+    )
+    assert project is not None
+    project["understanding_confirmed"] = False
+    customer_funnel_service._store.put(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(preview.project_id),
+        project,
+    )
+
+    retried = client.post(
+        f"/v1/customer-projects/{preview.project_id}/preview-research",
+        headers={"X-Partizan-Customer-Token": preview.customer_token},
+    )
+
+    assert retried.status_code == 502
+    assert retried.json()["detail"] == (
+        "Confirm the product understanding before continuing research."
+    )
+    after = customer_funnel_service._store.get(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(preview.project_id),
+    )
+    assert after is not None
+    assert after["product_id"] is None
 
 
 def test_preview_research_never_bypasses_explicit_unconfirmed_flag(monkeypatch) -> None:
