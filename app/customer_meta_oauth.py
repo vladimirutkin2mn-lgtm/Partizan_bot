@@ -168,6 +168,11 @@ class CustomerMetaOAuthService:
         return_path: str = "/start",
     ) -> str:
         customer_funnel_service.get_project_payload(project_id, customer_token)
+        if not self._settings.meta_oauth_public_ready:
+            raise CustomerMetaOAuthError(
+                "Facebook & Instagram connection is temporarily unavailable while "
+                "Partizan's Meta app is being activated for customer access"
+            )
         return_path = self._normalize_return_path(return_path)
         redirect_uri = self._redirect_uri()
         app_id = self._settings.meta_oauth_app_id
