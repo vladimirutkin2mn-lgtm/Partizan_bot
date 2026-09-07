@@ -148,7 +148,7 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
     assert "/preview-research" in workspace_source
     assert "Keep researching →" in workspace_source
     assert "Partizan will not invent an opportunity." in workspace_source
-    assert "Open this $0 move →" in workspace_source
+    assert "Open where to do this →" in workspace_source
     assert "activationAction === 'channels'" not in workspace_source
     assert "activationAction === 'integration'" not in workspace_source
     assert "autoChannel.platform !== 'INSTAGRAM' || Boolean(overview.meta.connected)" not in workspace_source

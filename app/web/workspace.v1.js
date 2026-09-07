@@ -163,6 +163,8 @@
     button.disabled = false;
     $('activation-heading').textContent = "Let's find your first users.";
     $('activation-copy').textContent = 'Partizan starts from your product, researches where people may already be and recommends the next useful move. You only add money or access when a specific move needs it.';
+    $('activation-channel-title').textContent = 'Recommended first move';
+    $('activation-channel-copy').textContent = 'Partizan will put the concrete action here as soon as research finds one.';
     setActivationStep('activation-product', true, false, 'Done');
     setActivationStep('activation-direction', true, false, 'Done');
 
@@ -172,18 +174,24 @@
       $('activation-research-title').textContent = 'One real opportunity researched';
       $('activation-research-copy').textContent = 'Public-web evidence appeared before Partizan asked you to fund anything.';
       setActivationStep('activation-budget', true, false, 'Done');
-      setActivationStep('activation-channel', false, true, 'Now');
+      const recommendedMove = String(previewOpportunity.recommended_action || '').trim();
+      const signalToWatch = String(previewOpportunity.signal_to_watch || '').trim();
+      $('activation-channel-title').textContent = 'Do this now';
+      $('activation-channel-copy').textContent = signalToWatch
+        ? `${recommendedMove} Watch: ${signalToWatch}`
+        : recommendedMove;
+      setActivationStep('activation-channel', false, true, 'Do now');
       setActivationStep('activation-limit', false, false, 'If needed');
       setActivationStep('activation-test', false, false, 'Next');
       $('activation-progress').textContent = '3 of 6';
       const maxCost = Number(previewOpportunity.estimated_cost_max_usd || 0);
       if (maxCost <= 0) {
         activationAction = 'opportunity';
-        button.textContent = 'Open this $0 move →';
+        button.textContent = 'Open where to do this →';
         $('activation-note').textContent = `Recommended first move: ${previewOpportunity.recommended_action} No acquisition funding is required for this step.`;
       } else {
         activationAction = 'fund';
-        button.textContent = `Run this ${money(maxCost)} test →`;
+        button.textContent = `Set up this ${money(maxCost)} test →`;
         $('activation-note').textContent = `This specific move needs up to ${money(maxCost)}. Partizan will ask you to fund the test because the action is now concrete.`;
       }
       return;
