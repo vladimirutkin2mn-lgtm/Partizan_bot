@@ -16,6 +16,7 @@ from app.paid_provider_connections import paid_provider_connection_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 CHANNEL_PREFERENCES_KEY = "channel_preferences"
+SELECTED_ACQUISITION_CHANNEL_KEY = "selected_acquisition_channel"
 STAGED_META_CONNECTION_KEY = "meta_connection_staged"
 
 CHANNEL_LABELS: dict[DistributionPlatform, str] = {
@@ -46,6 +47,7 @@ class CustomerChannelService:
     def list(self, project_id: UUID, customer_token: str) -> list[CustomerChannelView]:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         preferences = self._preferences(project)
+        selected_platform = self._selected_platform(project)
         metrics = self._metrics_by_platform(project)
         meta_connected = self._meta_connected(project)
         settlement_ready = bool(
@@ -70,6 +72,7 @@ class CustomerChannelService:
                     platform=platform,
                     label=CHANNEL_LABELS[platform],
                     mode=preferences[platform],
+                    selected=platform == selected_platform,
                     autonomous_execution_available=(
                         platform in AUTONOMOUS_EXECUTION_PLATFORMS
                     ),
@@ -119,6 +122,25 @@ class CustomerChannelService:
         project[CHANNEL_PREFERENCES_KEY] = {
             platform.value: mode for platform, mode in preferences.items()
         }
+        self._persist(project)
+        return self.list(project_id, customer_token)
+
+    def select(
+        self,
+        project_id: UUID,
+        customer_token: str,
+        platform: DistributionPlatform,
+    ) -> list[CustomerChannelView]:
+        """Persist customer intent without granting execution or spend permission."""
+
+        project = customer_funnel_service.get_project_payload(project_id, customer_token)
+        preferences = self._preferences(project)
+        if preferences[platform] == "OFF":
+            raise ValueError(
+                f"{CHANNEL_LABELS[platform]} is turned off. Turn it back on before selecting it."
+            )
+        project[SELECTED_ACQUISITION_CHANNEL_KEY] = platform.value
+        project["acquisition_channel_selected_at"] = datetime.now(UTC).isoformat()
         self._persist(project)
         return self.list(project_id, customer_token)
 
@@ -172,6 +194,16 @@ class CustomerChannelService:
                 else:
                     result[platform] = mode
         return result
+
+    @staticmethod
+    def _selected_platform(project: dict) -> DistributionPlatform | None:
+        raw = project.get(SELECTED_ACQUISITION_CHANNEL_KEY)
+        if raw is None:
+            return None
+        try:
+            return DistributionPlatform(str(raw).strip().upper())
+        except ValueError:
+            return None
 
     def _metrics_by_platform(self, project: dict) -> dict[DistributionPlatform, object]:
         product_id_raw = project.get("product_id")

@@ -13,6 +13,7 @@ from app.customer_account import (
 from app.customer_autopilot import customer_autopilot_service
 from app.customer_channel_schemas import (
     CustomerChannelPreferencesUpdateRequest,
+    CustomerChannelSelectionRequest,
     CustomerChannelView,
 )
 from app.customer_channels import customer_channel_service
@@ -58,6 +59,28 @@ def get_customer_channel_controls(
     try:
         return customer_channel_service.list(project_id, customer_token)
     except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.put(
+    "/customer/workspace/{project_id}/channel-selection",
+    response_model=list[CustomerChannelView],
+)
+def select_customer_acquisition_channel(
+    project_id: UUID,
+    payload: CustomerChannelSelectionRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> list[CustomerChannelView]:
+    """Save customer channel intent without granting execution or spend permission."""
+
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return customer_channel_service.select(
+            project_id,
+            customer_token,
+            payload.platform,
+        )
+    except (CustomerProjectNotFoundError, CustomerProjectAccessError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 

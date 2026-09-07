@@ -25,10 +25,15 @@ class CustomerChannelPreferencesUpdateRequest(BaseModel):
         return self
 
 
+class CustomerChannelSelectionRequest(BaseModel):
+    platform: DistributionPlatform
+
+
 class CustomerChannelView(BaseModel):
     platform: DistributionPlatform
     label: str
     mode: CustomerChannelMode
+    selected: bool = False
     autonomous_execution_available: bool
     execution_ready: bool = False
     execution_blocker: str | None = None
