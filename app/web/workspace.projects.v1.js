@@ -30,6 +30,55 @@
 
   const currentProjectId = () => new URLSearchParams(window.location.search).get('project');
 
+  const syncRecommendedMoveCta = () => {
+    const channelStep = document.getElementById('activation-channel');
+    const channelTitle = document.getElementById('activation-channel-title');
+    const primary = document.getElementById('activation-primary');
+    if (!channelStep || !channelTitle || !primary) return;
+
+    const body = channelStep.querySelector(':scope > div') || channelStep.querySelector('div');
+    if (!body) return;
+    const actionable = channelStep.classList.contains('current')
+      && channelTitle.textContent.trim() === 'Do this now';
+    let inline = document.getElementById('activation-inline-primary');
+
+    if (!actionable) {
+      if (inline) inline.remove();
+      return;
+    }
+
+    if (!inline) {
+      inline = document.createElement('button');
+      inline.id = 'activation-inline-primary';
+      inline.className = 'button button-primary';
+      inline.type = 'button';
+      inline.style.marginTop = '8px';
+      inline.style.justifySelf = 'start';
+      inline.style.maxWidth = '100%';
+      inline.addEventListener('click', () => primary.click());
+      body.appendChild(inline);
+    }
+
+    if (inline.textContent !== primary.textContent) inline.textContent = primary.textContent;
+    if (inline.disabled !== primary.disabled) inline.disabled = primary.disabled;
+    inline.setAttribute('aria-label', `Next step: ${primary.textContent.replace(/→/g, '').trim()}`);
+  };
+
+  const installRecommendedMoveCta = () => {
+    const activationCard = document.getElementById('activation-card');
+    if (!activationCard || activationCard.dataset.inlineCtaInstalled === 'true') return;
+    activationCard.dataset.inlineCtaInstalled = 'true';
+    const observer = new MutationObserver(syncRecommendedMoveCta);
+    observer.observe(activationCard, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['class', 'disabled'],
+    });
+    syncRecommendedMoveCta();
+  };
+
   const renderModal = () => {
     if (document.getElementById('new-project-modal')) return;
     const modal = document.createElement('div');
@@ -198,6 +247,7 @@
     nav.insertBefore(button, email);
     renderModal();
     ensureProjectDetailsCard();
+    installRecommendedMoveCta();
 
     button.addEventListener('click', openModal);
     document.querySelectorAll('[data-close-new-project]').forEach((node) => node.addEventListener('click', closeModal));
