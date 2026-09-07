@@ -38,10 +38,25 @@ def test_channel_choice_is_persisted_without_reusing_execution_permission_contro
     javascript = _workspace_asset("workspace.projects.v1.js")
 
     assert "/channel-selection" in javascript
-    assert "body: JSON.stringify({ platform: button.dataset.selectAcquisitionChannel })" in javascript
-    assert "Choosing a channel does not grant account access, execution permission or acquisition spend" in javascript
-    assert "Connecting Meta grants account access only; it does not authorize spend or enable autonomous execution" in javascript
-    assert "Research only until a customer-facing connection and execution path is production-ready" in javascript
+    assert (
+        "body: JSON.stringify({ platform: button.dataset.selectAcquisitionChannel })"
+        in javascript
+    )
+    assert (
+        "Choosing a channel does not grant account access, execution permission "
+        "or acquisition spend"
+        in javascript
+    )
+    assert (
+        "Connecting Meta grants account access only; it does not authorize spend "
+        "or enable autonomous execution"
+        in javascript
+    )
+    assert (
+        "Research only until a customer-facing connection and execution path "
+        "is production-ready"
+        in javascript
+    )
     assert "customer_token" not in javascript
 
 
