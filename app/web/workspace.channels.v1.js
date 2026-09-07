@@ -48,6 +48,7 @@
 
   const detailStatus = (channel) => {
     if (channel.platform === 'INSTAGRAM') {
+      if (!channel.autonomous_execution_available && !channel.connected) return ['Research only', 'needs'];
       if (!channel.connected) return ['Needs connection', 'needs'];
       if (!channelEnabled(channel)) return ['Connected · Off', 'off'];
       if (!channel.execution_ready) return ['Connected · Research only', 'needs'];
@@ -59,6 +60,9 @@
 
   const channelSubline = (channel) => {
     if (channel.platform === 'INSTAGRAM') {
+      if (!channel.autonomous_execution_available && !channel.connected) {
+        return channel.execution_blocker || 'Meta customer connection is temporarily unavailable';
+      }
       if (!channel.connected) return 'Connect Meta before paid execution';
       if (!channel.execution_ready) {
         return channel.execution_blocker || 'Connected · paid execution is not ready yet';
@@ -70,6 +74,9 @@
 
   const overviewControl = (channel) => {
     if (channel.platform === 'INSTAGRAM' && !channel.connected) {
+      if (!channel.autonomous_execution_available) {
+        return '<span class="channel-detail-status needs">Unavailable</span>';
+      }
       return `<button class="channel-connect-button" type="button" data-channel-connect="INSTAGRAM">Connect</button>`;
     }
     const checked = channelEnabled(channel) ? ' checked' : '';
