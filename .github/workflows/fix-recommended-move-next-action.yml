@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   apply:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,68 +17,7 @@ jobs:
           ref: fix/recommended-move-next-action
           fetch-depth: 0
       - name: Make recommended move actionable
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          html_path = Path('app/web/workspace.v1.html')
-          html = html_path.read_text()
-          old = '<li id="activation-channel"><span class="activation-index">4</span><div><strong>Recommended first move</strong><small>Partizan explains what to try, why and what signal to watch.</small></div><span class="activation-step-state">Now</span></li>'
-          new = '<li id="activation-channel"><span class="activation-index">4</span><div><strong id="activation-channel-title">Recommended first move</strong><small id="activation-channel-copy">Partizan will put the concrete action here as soon as research finds one.</small></div><span class="activation-step-state">Now</span></li>'
-          if html.count(old) != 1:
-              raise SystemExit(f'expected exactly one activation-channel markup, found {html.count(old)}')
-          html_path.write_text(html.replace(old, new))
-
-          js_path = Path('app/web/workspace.v1.js')
-          js = js_path.read_text()
-          old_reset = '''    $('activation-copy').textContent = 'Partizan starts from your product, researches where people may already be and recommends the next useful move. You only add money or access when a specific move needs it.';
-    setActivationStep('activation-product', true, false, 'Done');'''
-          new_reset = '''    $('activation-copy').textContent = 'Partizan starts from your product, researches where people may already be and recommends the next useful move. You only add money or access when a specific move needs it.';
-    $('activation-channel-title').textContent = 'Recommended first move';
-    $('activation-channel-copy').textContent = 'Partizan will put the concrete action here as soon as research finds one.';
-    setActivationStep('activation-product', true, false, 'Done');'''
-          if js.count(old_reset) != 1:
-              raise SystemExit(f'expected one activation reset anchor, found {js.count(old_reset)}')
-          js = js.replace(old_reset, new_reset)
-
-          old_opportunity = '''      setActivationStep('activation-budget', true, false, 'Done');
-      setActivationStep('activation-channel', false, true, 'Now');
-      setActivationStep('activation-limit', false, false, 'If needed');'''
-          new_opportunity = '''      setActivationStep('activation-budget', true, false, 'Done');
-      const recommendedMove = String(previewOpportunity.recommended_action || '').trim();
-      const signalToWatch = String(previewOpportunity.signal_to_watch || '').trim();
-      $('activation-channel-title').textContent = 'Do this now';
-      $('activation-channel-copy').textContent = signalToWatch
-        ? `${recommendedMove} Watch: ${signalToWatch}`
-        : recommendedMove;
-      setActivationStep('activation-channel', false, true, 'Do now');
-      setActivationStep('activation-limit', false, false, 'If needed');'''
-          if js.count(old_opportunity) != 1:
-              raise SystemExit(f'expected one opportunity activation anchor, found {js.count(old_opportunity)}')
-          js = js.replace(old_opportunity, new_opportunity)
-
-          old_free_cta = "        button.textContent = 'Open this $0 move →';"
-          new_free_cta = "        button.textContent = 'Open where to do this →';"
-          if js.count(old_free_cta) != 1:
-              raise SystemExit(f'expected one free CTA, found {js.count(old_free_cta)}')
-          js = js.replace(old_free_cta, new_free_cta)
-
-          old_paid_cta = "        button.textContent = `Run this ${money(maxCost)} test →`;"
-          new_paid_cta = "        button.textContent = `Set up this ${money(maxCost)} test →`;"
-          if js.count(old_paid_cta) != 1:
-              raise SystemExit(f'expected one paid CTA, found {js.count(old_paid_cta)}')
-          js = js.replace(old_paid_cta, new_paid_cta)
-          js_path.write_text(js)
-
-          test_path = Path('tests/test_customer_workspace_project_ui.py')
-          test = test_path.read_text()
-          addition = '''\n\ndef test_recommended_move_step_shows_the_actual_next_action() -> None:\n    from pathlib import Path\n\n    html = Path("app/web/workspace.v1.html").read_text()\n    js = Path("app/web/workspace.v1.js").read_text()\n\n    assert 'id="activation-channel-title"' in html\n    assert 'id="activation-channel-copy"' in html\n    assert "$('activation-channel-title').textContent = 'Do this now';" in js\n    assert 'previewOpportunity.recommended_action' in js\n    assert 'previewOpportunity.signal_to_watch' in js\n    assert "setActivationStep('activation-channel', false, true, 'Do now');" in js\n    assert "button.textContent = 'Open where to do this →';" in js\n    assert 'button.textContent = `Set up this ${money(maxCost)} test →`;' in js\n'''
-          marker = 'def test_recommended_move_step_shows_the_actual_next_action()'
-          if marker not in test:
-              test_path.write_text(test.rstrip() + addition + '\n')
-
-          Path('.github/workflows/fix-recommended-move-next-action.yml').unlink()
-          PY
+        run: python -c "import base64; exec(base64.b64decode('ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpodG1sX3BhdGggPSBQYXRoKCJhcHAvd2ViL3dvcmtzcGFjZS52MS5odG1sIikKaHRtbCA9IGh0bWxfcGF0aC5yZWFkX3RleHQoKQpvbGQgPSAnPGxpIGlkPSJhY3RpdmF0aW9uLWNoYW5uZWwiPjxzcGFuIGNsYXNzPSJhY3RpdmF0aW9uLWluZGV4Ij40PC9zcGFuPjxkaXY+PHN0cm9uZz5SZWNvbW1lbmRlZCBmaXJzdCBtb3ZlPC9zdHJvbmc+PHNtYWxsPlBhcnRpemFuIGV4cGxhaW5zIHdoYXQgdG8gdHJ5LCB3aHkgYW5kIHdoYXQgc2lnbmFsIHRvIHdhdGNoLjwvc21hbGw+PC9kaXY+PHNwYW4gY2xhc3M9ImFjdGl2YXRpb24tc3RlcC1zdGF0ZSI+Tm93PC9zcGFuPjwvbGk+JwpuZXcgPSAnPGxpIGlkPSJhY3RpdmF0aW9uLWNoYW5uZWwiPjxzcGFuIGNsYXNzPSJhY3RpdmF0aW9uLWluZGV4Ij40PC9zcGFuPjxkaXY+PHN0cm9uZyBpZD0iYWN0aXZhdGlvbi1jaGFubmVsLXRpdGxlIj5SZWNvbW1lbmRlZCBmaXJzdCBtb3ZlPC9zdHJvbmc+PHNtYWxsIGlkPSJhY3RpdmF0aW9uLWNoYW5uZWwtY29weSI+UGFydGl6YW4gd2lsbCBwdXQgdGhlIGNvbmNyZXRlIGFjdGlvbiBoZXJlIGFzIHNvb24gYXMgcmVzZWFyY2ggZmluZHMgb25lLjwvc21hbGw+PC9kaXY+PHNwYW4gY2xhc3M9ImFjdGl2YXRpb24tc3RlcC1zdGF0ZSI+Tm93PC9zcGFuPjwvbGk+JwppZiBodG1sLmNvdW50KG9sZCkgIT0gMToKICAgIHJhaXNlIFN5c3RlbUV4aXQoZiJleHBlY3RlZCBleGFjdGx5IG9uZSBhY3RpdmF0aW9uLWNoYW5uZWwgbWFya3VwLCBmb3VuZCB7aHRtbC5jb3VudChvbGQpfSIpCmh0bWxfcGF0aC53cml0ZV90ZXh0KGh0bWwucmVwbGFjZShvbGQsIG5ldykpCgpqc19wYXRoID0gUGF0aCgiYXBwL3dlYi93b3Jrc3BhY2UudjEuanMiKQpqcyA9IGpzX3BhdGgucmVhZF90ZXh0KCkKb2xkX3Jlc2V0ID0gIiIiICAgICQoJ2FjdGl2YXRpb24tY29weScpLnRleHRDb250ZW50ID0gJ1BhcnRpemFuIHN0YXJ0cyBmcm9tIHlvdXIgcHJvZHVjdCwgcmVzZWFyY2hlcyB3aGVyZSBwZW9wbGUgbWF5IGFscmVhZHkgYmUgYW5kIHJlY29tbWVuZHMgdGhlIG5leHQgdXNlZnVsIG1vdmUuIFlvdSBvbmx5IGFkZCBtb25leSBvciBhY2Nlc3Mgd2hlbiBhIHNwZWNpZmljIG1vdmUgbmVlZHMgaXQuJzsKICAgIHNldEFjdGl2YXRpb25TdGVwKCdhY3RpdmF0aW9uLXByb2R1Y3QnLCB0cnVlLCBmYWxzZSwgJ0RvbmUnKTsiIiIKbmV3X3Jlc2V0ID0gIiIiICAgICQoJ2FjdGl2YXRpb24tY29weScpLnRleHRDb250ZW50ID0gJ1BhcnRpemFuIHN0YXJ0cyBmcm9tIHlvdXIgcHJvZHVjdCwgcmVzZWFyY2hlcyB3aGVyZSBwZW9wbGUgbWF5IGFscmVhZHkgYmUgYW5kIHJlY29tbWVuZHMgdGhlIG5leHQgdXNlZnVsIG1vdmUuIFlvdSBvbmx5IGFkZCBtb25leSBvciBhY2Nlc3Mgd2hlbiBhIHNwZWNpZmljIG1vdmUgbmVlZHMgaXQuJzsKICAgICQoJ2FjdGl2YXRpb24tY2hhbm5lbC10aXRsZScpLnRleHRDb250ZW50ID0gJ1JlY29tbWVuZGVkIGZpcnN0IG1vdmUnOwogICAgJCgnYWN0aXZhdGlvbi1jaGFubmVsLWNvcHknKS50ZXh0Q29udGVudCA9ICdQYXJ0aXphbiB3aWxsIHB1dCB0aGUgY29uY3JldGUgYWN0aW9uIGhlcmUgYXMgc29vbiBhcyByZXNlYXJjaCBmaW5kcyBvbmUuJzsKICAgIHNldEFjdGl2YXRpb25TdGVwKCdhY3RpdmF0aW9uLXByb2R1Y3QnLCB0cnVlLCBmYWxzZSwgJ0RvbmUnKTsiIiIKaWYganMuY291bnQob2xkX3Jlc2V0KSAhPSAxOgogICAgcmFpc2UgU3lzdGVtRXhpdChmImV4cGVjdGVkIG9uZSBhY3RpdmF0aW9uIHJlc2V0IGFuY2hvciwgZm91bmQge2pzLmNvdW50KG9sZF9yZXNldCl9IikKanMgPSBqcy5yZXBsYWNlKG9sZF9yZXNldCwgbmV3X3Jlc2V0KQoKb2xkX29wcG9ydHVuaXR5ID0gIiIiICAgICAgc2V0QWN0aXZhdGlvblN0ZXAoJ2FjdGl2YXRpb24tYnVkZ2V0JywgdHJ1ZSwgZmFsc2UsICdEb25lJyk7CiAgICAgIHNldEFjdGl2YXRpb25TdGVwKCdhY3RpdmF0aW9uLWNoYW5uZWwnLCBmYWxzZSwgdHJ1ZSwgJ05vdycpOwogICAgICBzZXRBY3RpdmF0aW9uU3RlcCgnYWN0aXZhdGlvbi1saW1pdCcsIGZhbHNlLCBmYWxzZSwgJ0lmIG5lZWRlZCcpOyIiIgpuZXdfb3Bwb3J0dW5pdHkgPSAiIiIgICAgICBzZXRBY3RpdmF0aW9uU3RlcCgnYWN0aXZhdGlvbi1idWRnZXQnLCB0cnVlLCBmYWxzZSwgJ0RvbmUnKTsKICAgICAgY29uc3QgcmVjb21tZW5kZWRNb3ZlID0gU3RyaW5nKHByZXZpZXdPcHBvcnR1bml0eS5yZWNvbW1lbmRlZF9hY3Rpb24gfHwgJycpLnRyaW0oKTsKICAgICAgY29uc3Qgc2lnbmFsVG9XYXRjaCA9IFN0cmluZyhwcmV2aWV3T3Bwb3J0dW5pdHkuc2lnbmFsX3RvX3dhdGNoIHx8ICcnKS50cmltKCk7CiAgICAgICQoJ2FjdGl2YXRpb24tY2hhbm5lbC10aXRsZScpLnRleHRDb250ZW50ID0gJ0RvIHRoaXMgbm93JzsKICAgICAgJCgnYWN0aXZhdGlvbi1jaGFubmVsLWNvcHknKS50ZXh0Q29udGVudCA9IHNpZ25hbFRvV2F0Y2gKICAgICAgICA/IGAke3JlY29tbWVuZGVkTW92ZX0gV2F0Y2g6ICR7c2lnbmFsVG9XYXRjaH1gCiAgICAgICAgOiByZWNvbW1lbmRlZE1vdmU7CiAgICAgIHNldEFjdGl2YXRpb25TdGVwKCdhY3RpdmF0aW9uLWNoYW5uZWwnLCBmYWxzZSwgdHJ1ZSwgJ0RvIG5vdycpOwogICAgICBzZXRBY3RpdmF0aW9uU3RlcCgnYWN0aXZhdGlvbi1saW1pdCcsIGZhbHNlLCBmYWxzZSwgJ0lmIG5lZWRlZCcpOyIiIgppZiBqcy5jb3VudChvbGRfb3Bwb3J0dW5pdHkpICE9IDE6CiAgICByYWlzZSBTeXN0ZW1FeGl0KGYiZXhwZWN0ZWQgb25lIG9wcG9ydHVuaXR5IGFjdGl2YXRpb24gYW5jaG9yLCBmb3VuZCB7anMuY291bnQob2xkX29wcG9ydHVuaXR5KX0iKQpqcyA9IGpzLnJlcGxhY2Uob2xkX29wcG9ydHVuaXR5LCBuZXdfb3Bwb3J0dW5pdHkpCgpvbGRfZnJlZV9jdGEgPSAiICAgICAgICBidXR0b24udGV4dENvbnRlbnQgPSAnT3BlbiB0aGlzICQwIG1vdmUg4oaSJzsiCm5ld19mcmVlX2N0YSA9ICIgICAgICAgIGJ1dHRvbi50ZXh0Q29udGVudCA9ICdPcGVuIHdoZXJlIHRvIGRvIHRoaXMg4oaSJzsiCmlmIGpzLmNvdW50KG9sZF9mcmVlX2N0YSkgIT0gMToKICAgIHJhaXNlIFN5c3RlbUV4aXQoZiJleHBlY3RlZCBvbmUgZnJlZSBDVEEsIGZvdW5kIHtqcy5jb3VudChvbGRfZnJlZV9jdGEpfSIpCmpzID0ganMucmVwbGFjZShvbGRfZnJlZV9jdGEsIG5ld19mcmVlX2N0YSkKCm9sZF9wYWlkX2N0YSA9ICIgICAgICAgIGJ1dHRvbi50ZXh0Q29udGVudCA9IGBSdW4gdGhpcyAke21vbmV5KG1heENvc3QpfSB0ZXN0IOKGkmA7IgpuZXdfcGFpZF9jdGEgPSAiICAgICAgICBidXR0b24udGV4dENvbnRlbnQgPSBgU2V0IHVwIHRoaXMgJHttb25leShtYXhDb3N0KX0gdGVzdCDihpJgOyIKaWYganMuY291bnQob2xkX3BhaWRfY3RhKSAhPSAxOgogICAgcmFpc2UgU3lzdGVtRXhpdChmImV4cGVjdGVkIG9uZSBwYWlkIENUQSwgZm91bmQge2pzLmNvdW50KG9sZF9wYWlkX2N0YSl9IikKanMgPSBqcy5yZXBsYWNlKG9sZF9wYWlkX2N0YSwgbmV3X3BhaWRfY3RhKQpqc19wYXRoLndyaXRlX3RleHQoanMpCgp0ZXN0X3BhdGggPSBQYXRoKCJ0ZXN0cy90ZXN0X2N1c3RvbWVyX3dvcmtzcGFjZV9wcm9qZWN0X3VpLnB5IikKdGVzdCA9IHRlc3RfcGF0aC5yZWFkX3RleHQoKQphZGRpdGlvbiA9ICIiIgoKZGVmIHRlc3RfcmVjb21tZW5kZWRfbW92ZV9zdGVwX3Nob3dzX3RoZV9hY3R1YWxfbmV4dF9hY3Rpb24oKSAtPiBOb25lOgogICAgZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgogICAgaHRtbCA9IFBhdGgoImFwcC93ZWIvd29ya3NwYWNlLnYxLmh0bWwiKS5yZWFkX3RleHQoKQogICAganMgPSBQYXRoKCJhcHAvd2ViL3dvcmtzcGFjZS52MS5qcyIpLnJlYWRfdGV4dCgpCgogICAgYXNzZXJ0ICdpZD0iYWN0aXZhdGlvbi1jaGFubmVsLXRpdGxlIicgaW4gaHRtbAogICAgYXNzZXJ0ICdpZD0iYWN0aXZhdGlvbi1jaGFubmVsLWNvcHkiJyBpbiBodG1sCiAgICBhc3NlcnQgIiQoJ2FjdGl2YXRpb24tY2hhbm5lbC10aXRsZScpLnRleHRDb250ZW50ID0gJ0RvIHRoaXMgbm93JzsiIGluIGpzCiAgICBhc3NlcnQgInByZXZpZXdPcHBvcnR1bml0eS5yZWNvbW1lbmRlZF9hY3Rpb24iIGluIGpzCiAgICBhc3NlcnQgInByZXZpZXdPcHBvcnR1bml0eS5zaWduYWxfdG9fd2F0Y2giIGluIGpzCiAgICBhc3NlcnQgInNldEFjdGl2YXRpb25TdGVwKCdhY3RpdmF0aW9uLWNoYW5uZWwnLCBmYWxzZSwgdHJ1ZSwgJ0RvIG5vdycpOyIgaW4ganMKICAgIGFzc2VydCAiYnV0dG9uLnRleHRDb250ZW50ID0gJ09wZW4gd2hlcmUgdG8gZG8gdGhpcyDihpInOyIgaW4ganMKICAgIGFzc2VydCAnYnV0dG9uLnRleHRDb250ZW50ID0gYFNldCB1cCB0aGlzICR7bW9uZXkobWF4Q29zdCl9IHRlc3Qg4oaSYDsnIGluIGpzCiIiIgptYXJrZXIgPSAiZGVmIHRlc3RfcmVjb21tZW5kZWRfbW92ZV9zdGVwX3Nob3dzX3RoZV9hY3R1YWxfbmV4dF9hY3Rpb24oKSIKaWYgbWFya2VyIG5vdCBpbiB0ZXN0OgogICAgdGVzdF9wYXRoLndyaXRlX3RleHQodGVzdC5yc3RyaXAoKSArIGFkZGl0aW9uICsgIlxuIikKClBhdGgoIi5naXRodWIvd29ya2Zsb3dzL2ZpeC1yZWNvbW1lbmRlZC1tb3ZlLW5leHQtYWN0aW9uLnltbCIpLnVubGluaygpCg=='))"
       - name: Validate targeted tests and JavaScript
         run: |
           python -m pip install -e '.[dev]'
