@@ -79,6 +79,202 @@
     syncRecommendedMoveCta();
   };
 
+  const channelDisplayLabel = (platform, fallback = '') => ({
+    INSTAGRAM: 'Facebook & Instagram',
+    FACEBOOK: 'Facebook & Instagram',
+    TELEGRAM: 'Telegram',
+    REDDIT: 'Reddit',
+    TIKTOK: 'TikTok',
+    GOOGLE: 'Google',
+    YOUTUBE: 'YouTube',
+    LINKEDIN: 'LinkedIn',
+    X: 'X / Twitter',
+    TWITTER: 'X / Twitter',
+  })[String(platform || '').toUpperCase()] || fallback || String(platform || '').replaceAll('_', ' ');
+
+  const inferredOpportunityPlatform = (opportunity) => {
+    if (!opportunity) return null;
+    const explicit = String(opportunity.platform || '').trim().toUpperCase();
+    if (explicit) return explicit;
+    const haystack = [opportunity.url, opportunity.title, opportunity.rationale]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    if (haystack.includes('t.me/') || haystack.includes('telegram')) return 'TELEGRAM';
+    if (haystack.includes('reddit.com') || haystack.includes('reddit')) return 'REDDIT';
+    if (haystack.includes('instagram.com') || haystack.includes('facebook.com') || haystack.includes('meta')) return 'INSTAGRAM';
+    if (haystack.includes('tiktok.com') || haystack.includes('tiktok')) return 'TIKTOK';
+    if (haystack.includes('youtube.com') || haystack.includes('youtu.be')) return 'YOUTUBE';
+    if (haystack.includes('linkedin.com')) return 'LINKEDIN';
+    return null;
+  };
+
+  const distributionChannelCards = (data, channels) => {
+    const opportunity = data.preview_opportunity || null;
+    const recommendedPlatform = inferredOpportunityPlatform(opportunity);
+    const byPlatform = new Map();
+
+    channels.forEach((channel) => {
+      byPlatform.set(String(channel.platform || '').toUpperCase(), {
+        platform: String(channel.platform || '').toUpperCase(),
+        label: channelDisplayLabel(channel.platform, channel.label),
+        channel,
+        recommended: false,
+        opportunity: null,
+      });
+    });
+
+    if (opportunity) {
+      const platform = recommendedPlatform || 'RESEARCH_OPPORTUNITY';
+      const existing = byPlatform.get(platform);
+      if (existing) {
+        existing.recommended = true;
+        existing.opportunity = opportunity;
+      } else {
+        byPlatform.set(platform, {
+          platform,
+          label: recommendedPlatform
+            ? channelDisplayLabel(recommendedPlatform)
+            : (opportunity.surface === 'COMMUNITY' ? 'Community' : 'Researched opportunity'),
+          channel: null,
+          recommended: true,
+          opportunity,
+        });
+      }
+    }
+
+    return Array.from(byPlatform.values()).sort((a, b) => {
+      if (a.recommended !== b.recommended) return a.recommended ? -1 : 1;
+      return a.label.localeCompare(b.label);
+    });
+  };
+
+  const channelSetupCopy = (item) => {
+    if (item.opportunity && !item.channel) {
+      return 'Partizan found a real opportunity here. This path is manual/research-only for now, so there is no account or budget to approve.';
+    }
+    if (!item.channel) return 'Research-only path.';
+    if (item.channel.autonomous_execution_available) {
+      if (item.channel.connected) {
+        return 'Execution is available and the required account is already connected. You still choose the channel mode before Partizan acts.';
+      }
+      return 'Partizan can execute here after you choose the channel and connect the access this channel needs.';
+    }
+    return 'Partizan can research this channel, but automatic execution is not available. No paid setup is required unless a later move specifically needs it.';
+  };
+
+  const openChannelChoice = (item) => {
+    if (item.channel) {
+      const tab = document.querySelector('.tab-button[data-tab="channels"]');
+      if (tab) tab.click();
+      const row = document.querySelector(`[data-platform="${CSS.escape(item.channel.platform)}"]`);
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row.classList.add('journey-channel-focus');
+        window.setTimeout(() => row.classList.remove('journey-channel-focus'), 1800);
+        const select = row.querySelector('.channel-mode-select');
+        if (select) window.setTimeout(() => select.focus(), 250);
+      }
+      return;
+    }
+    if (item.opportunity && item.opportunity.url) {
+      window.open(item.opportunity.url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const renderDistributionJourney = async () => {
+    const projectId = currentProjectId();
+    const activationCard = document.getElementById('activation-card');
+    const list = activationCard && activationCard.querySelector('.activation-list');
+    if (!projectId || !activationCard || !list || activationCard.classList.contains('hidden')) return;
+
+    let data;
+    let channels;
+    try {
+      [data, channels] = await Promise.all([
+        api(`/customer/workspace/${encodeURIComponent(projectId)}`),
+        api(`/customer/workspace/${encodeURIComponent(projectId)}/channels`),
+      ]);
+    } catch (_) {
+      return;
+    }
+
+    const project = data.project || {};
+    const researchComplete = Boolean(data.preview_opportunity) || project.research_state === 'READY';
+    const cards = researchComplete ? distributionChannelCards(data, channels || []) : [];
+    const actionPanel = activationCard.querySelector('.activation-action-primary');
+    const progress = document.getElementById('activation-progress');
+
+    document.getElementById('activation-heading').textContent = researchComplete
+      ? 'Choose how you want to reach customers.'
+      : 'Partizan is finding where your customers already are.';
+    document.getElementById('activation-copy').textContent = researchComplete
+      ? 'Research comes first. Now choose the channel you want to use. Partizan will ask for money, an account or permission only after that choice, and only if that channel actually needs it.'
+      : 'Partizan starts from your product and researches real distribution opportunities before asking you to connect a channel or add acquisition budget.';
+
+    if (progress) progress.textContent = researchComplete ? '2 of 3' : '1 of 3';
+    if (actionPanel) actionPanel.classList.toggle('hidden', researchComplete);
+
+    list.classList.add('customer-journey-list');
+    list.innerHTML = `
+      <li class="complete customer-journey-stage">
+        <span class="activation-index">1</span>
+        <div><strong>Understand your product</strong><small>Partizan uses the product you already built, who it is for and what outcome you want.</small></div>
+        <span class="activation-step-state">Done</span>
+      </li>
+      <li class="${researchComplete ? 'complete' : 'current'} customer-journey-stage">
+        <span class="activation-index">2</span>
+        <div><strong>Find where customers are</strong><small>${researchComplete
+          ? 'Partizan found real distribution evidence before asking you to connect or fund anything.'
+          : 'Partizan researches communities, platforms and other places where your buyers may already be.'}</small></div>
+        <span class="activation-step-state">${researchComplete ? 'Done' : 'Now'}</span>
+      </li>
+      <li id="customer-journey-channel-stage" class="${researchComplete ? 'current' : ''} customer-journey-stage customer-journey-channel-stage">
+        <span class="activation-index">3</span>
+        <div class="customer-journey-channel-body">
+          <strong>Choose how you want to reach them</strong>
+          <small>${researchComplete
+            ? 'Pick the channel you want Partizan to help with. Setup appears only after you choose.'
+            : 'Channel choice appears after Partizan has evidence. No blind setup first.'}</small>
+          ${researchComplete ? '<div id="distribution-channel-choice" class="distribution-channel-grid"></div>' : ''}
+        </div>
+        <span class="activation-step-state">${researchComplete ? 'Now' : 'Waiting'}</span>
+      </li>`;
+
+    if (!researchComplete) return;
+
+    const choice = document.getElementById('distribution-channel-choice');
+    if (!choice) return;
+    choice.innerHTML = cards.length
+      ? cards.map((item, index) => {
+        const estimatedCost = Number((item.opportunity && item.opportunity.estimated_cost_max_usd) || 0);
+        const setupLabel = item.channel
+          ? `Set up ${item.label}`
+          : (item.opportunity && item.opportunity.url ? `Continue with ${item.label}` : `Review ${item.label}`);
+        const evidence = item.opportunity
+          ? `<p class="distribution-channel-evidence">${escapeHtml(item.opportunity.rationale || item.opportunity.recommended_action || '')}</p>`
+          : '<p class="distribution-channel-evidence">Available acquisition channel. Partizan will only use it after you choose the mode and complete any required connection.</p>';
+        const cost = estimatedCost > 0
+          ? `<span class="distribution-channel-cost">Paid move · up to $${estimatedCost.toLocaleString('en-US')}</span>`
+          : '<span class="distribution-channel-cost">No acquisition funding required now</span>';
+        return `<article class="distribution-channel-card${item.recommended ? ' recommended' : ''}" data-journey-channel-index="${index}">
+          <div class="distribution-channel-card-head"><strong>${escapeHtml(item.label)}</strong>${item.recommended ? '<span>Partizan recommends</span>' : '<span>Available option</span>'}</div>
+          ${evidence}
+          <p class="distribution-channel-setup">${escapeHtml(channelSetupCopy(item))}</p>
+          ${cost}
+          <button class="button ${item.recommended ? 'button-primary' : 'button-secondary'} distribution-channel-button" type="button" data-journey-channel-button="${index}">${escapeHtml(setupLabel)} →</button>
+        </article>`;
+      }).join('')
+      : '<article class="distribution-channel-empty"><strong>Research is ready, but no channel option is executable yet.</strong><p>Review the research in Activity. Partizan will not ask you to connect a random platform without evidence.</p></article>';
+
+    choice.querySelectorAll('[data-journey-channel-button]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const item = cards[Number(button.dataset.journeyChannelButton)];
+        if (item) openChannelChoice(item);
+      });
+    });
+  };
+
   const renderModal = () => {
     if (document.getElementById('new-project-modal')) return;
     const modal = document.createElement('div');
@@ -288,6 +484,10 @@
       }
     });
   };
+
+  window.addEventListener('partizan:workspace-ready', () => {
+    void renderDistributionJourney();
+  });
 
   install();
 })();
