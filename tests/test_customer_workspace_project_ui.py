@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -40,9 +41,8 @@ def test_workspace_loads_versioned_new_project_assets() -> None:
     assert "'/customer/account/projects'" in javascript.text
     assert "customer_token" not in javascript.text
 
-def test_recommended_move_step_shows_the_actual_next_action() -> None:
-    from pathlib import Path
 
+def test_recommended_move_step_shows_the_actual_next_action() -> None:
     html = Path("app/web/workspace.v1.html").read_text()
     js = Path("app/web/workspace.v1.js").read_text()
 
@@ -54,4 +54,3 @@ def test_recommended_move_step_shows_the_actual_next_action() -> None:
     assert "setActivationStep('activation-channel', false, true, 'Do now');" in js
     assert "button.textContent = 'Open where to do this →';" in js
     assert 'button.textContent = `Set up this ${money(maxCost)} test →`;' in js
-
