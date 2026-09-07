@@ -1,0 +1,94 @@
+name: Apply actionable recommended move UX
+
+on:
+  push:
+    branches:
+      - fix/recommended-move-next-action
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/recommended-move-next-action
+          fetch-depth: 0
+      - name: Make recommended move actionable
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          html_path = Path('app/web/workspace.v1.html')
+          html = html_path.read_text()
+          old = '<li id="activation-channel"><span class="activation-index">4</span><div><strong>Recommended first move</strong><small>Partizan explains what to try, why and what signal to watch.</small></div><span class="activation-step-state">Now</span></li>'
+          new = '<li id="activation-channel"><span class="activation-index">4</span><div><strong id="activation-channel-title">Recommended first move</strong><small id="activation-channel-copy">Partizan will put the concrete action here as soon as research finds one.</small></div><span class="activation-step-state">Now</span></li>'
+          if html.count(old) != 1:
+              raise SystemExit(f'expected exactly one activation-channel markup, found {html.count(old)}')
+          html_path.write_text(html.replace(old, new))
+
+          js_path = Path('app/web/workspace.v1.js')
+          js = js_path.read_text()
+          old_reset = '''    $('activation-copy').textContent = 'Partizan starts from your product, researches where people may already be and recommends the next useful move. You only add money or access when a specific move needs it.';
+    setActivationStep('activation-product', true, false, 'Done');'''
+          new_reset = '''    $('activation-copy').textContent = 'Partizan starts from your product, researches where people may already be and recommends the next useful move. You only add money or access when a specific move needs it.';
+    $('activation-channel-title').textContent = 'Recommended first move';
+    $('activation-channel-copy').textContent = 'Partizan will put the concrete action here as soon as research finds one.';
+    setActivationStep('activation-product', true, false, 'Done');'''
+          if js.count(old_reset) != 1:
+              raise SystemExit(f'expected one activation reset anchor, found {js.count(old_reset)}')
+          js = js.replace(old_reset, new_reset)
+
+          old_opportunity = '''      setActivationStep('activation-budget', true, false, 'Done');
+      setActivationStep('activation-channel', false, true, 'Now');
+      setActivationStep('activation-limit', false, false, 'If needed');'''
+          new_opportunity = '''      setActivationStep('activation-budget', true, false, 'Done');
+      const recommendedMove = String(previewOpportunity.recommended_action || '').trim();
+      const signalToWatch = String(previewOpportunity.signal_to_watch || '').trim();
+      $('activation-channel-title').textContent = 'Do this now';
+      $('activation-channel-copy').textContent = signalToWatch
+        ? `${recommendedMove} Watch: ${signalToWatch}`
+        : recommendedMove;
+      setActivationStep('activation-channel', false, true, 'Do now');
+      setActivationStep('activation-limit', false, false, 'If needed');'''
+          if js.count(old_opportunity) != 1:
+              raise SystemExit(f'expected one opportunity activation anchor, found {js.count(old_opportunity)}')
+          js = js.replace(old_opportunity, new_opportunity)
+
+          old_free_cta = "        button.textContent = 'Open this $0 move →';"
+          new_free_cta = "        button.textContent = 'Open where to do this →';"
+          if js.count(old_free_cta) != 1:
+              raise SystemExit(f'expected one free CTA, found {js.count(old_free_cta)}')
+          js = js.replace(old_free_cta, new_free_cta)
+
+          old_paid_cta = "        button.textContent = `Run this ${money(maxCost)} test →`;"
+          new_paid_cta = "        button.textContent = `Set up this ${money(maxCost)} test →`;"
+          if js.count(old_paid_cta) != 1:
+              raise SystemExit(f'expected one paid CTA, found {js.count(old_paid_cta)}')
+          js = js.replace(old_paid_cta, new_paid_cta)
+          js_path.write_text(js)
+
+          test_path = Path('tests/test_customer_workspace_project_ui.py')
+          test = test_path.read_text()
+          addition = '''\n\ndef test_recommended_move_step_shows_the_actual_next_action() -> None:\n    from pathlib import Path\n\n    html = Path("app/web/workspace.v1.html").read_text()\n    js = Path("app/web/workspace.v1.js").read_text()\n\n    assert 'id="activation-channel-title"' in html\n    assert 'id="activation-channel-copy"' in html\n    assert "$('activation-channel-title').textContent = 'Do this now';" in js\n    assert 'previewOpportunity.recommended_action' in js\n    assert 'previewOpportunity.signal_to_watch' in js\n    assert "setActivationStep('activation-channel', false, true, 'Do now');" in js\n    assert "button.textContent = 'Open where to do this →';" in js\n    assert 'button.textContent = `Set up this ${money(maxCost)} test →`;' in js\n'''
+          marker = 'def test_recommended_move_step_shows_the_actual_next_action()'
+          if marker not in test:
+              test_path.write_text(test.rstrip() + addition + '\n')
+
+          Path('.github/workflows/fix-recommended-move-next-action.yml').unlink()
+          PY
+      - name: Validate targeted tests and JavaScript
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_customer_workspace_project_ui.py tests/test_web_workspace.py
+          node --check app/web/workspace.v1.js
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Make recommended move show the concrete next action'
+          git push origin HEAD:fix/recommended-move-next-action
