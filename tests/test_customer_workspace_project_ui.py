@@ -49,7 +49,10 @@ def test_workspace_loads_versioned_new_project_assets() -> None:
     assert "Partizan recommends" in javascript.text
     assert "Setup appears only after you choose" in javascript.text
     assert "data-journey-channel-button" in javascript.text
-    assert ".tab-button[data-tab=\"channels\"]" in javascript.text
+    assert '#channel-snapshot [data-platform=' in javascript.text
+    assert '.tab-button[data-tab="overview"]' in javascript.text
+    assert '.tab-button[data-tab="activity"]' in javascript.text
+    assert "channel-mode-select" not in javascript.text
     assert "customer_token" not in javascript.text
 
 
@@ -60,10 +63,18 @@ def test_distribution_choice_replaces_the_six_step_activation_ladder() -> None:
     assert "Research comes first. Now choose the channel you want to use." in js
     assert "money, an account or permission only after that choice" in js
     assert "No acquisition funding required now" in js
-    assert "manual/research-only for now" in js
+    assert "No account or acquisition budget needs to be connected" in js
+    assert "Automatic execution is not available yet" in js
     assert "Partizan will not ask you to connect a random platform without evidence." in js
+    assert "manualResearchPath" in js
+    assert "!item.channel.autonomous_execution_available" in js
+    assert "Open ${item.label} opportunity" in js
+    assert "Connect ${item.label}" in js
+    assert "focusOverviewChannelControl" in js
+    assert ".channel-connect-button, .channel-toggle" in js
     assert "openChannelChoice" in js
-    assert "channel-mode-select" in js
+    assert "channel-mode-select" not in js
+    assert '.tab-button[data-tab="channels"]' not in js
 
 
 def test_recommended_move_step_still_contains_real_research_evidence() -> None:
