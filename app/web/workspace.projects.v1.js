@@ -149,37 +149,53 @@
     });
   };
 
+  const manualResearchPath = (item) => !item.channel || !item.channel.autonomous_execution_available;
+
   const channelSetupCopy = (item) => {
-    if (item.opportunity && !item.channel) {
-      return 'Partizan found a real opportunity here. This path is manual/research-only for now, so there is no account or budget to approve.';
+    if (manualResearchPath(item) && item.opportunity) {
+      return 'Partizan found a real opportunity here. No account or acquisition budget needs to be connected for this path.';
     }
-    if (!item.channel) return 'Research-only path.';
-    if (item.channel.autonomous_execution_available) {
-      if (item.channel.connected) {
-        return 'Execution is available and the required account is already connected. You still choose the channel mode before Partizan acts.';
+    if (manualResearchPath(item)) {
+      return 'Research-only channel. Automatic execution is not available yet, so there is no account setup to complete.';
+    }
+    if (item.channel.connected) {
+      return 'Execution is available and the required account is already connected. You still choose the channel mode before Partizan acts.';
+    }
+    return 'Partizan can execute here after you choose the channel and connect the access this channel needs.';
+  };
+
+  const focusOverviewChannelControl = (item) => {
+    const overviewTab = document.querySelector('.tab-button[data-tab="overview"]');
+    if (overviewTab) overviewTab.click();
+    window.setTimeout(() => {
+      const row = document.querySelector(`#channel-snapshot [data-platform="${CSS.escape(item.channel.platform)}"]`);
+      if (!row) return;
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      row.classList.add('journey-channel-focus');
+      window.setTimeout(() => row.classList.remove('journey-channel-focus'), 1800);
+      const control = row.querySelector('.channel-connect-button, .channel-toggle');
+      if (!control) return;
+      if (item.channel.platform === 'INSTAGRAM' && !item.channel.connected && control.matches('.channel-connect-button')) {
+        control.click();
+        return;
       }
-      return 'Partizan can execute here after you choose the channel and connect the access this channel needs.';
-    }
-    return 'Partizan can research this channel, but automatic execution is not available. No paid setup is required unless a later move specifically needs it.';
+      window.setTimeout(() => control.focus(), 250);
+    }, 0);
   };
 
   const openChannelChoice = (item) => {
-    if (item.channel) {
-      const tab = document.querySelector('.tab-button[data-tab="channels"]');
-      if (tab) tab.click();
-      const row = document.querySelector(`[data-platform="${CSS.escape(item.channel.platform)}"]`);
-      if (row) {
-        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        row.classList.add('journey-channel-focus');
-        window.setTimeout(() => row.classList.remove('journey-channel-focus'), 1800);
-        const select = row.querySelector('.channel-mode-select');
-        if (select) window.setTimeout(() => select.focus(), 250);
+    if (manualResearchPath(item)) {
+      if (item.opportunity && item.opportunity.url) {
+        window.open(item.opportunity.url, '_blank', 'noopener,noreferrer');
+        return;
       }
+      const activityTab = document.querySelector('.tab-button[data-tab="activity"]');
+      if (activityTab) activityTab.click();
+      const researchCard = document.querySelector('.research-card');
+      if (researchCard) researchCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
     }
-    if (item.opportunity && item.opportunity.url) {
-      window.open(item.opportunity.url, '_blank', 'noopener,noreferrer');
-    }
+    focusOverviewChannelControl(item);
   };
 
   const renderDistributionJourney = async () => {
@@ -248,9 +264,10 @@
     choice.innerHTML = cards.length
       ? cards.map((item, index) => {
         const estimatedCost = Number((item.opportunity && item.opportunity.estimated_cost_max_usd) || 0);
-        const setupLabel = item.channel
-          ? `Set up ${item.label}`
-          : (item.opportunity && item.opportunity.url ? `Continue with ${item.label}` : `Review ${item.label}`);
+        const manual = manualResearchPath(item);
+        const setupLabel = manual
+          ? (item.opportunity && item.opportunity.url ? `Open ${item.label} opportunity` : `Review ${item.label}`)
+          : (item.channel.connected ? `Use ${item.label}` : `Connect ${item.label}`);
         const evidence = item.opportunity
           ? `<p class="distribution-channel-evidence">${escapeHtml(item.opportunity.rationale || item.opportunity.recommended_action || '')}</p>`
           : '<p class="distribution-channel-evidence">Available acquisition channel. Partizan will only use it after you choose the mode and complete any required connection.</p>';
