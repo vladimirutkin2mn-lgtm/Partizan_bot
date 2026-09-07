@@ -39,6 +39,10 @@ def test_workspace_loads_versioned_new_project_assets() -> None:
     assert "Delete project" in javascript.text
     assert "method: 'DELETE'" in javascript.text
     assert "'/customer/account/projects'" in javascript.text
+    assert "activation-inline-primary" in javascript.text
+    assert "channelTitle.textContent.trim() === 'Do this now'" in javascript.text
+    assert "inline.addEventListener('click', () => primary.click())" in javascript.text
+    assert "new MutationObserver(syncRecommendedMoveCta)" in javascript.text
     assert "customer_token" not in javascript.text
 
 
