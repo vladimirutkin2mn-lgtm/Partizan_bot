@@ -12,6 +12,25 @@
     OTHER: 'Other',
   };
 
+  const acquisitionChannelCopy = {
+    INSTAGRAM: {
+      label: 'Instagram & Facebook',
+      description: 'Meta audiences and paid or organic distribution.',
+    },
+    TIKTOK: {
+      label: 'TikTok',
+      description: 'Short-form discovery, creators and audience testing.',
+    },
+    REDDIT: {
+      label: 'Reddit',
+      description: 'High-intent communities and relevant discussion threads.',
+    },
+    TELEGRAM: {
+      label: 'Telegram',
+      description: 'Communities, groups and public conversations.',
+    },
+  };
+
   const api = async (path, options = {}) => {
     const headers = new Headers(options.headers || {});
     if (options.body != null) headers.set('Content-Type', 'application/json');
@@ -77,6 +96,272 @@
       attributeFilter: ['class', 'disabled'],
     });
     syncRecommendedMoveCta();
+  };
+
+  const opportunityUrls = (opportunity) => {
+    if (!opportunity) return [];
+    const evidence = Array.isArray(opportunity.provenance) ? opportunity.provenance : [];
+    return [opportunity.url, ...evidence.map((item) => item && item.url)].filter(Boolean);
+  };
+
+  const inferResearchedChannel = (opportunity) => {
+    for (const raw of opportunityUrls(opportunity)) {
+      try {
+        const host = new URL(String(raw)).hostname.toLowerCase().replace(/^www\./, '');
+        if (host === 't.me' || host === 'telegram.me' || host.endsWith('.telegram.me')) return 'TELEGRAM';
+        if (host === 'reddit.com' || host.endsWith('.reddit.com')) return 'REDDIT';
+        if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) return 'TIKTOK';
+        if (
+          host === 'instagram.com' || host.endsWith('.instagram.com')
+          || host === 'facebook.com' || host.endsWith('.facebook.com')
+          || host === 'fb.com' || host.endsWith('.fb.com')
+        ) return 'INSTAGRAM';
+      } catch (_) {
+        // Research URLs are display evidence only. Unknown hosts stay unclassified.
+      }
+    }
+    return null;
+  };
+
+  const openWorkspaceTab = (name) => {
+    const button = document.querySelector(`.tab-button[data-tab="${name}"]`);
+    if (button) button.click();
+  };
+
+  const acquisitionStage = (number, title, copy, state, current = false) => `
+    <li class="acquisition-stage ${current ? 'current' : ''} ${state === 'Done' ? 'complete' : ''}">
+      <span class="acquisition-stage-index">${number}</span>
+      <div><strong>${escapeHtml(title)}</strong><small>${escapeHtml(copy)}</small></div>
+      <span class="acquisition-stage-state">${escapeHtml(state)}</span>
+    </li>`;
+
+  const ensureAcquisitionFlow = () => {
+    const activationCard = document.getElementById('activation-card');
+    if (!activationCard) return null;
+    const legacyList = activationCard.querySelector('.activation-list');
+    if (legacyList) legacyList.classList.add('hidden');
+    let flow = document.getElementById('acquisition-path');
+    if (!flow) {
+      flow = document.createElement('section');
+      flow.id = 'acquisition-path';
+      flow.className = 'acquisition-path';
+      const action = activationCard.querySelector('.activation-action-primary');
+      activationCard.insertBefore(flow, action || activationCard.firstChild);
+    }
+    let choice = document.getElementById('acquisition-channel-choice');
+    if (!choice) {
+      choice = document.createElement('section');
+      choice.id = 'acquisition-channel-choice';
+      choice.className = 'acquisition-channel-choice hidden';
+      const preview = document.getElementById('activation-preview');
+      if (preview && preview.parentNode === activationCard) {
+        preview.insertAdjacentElement('afterend', choice);
+      } else {
+        activationCard.appendChild(choice);
+      }
+    }
+    return { activationCard, flow, choice };
+  };
+
+  const channelCards = (channels, recommendedPlatform) => channels.map((channel) => {
+    const copy = acquisitionChannelCopy[channel.platform] || {
+      label: channel.label || channel.platform,
+      description: 'Supported acquisition surface.',
+    };
+    const recommended = channel.platform === recommendedPlatform;
+    const off = channel.mode === 'OFF';
+    return `
+      <article class="acquisition-channel-card ${recommended ? 'recommended' : ''} ${off ? 'is-off' : ''}">
+        <div class="acquisition-channel-card-head">
+          <strong>${escapeHtml(copy.label)}</strong>
+          <span>${recommended ? 'Recommended · researched' : (off ? 'Turned off' : 'Available channel')}</span>
+        </div>
+        <p>${escapeHtml(copy.description)}</p>
+        <small>${recommended
+          ? 'The free research evidence maps to this channel.'
+          : 'Available to choose. The free preview has not proved this channel yet.'}</small>
+        <button class="button ${recommended ? 'button-primary' : 'button-secondary'}" type="button" data-select-acquisition-channel="${escapeHtml(channel.platform)}" ${off ? 'disabled' : ''}>
+          ${off ? 'Turn it on in Channels first' : `Choose ${escapeHtml(copy.label)} →`}
+        </button>
+      </article>`;
+  }).join('');
+
+  const selectedChannelSetup = (selected, data, recommendedPlatform) => {
+    const copy = acquisitionChannelCopy[selected.platform] || {
+      label: selected.label || selected.platform,
+      description: 'Selected acquisition channel.',
+    };
+    const opportunity = data.preview_opportunity || null;
+    const opportunityUrl = selected.platform === recommendedPlatform ? opportunityUrls(opportunity)[0] : null;
+    if (selected.platform === 'INSTAGRAM') {
+      if (!selected.connected) {
+        return `
+          <section class="acquisition-channel-setup">
+            <span class="eyebrow">Channel setup</span>
+            <h3>Connect Meta for ${escapeHtml(copy.label)}.</h3>
+            <p>Your channel choice is saved. Connecting Meta grants account access only; it does not authorize spend or enable autonomous execution.</p>
+            <div class="acquisition-setup-actions">
+              <button class="button button-primary" type="button" data-acquisition-connect-meta>Connect Meta →</button>
+              <button class="button button-secondary" type="button" data-acquisition-change-channel>Choose a different channel</button>
+            </div>
+          </section>`;
+      }
+      return `
+        <section class="acquisition-channel-setup">
+          <span class="eyebrow">Channel setup</span>
+          <h3>${escapeHtml(copy.label)} selected · Meta connected.</h3>
+          <p>Account access is ready. Execution permission and acquisition budget remain separate controls and are never granted by choosing this channel.</p>
+          ${selected.execution_blocker ? `<p class="acquisition-setup-note">Current execution blocker: ${escapeHtml(selected.execution_blocker)}.</p>` : ''}
+          <div class="acquisition-setup-actions">
+            <button class="button button-primary" type="button" data-acquisition-open-channels>Review channel controls →</button>
+            <button class="button button-secondary" type="button" data-acquisition-change-channel>Choose a different channel</button>
+          </div>
+        </section>`;
+    }
+    return `
+      <section class="acquisition-channel-setup">
+        <span class="eyebrow">Channel selected</span>
+        <h3>${escapeHtml(copy.label)} is where you want to start.</h3>
+        <p>Partizan saved this choice separately from execution permission. ${escapeHtml(copy.label)} stays Research only until a customer-facing connection and execution path is production-ready.</p>
+        <p class="acquisition-setup-note">Automatic account connection for ${escapeHtml(copy.label)} is not available in the customer workspace yet. Partizan will not pretend the channel is connected or authorize spend.</p>
+        <div class="acquisition-setup-actions">
+          ${opportunityUrl ? `<a class="button button-secondary" href="${escapeHtml(opportunityUrl)}" target="_blank" rel="noopener noreferrer">Open researched opportunity ↗</a>` : ''}
+          <button class="button button-secondary" type="button" data-acquisition-open-channels>Review channel controls →</button>
+          <button class="button button-secondary" type="button" data-acquisition-change-channel>Choose a different channel</button>
+        </div>
+      </section>`;
+  };
+
+  const bindAcquisitionFlowActions = (data, channels, recommendedPlatform) => {
+    document.querySelectorAll('[data-select-acquisition-channel]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const projectId = currentProjectId();
+        if (!projectId || button.disabled) return;
+        const original = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Saving choice…';
+        try {
+          const updated = await api(`/customer/workspace/${encodeURIComponent(projectId)}/channel-selection`, {
+            method: 'PUT',
+            body: JSON.stringify({ platform: button.dataset.selectAcquisitionChannel }),
+          });
+          renderAcquisitionFlow(data, updated);
+        } catch (error) {
+          const errorNode = document.getElementById('acquisition-flow-error');
+          if (errorNode) {
+            errorNode.textContent = error.message;
+            errorNode.classList.remove('hidden');
+          }
+          button.disabled = false;
+          button.textContent = original;
+        }
+      });
+    });
+    document.querySelectorAll('[data-acquisition-change-channel]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const picker = document.getElementById('acquisition-channel-picker');
+        if (picker) {
+          picker.classList.remove('hidden');
+          picker.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      });
+    });
+    document.querySelectorAll('[data-acquisition-open-channels]').forEach((button) => {
+      button.addEventListener('click', () => openWorkspaceTab('channels'));
+    });
+    document.querySelectorAll('[data-acquisition-connect-meta]').forEach((button) => {
+      button.addEventListener('click', () => {
+        openWorkspaceTab('settings');
+        window.setTimeout(() => {
+          const meta = document.getElementById('meta-connect');
+          if (meta && !meta.disabled) meta.click();
+        }, 0);
+      });
+    });
+  };
+
+  const renderAcquisitionFlow = (data, channels) => {
+    const nodes = ensureAcquisitionFlow();
+    if (!nodes || nodes.activationCard.classList.contains('hidden')) return;
+    const project = data.project || {};
+    const researchDone = Boolean(data.preview_opportunity) || project.research_state === 'READY';
+    const selected = channels.find((item) => item.selected) || null;
+    const recommendedPlatform = inferResearchedChannel(data.preview_opportunity || null);
+    const action = nodes.activationCard.querySelector('.activation-action-primary');
+    const progress = document.getElementById('activation-progress');
+    const heading = document.getElementById('activation-heading');
+    const copy = document.getElementById('activation-copy');
+
+    if (progress) progress.textContent = selected ? 'Channel selected' : (researchDone ? 'Choose channel' : 'Research');
+    if (heading) heading.textContent = selected
+      ? `${selected.label} selected. Set up only what this channel needs.`
+      : (researchDone ? 'Research is ready. Choose where to start.' : 'Find where your customers already are.');
+    if (copy) copy.textContent = selected
+      ? 'Choosing a channel does not grant account access, execution permission or acquisition spend. Those are requested separately only when this channel needs them.'
+      : (researchDone
+        ? 'Review the evidence, then choose the channel where you want Partizan to help you promote this product.'
+        : 'Partizan researches real distribution opportunities before asking you to choose a channel, connect an account or add acquisition budget.');
+
+    nodes.flow.innerHTML = `
+      <ol class="acquisition-path-stages">
+        ${acquisitionStage(1, 'Understand your product', 'Product understanding is ready for acquisition research.', 'Done')}
+        ${acquisitionStage(2, 'Find where customers are', researchDone
+          ? 'Partizan found evidence-backed distribution opportunities.'
+          : 'Partizan researches real places where potential customers already gather.', researchDone ? 'Done' : 'Now', !researchDone)}
+        ${acquisitionStage(3, 'Choose where to start', selected
+          ? `${selected.label} selected. This choice grants no execution permission.`
+          : (researchDone ? 'Choose the channel you want to use after reviewing the research.' : 'Channel choice appears after research.'), selected ? 'Done' : (researchDone ? 'Now' : 'Waiting'), researchDone && !selected)}
+      </ol>`;
+
+    if (action) action.classList.toggle('hidden', researchDone);
+    const primary = document.getElementById('activation-primary');
+    if (!researchDone && primary && primary.textContent.includes('first real opportunity')) {
+      primary.textContent = 'Find distribution opportunities →';
+    }
+
+    if (!researchDone) {
+      nodes.choice.classList.add('hidden');
+      nodes.choice.innerHTML = '';
+      return;
+    }
+
+    nodes.choice.classList.remove('hidden');
+    nodes.choice.innerHTML = `
+      ${selectedChannelSetup(selected || {}, data, recommendedPlatform)}
+      <section id="acquisition-channel-picker" class="acquisition-channel-picker ${selected ? 'hidden' : ''}">
+        <div class="acquisition-choice-head">
+          <span class="eyebrow">Choose your channel</span>
+          <h3>Where do you want Partizan to help you acquire customers?</h3>
+          <p>The researched recommendation is highlighted when the free evidence maps cleanly to a supported channel. Other channels remain choices, not research claims.</p>
+        </div>
+        <div class="acquisition-channel-grid">${channelCards(channels, recommendedPlatform)}</div>
+        <p id="acquisition-flow-error" class="project-form-error hidden"></p>
+        <p class="acquisition-research-note">Research access and acquisition budget are separate. A larger paid research report can expand the market map; choosing a channel never spends acquisition money.</p>
+      </section>`;
+    if (!selected) {
+      const setup = nodes.choice.querySelector('.acquisition-channel-setup');
+      if (setup) setup.remove();
+    }
+    bindAcquisitionFlowActions(data, channels, recommendedPlatform);
+  };
+
+  let acquisitionFlowRequest = 0;
+  const refreshAcquisitionFlow = async (projectId) => {
+    if (!projectId) return;
+    const request = ++acquisitionFlowRequest;
+    const [data, channels] = await Promise.all([
+      api(`/customer/workspace/${encodeURIComponent(projectId)}`),
+      api(`/customer/workspace/${encodeURIComponent(projectId)}/channels`),
+    ]);
+    if (request !== acquisitionFlowRequest || currentProjectId() !== String(projectId)) return;
+    renderAcquisitionFlow(data, channels);
+  };
+
+  const installAcquisitionFlow = () => {
+    window.addEventListener('partizan:workspace-ready', (event) => {
+      const projectId = event.detail && event.detail.projectId;
+      refreshAcquisitionFlow(projectId).catch(() => {});
+    });
   };
 
   const renderModal = () => {
@@ -248,6 +533,7 @@
     renderModal();
     ensureProjectDetailsCard();
     installRecommendedMoveCta();
+    installAcquisitionFlow();
 
     button.addEventListener('click', openModal);
     document.querySelectorAll('[data-close-new-project]').forEach((node) => node.addEventListener('click', closeModal));
