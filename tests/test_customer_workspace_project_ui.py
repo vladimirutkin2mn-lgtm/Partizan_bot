@@ -33,6 +33,8 @@ def test_workspace_loads_versioned_new_project_assets() -> None:
     assert ".project-modal" in css.text
     assert ".project-details-card" in css.text
     assert ".project-danger-zone" in css.text
+    assert ".distribution-channel-grid" in css.text
+    assert ".distribution-channel-card.recommended" in css.text
     assert "+ New project" in javascript.text
     assert "Project details" in javascript.text
     assert "Description" in javascript.text
@@ -40,21 +42,36 @@ def test_workspace_loads_versioned_new_project_assets() -> None:
     assert "method: 'DELETE'" in javascript.text
     assert "'/customer/account/projects'" in javascript.text
     assert "activation-inline-primary" in javascript.text
-    assert "channelTitle.textContent.trim() === 'Do this now'" in javascript.text
-    assert "inline.addEventListener('click', () => primary.click())" in javascript.text
     assert "new MutationObserver(syncRecommendedMoveCta)" in javascript.text
+    assert "Understand your product" in javascript.text
+    assert "Find where customers are" in javascript.text
+    assert "Choose how you want to reach them" in javascript.text
+    assert "Partizan recommends" in javascript.text
+    assert "Setup appears only after you choose" in javascript.text
+    assert "data-journey-channel-button" in javascript.text
+    assert ".tab-button[data-tab=\"channels\"]" in javascript.text
     assert "customer_token" not in javascript.text
 
 
-def test_recommended_move_step_shows_the_actual_next_action() -> None:
+def test_distribution_choice_replaces_the_six_step_activation_ladder() -> None:
+    js = Path("app/web/workspace.projects.v1.js").read_text()
+
+    assert "progress.textContent = researchComplete ? '2 of 3' : '1 of 3';" in js
+    assert "Research comes first. Now choose the channel you want to use." in js
+    assert "money, an account or permission only after that choice" in js
+    assert "No acquisition funding required now" in js
+    assert "manual/research-only for now" in js
+    assert "Partizan will not ask you to connect a random platform without evidence." in js
+    assert "openChannelChoice" in js
+    assert "channel-mode-select" in js
+
+
+def test_recommended_move_step_still_contains_real_research_evidence() -> None:
     html = Path("app/web/workspace.v1.html").read_text()
     js = Path("app/web/workspace.v1.js").read_text()
 
     assert 'id="activation-channel-title"' in html
     assert 'id="activation-channel-copy"' in html
-    assert "$('activation-channel-title').textContent = 'Do this now';" in js
     assert "previewOpportunity.recommended_action" in js
     assert "previewOpportunity.signal_to_watch" in js
-    assert "setActivationStep('activation-channel', false, true, 'Do now');" in js
-    assert "button.textContent = 'Open where to do this →';" in js
-    assert 'button.textContent = `Set up this ${money(maxCost)} test →`;' in js
+    assert "data.preview_opportunity" in js
