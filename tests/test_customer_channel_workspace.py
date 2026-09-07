@@ -16,10 +16,16 @@ from app.runtime_store import get_runtime_store
 
 
 @pytest.fixture(autouse=True)
-def reset_customer_channel_state() -> None:
+def reset_customer_channel_state():
+    previous_meta_public_ready = customer_channel_service._settings.meta_oauth_public_ready
+    customer_channel_service._settings.meta_oauth_public_ready = True
     customer_account_service.reset()
     customer_funnel_service.reset()
     growth_balance_service.reset()
+    try:
+        yield
+    finally:
+        customer_channel_service._settings.meta_oauth_public_ready = previous_meta_public_ready
 
 
 def _registered_client() -> tuple[TestClient, object]:
@@ -79,6 +85,27 @@ def test_channel_controls_default_every_surface_to_research_only() -> None:
         assert channels[platform]["mode"] == "RESEARCH_ONLY"
         assert channels[platform]["autonomous_execution_available"] is False
         assert channels[platform]["execution_ready"] is False
+
+
+def test_meta_customer_execution_fails_closed_until_public_ready() -> None:
+    client, preview = _registered_client()
+    customer_channel_service._settings.meta_oauth_public_ready = False
+
+    response = client.get(f"/customer/workspace/{preview.project_id}/channels")
+
+    assert response.status_code == 200
+    instagram = next(item for item in response.json() if item["platform"] == "INSTAGRAM")
+    assert instagram["mode"] == "RESEARCH_ONLY"
+    assert instagram["autonomous_execution_available"] is False
+    assert instagram["execution_ready"] is False
+    assert instagram["execution_blocker"] == "Meta customer connection is temporarily unavailable"
+
+    blocked = client.put(
+        f"/customer/workspace/{preview.project_id}/channels",
+        json={"channels": [{"platform": "INSTAGRAM", "mode": "AUTO"}]},
+    )
+    assert blocked.status_code == 409
+    assert "Meta customer connection is temporarily unavailable" in blocked.json()["detail"]
 
 
 def test_customer_can_turn_channels_off_and_policy_persists() -> None:
@@ -186,7 +213,6 @@ def test_channel_view_exposes_per_platform_spend_customers_cac_revenue_and_roas(
     assert reddit["cac_usd"] == 20.0
     assert reddit["revenue_usd"] == 240.0
     assert reddit["roas"] == 3.0
-
 
 
 def test_customer_cannot_enable_auto_until_connection_and_payment_path_are_ready(
