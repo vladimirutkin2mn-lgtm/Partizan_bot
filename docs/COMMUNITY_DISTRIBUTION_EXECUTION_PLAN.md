@@ -137,6 +137,20 @@ Expected customer packaging:
 
 Pricing should be validated against real operating cost and acquisition outcomes before hard-coding plan amounts.
 
+## GitHub execution tracker
+
+| Phase | Issue | Current status |
+|---|---|---|
+| 1. Channel execution foundation | #249 | In implementation via PR #248 |
+| 2. Telegram research connector | #250 | Planned; depends on #249 |
+| 3. Telegram client-owned publish | #251 | Planned; depends on #249 and #250 |
+| 4. Reddit research + CommunityPolicy | #252 | Planned; depends on #249 |
+| 5. Reddit client-owned publish | #253 | Planned; depends on #249 and #252; external API/commercial readiness gate |
+| 6. Partizan Managed Distribution | #254 | Planned; depends on #249 and at least one working publish path |
+| 7. Economics + learning loop | #255 | Planned; requires real execution evidence |
+
+The issue checklists are the acceptance criteria. This file defines sequencing and product intent; issues define what must be proven before a phase can close.
+
 ## Delivery phases
 
 ### Phase 1 — Channel execution foundation
