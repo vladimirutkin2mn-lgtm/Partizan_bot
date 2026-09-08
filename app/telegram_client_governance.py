@@ -5,7 +5,7 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
-from pydantic import BaseModel, Field, SecretStr
+from pydantic import BaseModel, Field
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 from telethon.tl import types as telegram_types
@@ -445,7 +445,8 @@ class CustomerTelegramGovernanceService:
                 recent += 1
         if recent >= maximum:
             raise CustomerTelegramClientPublishError(
-                f"Telegram automation is limited to {maximum} confirmed publishes per 24 hours for this project"
+                "Telegram automation is limited to "
+                f"{maximum} confirmed publishes per 24 hours for this project"
             )
 
     def _optional_datetime(self, value: object) -> datetime | None:
