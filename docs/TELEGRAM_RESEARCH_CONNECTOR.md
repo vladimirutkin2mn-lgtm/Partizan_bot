@@ -5,11 +5,24 @@
 Phase: Community Distribution Phase 2
 
 - GitHub issue: #250
-- implementation PR: #257
-- foundation dependency: #248 / #249
+- implementation PR: #257 — merged
+- foundation dependency: #248 / #249 — complete
 - programme tracker: #256
+- deployed release: `20aa9433dc7301cf541359535eb22e386a265f7e`
 
-This document maps the Telegram research implementation to the Phase 2 acceptance criteria. It does **not** declare the phase production-complete. The final acceptance item is a real production research run using an authorised Telegram research session.
+The Phase 2 implementation is merged, tested and deployed. The phase is **not production-complete** yet because the final acceptance item requires a real native Telegram research run using an authorised production research session.
+
+A production verification attempt from draft verification PR #258 / CI #808 reached the live API container on the exact deployed release and confirmed that Telegram research is currently disabled operationally:
+
+```text
+TELEGRAM_RESEARCH_PROVIDER=unavailable
+TELEGRAM_RESEARCH_PUBLIC_READY=false
+API ID configured: false
+API hash configured: false
+Authorised session configured: false
+```
+
+The same live verification confirmed Telegram `PUBLISH` remains false and `CLIENT_OWNED` publishing remains unavailable. No credential values were emitted. This is an operational configuration blocker, not a connector-code failure.
 
 ## Boundary
 
@@ -111,7 +124,7 @@ standalone_post: AVAILABLE | UNAVAILABLE | UNKNOWN
 publisher_permission_verified: false
 ```
 
-These values do **not** mean a customer or Partizan identity has permission to publish there. Publisher permission is checked later by the Phase 3 execution path.
+These values do **not** mean a customer or Partizan identity has permission to publish there. Publisher permission is checked later by the separate Phase 3 execution path.
 
 For a broadcast channel, comments are `AVAILABLE` only when Telegram exposes a linked discussion. For a public megagroup, reply and standalone-post surfaces are observable as available, while actual publisher-account rights remain unverified.
 
@@ -119,7 +132,7 @@ For a broadcast channel, comments are `AVAILABLE` only when Telegram exposes a l
 
 A community home page is not automatically presented as a specific discussion.
 
-The connector reads a small recent message window and compares observed message text with the ICP-derived research query. It records `action_target_url` only when there is observed term overlap and the community exposes the relevant interaction surface. Otherwise:
+The connector reads a small recent message window and compares observed message text with the ICP-derived research query. It records `action_target_url` only when there is observed term overlap, the message is no older than the 14-day action-target freshness window, and the community exposes the relevant interaction surface. Otherwise:
 
 ```text
 action_target_url = null
@@ -164,22 +177,23 @@ If native research is enabled but its session/provider call fails:
 
 ## Acceptance mapping for #250
 
-| Acceptance criterion | Code / evidence | Status before merge |
+| Acceptance criterion | Code / evidence | Current status |
 |---|---|---|
-| Authorised Telegram research transport + secure lifecycle | `app/telegram_research.py`, SecretStr deployment settings, explicit readiness switch | Implemented in #257; not merged / not production-verified |
-| Discover public channels/groups from ProductProfile + ICP | Telegram adapter topics + Telethon public search | Implemented in #257 |
-| Community is persistent opportunity | entity-level snapshot and `telegram:<entity_id>` canonical key | Implemented in #257 |
-| Source/evidence/freshness/capability metadata | native metadata + recent context + surface capabilities | Implemented in #257 |
-| Concrete communities and actionable URLs | canonical community URL + evidence-gated `action_target_url` | Implemented in #257 |
-| No deep per-user intent graph | bounded community/message context only | Enforced by architecture |
-| Rate/frequency/abuse guardrails | hard per-call caps; no participants/DM/join/invite methods | Implemented in #257 |
-| Research credentials never enable publishing | separate customer capability regression test | Implemented in #257 |
-| Integration tests for discovery/dedupe/freshness/fail-closed readiness | `tests/test_telegram_research.py` + customer channel foundation tests | Implemented in #257; CI required |
-| Real production research run | production release + authorised session + evidence capture | **OPEN — do not close #250 yet** |
+| Authorised Telegram research transport + secure lifecycle | `app/telegram_research.py`, `SecretStr` deployment settings, explicit readiness switch | Merged and deployed |
+| Discover public channels/groups from ProductProfile + ICP | Telegram adapter topics + Telethon public search | Merged and tested |
+| Community is persistent opportunity | entity-level snapshot and `telegram:<entity_id>` canonical key | Merged and tested |
+| Source/evidence/freshness/capability metadata | native metadata + recent context + surface capabilities | Merged and tested |
+| Concrete communities and actionable URLs | canonical community URL + evidence/freshness-gated `action_target_url` | Merged and tested |
+| No deep per-user intent graph | bounded community/message context only | Enforced by architecture and tests |
+| Rate/frequency/abuse guardrails | hard per-call caps; no participants/DM/join/invite methods | Merged and tested |
+| Research credentials never enable publishing | separate customer capability regression tests | Merged; production fail-closed state also verified |
+| Integration tests for discovery/dedupe/freshness/fallback/no-secret leakage/fail-closed readiness | `tests/test_telegram_research.py`, `tests/test_telegram_research_safety.py`, customer channel tests | Green in merged CI |
+| Exact release deployed | production deploy #548 + public `/version` | Verified: `20aa9433dc7301cf541359535eb22e386a265f7e` |
+| Real production research run | authorised production session + real public community evidence | **OPEN — production research credentials are not configured** |
 
 ## Production verification required before closing #250
 
-After #248 and #257 are explicitly approved, merged and deployed, run one real product/ICP research request with the production Telegram research session and capture non-secret evidence that proves:
+Production must first be configured with an authorised, research-only Telegram user session. Then run one real product/ICP research request against the exact deployed release and capture non-secret evidence proving:
 
 - exact deployed release SHA;
 - native Telegram research was operationally enabled;
