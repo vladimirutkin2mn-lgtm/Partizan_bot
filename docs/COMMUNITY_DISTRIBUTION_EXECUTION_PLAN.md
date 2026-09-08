@@ -4,6 +4,8 @@
 
 This is the canonical implementation tracker for turning Telegram and Reddit from research-only channels into executable Partizan distribution channels.
 
+GitHub master tracker: **#256 — Community Distribution programme — Telegram + Reddit**.
+
 It complements:
 
 - `docs/CHANNEL_DISTRIBUTION_MODEL.md` — product/domain model;
@@ -149,7 +151,7 @@ Pricing should be validated against real operating cost and acquisition outcomes
 | 6. Partizan Managed Distribution | #254 | Planned; depends on #249 and at least one working publish path |
 | 7. Economics + learning loop | #255 | Planned; requires real execution evidence |
 
-The issue checklists are the acceptance criteria. This file defines sequencing and product intent; issues define what must be proven before a phase can close.
+The issue checklists are the acceptance criteria. This file defines sequencing and product intent; issues define what must be proven before a phase can close. Issue #256 is the one-page programme index and stays open until every phase closes.
 
 ## Delivery phases
 
