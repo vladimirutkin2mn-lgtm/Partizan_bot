@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -104,6 +105,7 @@ class TelegramResearchConnector:
         self._known_handle_limit = max(0, min(known_handle_limit, 5))
         self._recent_message_limit = max(0, min(recent_message_limit, 8))
         self._query_length_limit = max(16, min(query_length_limit, 160))
+        self._lock = asyncio.Lock()
 
     async def discover(
         self,
@@ -124,12 +126,13 @@ class TelegramResearchConnector:
             normalized_handles.append(handle)
             if len(normalized_handles) >= self._known_handle_limit:
                 break
-        snapshots = await self._transport.discover_public(
-            normalized_query,
-            normalized_handles,
-            result_limit=self._result_limit,
-            recent_message_limit=self._recent_message_limit,
-        )
+        async with self._lock:
+            snapshots = await self._transport.discover_public(
+                normalized_query,
+                normalized_handles,
+                result_limit=self._result_limit,
+                recent_message_limit=self._recent_message_limit,
+            )
         deduped: dict[int, TelegramCommunitySnapshot] = {}
         for snapshot in snapshots:
             existing = deduped.get(snapshot.entity_id)
@@ -291,7 +294,7 @@ class TelethonTelegramResearchTransport:
             participants = getattr(entity, "participants_count", None)
 
         return TelegramCommunitySnapshot(
-            entity_id=int(getattr(entity, "id")),
+            entity_id=int(entity.id),
             username=username,
             title=str(getattr(entity, "title", username) or username)[:300],
             kind=kind,
