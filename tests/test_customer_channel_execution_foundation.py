@@ -13,7 +13,11 @@ from app.runtime_store import get_runtime_store
 @pytest.fixture(autouse=True)
 def reset_customer_channel_execution_state():
     previous_meta_public_ready = customer_channel_service._settings.meta_oauth_public_ready
+    previous_telegram_research_ready = (
+        customer_channel_service._settings.telegram_research_public_ready
+    )
     customer_channel_service._settings.meta_oauth_public_ready = False
+    customer_channel_service._settings.telegram_research_public_ready = False
     customer_account_service.reset()
     customer_funnel_service.reset()
     growth_balance_service.reset()
@@ -21,6 +25,9 @@ def reset_customer_channel_execution_state():
         yield
     finally:
         customer_channel_service._settings.meta_oauth_public_ready = previous_meta_public_ready
+        customer_channel_service._settings.telegram_research_public_ready = (
+            previous_telegram_research_ready
+        )
 
 
 def _registered_client() -> tuple[TestClient, object]:
@@ -129,3 +136,21 @@ def test_meta_oauth_readiness_does_not_enable_organic_publisher_mode() -> None:
     assert publisher_modes["CLIENT_OWNED"]["blocker"] == (
         "publisher-mode execution is not implemented for this channel yet"
     )
+
+
+def test_telegram_research_readiness_never_enables_telegram_publish() -> None:
+    customer_channel_service._settings.telegram_research_public_ready = True
+    client, preview = _registered_client()
+    customer_channel_service._settings.telegram_research_public_ready = True
+
+    response = client.get(f"/customer/workspace/{preview.project_id}/channels")
+
+    assert response.status_code == 200
+    telegram = _by_platform(response.json(), "TELEGRAM")
+    capabilities = {item["capability"]: item for item in telegram["capabilities"]}
+    publisher_modes = {item["mode"]: item for item in telegram["publisher_modes"]}
+    assert capabilities["SEARCH"]["ready"] is True
+    assert capabilities["PUBLISH"]["ready"] is False
+    assert publisher_modes["CLIENT_OWNED"]["available"] is False
+    assert telegram["autonomous_execution_available"] is False
+    assert telegram["execution_ready"] is False
