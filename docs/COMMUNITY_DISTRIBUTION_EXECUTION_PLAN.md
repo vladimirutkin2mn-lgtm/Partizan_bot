@@ -95,7 +95,7 @@ Product + ICP
   → learn community economics
 ```
 
-Telegram research is community-first. Message-level lead scoring may be used as supporting evidence, but is not the persistent opportunity unit.
+Telegram research is community-first. Message-level context may be used as supporting evidence, but is not the persistent opportunity unit.
 
 Reference implementations may inform adapters, but third-party projects are not copied wholesale. Useful references currently include `DimaPhil/telegram_forwarder` for Telethon user-session transport patterns and `A1exZabr/tgtrigger` for monitoring/filtering/lead-scoring patterns.
 
@@ -144,9 +144,9 @@ Pricing should be validated against real operating cost and acquisition outcomes
 
 | Phase | Issue | Current status |
 |---|---|---|
-| 1. Channel execution foundation | #249 | Implemented in PR #248; green CI; awaiting explicit merge approval |
-| 2. Telegram research connector | #250 | In implementation via stacked draft PR #257; depends on #248; production research smoke still required |
-| 3. Telegram client-owned publish | #251 | Planned; depends on #249 and #250 |
+| 1. Channel execution foundation | #249 | **Complete** — PR #248 merged; foundation verified in production |
+| 2. Telegram research connector | #250 | PR #257 merged and deployed on `20aa9433dc7301cf541359535eb22e386a265f7e`; code/test acceptance complete; final real production research run blocked on missing production Telegram research credentials |
+| 3. Telegram client-owned publish | #251 | Planned; must not start until #250 is complete |
 | 4. Reddit research + CommunityPolicy | #252 | Planned; depends on #249 |
 | 5. Reddit client-owned publish | #253 | Planned; depends on #249 and #252; external API/commercial readiness gate |
 | 6. Partizan Managed Distribution | #254 | Planned; depends on #249 and at least one working publish path |
@@ -158,31 +158,49 @@ The issue checklists are the acceptance criteria. This file defines sequencing a
 
 ### Phase 1 — Channel execution foundation
 
-PR #248 implements this phase in code with green CI. Checkboxes stay open until the PR is explicitly merged and the resulting production release is verified where applicable.
+PR #248 is merged. The foundation is included in production release `20aa9433dc7301cf541359535eb22e386a265f7e`, and production deployment verification completed successfully.
 
-- [ ] Add typed publisher modes.
-- [ ] Add typed `SEARCH / DRAFT / PUBLISH / MEASURE` channel capabilities.
-- [ ] Expose capability/readiness metadata without claiming unsupported execution.
-- [ ] Persist publisher-mode choice independently from existing channel research/auto preference.
-- [ ] Preserve fail-closed auth, billing, spend and provider readiness gates.
-- [ ] Add tests and update canonical docs.
+- [x] Add typed publisher modes.
+- [x] Add typed `SEARCH / DRAFT / PUBLISH / MEASURE` channel capabilities.
+- [x] Expose capability/readiness metadata without claiming unsupported execution.
+- [x] Persist publisher-mode choice independently from existing channel research/auto preference.
+- [x] Preserve fail-closed auth, billing, spend and provider readiness gates.
+- [x] Add tests and update canonical docs.
+
+Phase issue #249 is closed as complete.
 
 ### Phase 2 — Telegram research connector
 
-PR #257 implements the code path as a stacked draft on #248. Detailed evidence mapping lives in `docs/TELEGRAM_RESEARCH_CONNECTOR.md`. These checkboxes remain open until the relevant code is merged; the final production criterion cannot be completed from CI alone.
+PR #257 is merged and deployed. Detailed evidence mapping lives in `docs/TELEGRAM_RESEARCH_CONNECTOR.md`.
 
-- [ ] Authorised Telegram/Telethon session transport for read-only research with explicit operational readiness.
-- [ ] Discover public channels/groups relevant to ProductProfile + ICP, including native discovery even when generic web search has no hit.
-- [ ] Keep the community as the persistent opportunity; use recent messages only as supporting context/evidence.
-- [ ] Persist public source URL, Telegram entity ID, source-check time, observed activity freshness and surface capability metadata.
-- [ ] Deduplicate channel/group guesses by stable Telegram entity ID.
-- [ ] Surface a specific action-target URL only when observed recent context supports it; otherwise preserve a community-level destination honestly.
-- [ ] Enforce bounded query/result/context limits and exclude participant enumeration, joining, invitations and mass unsolicited messaging.
-- [ ] Keep research credentials completely separate from publisher mode and `PUBLISH` readiness.
-- [ ] Integration tests cover native-only discovery, web/native dedupe, freshness provenance, native-provider failure fallback and fail-closed execution readiness.
+Code and CI acceptance are complete. A live production verification attempt from temporary draft PR #258 / CI #808 reached the production API container on exact release `20aa9433dc7301cf541359535eb22e386a265f7e` and confirmed the remaining blocker is operational configuration: Telegram research is disabled, provider is `unavailable`, and no API ID/hash/authorised session is configured in production. The same live check confirmed Telegram `PUBLISH` and `CLIENT_OWNED` publishing remain fail-closed.
+
+- [x] Authorised Telegram/Telethon session transport for read-only research with explicit operational readiness.
+- [x] Discover public channels/groups relevant to ProductProfile + ICP, including native discovery even when generic web search has no hit.
+- [x] Keep the community as the persistent opportunity; use recent messages only as supporting context/evidence.
+- [x] Persist public source URL, Telegram entity ID, source-check time, observed activity freshness and surface capability metadata.
+- [x] Deduplicate channel/group guesses by stable Telegram entity ID.
+- [x] Surface a specific action-target URL only when observed recent context supports it and is within the freshness gate; otherwise preserve a community-level destination honestly.
+- [x] Enforce bounded query/result/context limits and exclude participant enumeration, joining, invitations and mass unsolicited messaging.
+- [x] Keep research credentials completely separate from publisher mode and `PUBLISH` readiness.
+- [x] Integration tests cover native-only discovery, web/native dedupe, freshness provenance, bounded limits, native-provider failure fallback, no-secret leakage and fail-closed execution readiness.
 - [ ] Verify at least one real production research run on an exact deployed release before closing #250.
 
+To complete the last item, production must provide:
+
+```text
+TELEGRAM_RESEARCH_PROVIDER=telethon
+TELEGRAM_RESEARCH_PUBLIC_READY=true
+TELEGRAM_RESEARCH_API_ID=...
+TELEGRAM_RESEARCH_API_HASH=...
+TELEGRAM_RESEARCH_SESSION=...
+```
+
+Then rerun a bounded production research request and capture non-secret evidence for a real public community: source URL, Telegram entity ID, `source_checked_at`, freshness/context metadata, no secret leakage, and Telegram `PUBLISH` still fail-closed.
+
 ### Phase 3 — Telegram client-owned publish
+
+Do not begin this phase until #250 is complete from real production research evidence.
 
 - [ ] Secure customer account connection/session lifecycle.
 - [ ] Draft comment/reply/standalone contribution from local context.
