@@ -3,11 +3,14 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Protocol
 
 from app.config import Settings, get_settings
+
+
+ACTION_TARGET_FRESHNESS_WINDOW = timedelta(days=14)
 
 
 class TelegramResearchError(RuntimeError):
@@ -259,6 +262,7 @@ class TelethonTelegramResearchTransport:
         linked_discussion_id = getattr(full_chat, "linked_chat_id", None)
         kind = TelegramSurfaceKind.GROUP if is_group else TelegramSurfaceKind.CHANNEL
         canonical_url = f"https://t.me/{username}"
+        checked_at = datetime.now(UTC)
         terms = self._tokens(query)
         recent: list[TelegramRecentContext] = []
         for message in messages:
@@ -279,7 +283,17 @@ class TelethonTelegramResearchTransport:
                 )
             )
 
-        relevant_context = next((item for item in recent if item.matched_terms), None)
+        freshness_cutoff = checked_at - ACTION_TARGET_FRESHNESS_WINDOW
+        relevant_context = next(
+            (
+                item
+                for item in recent
+                if item.matched_terms
+                and item.published_at is not None
+                and freshness_cutoff <= item.published_at <= checked_at
+            ),
+            None,
+        )
         action_target_url: str | None = None
         if relevant_context is not None:
             if is_group or linked_discussion_id is not None:
@@ -301,7 +315,7 @@ class TelethonTelegramResearchTransport:
             url=canonical_url,
             about=str(getattr(full_chat, "about", "") or "")[:2000],
             member_count=(int(participants) if participants is not None else None),
-            source_checked_at=datetime.now(UTC),
+            source_checked_at=checked_at,
             last_activity_at=last_activity_at,
             comment_surface=(
                 SurfaceAvailability.AVAILABLE
