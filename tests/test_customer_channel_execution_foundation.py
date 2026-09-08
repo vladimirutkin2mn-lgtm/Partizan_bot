@@ -113,3 +113,19 @@ def test_unavailable_client_owned_publish_mode_fails_closed() -> None:
     current = client.get(f"/customer/workspace/{preview.project_id}/channels")
     assert current.status_code == 200
     assert _by_platform(current.json(), "REDDIT")["publisher_mode"] == "MANUAL"
+
+
+def test_meta_oauth_readiness_does_not_enable_organic_publisher_mode() -> None:
+    customer_channel_service._settings.meta_oauth_public_ready = True
+    client, preview = _registered_client()
+    customer_channel_service._settings.meta_oauth_public_ready = True
+
+    response = client.get(f"/customer/workspace/{preview.project_id}/channels")
+
+    assert response.status_code == 200
+    instagram = _by_platform(response.json(), "INSTAGRAM")
+    publisher_modes = {item["mode"]: item for item in instagram["publisher_modes"]}
+    assert publisher_modes["CLIENT_OWNED"]["available"] is False
+    assert publisher_modes["CLIENT_OWNED"]["blocker"] == (
+        "publisher-mode execution is not implemented for this channel yet"
+    )
