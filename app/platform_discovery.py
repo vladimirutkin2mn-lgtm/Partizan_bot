@@ -6,6 +6,12 @@ from urllib.parse import urlsplit
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.schemas import ICPView, ProductProfileView
 from app.search import DiscoveryQuery, SearchHit, SourceClass
+from app.telegram_research import (
+    TelegramCommunitySnapshot,
+    TelegramResearchConnector,
+    TelegramSurfaceKind,
+    get_telegram_research_connector,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,12 +52,30 @@ class PlatformDiscoveryAdapter(ABC):
     ) -> list[PlatformCandidate]:
         raise NotImplementedError
 
+    async def enrich_candidates(
+        self,
+        request: PlatformDiscoveryRequest,
+        candidates: list[PlatformCandidate],
+    ) -> list[PlatformCandidate]:
+        del request
+        return candidates
+
     def _market_language(self, product: ProductProfileView) -> tuple[str, str]:
         return product.market or "online", product.language or ""
 
 
 class TelegramDiscoveryAdapter(PlatformDiscoveryAdapter):
     platform = DistributionPlatform.TELEGRAM
+
+    def __init__(
+        self,
+        research_connector: TelegramResearchConnector | None = None,
+        *,
+        use_default_research_connector: bool = True,
+    ) -> None:
+        self._research_connector = research_connector
+        if research_connector is None and use_default_research_connector:
+            self._research_connector = get_telegram_research_connector()
 
     def build_requests(
         self,
@@ -63,6 +87,7 @@ class TelegramDiscoveryAdapter(PlatformDiscoveryAdapter):
             PlatformDiscoveryRequest(
                 platform=self.platform,
                 kind=OpportunityKind.CHANNEL,
+                topic=f"{icp.title} {icp.pain}",
                 discovery_query=DiscoveryQuery(
                     SourceClass.COMMUNITY,
                     f"site:t.me {icp.title} {icp.pain} Telegram channel {market} {language}",
@@ -71,6 +96,7 @@ class TelegramDiscoveryAdapter(PlatformDiscoveryAdapter):
             PlatformDiscoveryRequest(
                 platform=self.platform,
                 kind=OpportunityKind.GROUP,
+                topic=f"{icp.title} {icp.trigger}",
                 discovery_query=DiscoveryQuery(
                     SourceClass.COMMUNITY,
                     f"site:t.me {icp.title} {icp.trigger} Telegram group chat {market} {language}",
@@ -100,11 +126,150 @@ class TelegramDiscoveryAdapter(PlatformDiscoveryAdapter):
                         "handle": handle,
                         "surface_kind": request.kind.value,
                         "discovery_query": request.discovery_query.query,
+                        "native_research_status": "NOT_CHECKED",
                     },
                     hits=[hit],
                 )
             )
         return candidates
+
+    async def enrich_candidates(
+        self,
+        request: PlatformDiscoveryRequest,
+        candidates: list[PlatformCandidate],
+    ) -> list[PlatformCandidate]:
+        connector = self._research_connector
+        if connector is None:
+            return candidates
+        handles = [
+            str(candidate.metadata.get("handle") or "")
+            for candidate in candidates
+            if candidate.metadata.get("handle")
+        ]
+        snapshots = await connector.discover(
+            query=request.topic or request.discovery_query.query,
+            known_handles=handles,
+        )
+        if not snapshots:
+            return candidates
+        return self._merge_native_snapshots(request, candidates, snapshots)
+
+    def _merge_native_snapshots(
+        self,
+        request: PlatformDiscoveryRequest,
+        candidates: list[PlatformCandidate],
+        snapshots: list[TelegramCommunitySnapshot],
+    ) -> list[PlatformCandidate]:
+        by_handle = {
+            str(candidate.metadata.get("handle") or "").lower(): candidate
+            for candidate in candidates
+            if candidate.metadata.get("handle")
+        }
+        consumed_handles: set[str] = set()
+        enriched: list[PlatformCandidate] = []
+        for snapshot in snapshots:
+            handle_key = snapshot.username.lower()
+            matched = by_handle.get(handle_key)
+            if matched is not None:
+                consumed_handles.add(handle_key)
+            existing_hits = list(matched.hits) if matched is not None else []
+            existing_hits.append(self._native_hit(request, snapshot))
+            kind = (
+                OpportunityKind.GROUP
+                if snapshot.kind == TelegramSurfaceKind.GROUP
+                else OpportunityKind.CHANNEL
+            )
+            enriched.append(
+                PlatformCandidate(
+                    platform=self.platform,
+                    kind=kind,
+                    canonical_key=f"telegram:{snapshot.entity_id}",
+                    title=snapshot.title,
+                    url=snapshot.url,
+                    metadata=self._native_metadata(request, snapshot),
+                    hits=existing_hits,
+                )
+            )
+
+        enriched.extend(
+            candidate
+            for candidate in candidates
+            if str(candidate.metadata.get("handle") or "").lower() not in consumed_handles
+        )
+        return enriched
+
+    def _native_hit(
+        self,
+        request: PlatformDiscoveryRequest,
+        snapshot: TelegramCommunitySnapshot,
+    ) -> SearchHit:
+        context_text = " ".join(
+            item.text for item in snapshot.recent_context if item.text
+        )[:2400]
+        observed = " ".join(
+            part for part in (snapshot.title, snapshot.about, context_text) if part
+        )
+        return SearchHit(
+            title=snapshot.title,
+            url=snapshot.url,
+            snippet=observed[:800],
+            query=request.discovery_query.query,
+            source_class=SourceClass.COMMUNITY,
+            metadata={
+                "evidence_type": "telegram_native",
+                "telegram_entity_id": snapshot.entity_id,
+                "source_checked_at": snapshot.source_checked_at.isoformat(),
+                "last_activity_at": (
+                    snapshot.last_activity_at.isoformat()
+                    if snapshot.last_activity_at is not None
+                    else None
+                ),
+            },
+        )
+
+    def _native_metadata(
+        self,
+        request: PlatformDiscoveryRequest,
+        snapshot: TelegramCommunitySnapshot,
+    ) -> dict:
+        return {
+            "handle": snapshot.username,
+            "telegram_entity_id": snapshot.entity_id,
+            "surface_kind": snapshot.kind.value,
+            "discovery_query": request.discovery_query.query,
+            "native_research_status": "VERIFIED",
+            "source_checked_at": snapshot.source_checked_at.isoformat(),
+            "last_activity_at": (
+                snapshot.last_activity_at.isoformat()
+                if snapshot.last_activity_at is not None
+                else None
+            ),
+            "member_count": snapshot.member_count,
+            "about": snapshot.about,
+            "surface_capabilities": {
+                "comment": snapshot.comment_surface.value,
+                "reply": snapshot.reply_surface.value,
+                "standalone_post": snapshot.standalone_post_surface.value,
+                "publisher_permission_verified": False,
+            },
+            "linked_discussion_id": snapshot.linked_discussion_id,
+            "action_target_url": snapshot.action_target_url,
+            "action_target_specific": snapshot.action_target_url is not None,
+            "recent_context": [
+                {
+                    "message_id": item.message_id,
+                    "text": item.text,
+                    "published_at": (
+                        item.published_at.isoformat()
+                        if item.published_at is not None
+                        else None
+                    ),
+                    "url": item.url,
+                    "matched_terms": list(item.matched_terms),
+                }
+                for item in snapshot.recent_context
+            ],
+        }
 
     def _normalize(
         self,
