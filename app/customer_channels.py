@@ -234,18 +234,13 @@ class CustomerChannelService:
         self,
         platform: DistributionPlatform,
     ) -> list[CustomerPublisherModeView]:
-        client_owned_available = (
-            platform == DistributionPlatform.INSTAGRAM
-            and self._settings.meta_oauth_public_ready
-        )
-        if platform == DistributionPlatform.INSTAGRAM:
-            client_owned_blocker = (
-                None
-                if client_owned_available
-                else "Meta customer connection is temporarily unavailable"
-            )
-        else:
+        # PublisherMode models who performs an organic/community publish action.
+        # It is intentionally separate from paid-provider connection/readiness;
+        # Meta OAuth therefore does not make CLIENT_OWNED publisher mode ready.
+        if platform in {DistributionPlatform.REDDIT, DistributionPlatform.TELEGRAM}:
             client_owned_blocker = "client-owned publish adapter is not implemented yet"
+        else:
+            client_owned_blocker = "publisher-mode execution is not implemented for this channel yet"
         return [
             CustomerPublisherModeView(
                 mode=PublisherMode.MANUAL,
@@ -253,7 +248,7 @@ class CustomerChannelService:
             ),
             CustomerPublisherModeView(
                 mode=PublisherMode.CLIENT_OWNED,
-                available=client_owned_available,
+                available=False,
                 blocker=client_owned_blocker,
             ),
             CustomerPublisherModeView(
