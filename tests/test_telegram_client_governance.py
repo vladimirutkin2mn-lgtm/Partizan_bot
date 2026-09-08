@@ -115,8 +115,8 @@ def _fixture(monkeypatch):
     experiment_id = uuid4()
     action_id = uuid4()
     project = {
-        "project_id": str(project_id),
-        "product_id": str(product_id),
+        "project_id": project_id,
+        "product_id": product_id,
         "channel_publisher_modes": {
             DistributionPlatform.TELEGRAM.value: PublisherMode.CLIENT_OWNED.value,
         },
@@ -161,14 +161,18 @@ def _fixture(monkeypatch):
     return store, project, action, receipt, publish_service
 
 
-def test_automation_requires_explicit_confirmation_and_live_readiness(monkeypatch) -> None:
-    store, project, _, _, publish_service = _fixture(monkeypatch)
-    service = CustomerTelegramGovernanceService(
+def _service(store, results=None):
+    return CustomerTelegramGovernanceService(
         store=store,
         settings=_settings(),
         secret_store=FakeSecretStore({"SESSION_REF": "secret-session"}),
-        observation_transport=FakeObservationTransport([]),
+        observation_transport=FakeObservationTransport(results or []),
     )
+
+
+def test_automation_requires_explicit_confirmation_and_live_readiness(monkeypatch) -> None:
+    store, project, _, _, publish_service = _fixture(monkeypatch)
+    service = _service(store)
     project_id = project["project_id"]
 
     with pytest.raises(CustomerTelegramClientPublishError, match="Explicit confirmation"):
@@ -206,15 +210,20 @@ def test_automation_requires_explicit_confirmation_and_live_readiness(monkeypatc
     assert authorized.readiness_ok is True
 
 
-def test_automated_publish_rechecks_authorization_pause_and_daily_limit(monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_automated_publish_rechecks_pause_revoke_and_daily_limit(monkeypatch) -> None:
     store, project, action, receipt, publish_service = _fixture(monkeypatch)
-    service = CustomerTelegramGovernanceService(
-        store=store,
-        settings=_settings(),
-        secret_store=FakeSecretStore({"SESSION_REF": "secret-session"}),
-        observation_transport=FakeObservationTransport([]),
-    )
+    service = _service(store)
     project_id = project["project_id"]
+
+    with pytest.raises(CustomerTelegramClientPublishError, match="not explicitly enabled"):
+        await service.automated_publish(
+            project_id,
+            "customer-token",
+            action.id,
+            TelegramPublishRequest(),
+        )
+
     service.authorize_automation(
         project_id,
         "customer-token",
@@ -225,7 +234,12 @@ def test_automated_publish_rechecks_authorization_pause_and_daily_limit(monkeypa
     )
     service.pause_automation(project_id, "customer-token")
     with pytest.raises(CustomerTelegramClientPublishError, match="not explicitly enabled"):
-        pytest.run(asyncio=False)
+        await service.automated_publish(
+            project_id,
+            "customer-token",
+            action.id,
+            TelegramPublishRequest(),
+        )
 
     service.authorize_automation(
         project_id,
@@ -249,27 +263,6 @@ def test_automated_publish_rechecks_authorization_pause_and_daily_limit(monkeypa
         },
     )
     with pytest.raises(CustomerTelegramClientPublishError, match="limited to 1"):
-        pytest.run(asyncio=False)
-
-    store.clear_namespace(CUSTOMER_TELEGRAM_PUBLISH_GUARD_NAMESPACE)
-    result = pytest.run(asyncio=False)
-    assert result is None
-    assert receipt.action_id == action.id
-    assert publish_service.publish_calls == []
-
-
-@pytest.mark.asyncio
-async def test_automated_publish_delegates_only_after_authorization(monkeypatch) -> None:
-    store, project, action, receipt, publish_service = _fixture(monkeypatch)
-    service = CustomerTelegramGovernanceService(
-        store=store,
-        settings=_settings(),
-        secret_store=FakeSecretStore({"SESSION_REF": "secret-session"}),
-        observation_transport=FakeObservationTransport([]),
-    )
-    project_id = project["project_id"]
-
-    with pytest.raises(CustomerTelegramClientPublishError, match="not explicitly enabled"):
         await service.automated_publish(
             project_id,
             "customer-token",
@@ -277,14 +270,7 @@ async def test_automated_publish_delegates_only_after_authorization(monkeypatch)
             TelegramPublishRequest(),
         )
 
-    service.authorize_automation(
-        project_id,
-        "customer-token",
-        TelegramAutomationAuthorizationRequest(
-            confirm_client_owned_execution=True,
-            max_publishes_per_day=2,
-        ),
-    )
+    store.clear_namespace(CUSTOMER_TELEGRAM_PUBLISH_GUARD_NAMESPACE)
     result = await service.automated_publish(
         project_id,
         "customer-token",
@@ -362,7 +348,7 @@ async def test_observation_records_restriction_and_denies_cross_project_access(m
     assert view.latest.restriction_signal == "COMMUNITY_RESTRICTED"
 
     foreign = dict(project)
-    foreign["product_id"] = str(uuid4())
+    foreign["product_id"] = uuid4()
     monkeypatch.setattr(governance, "customer_funnel_service", FakeCustomerFunnel(foreign))
     with pytest.raises(CustomerTelegramClientPublishError, match="does not belong"):
         service.get_observation(project["project_id"], "customer-token", action.id)
@@ -370,12 +356,7 @@ async def test_observation_records_restriction_and_denies_cross_project_access(m
 
 def test_reset_clears_governance_state(monkeypatch) -> None:
     store, project, action, _, _ = _fixture(monkeypatch)
-    service = CustomerTelegramGovernanceService(
-        store=store,
-        settings=_settings(),
-        secret_store=FakeSecretStore({"SESSION_REF": "secret-session"}),
-        observation_transport=FakeObservationTransport([]),
-    )
+    service = _service(store)
     store.put(
         CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE,
         str(project["project_id"]),
