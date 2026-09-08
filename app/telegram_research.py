@@ -9,7 +9,6 @@ from typing import Protocol
 
 from app.config import Settings, get_settings
 
-
 ACTION_TARGET_FRESHNESS_SECONDS = 14 * 24 * 60 * 60
 
 
