@@ -515,16 +515,6 @@ class CustomerTelegramClientPublishService:
     ) -> TelegramClientPublishReceipt:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         self._require_ready()
-        existing = self.get_receipt(action_id)
-        if existing is not None and not payload.retry:
-            return existing
-        if existing is not None and existing.outcome == TelegramClientPublishOutcome.EXECUTED:
-            return existing
-        if existing is not None and existing.outcome == TelegramClientPublishOutcome.IN_PROGRESS:
-            raise CustomerTelegramClientPublishError(
-                "The previous Telegram publish outcome is unknown; reconcile before retrying"
-            )
-
         action = distribution_execution_service.get_action(action_id)
         if action.platform != DistributionPlatform.TELEGRAM:
             raise CustomerTelegramClientPublishError("Action is not a Telegram action")
@@ -536,16 +526,26 @@ class CustomerTelegramClientPublishService:
             raise CustomerTelegramClientPublishError(
                 "Telegram client publishing does not support this action"
             )
-        if action.status != DistributionActionStatus.APPROVED:
-            raise CustomerTelegramClientPublishError(
-                "Telegram action must be explicitly APPROVED before publishing"
-            )
         if action.experiment_id is None:
             raise CustomerTelegramClientPublishError("Telegram action has no DistributionExperiment")
         experiment = distribution_execution_service.get_experiment(action.experiment_id)
         if str(project.get("product_id") or "") != str(experiment.product_id):
             raise CustomerTelegramClientPublishError(
                 "Telegram action does not belong to this customer project"
+            )
+
+        existing = self.get_receipt(action_id)
+        if existing is not None and not payload.retry:
+            return existing
+        if existing is not None and existing.outcome == TelegramClientPublishOutcome.EXECUTED:
+            return existing
+        if existing is not None and existing.outcome == TelegramClientPublishOutcome.IN_PROGRESS:
+            raise CustomerTelegramClientPublishError(
+                "The previous Telegram publish outcome is unknown; reconcile before retrying"
+            )
+        if action.status != DistributionActionStatus.APPROVED:
+            raise CustomerTelegramClientPublishError(
+                "Telegram action must be explicitly APPROVED before publishing"
             )
 
         raw_modes = project.get("channel_publisher_modes")
