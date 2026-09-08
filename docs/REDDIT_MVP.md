@@ -1,5 +1,7 @@
 # Reddit MVP — community, policy and paid distribution model
 
+> **Execution model:** `docs/COMMUNITY_DISTRIBUTION_EXECUTION_PLAN.md` is the canonical rollout tracker for Reddit execution. The persistent opportunity is still the subreddit, `CommunityPolicy` is still a hard gate, and publishing is selected independently through `MANUAL`, `CLIENT_OWNED`, or `PARTIZAN_MANAGED` publisher mode.
+
 ## Decision summary
 
 Reddit fits the Partizan channel-first model especially well because the persistent audience unit is usually a **subreddit/community**.
@@ -17,7 +19,8 @@ The central community model is:
 ```text
 DistributionOpportunity = subreddit
 DistributionAction = standalone post OR comment/reply
-DistributionIdentity = Partizan-owned thematic Reddit account
+PublisherMode = MANUAL | CLIENT_OWNED | PARTIZAN_MANAGED
+PublisherIdentity = explicit executor when applicable
 ActionTarget = subreddit OR a fresh relevant thread
 Experiment = bounded set of actions measured against downstream acquisition
 ```
@@ -62,18 +65,6 @@ The system should not default to message-level or user-level intelligence when s
 ## Audience discovery
 
 Given a ProductProfile + ICP, Partizan should generate Reddit discovery queries and identify relevant subreddits.
-
-Example for a relationship / astrology product:
-
-```text
-relationships
-breakups
-relationship advice
-tarot
-astrology
-zodiac compatibility
-dating advice
-```
 
 The discovery objective is:
 
@@ -121,7 +112,7 @@ The most important output is not vanity audience size but whether the subreddit 
 
 Reddit communities can have materially different rules. A highly relevant subreddit may still be unusable for a commercial experiment.
 
-Partizan should record a `CommunityPolicy` for every candidate subreddit before generating a promotional/community action.
+Partizan should record a `CommunityPolicy` for every candidate subreddit before generating an executable promotional/community action.
 
 Illustrative fields:
 
@@ -161,37 +152,27 @@ links_allowed = true
   → direct attributable link may be used when the contribution itself is allowed
 ```
 
-Partizan should not use profile routing as a way to circumvent a subreddit rule that clearly prohibits promotion.
+Partizan should not use profile routing or publisher identity selection as a way to circumvent a subreddit rule that prohibits promotion.
 
-## Partizan-owned Reddit Distribution Identities
+## Publisher modes
 
-The client should not need to connect a personal Reddit account for community distribution.
+Publisher mode answers **who performs the final community publish action**. It is independent from Reddit Paid assets and from the research capability itself.
 
-Partizan can operate durable thematic Reddit identities such as broad vertical/operator accounts.
+### `MANUAL`
 
-Illustrative themes:
+Partizan discovers the subreddit/thread, checks policy and drafts the contribution. The customer performs the final publish action. This is the lowest-operational-cost path and requires no Partizan Reddit publishing credentials.
 
-- AI & Tech;
-- Relationships & Lifestyle;
-- Business & Startups;
-- Finance & Crypto;
-- Gaming;
-- Wellness.
+### `CLIENT_OWNED`
 
-The account is infrastructure for distribution and learning, not a disposable persona.
+The customer explicitly connects an authorised Reddit account. Partizan may publish through it only after account connection, platform/commercial API readiness, CommunityPolicy, approval and rate-limit gates are all satisfied.
 
-Identity selection should consider:
+`CLIENT_OWNED` must remain fail-closed until Partizan has the production-appropriate Reddit API/commercial permissions needed for the intended customer execution.
 
-- topical fit;
-- language;
-- subreddit eligibility;
-- account history/health;
-- recent activity;
-- previous community performance;
-- current client/campaign assignment;
-- brand safety and conflicts.
+### `PARTIZAN_MANAGED`
 
-The product should not make disposable account farms, impersonation, vote manipulation, karma farming, mass unsolicited engagement or technical ban-evasion part of its architecture.
+Partizan handles distribution through eligible Partizan-managed or partner-managed publisher inventory. This is a premium service. The internal identity registry must record ownership, topic/language fit, eligibility/health, allowed surfaces/actions, capacity and campaign assignment.
+
+Managed distribution must not make disposable account farms, impersonation, vote manipulation, karma farming, mass unsolicited engagement or technical ban evasion part of the architecture.
 
 ## Reddit Community actions
 
@@ -199,16 +180,17 @@ The MVP has two primary action types.
 
 ### 1. Standalone post
 
-Used when the subreddit rules permit posting and the generated contribution fits the community.
+Used when subreddit policy permits posting and the generated contribution fits the community.
 
 Flow:
 
 ```text
 selected subreddit
-  → policy gate
-  → choose Partizan Distribution Identity
+  → CommunityPolicy gate
+  → choose publisher mode / eligible identity
   → generate useful/native standalone post
   → optional transparent product mention/link only when permitted
+  → approval / handoff where required
   → publish through supported execution path
   → measure downstream outcome
 ```
@@ -223,9 +205,11 @@ The MVP should use lightweight local context only:
 
 ```text
 selected subreddit
+  → CommunityPolicy gate
   → fresh relevant thread
   → read enough of the thread to stay relevant
   → generate useful reply
+  → approval / handoff where required
 ```
 
 Do not build deep analysis of every commenter, exhaustive conversation graphs or per-user purchase-intent scoring for MVP.
@@ -247,8 +231,6 @@ The thread itself does not need a complicated standalone opportunity score.
 
 ## Reddit Community attribution
 
-Reddit can support stronger community attribution than Instagram when subreddit rules permit a direct attributable link.
-
 ### When direct product links are permitted
 
 Use an attributable route such as:
@@ -265,16 +247,9 @@ This can produce action-level or near-action-level attribution.
 
 ### When direct links are not permitted but commercial participation is still allowed
 
-Use campaign/profile-level attribution only when consistent with the community rules:
+Use campaign/profile-level attribution only when consistent with community rules. Do not claim perfect action-level attribution in this mode.
 
-```text
-useful contribution
-  → Partizan identity/profile
-  → stable routing layer
-  → client product
-```
-
-Do not claim perfect action-level attribution in this mode.
+For managed publishers, the publisher profile may be part of the route. For client-owned publishers, the customer's authorised profile/destination applies. For manual mode, Partizan records the handoff and any attributable route the customer elects to use.
 
 ## Reddit Community experiment model
 
@@ -283,7 +258,7 @@ A bounded experiment should aggregate several actions in a small set of approved
 Example:
 
 ```text
-Oracle — Reddit relationships experiment
+Product — Reddit relationships experiment
 
 Opportunities
   → 8 approved subreddits
@@ -303,11 +278,11 @@ Decision
   → STOP / CONTINUE / MODIFY / SCALE
 ```
 
-The learning unit is primarily the **subreddit + action type + identity + campaign**, not an inferred individual-user intent score.
+The learning unit is primarily the **subreddit + action type + publisher mode/identity + campaign**, not an inferred individual-user intent score.
 
 ## Reddit Paid Engine
 
-Reddit Ads should be a first-class MVP channel and remain separate from community execution.
+Reddit Ads should remain separate from community execution.
 
 The valuable product loop is:
 
@@ -335,11 +310,11 @@ Paid capabilities to model include:
 - conversion tracking;
 - CAC / CPA / ROAS.
 
-The exact current Reddit Ads capabilities/pricing must be refreshed from current official sources at execution time rather than hard-coded permanently into product logic.
+The exact current Reddit Ads/API capabilities and commercial-access requirements must be refreshed from current official sources at execution time rather than hard-coded permanently into product logic.
 
 ## Paid attribution
 
-For Reddit Ads, Partizan should support the platform's available conversion measurement stack, such as browser-side and server-side conversion instrumentation where available.
+For Reddit Ads, Partizan should support the platform's currently available conversion measurement stack where authorised.
 
 Target funnel:
 
@@ -352,23 +327,11 @@ impression
   → revenue
 ```
 
-Paid and Community outcomes should be reported separately before the Growth Manager compares them.
-
-## Organic-to-paid scaling — secondary experiment
-
-A useful later experiment is:
-
-```text
-organic Reddit contribution performs well
-  → eligible post/creative becomes a paid hypothesis
-  → test with Reddit Ads
-```
-
-This is secondary to the core MVP. Do not make it a prerequisite for initial Reddit support.
+Paid and Community outcomes should be reported separately before Growth Manager compares them.
 
 ## Execution architecture
 
-Reddit Community execution should not assume a universal unrestricted publishing API across all discovered communities.
+Reddit Community execution must not assume a universal unrestricted publishing API across all discovered communities.
 
 Model the system as:
 
@@ -376,15 +339,17 @@ Model the system as:
 Discovery Engine
   → CommunityPolicy parser/checker
   → Opportunity selection
-  → Distribution Identity selection
-  → Content generation
-  → Execution Adapter
-  → Analytics
+  → ActionTarget selection where needed
+  → Draft capability
+  → PublisherMode / PublisherIdentity selection
+  → Execution Adapter or manual handoff
+  → Outcome Adapter
+  → Analytics / learning
 ```
 
-Execution can begin approval-gated or operator-assisted where official integration capabilities do not support the required action cleanly.
+Execution can begin approval-gated or manual where authorised integration capabilities do not support the required action cleanly.
 
-The product should prefer supported/authorised execution and community eligibility over building around enforcement avoidance.
+The product should prefer supported/authorised execution and community eligibility over enforcement avoidance.
 
 ## MVP scope table
 
@@ -393,38 +358,35 @@ The product should prefer supported/authorised execution and community eligibili
 | Subreddit discovery | Yes |
 | Subreddit-level Opportunity scoring | Yes |
 | CommunityPolicy parsing/checking | Yes — mandatory |
-| Partizan-owned Reddit Distribution Identities | Yes |
-| Standalone posts where permitted | Yes |
-| Comments/replies where permitted | Yes |
+| `MANUAL` publisher mode | Yes |
+| `CLIENT_OWNED` publisher mode | Yes after required Reddit execution/API readiness |
+| `PARTIZAN_MANAGED` publisher mode | Yes after managed inventory exists |
+| Standalone posts where permitted | Yes through a ready publisher mode |
+| Comments/replies where permitted | Yes through a ready publisher mode |
 | Lightweight thread-context reading | Yes |
 | Deep user/comment purchase-intent analysis | No |
-| Client personal Reddit account required | No |
+| Client personal Reddit account required | No — optional publisher mode only |
 | Direct product links | Only where community rules permit |
 | Profile/campaign funnel | Secondary, only where consistent with rules |
-| Reddit Ads | Yes |
-| Paid community/keyword/interest targeting | Yes where currently supported |
-| Paid conversion attribution | Yes |
+| Reddit Ads | Yes as a separate paid engine |
 | Cold private-message acquisition | No |
-| Moderator negotiation/outreach | Post-MVP |
-| Paid moderator/community deals | Post-MVP |
 | Vote manipulation / karma farming | No |
 | Disposable account farm | No |
 | Ban-evasion infrastructure | No |
-| Own Partizan subreddits | Post-MVP |
 
 ## Primary Reddit MVP learning questions
 
 1. Which subreddits actually contain the requested ICP?
 2. Which relevant subreddits permit useful commercial participation?
 3. Which action type works better by subreddit: standalone post or comment/reply?
-4. Which Partizan Reddit Distribution Identities perform best in which communities?
+4. Which publisher mode and eligible identities perform best in which communities?
 5. What CAC/CPA does Reddit Community produce?
-6. What CAC/CPA does Reddit Ads produce against the same audience clusters?
-7. Which subreddit/action patterns should Growth Manager `STOP / CONTINUE / MODIFY / SCALE`?
+6. What CAC/CPA does Reddit Ads produce against the same audience clusters where supported?
+7. Which subreddit/action/publisher patterns should Growth Manager `STOP / CONTINUE / MODIFY / SCALE`?
 
 ## Canonical cross-platform simplification
 
-The cross-platform opportunity units are now:
+The cross-platform opportunity units remain:
 
 ```text
 Telegram Community → channel/group
@@ -432,4 +394,4 @@ Instagram Community → creator/account
 Reddit Community → subreddit
 ```
 
-In each case, Partizan optimises a persistent audience surface first and only then chooses a lightweight local execution target.
+In each case, Partizan optimises a persistent audience surface first and only then chooses a lightweight local execution target. **Who publishes is a separate execution choice, not part of the opportunity identity.**
