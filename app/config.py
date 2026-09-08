@@ -16,6 +16,14 @@ class Settings(BaseSettings):
     search_provider: str = "mock"
     search_model: str = "gpt-5.6-terra"
     openai_api_key: str | None = None
+    telegram_research_provider: str = "unavailable"
+    telegram_research_public_ready: bool = False
+    telegram_research_api_id: int | None = None
+    telegram_research_api_hash: SecretStr | None = None
+    telegram_research_session: SecretStr | None = None
+    telegram_research_result_limit: int = 5
+    telegram_research_known_handle_limit: int = 3
+    telegram_research_recent_message_limit: int = 4
     creative_provider: str = "unavailable"
     creative_image_model: str = "gpt-image-2"
     creative_image_quality: str = "medium"
@@ -62,6 +70,8 @@ class Settings(BaseSettings):
         "stripe_issuing_events_webhook_secret",
         "provider_secret_encryption_key",
         "meta_oauth_app_secret",
+        "telegram_research_api_hash",
+        "telegram_research_session",
         mode="before",
     )
     @classmethod
@@ -73,6 +83,14 @@ class Settings(BaseSettings):
     @field_validator("partizan_self_dogfood_product_id", mode="before")
     @classmethod
     def normalize_optional_uuid(cls, value: object) -> object:
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
+        return value
+
+    @field_validator("telegram_research_api_id", mode="before")
+    @classmethod
+    def normalize_optional_integer(cls, value: object) -> object:
         if isinstance(value, str):
             normalized = value.strip()
             return normalized or None
@@ -104,6 +122,16 @@ class Settings(BaseSettings):
         if value is not None and (not value.startswith("v") or not value[1:].replace(".", "").isdigit()):
             raise ValueError("META_OAUTH_API_VERSION must look like v25.0")
         return value
+
+    @field_validator("telegram_research_provider", mode="before")
+    @classmethod
+    def normalize_telegram_research_provider(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if normalized not in {"unavailable", "telethon"}:
+            raise ValueError("TELEGRAM_RESEARCH_PROVIDER must be 'unavailable' or 'telethon'")
+        return normalized
 
     @field_validator("growth_balance_settlement_provider", mode="before")
     @classmethod

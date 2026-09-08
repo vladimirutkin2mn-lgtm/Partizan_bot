@@ -141,20 +141,31 @@ class AudienceIntelligenceEngine:
             request: PlatformDiscoveryRequest,
         ) -> tuple[
             ICPView,
-            PlatformDiscoveryAdapter,
             PlatformDiscoveryRequest,
-            list[SearchHit],
+            list[PlatformCandidate],
+            Exception | None,
             Exception | None,
         ]:
+            search_error: Exception | None = None
             try:
                 async with semaphore:
                     hits = await self._provider.search(
                         request.discovery_query,
                         limit=per_query_limit,
                     )
-                return icp, adapter, request, hits, None
             except Exception as exc:
-                return icp, adapter, request, [], exc
+                hits = []
+                search_error = exc
+
+            candidates = adapter.candidates(request, hits)
+            enrichment_error: Exception | None = None
+            try:
+                candidates = await adapter.enrich_candidates(request, candidates)
+            except Exception as exc:
+                # Native/platform enrichment is additional evidence. Never fabricate it and
+                # never discard valid generic public evidence when the native provider fails.
+                enrichment_error = exc
+            return icp, request, candidates, search_error, enrichment_error
 
         batches = await asyncio.gather(
             *(run(icp, adapter, request) for icp, adapter, request in jobs)
@@ -164,18 +175,26 @@ class AudienceIntelligenceEngine:
             tuple[str, DistributionPlatform, str], DistributionOpportunitySeed
         ] = {}
 
-        for icp, adapter, request, hits, error in batches:
-            if error is not None:
+        for icp, request, candidates, search_error, enrichment_error in batches:
+            if search_error is not None:
                 self._last_failures.append(
                     PlatformDiscoveryFailure(
                         platform=request.platform,
                         query=request.discovery_query.query,
-                        error_type=type(error).__name__,
-                        message=str(error)[:500],
+                        error_type=type(search_error).__name__,
+                        message=f"search: {str(search_error)[:480]}",
                     )
                 )
-                continue
-            for candidate in adapter.candidates(request, hits):
+            if enrichment_error is not None:
+                self._last_failures.append(
+                    PlatformDiscoveryFailure(
+                        platform=request.platform,
+                        query=request.discovery_query.query,
+                        error_type=type(enrichment_error).__name__,
+                        message=f"native_enrichment: {str(enrichment_error)[:460]}",
+                    )
+                )
+            for candidate in candidates:
                 seed = self._candidate_to_seed(icp, candidate)
                 self._merge(opportunities, seed)
 
@@ -373,7 +392,7 @@ class AudienceIntelligenceEngine:
         return "LOW"
 
     def _evidence(self, icp: ICPView, hit: SearchHit) -> dict:
-        return {
+        evidence = {
             "query": hit.query,
             "title": hit.title,
             "url": hit.url,
@@ -381,6 +400,9 @@ class AudienceIntelligenceEngine:
             "source_class": hit.source_class.value,
             "signal_tags": self._signal_tags(icp, hit),
         }
+        if hit.metadata:
+            evidence["source_metadata"] = dict(hit.metadata)
+        return evidence
 
     def _signal_tags(self, icp: ICPView, hit: SearchHit) -> list[str]:
         text = self._hit_text(hit)

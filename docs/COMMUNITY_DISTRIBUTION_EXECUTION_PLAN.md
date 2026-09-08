@@ -10,7 +10,8 @@ It complements:
 
 - `docs/CHANNEL_DISTRIBUTION_MODEL.md` — product/domain model;
 - `docs/TELEGRAM_MVP.md` — Telegram opportunity model;
-- `docs/REDDIT_MVP.md` — Reddit opportunity and policy model.
+- `docs/REDDIT_MVP.md` — Reddit opportunity and policy model;
+- `docs/TELEGRAM_RESEARCH_CONNECTOR.md` — Phase 2 implementation and production verification contract.
 
 When implementation and older docs disagree about the execution path, this document defines the current planned rollout until the underlying canonical docs are updated.
 
@@ -143,8 +144,8 @@ Pricing should be validated against real operating cost and acquisition outcomes
 
 | Phase | Issue | Current status |
 |---|---|---|
-| 1. Channel execution foundation | #249 | In implementation via PR #248 |
-| 2. Telegram research connector | #250 | Planned; depends on #249 |
+| 1. Channel execution foundation | #249 | Implemented in PR #248; green CI; awaiting explicit merge approval |
+| 2. Telegram research connector | #250 | In implementation via stacked draft PR #257; depends on #248; production research smoke still required |
 | 3. Telegram client-owned publish | #251 | Planned; depends on #249 and #250 |
 | 4. Reddit research + CommunityPolicy | #252 | Planned; depends on #249 |
 | 5. Reddit client-owned publish | #253 | Planned; depends on #249 and #252; external API/commercial readiness gate |
@@ -157,6 +158,8 @@ The issue checklists are the acceptance criteria. This file defines sequencing a
 
 ### Phase 1 — Channel execution foundation
 
+PR #248 implements this phase in code with green CI. Checkboxes stay open until the PR is explicitly merged and the resulting production release is verified where applicable.
+
 - [ ] Add typed publisher modes.
 - [ ] Add typed `SEARCH / DRAFT / PUBLISH / MEASURE` channel capabilities.
 - [ ] Expose capability/readiness metadata without claiming unsupported execution.
@@ -166,11 +169,18 @@ The issue checklists are the acceptance criteria. This file defines sequencing a
 
 ### Phase 2 — Telegram research connector
 
-- [ ] Authorised Telegram/Telethon session transport for research.
-- [ ] Discover public channels/groups relevant to ProductProfile + ICP.
-- [ ] Store community-level opportunity evidence and freshness.
-- [ ] Rank communities and surface concrete actionable opportunities.
-- [ ] Respect platform limits; no mass unsolicited messaging.
+PR #257 implements the code path as a stacked draft on #248. Detailed evidence mapping lives in `docs/TELEGRAM_RESEARCH_CONNECTOR.md`. These checkboxes remain open until the relevant code is merged; the final production criterion cannot be completed from CI alone.
+
+- [ ] Authorised Telegram/Telethon session transport for read-only research with explicit operational readiness.
+- [ ] Discover public channels/groups relevant to ProductProfile + ICP, including native discovery even when generic web search has no hit.
+- [ ] Keep the community as the persistent opportunity; use recent messages only as supporting context/evidence.
+- [ ] Persist public source URL, Telegram entity ID, source-check time, observed activity freshness and surface capability metadata.
+- [ ] Deduplicate channel/group guesses by stable Telegram entity ID.
+- [ ] Surface a specific action-target URL only when observed recent context supports it; otherwise preserve a community-level destination honestly.
+- [ ] Enforce bounded query/result/context limits and exclude participant enumeration, joining, invitations and mass unsolicited messaging.
+- [ ] Keep research credentials completely separate from publisher mode and `PUBLISH` readiness.
+- [ ] Integration tests cover native-only discovery, web/native dedupe, freshness provenance, native-provider failure fallback and fail-closed execution readiness.
+- [ ] Verify at least one real production research run on an exact deployed release before closing #250.
 
 ### Phase 3 — Telegram client-owned publish
 
