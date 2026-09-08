@@ -1,5 +1,5 @@
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 from app.customer_account import customer_account_service
 from app.customer_channels import customer_channel_service
