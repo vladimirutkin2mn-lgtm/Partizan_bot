@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     meta_oauth_app_id: str | None = None
     meta_oauth_app_secret: SecretStr | None = None
     meta_oauth_api_version: str | None = None
+    meta_oauth_public_ready: bool = False
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None

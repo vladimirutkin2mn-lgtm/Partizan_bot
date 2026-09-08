@@ -40,6 +40,7 @@ def _settings(**overrides) -> Settings:
         "meta_oauth_app_id": "1234567890",
         "meta_oauth_app_secret": "meta-secret-not-real",
         "meta_oauth_api_version": "v25.0",
+        "meta_oauth_public_ready": True,
         "provider_secret_encryption_key": Fernet.generate_key().decode("ascii"),
     }
     values.update(overrides)
@@ -81,6 +82,26 @@ def test_meta_resource_requests_keep_user_token_in_bearer_header(monkeypatch) ->
         assert token not in url
         assert "access_token" not in params
         assert headers == {"Authorization": f"Bearer {token}"}
+
+
+def test_meta_oauth_fails_closed_until_app_is_publicly_customer_ready() -> None:
+    store = get_runtime_store()
+    preview = _preview()
+    service = CustomerMetaOAuthService(
+        store=store,
+        settings=_settings(meta_oauth_public_ready=False),
+    )
+    before = len(store.list_namespace(CUSTOMER_META_OAUTH_STATE_NAMESPACE))
+
+    try:
+        service.begin(preview.project_id, preview.customer_token)
+    except CustomerMetaOAuthError as exc:
+        assert "temporarily unavailable" in str(exc)
+        assert "activated for customer access" in str(exc)
+    else:
+        raise AssertionError("Meta OAuth must not start before public customer readiness")
+
+    assert len(store.list_namespace(CUSTOMER_META_OAUTH_STATE_NAMESPACE)) == before
 
 
 def test_meta_oauth_can_begin_before_research_or_funding() -> None:

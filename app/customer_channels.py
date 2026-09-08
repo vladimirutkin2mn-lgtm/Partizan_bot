@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID
 
+from app.config import Settings, get_settings
 from app.customer_channel_schemas import (
     CustomerChannelPreferencesUpdateRequest,
     CustomerChannelView,
@@ -39,8 +40,13 @@ AUTONOMOUS_EXECUTION_PLATFORMS = frozenset({DistributionPlatform.INSTAGRAM})
 
 
 class CustomerChannelService:
-    def __init__(self, store: RuntimeStateStore | None = None) -> None:
+    def __init__(
+        self,
+        store: RuntimeStateStore | None = None,
+        settings: Settings | None = None,
+    ) -> None:
         self._store = store or get_runtime_store()
+        self._settings = settings or get_settings()
         self._balance = GrowthBalanceService(self._store)
 
     def list(self, project_id: UUID, customer_token: str) -> list[CustomerChannelView]:
@@ -70,9 +76,7 @@ class CustomerChannelService:
                     platform=platform,
                     label=CHANNEL_LABELS[platform],
                     mode=preferences[platform],
-                    autonomous_execution_available=(
-                        platform in AUTONOMOUS_EXECUTION_PLATFORMS
-                    ),
+                    autonomous_execution_available=self._autonomous_execution_available(platform),
                     execution_ready=execution_ready,
                     execution_blocker=execution_blocker,
                     connected=(meta_connected if platform == DistributionPlatform.INSTAGRAM else None),
@@ -123,7 +127,7 @@ class CustomerChannelService:
         return self.list(project_id, customer_token)
 
     def autonomous_platforms(self, project: dict) -> list[DistributionPlatform]:
-        """Return customer AUTO intent; runtime readiness is enforced separately."""
+        """Return customer AUTO intent that is currently eligible for runtime consideration."""
 
         preferences = self._preferences(project)
         return [
@@ -135,7 +139,7 @@ class CustomerChannelService:
                 DistributionPlatform.TELEGRAM,
             )
             if preferences[platform] == "AUTO"
-            and platform in AUTONOMOUS_EXECUTION_PLATFORMS
+            and self._autonomous_execution_available(platform)
         ]
 
     def filter_research(
@@ -192,8 +196,15 @@ class CustomerChannelService:
             rows[platform] = item
         return rows
 
-    @staticmethod
+    def _autonomous_execution_available(self, platform: DistributionPlatform) -> bool:
+        if platform not in AUTONOMOUS_EXECUTION_PLATFORMS:
+            return False
+        if platform == DistributionPlatform.INSTAGRAM:
+            return self._settings.meta_oauth_public_ready
+        return True
+
     def _execution_readiness(
+        self,
         platform: DistributionPlatform,
         *,
         meta_connected: bool,
@@ -201,6 +212,8 @@ class CustomerChannelService:
     ) -> tuple[bool, str | None]:
         if platform not in AUTONOMOUS_EXECUTION_PLATFORMS:
             return False, "autonomous execution is not supported for this channel"
+        if not self._autonomous_execution_available(platform):
+            return False, "Meta customer connection is temporarily unavailable"
         if platform == DistributionPlatform.INSTAGRAM and not meta_connected:
             return False, "connect Meta first"
         if not settlement_ready:

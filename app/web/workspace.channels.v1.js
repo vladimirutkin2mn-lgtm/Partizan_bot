@@ -48,6 +48,7 @@
 
   const detailStatus = (channel) => {
     if (channel.platform === 'INSTAGRAM') {
+      if (!channel.autonomous_execution_available && !channel.connected) return ['Research only', 'needs'];
       if (!channel.connected) return ['Needs connection', 'needs'];
       if (!channelEnabled(channel)) return ['Connected · Off', 'off'];
       if (!channel.execution_ready) return ['Connected · Research only', 'needs'];
@@ -59,6 +60,9 @@
 
   const channelSubline = (channel) => {
     if (channel.platform === 'INSTAGRAM') {
+      if (!channel.autonomous_execution_available && !channel.connected) {
+        return channel.execution_blocker || 'Meta customer connection is temporarily unavailable';
+      }
       if (!channel.connected) return 'Connect Meta before paid execution';
       if (!channel.execution_ready) {
         return channel.execution_blocker || 'Connected · paid execution is not ready yet';
@@ -70,11 +74,34 @@
 
   const overviewControl = (channel) => {
     if (channel.platform === 'INSTAGRAM' && !channel.connected) {
+      if (!channel.autonomous_execution_available) {
+        return '<span class="channel-detail-status needs">Unavailable</span>';
+      }
       return `<button class="channel-connect-button" type="button" data-channel-connect="INSTAGRAM">Connect</button>`;
     }
     const checked = channelEnabled(channel) ? ' checked' : '';
     const label = channelEnabled(channel) ? 'On' : 'Off';
     return `<label class="channel-toggle-control"><input class="channel-toggle" type="checkbox" data-platform="${escapeHtml(channel.platform)}" data-on-mode="${escapeHtml(enabledMode(channel))}" aria-label="${escapeHtml(channel.label)} enabled"${checked}><span class="channel-toggle-track" aria-hidden="true"></span><span class="channel-toggle-label">${label}</span></label>`;
+  };
+
+  const syncMetaSettingsControl = (channels) => {
+    const meta = channels.find((channel) => channel.platform === 'INSTAGRAM');
+    const button = $('meta-connect');
+    const detail = $('meta-detail');
+    if (!meta || !button || meta.connected) return;
+    if (!meta.autonomous_execution_available) {
+      button.dataset.partizanMetaUnavailable = 'true';
+      button.disabled = true;
+      button.textContent = 'Meta activation pending';
+      if (detail) detail.textContent = 'Partizan is finishing Meta app activation for customer access.';
+      return;
+    }
+    if (button.dataset.partizanMetaUnavailable === 'true') {
+      delete button.dataset.partizanMetaUnavailable;
+      button.disabled = false;
+      button.textContent = 'Connect Meta →';
+      if (detail) detail.textContent = 'No account access yet.';
+    }
   };
 
   const renderOverview = (channels) => {
@@ -122,6 +149,7 @@
     try {
       renderOverview(channels);
       renderDetails(channels);
+      syncMetaSettingsControl(channels);
       polishDetailsCopy();
     } finally {
       syncing = false;
