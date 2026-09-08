@@ -3,14 +3,14 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Protocol
 
 from app.config import Settings, get_settings
 
 
-ACTION_TARGET_FRESHNESS_WINDOW = timedelta(days=14)
+ACTION_TARGET_FRESHNESS_SECONDS = 14 * 24 * 60 * 60
 
 
 class TelegramResearchError(RuntimeError):
@@ -283,14 +283,15 @@ class TelethonTelegramResearchTransport:
                 )
             )
 
-        freshness_cutoff = checked_at - ACTION_TARGET_FRESHNESS_WINDOW
         relevant_context = next(
             (
                 item
                 for item in recent
                 if item.matched_terms
                 and item.published_at is not None
-                and freshness_cutoff <= item.published_at <= checked_at
+                and 0
+                <= (checked_at - item.published_at).total_seconds()
+                <= ACTION_TARGET_FRESHNESS_SECONDS
             ),
             None,
         )
