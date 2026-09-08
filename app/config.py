@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     telegram_research_result_limit: int = 5
     telegram_research_known_handle_limit: int = 3
     telegram_research_recent_message_limit: int = 4
+    telegram_client_publish_provider: str = "unavailable"
+    telegram_client_publish_public_ready: bool = False
+    telegram_client_publish_api_id: int | None = None
+    telegram_client_publish_api_hash: SecretStr | None = None
     creative_provider: str = "unavailable"
     creative_image_model: str = "gpt-image-2"
     creative_image_quality: str = "medium"
@@ -72,6 +76,7 @@ class Settings(BaseSettings):
         "meta_oauth_app_secret",
         "telegram_research_api_hash",
         "telegram_research_session",
+        "telegram_client_publish_api_hash",
         mode="before",
     )
     @classmethod
@@ -88,7 +93,11 @@ class Settings(BaseSettings):
             return normalized or None
         return value
 
-    @field_validator("telegram_research_api_id", mode="before")
+    @field_validator(
+        "telegram_research_api_id",
+        "telegram_client_publish_api_id",
+        mode="before",
+    )
     @classmethod
     def normalize_optional_integer(cls, value: object) -> object:
         if isinstance(value, str):
@@ -119,7 +128,9 @@ class Settings(BaseSettings):
     @field_validator("meta_oauth_api_version")
     @classmethod
     def validate_meta_oauth_api_version(cls, value: str | None) -> str | None:
-        if value is not None and (not value.startswith("v") or not value[1:].replace(".", "").isdigit()):
+        if value is not None and (
+            not value.startswith("v") or not value[1:].replace(".", "").isdigit()
+        ):
             raise ValueError("META_OAUTH_API_VERSION must look like v25.0")
         return value
 
@@ -131,6 +142,18 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"unavailable", "telethon"}:
             raise ValueError("TELEGRAM_RESEARCH_PROVIDER must be 'unavailable' or 'telethon'")
+        return normalized
+
+    @field_validator("telegram_client_publish_provider", mode="before")
+    @classmethod
+    def normalize_telegram_client_publish_provider(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if normalized not in {"unavailable", "telethon"}:
+            raise ValueError(
+                "TELEGRAM_CLIENT_PUBLISH_PROVIDER must be 'unavailable' or 'telethon'"
+            )
         return normalized
 
     @field_validator("growth_balance_settlement_provider", mode="before")
@@ -201,7 +224,9 @@ class Settings(BaseSettings):
         if parts.scheme not in {"http", "https"} or not parts.netloc:
             raise ValueError("PARTIZAN_PUBLIC_BASE_URL must be an absolute http(s) origin")
         if parts.path not in {"", "/"} or parts.query or parts.fragment:
-            raise ValueError("PARTIZAN_PUBLIC_BASE_URL must not contain a path, query or fragment")
+            raise ValueError(
+                "PARTIZAN_PUBLIC_BASE_URL must not contain a path, query or fragment"
+            )
         return normalized
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
