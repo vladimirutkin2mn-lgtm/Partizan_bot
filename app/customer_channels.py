@@ -18,6 +18,7 @@ from app.distribution_types import DistributionPlatform
 from app.growth_balance import GrowthBalanceService
 from app.paid_provider_connections import paid_provider_connection_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.telegram_client_publishing import customer_telegram_client_publish_service
 
 CHANNEL_PREFERENCES_KEY = "channel_preferences"
 CHANNEL_PUBLISHER_MODES_KEY = "channel_publisher_modes"
@@ -66,6 +67,7 @@ class CustomerChannelService:
         publisher_modes = self._publisher_modes(project)
         metrics = self._metrics_by_platform(project)
         meta_connected = self._meta_connected(project)
+        telegram_connected = customer_telegram_client_publish_service.is_connected(project_id)
         settlement_ready = bool(
             self._balance.rail_view(project_id).get("settlement_ready")
         )
@@ -92,13 +94,19 @@ class CustomerChannelService:
                     publisher_modes=self._publisher_mode_options(platform),
                     capabilities=self._capabilities(
                         platform,
+                        publisher_mode=publisher_modes[platform],
+                        telegram_connected=telegram_connected,
                         execution_ready=execution_ready,
                         execution_blocker=execution_blocker,
                     ),
                     autonomous_execution_available=self._autonomous_execution_available(platform),
                     execution_ready=execution_ready,
                     execution_blocker=execution_blocker,
-                    connected=(meta_connected if platform == DistributionPlatform.INSTAGRAM else None),
+                    connected=self._connected_value(
+                        platform,
+                        meta_connected=meta_connected,
+                        telegram_connected=telegram_connected,
+                    ),
                     experiment_count=(item.experiment_count if item is not None else 0),
                     spend_usd=(item.spend if item is not None else 0.0),
                     paid_customers=(item.paid_users if item is not None else 0),
@@ -235,11 +243,16 @@ class CustomerChannelService:
         platform: DistributionPlatform,
     ) -> list[CustomerPublisherModeView]:
         # PublisherMode models who performs an organic/community publish action.
-        # It is intentionally separate from paid-provider connection/readiness;
-        # Meta OAuth therefore does not make CLIENT_OWNED publisher mode ready.
-        if platform in {DistributionPlatform.REDDIT, DistributionPlatform.TELEGRAM}:
+        # It is intentionally separate from paid-provider connection/readiness.
+        if platform == DistributionPlatform.TELEGRAM:
+            telegram_blocker = customer_telegram_client_publish_service.readiness_blocker()
+            client_owned_available = telegram_blocker is None
+            client_owned_blocker = telegram_blocker
+        elif platform == DistributionPlatform.REDDIT:
+            client_owned_available = False
             client_owned_blocker = "client-owned publish adapter is not implemented yet"
         else:
+            client_owned_available = False
             client_owned_blocker = "publisher-mode execution is not implemented for this channel yet"
         return [
             CustomerPublisherModeView(
@@ -248,7 +261,7 @@ class CustomerChannelService:
             ),
             CustomerPublisherModeView(
                 mode=PublisherMode.CLIENT_OWNED,
-                available=False,
+                available=client_owned_available,
                 blocker=client_owned_blocker,
             ),
             CustomerPublisherModeView(
@@ -262,12 +275,19 @@ class CustomerChannelService:
         self,
         platform: DistributionPlatform,
         *,
+        publisher_mode: PublisherMode,
+        telegram_connected: bool,
         execution_ready: bool,
         execution_blocker: str | None,
     ) -> list[CustomerChannelCapabilityView]:
         if platform == DistributionPlatform.INSTAGRAM:
             publish_ready = execution_ready
             publish_blocker = execution_blocker
+        elif platform == DistributionPlatform.TELEGRAM:
+            publish_ready, publish_blocker = self._telegram_publish_readiness(
+                publisher_mode=publisher_mode,
+                telegram_connected=telegram_connected,
+            )
         else:
             publish_ready = False
             publish_blocker = "channel publish adapter is not implemented yet"
@@ -292,6 +312,21 @@ class CustomerChannelService:
                 blocker="channel outcome adapter is not implemented yet",
             ),
         ]
+
+    def _telegram_publish_readiness(
+        self,
+        *,
+        publisher_mode: PublisherMode,
+        telegram_connected: bool,
+    ) -> tuple[bool, str | None]:
+        blocker = customer_telegram_client_publish_service.readiness_blocker()
+        if blocker is not None:
+            return False, blocker
+        if publisher_mode != PublisherMode.CLIENT_OWNED:
+            return False, "select Client-owned as the Telegram publisher mode"
+        if not telegram_connected:
+            return False, "connect an authorised Telegram account first"
+        return True, None
 
     def _metrics_by_platform(self, project: dict) -> dict[DistributionPlatform, object]:
         product_id_raw = project.get("product_id")
@@ -346,6 +381,19 @@ class CustomerChannelService:
             return paid_provider_connection_service.get_meta(UUID(str(product_id_raw))) is not None
         except ValueError:
             return False
+
+    def _connected_value(
+        self,
+        platform: DistributionPlatform,
+        *,
+        meta_connected: bool,
+        telegram_connected: bool,
+    ) -> bool | None:
+        if platform == DistributionPlatform.INSTAGRAM:
+            return meta_connected
+        if platform == DistributionPlatform.TELEGRAM:
+            return telegram_connected
+        return None
 
     def _persist(self, project: dict) -> None:
         project["updated_at"] = datetime.now(UTC).isoformat()

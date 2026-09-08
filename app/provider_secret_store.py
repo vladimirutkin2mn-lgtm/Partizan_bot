@@ -10,6 +10,15 @@ from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 PROVIDER_SECRET_NAMESPACE = "provider_secret"
 PROVIDER_SECRET_PREFIX = "CUSTOMER_META_ACCESS_TOKEN_"
+TELEGRAM_SESSION_SECRET_PREFIX = "CUSTOMER_TELEGRAM_SESSION_"
+TELEGRAM_LOGIN_SECRET_PREFIX = "CUSTOMER_TELEGRAM_LOGIN_SESSION_"
+_ALLOWED_PROVIDER_SECRET_PREFIXES = frozenset(
+    {
+        PROVIDER_SECRET_PREFIX,
+        TELEGRAM_SESSION_SECRET_PREFIX,
+        TELEGRAM_LOGIN_SECRET_PREFIX,
+    }
+)
 
 
 class ProviderSecretConfigurationError(RuntimeError):
@@ -28,11 +37,13 @@ class ProviderSecretStore:
         self._store = store or get_runtime_store()
         self._settings = settings or get_settings()
 
-    def create_reference(self) -> str:
-        return f"{PROVIDER_SECRET_PREFIX}{uuid4().hex.upper()}"
+    def create_reference(self, *, prefix: str = PROVIDER_SECRET_PREFIX) -> str:
+        if prefix not in _ALLOWED_PROVIDER_SECRET_PREFIXES:
+            raise ValueError("Customer provider secret prefix is invalid")
+        return f"{prefix}{uuid4().hex.upper()}"
 
     def put(self, reference: str, plaintext: str) -> None:
-        if not reference.startswith(PROVIDER_SECRET_PREFIX):
+        if not any(reference.startswith(prefix) for prefix in _ALLOWED_PROVIDER_SECRET_PREFIXES):
             raise ValueError("Customer provider secret reference is invalid")
         if not plaintext:
             raise ValueError("Provider secret cannot be empty")

@@ -74,7 +74,10 @@ def test_reddit_and_telegram_expose_fail_closed_execution_capabilities() -> None
             "blocker": None,
         }
         assert publisher_modes["CLIENT_OWNED"]["available"] is False
-        assert "not implemented" in publisher_modes["CLIENT_OWNED"]["blocker"]
+        if platform == "REDDIT":
+            assert "not implemented" in publisher_modes["CLIENT_OWNED"]["blocker"]
+        else:
+            assert "unavailable" in publisher_modes["CLIENT_OWNED"]["blocker"].lower()
         assert publisher_modes["PARTIZAN_MANAGED"]["available"] is False
 
         capabilities = {item["capability"]: item for item in channel["capabilities"]}
