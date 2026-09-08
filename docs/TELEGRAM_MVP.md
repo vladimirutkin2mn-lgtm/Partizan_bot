@@ -1,12 +1,14 @@
 # Telegram MVP
 
+> **Execution model:** `docs/COMMUNITY_DISTRIBUTION_EXECUTION_PLAN.md` is the canonical rollout tracker for Telegram execution. Telegram opportunities remain community-first, but publishing is no longer assumed to use only a Partizan-owned identity. The customer-facing publisher modes are `MANUAL`, `CLIENT_OWNED`, and `PARTIZAN_MANAGED`.
+
 ## Product decision
 
 For the Telegram Community MVP, Partizan should **not** over-invest in message-level intelligence.
 
 The primary acquisition hypothesis is simpler:
 
-> Find Telegram channels and groups whose audience matches the client's ICP, participate from Partizan-owned Distribution Identities, route interest through the operator profile, and learn which communities produce real acquired users.
+> Find Telegram channels and groups whose audience matches the client's ICP, identify useful ways to participate, let the customer choose who publishes, and learn which communities produce real acquired users.
 
 The optimisation target is therefore **which communities are worth operating in**, not "which exact message is the perfect lead".
 
@@ -37,9 +39,9 @@ Included in MVP:
 
 - find relevant channels that have active comments / linked discussions;
 - find relevant public groups;
-- assign a Partizan-owned Telegram Distribution Identity;
+- let the customer choose `MANUAL`, `CLIENT_OWNED`, or `PARTIZAN_MANAGED` execution;
 - create simple native comments, replies or standalone contributions;
-- use the operator profile as the default conversion funnel rather than putting a direct product link into every message;
+- for managed identities, use the operator profile as a possible conversion funnel rather than putting a direct product link into every message;
 - record removals/restrictions and downstream conversions;
 - learn which communities are productive and which should be stopped.
 
@@ -60,7 +62,6 @@ Opportunity
 - audience relevance: 91/100
 - activity: high
 - comments available: yes
-- assigned identity: Partizan Relationship Scout
 - status: active
 ```
 
@@ -75,7 +76,6 @@ Opportunity
 - audience relevance: 88/100
 - activity: high
 - posting available: yes
-- assigned identity: Partizan AI Scout
 - status: active
 ```
 
@@ -96,7 +96,8 @@ Suggested fields:
 ```text
 id
 opportunity_id
-distribution_identity_id
+publisher_mode
+publisher_identity_id: optional
 action_type: comment | standalone_post | reply
 source_post_or_message_id: optional
 content
@@ -111,7 +112,23 @@ experiment_id
 This separation lets Partizan learn both:
 
 - whether the **community** is valuable;
-- which **action types / message patterns** work inside that community.
+- which **action types / message patterns / publisher modes** work inside that community.
+
+## Publisher modes
+
+The customer chooses who performs the final publish action.
+
+### `MANUAL`
+
+Partizan finds the community and drafts the contribution. The customer performs the final publish action themselves. No Telegram execution session is required from Partizan.
+
+### `CLIENT_OWNED`
+
+The customer explicitly connects an authorised Telegram account/session. Partizan may publish through that account only after the connection, readiness, approval and operating-limit gates required by the execution plan are satisfied.
+
+### `PARTIZAN_MANAGED`
+
+Partizan handles distribution through eligible Partizan-managed or partner-managed publisher inventory. Internally every publisher identity has explicit ownership and an audit trail. Managed distribution must not depend on disposable fake-account farms, impersonation, mass spam or ban-evasion infrastructure.
 
 ## Surface 1 — channels with comments
 
@@ -125,8 +142,9 @@ Execution flow:
 relevant channel
   → find a recent post with comments enabled
   → generate a short, topically relevant contribution
-  → publish from the assigned Partizan Distribution Identity
-  → profile funnel
+  → choose publisher mode / eligible identity
+  → publish or hand off the draft
+  → attributable route where appropriate
   → product attribution
 ```
 
@@ -176,7 +194,6 @@ Suggested fields / features:
 - comments available for channels;
 - posting/reply capability for groups;
 - audience / ICP relevance score;
-- assigned Distribution Identity;
 - action history;
 - recent action frequency;
 - removals / restrictions / failed actions;
@@ -186,6 +203,8 @@ Suggested fields / features:
 - revenue where available;
 - CAC / cost per activated user where spend can be allocated;
 - status: candidate | testing | active | paused | stopped.
+
+Publisher identity/session data belongs to execution infrastructure, not to the community opportunity itself.
 
 ## Community scoring
 
@@ -232,13 +251,13 @@ Example:
 
 This is more valuable for MVP than building a complex system that tries to identify the perfect message to answer.
 
-## Profile funnel
+## Attribution / profile funnel
 
-For Telegram Community, the default funnel remains:
+For a managed Telegram publisher identity, one useful funnel remains:
 
 ```text
 comment / group contribution
-  → user becomes curious about the Distribution Identity
+  → user becomes curious about the publisher identity
   → profile view
   → profile bio / destination
   → landing / Telegram bot / client product
@@ -246,7 +265,9 @@ comment / group contribution
   → paid
 ```
 
-The profile is therefore an acquisition asset and should be tracked/configured as part of the Distribution Identity.
+For `CLIENT_OWNED`, the customer's authorised account/profile and configured destination determine the route. For `MANUAL`, Partizan records the handoff and any attributable route the customer chooses to use.
+
+Do not claim action-level attribution when the chosen route cannot support it.
 
 ## Not MVP
 
@@ -258,9 +279,9 @@ Telegram Community MVP should not include:
 - negotiation with channel administrators;
 - direct paid placements with admins;
 - follower/subscriber boosting;
-- requirement to use the client's personal Telegram account;
+- requiring the client's personal Telegram account for every execution path;
 - disposable fake-account farms;
-- mass direct-link spam;
+- mass unsolicited DMs or direct-link spam;
 - technical ban-evasion infrastructure.
 
 ## MVP flow
@@ -270,25 +291,27 @@ Product + ICP
   → find Telegram channels/groups
   → score community relevance
   → select test communities
-  → assign Partizan Distribution Identity
+  → choose MANUAL | CLIENT_OWNED | PARTIZAN_MANAGED
+  → connect only what that mode requires
   → choose action type: comment | standalone | reply
   → generate simple native content
+  → approval / handoff where required
   → publish within operating limits
-  → profile funnel
   → start / activation / paid attribution
-  → learn community economics
+  → learn community + action + publisher-mode economics
   → SCALE / CONTINUE / MODIFY / STOP
 ```
 
 ## Architecture consequence
 
-The Telegram-specific data model should distinguish:
+The Telegram-specific model should distinguish:
 
 ```text
 DistributionOpportunity = community (channel/group)
 DistributionAction = concrete comment/post/reply
-DistributionIdentity = Partizan-owned operator account
+PublisherMode = MANUAL | CLIENT_OWNED | PARTIZAN_MANAGED
+PublisherIdentity = explicit client-owned / Partizan-managed / partner-managed executor when applicable
 Experiment = bounded test tying actions and attribution together
 ```
 
-This replaces the earlier assumption that every specific live Telegram message should itself be the core acquisition opportunity.
+This replaces both earlier assumptions that every specific live Telegram message should itself be the core acquisition opportunity **and** that every community action must be published from a Partizan-owned account.

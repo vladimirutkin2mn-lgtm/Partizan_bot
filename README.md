@@ -12,6 +12,7 @@ The full product vision, agent architecture, MVP scope and development roadmap a
 
 - [Product Vision & Action Plan](docs/PRODUCT_PLAN.md)
 - [Current Implementation Status](docs/CURRENT_STATUS.md) — what is already in `main`, what remains open, and the next order of work.
+- [Community Distribution Execution Plan](docs/COMMUNITY_DISTRIBUTION_EXECUTION_PLAN.md) — canonical Telegram/Reddit execution rollout, publisher modes, capability model and linked GitHub phase issues.
 - [Repository Boundary](docs/REPOSITORY_BOUNDARY.md) — external products are dependencies, not implicit write targets.
 - [Production Runtime](docs/PRODUCTION_RUNTIME.md)
 - [Generic Growth Runner](docs/GENERIC_GROWTH_RUNNER.md)
