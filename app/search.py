@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
@@ -30,6 +30,7 @@ class SearchHit:
     snippet: str
     query: str
     source_class: SourceClass
+    metadata: dict = field(default_factory=dict)
 
 
 class SearchProvider(ABC):
