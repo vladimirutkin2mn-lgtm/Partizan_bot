@@ -21,6 +21,16 @@ from app.customer_funnel import (
     CustomerProjectNotFoundError,
     customer_funnel_service,
 )
+from app.telegram_client_publishing import (
+    CustomerTelegramClientPublishError,
+    TelegramClientPublishReceipt,
+    TelegramConnectionView,
+    TelegramLoginChallengeView,
+    TelegramLoginConfirmRequest,
+    TelegramLoginStartRequest,
+    TelegramPublishRequest,
+    customer_telegram_client_publish_service,
+)
 
 router = APIRouter(tags=["customer-channels"])
 
@@ -79,4 +89,106 @@ def update_customer_channel_controls(
             customer_autopilot_service.refresh_channel_policy(project_id, customer_token)
         return customer_channel_service.list(project_id, customer_token)
     except (CustomerProjectNotFoundError, CustomerProjectAccessError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/telegram/connection",
+    response_model=TelegramConnectionView,
+)
+def get_customer_telegram_connection(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramConnectionView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return customer_telegram_client_publish_service.connection(project_id, customer_token)
+    except CustomerTelegramClientPublishError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/connection/start",
+    response_model=TelegramLoginChallengeView,
+)
+async def start_customer_telegram_connection(
+    project_id: UUID,
+    payload: TelegramLoginStartRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramLoginChallengeView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return await customer_telegram_client_publish_service.begin_login(
+            project_id,
+            customer_token,
+            payload,
+        )
+    except CustomerTelegramClientPublishError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Telegram connection failed safely ({type(exc).__name__})",
+        ) from None
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/connection/confirm",
+    response_model=TelegramConnectionView | TelegramLoginChallengeView,
+)
+async def confirm_customer_telegram_connection(
+    project_id: UUID,
+    payload: TelegramLoginConfirmRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramConnectionView | TelegramLoginChallengeView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return await customer_telegram_client_publish_service.complete_login(
+            project_id,
+            customer_token,
+            payload,
+        )
+    except CustomerTelegramClientPublishError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Telegram connection failed safely ({type(exc).__name__})",
+        ) from None
+
+
+@router.delete(
+    "/customer/workspace/{project_id}/telegram/connection",
+    response_model=TelegramConnectionView,
+)
+def disconnect_customer_telegram_connection(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramConnectionView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return customer_telegram_client_publish_service.disconnect(project_id, customer_token)
+    except CustomerTelegramClientPublishError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/actions/{action_id}/publish",
+    response_model=TelegramClientPublishReceipt,
+)
+async def publish_customer_telegram_action(
+    project_id: UUID,
+    action_id: UUID,
+    payload: TelegramPublishRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramClientPublishReceipt:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return await customer_telegram_client_publish_service.publish(
+            project_id,
+            customer_token,
+            action_id,
+            payload,
+        )
+    except CustomerTelegramClientPublishError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
