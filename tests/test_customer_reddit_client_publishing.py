@@ -196,6 +196,14 @@ def _registered_client(*, email: str = "reddit-client-owned@example.com") -> tup
     return client, preview
 
 
+def _account_customer_token(client: TestClient, project_id) -> str:
+    _, customer_token = customer_account_service.project_access(
+        session_token=client.cookies.get("partizan_customer_session"),
+        project_id=project_id,
+    )
+    return customer_token
+
+
 def _connect(client: TestClient, project_id) -> None:
     started = client.post(f"/customer/workspace/{project_id}/reddit/connection/start")
     assert started.status_code == 200
@@ -706,6 +714,7 @@ def test_service_requires_explicit_confirmation_before_publish_transport() -> No
     product_id, action_id, _ = _product_and_action()
     _bind_project_to_product(preview.project_id, product_id)
     _select_client_owned(client, preview.project_id)
+    customer_token = _account_customer_token(client, preview.project_id)
 
     with pytest.raises(CustomerRedditClientPublishError, match="confirmation"):
         import asyncio
@@ -713,7 +722,7 @@ def test_service_requires_explicit_confirmation_before_publish_transport() -> No
         asyncio.run(
             customer_reddit_client_publish_service.publish(
                 preview.project_id,
-                preview.customer_token,
+                customer_token,
                 UUID(action_id),
                 RedditPublishRequest(),
             )
@@ -728,14 +737,15 @@ def test_service_rejects_cross_project_action_before_using_reddit_token() -> Non
     _connect(client_a, preview_a.project_id)
     _, action_id, _ = _product_and_action()
 
-    _, preview_b = _registered_client(email="reddit-other@example.com")
+    client_b, preview_b = _registered_client(email="reddit-other@example.com")
+    customer_token_b = _account_customer_token(client_b, preview_b.project_id)
     with pytest.raises(CustomerRedditClientPublishError, match="does not belong"):
         import asyncio
 
         asyncio.run(
             customer_reddit_client_publish_service.publish(
                 preview_b.project_id,
-                preview_b.customer_token,
+                customer_token_b,
                 UUID(action_id),
                 RedditPublishRequest(),
             )
