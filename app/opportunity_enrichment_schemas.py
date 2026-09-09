@@ -19,6 +19,8 @@ class CommunityPolicyProposalView(BaseModel):
     standalone_posts: PolicyState = "UNKNOWN"
     comments: PolicyState = "UNKNOWN"
     disclosure: DisclosureState = "UNKNOWN"
+    special_promotion_windows: list[dict] = Field(default_factory=list)
+    ai_content_constraints: list[str] = Field(default_factory=list)
     confidence: float = Field(default=0, ge=0, le=100)
     rationale: list[str] = Field(default_factory=list)
     evidence: list[dict] = Field(default_factory=list)
