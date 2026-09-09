@@ -53,6 +53,23 @@ def _identity(
     )
 
 
+def _fresh_reddit_policy(**overrides) -> CommunityPolicyView:
+    values = {
+        "id": uuid4(),
+        "opportunity_id": uuid4(),
+        "commercial_participation_allowed": True,
+        "comments_allowed": True,
+        "links_allowed": False,
+        "product_mentions_allowed": True,
+        "disclosure_required": True,
+        "source": "manual_review",
+        "research_status": "MANUAL",
+        "last_checked_at": datetime.now(UTC),
+    }
+    values.update(overrides)
+    return CommunityPolicyView(**values)
+
+
 def test_reddit_community_action_requires_policy() -> None:
     opportunity = _opportunity(DistributionPlatform.REDDIT, OpportunityKind.SUBREDDIT)
     identity = _identity(DistributionPlatform.REDDIT)
@@ -70,15 +87,7 @@ def test_reddit_community_action_requires_policy() -> None:
 def test_reddit_policy_gates_links_and_mentions_separately() -> None:
     opportunity = _opportunity(DistributionPlatform.REDDIT, OpportunityKind.SUBREDDIT)
     identity = _identity(DistributionPlatform.REDDIT)
-    policy = CommunityPolicyView(
-        id=uuid4(),
-        opportunity_id=uuid4(),
-        commercial_participation_allowed=True,
-        comments_allowed=True,
-        links_allowed=False,
-        product_mentions_allowed=True,
-        disclosure_required=True,
-    )
+    policy = _fresh_reddit_policy()
 
     direct_link = DistributionExecutionPolicy().evaluate(
         opportunity,
@@ -101,6 +110,47 @@ def test_reddit_policy_gates_links_and_mentions_separately() -> None:
     assert any("direct links" in reason for reason in direct_link.reasons)
     assert no_link.allowed is True
     assert no_link.disclosure_required is True
+
+
+def test_reddit_policy_without_freshness_timestamp_fails_closed() -> None:
+    opportunity = _opportunity(DistributionPlatform.REDDIT, OpportunityKind.SUBREDDIT)
+    identity = _identity(DistributionPlatform.REDDIT)
+    policy = _fresh_reddit_policy(last_checked_at=None)
+
+    decision = DistributionExecutionPolicy().evaluate(
+        opportunity,
+        DistributionActionType.COMMENT,
+        identity=identity,
+        community_policy=policy,
+    )
+
+    assert decision.allowed is False
+    assert any("freshness timestamp" in reason for reason in decision.reasons)
+
+
+def test_stale_or_partial_reddit_policy_fails_closed() -> None:
+    opportunity = _opportunity(DistributionPlatform.REDDIT, OpportunityKind.SUBREDDIT)
+    identity = _identity(DistributionPlatform.REDDIT)
+    stale = _fresh_reddit_policy(last_checked_at=datetime.now(UTC) - timedelta(days=8))
+    partial = _fresh_reddit_policy(research_status="PARTIAL")
+
+    stale_decision = DistributionExecutionPolicy().evaluate(
+        opportunity,
+        DistributionActionType.COMMENT,
+        identity=identity,
+        community_policy=stale,
+    )
+    partial_decision = DistributionExecutionPolicy().evaluate(
+        opportunity,
+        DistributionActionType.COMMENT,
+        identity=identity,
+        community_policy=partial,
+    )
+
+    assert stale_decision.allowed is False
+    assert any("stale" in reason for reason in stale_decision.reasons)
+    assert partial_decision.allowed is False
+    assert any("not verified" in reason for reason in partial_decision.reasons)
 
 
 def test_paid_campaign_does_not_require_distribution_identity() -> None:

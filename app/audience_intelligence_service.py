@@ -64,18 +64,30 @@ class InMemoryAudienceIntelligenceService:
             self._opportunities[opportunity.id] = opportunity
         return result
 
-    def find_opportunity(self, opportunity_id: UUID) -> DistributionOpportunityView:
-        cached = self._opportunities.get(opportunity_id)
+    def find_opportunity(
+        self,
+        opportunity_id: UUID | str,
+    ) -> DistributionOpportunityView:
+        try:
+            normalized_id = (
+                opportunity_id
+                if isinstance(opportunity_id, UUID)
+                else UUID(str(opportunity_id))
+            )
+        except (TypeError, ValueError) as exc:
+            raise KeyError(opportunity_id) from exc
+
+        cached = self._opportunities.get(normalized_id)
         if cached is not None:
             return cached
         payload = self._store.get(
             AUDIENCE_OPPORTUNITY_NAMESPACE,
-            str(opportunity_id),
+            str(normalized_id),
         )
         if payload is None:
-            raise KeyError(opportunity_id)
+            raise KeyError(normalized_id)
         opportunity = DistributionOpportunityView.model_validate(payload)
-        self._opportunities[opportunity_id] = opportunity
+        self._opportunities[normalized_id] = opportunity
         return opportunity
 
     def update_opportunity(

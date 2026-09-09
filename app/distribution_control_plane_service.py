@@ -17,6 +17,7 @@ from app.distribution_types import (
     DistributionIdentityStatus,
     DistributionPlatform,
 )
+from app.reddit_research import REDDIT_POLICY_MAX_AGE, ensure_utc
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 DISTRIBUTION_IDENTITY_NAMESPACE = "distribution_identity"
@@ -110,6 +111,16 @@ class InMemoryDistributionControlPlaneService:
             existing = self.get_policy(opportunity_id)
         except KeyError:
             existing = None
+        checked_at = ensure_utc(payload.last_checked_at or datetime.now(UTC))
+        requested_fresh_until = (
+            ensure_utc(payload.fresh_until) if payload.fresh_until is not None else None
+        )
+        max_fresh_until = checked_at + REDDIT_POLICY_MAX_AGE
+        fresh_until = (
+            min(requested_fresh_until, max_fresh_until)
+            if requested_fresh_until is not None
+            else max_fresh_until
+        )
         policy = CommunityPolicyView(
             id=existing.id if existing is not None else uuid4(),
             opportunity_id=opportunity_id,
@@ -123,7 +134,10 @@ class InMemoryDistributionControlPlaneService:
             special_promotion_windows=payload.special_promotion_windows,
             ai_content_constraints=payload.ai_content_constraints,
             evidence=payload.evidence,
-            last_checked_at=payload.last_checked_at or datetime.now(UTC),
+            source=payload.source,
+            research_status=payload.research_status.upper(),
+            last_checked_at=checked_at,
+            fresh_until=fresh_until,
             confidence=payload.confidence,
         )
         self._policies[opportunity_id] = policy

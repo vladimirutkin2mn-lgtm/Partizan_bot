@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -68,13 +70,21 @@ def _replace_opportunity_target(
     opportunity = audience_intelligence_service.find_opportunity(current["id"])
     metadata = dict(opportunity.metadata)
     enrichment = dict(metadata.get("enrichment", {}))
-    enrichment["action_targets"] = [
-        {
-            "url": target_url,
-            "title": target_title,
-            "snippet": target_snippet,
-        }
-    ]
+    target = {
+        "url": target_url,
+        "title": target_title,
+        "snippet": target_snippet,
+    }
+    if platform == "REDDIT":
+        now = datetime.now(UTC)
+        target.update(
+            {
+                "freshness_status": "FRESH",
+                "published_at": now.isoformat(),
+                "checked_at": now.isoformat(),
+            }
+        )
+    enrichment["action_targets"] = [target]
     metadata["enrichment"] = enrichment
     updated = opportunity.model_copy(update={"metadata": metadata})
     audience_intelligence_service.update_opportunity(updated)
@@ -121,6 +131,23 @@ def _auto_prepare(product_id: str, play_id: str):
         f"/v1/products/{product_id}/distribution-plays/{play_id}/actions/auto-prepare",
         json={"destination_url": "https://example.com/oracle"},
     )
+
+
+def _allow_reddit_comments(opportunity_id: str) -> None:
+    policy = client.put(
+        f"/v1/distribution-opportunities/{opportunity_id}/community-policy",
+        json={
+            "commercial_participation_allowed": True,
+            "comments_allowed": True,
+            "standalone_posts_allowed": False,
+            "links_allowed": False,
+            "product_mentions_allowed": False,
+            "disclosure_required": True,
+            "confidence": 95,
+            "evidence": [{"source": "reviewed subreddit rules"}],
+        },
+    )
+    assert policy.status_code == 200
 
 
 def test_instagram_comment_selects_enriched_reel_and_creates_prepared_draft() -> None:
@@ -181,20 +208,7 @@ def test_reddit_comment_uses_applied_policy_and_includes_required_disclosure() -
     )
     identity = _identity("REDDIT", "SUBREDDIT", ["COMMENT"])
     _slot(product_id, identity["id"])
-    policy = client.put(
-        f"/v1/distribution-opportunities/{reddit['id']}/community-policy",
-        json={
-            "commercial_participation_allowed": True,
-            "comments_allowed": True,
-            "standalone_posts_allowed": False,
-            "links_allowed": False,
-            "product_mentions_allowed": False,
-            "disclosure_required": True,
-            "confidence": 95,
-            "evidence": [{"source": "reviewed subreddit rules"}],
-        },
-    )
-    assert policy.status_code == 200
+    _allow_reddit_comments(reddit["id"])
     comment = next(
         play
         for play in _plays(product_id)
@@ -210,6 +224,51 @@ def test_reddit_comment_uses_applied_policy_and_includes_required_disclosure() -
     assert "/comments/abc123/" in action["target_url"]
     assert action["content_text"].startswith("Disclosure:")
     assert "http" not in action["content_text"].lower()
+
+
+def test_reddit_comment_rejects_stale_target_and_raw_evidence_fallback() -> None:
+    product_id = _product()
+    reddit = _replace_opportunity_target(
+        product_id,
+        "REDDIT",
+        "https://www.reddit.com/r/relationships/comments/stale1/old_thread/",
+        "Old relationship thread",
+        "An old discussion that must not be selected for a new reply.",
+    )
+    opportunity = audience_intelligence_service.find_opportunity(reddit["id"])
+    metadata = dict(opportunity.metadata)
+    enrichment = dict(metadata["enrichment"])
+    enrichment["action_targets"][0]["freshness_status"] = "STALE"
+    enrichment["action_targets"][0]["published_at"] = (
+        datetime.now(UTC) - timedelta(days=10)
+    ).isoformat()
+    metadata["enrichment"] = enrichment
+    evidence = [
+        *opportunity.evidence,
+        {
+            "url": "https://www.reddit.com/r/relationships/comments/raw1/raw_thread/",
+            "title": "Unverified evidence thread",
+            "snippet": "No verified publication time is available.",
+        },
+    ]
+    audience_intelligence_service.update_opportunity(
+        opportunity.model_copy(update={"metadata": metadata, "evidence": evidence})
+    )
+    identity = _identity("REDDIT", "SUBREDDIT", ["COMMENT"])
+    _slot(product_id, identity["id"])
+    _allow_reddit_comments(reddit["id"])
+    comment = next(
+        play
+        for play in _plays(product_id)
+        if play["tactic_id"] == "reddit_comment"
+        and play["opportunity_id"] == reddit["id"]
+        and play["status"] == "READY"
+    )
+
+    response = _auto_prepare(product_id, comment["id"])
+
+    assert response.status_code == 409
+    assert "ActionTarget" in response.json()["detail"]
 
 
 def test_tiktok_organic_auto_prepare_requires_no_third_party_target() -> None:

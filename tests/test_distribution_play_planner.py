@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -173,6 +174,7 @@ def test_reddit_policy_can_allow_comment_while_blocking_link_post() -> None:
         links_allowed=False,
         product_mentions_allowed=True,
         confidence=90,
+        last_checked_at=datetime.now(UTC),
     )
 
     plays = DistributionPlayPlanner().plan(

@@ -16,6 +16,7 @@ from app.distribution_types import (
     OpportunityKind,
     is_valid_action_type,
 )
+from app.reddit_research import policy_freshness_reason
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +111,9 @@ class DistributionExecutionPolicy:
             )
 
         reasons: list[str] = []
+        freshness_reason = policy_freshness_reason(policy)
+        if freshness_reason is not None:
+            reasons.append(freshness_reason)
         if not policy.commercial_participation_allowed:
             reasons.append("Community policy does not allow commercial participation")
 
