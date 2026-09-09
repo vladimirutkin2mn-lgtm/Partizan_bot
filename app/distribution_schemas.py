@@ -78,7 +78,10 @@ class CommunityPolicyView(BaseModel):
     special_promotion_windows: list[dict] = Field(default_factory=list)
     ai_content_constraints: list[str] = Field(default_factory=list)
     evidence: list[dict] = Field(default_factory=list)
+    source: str = "manual_review"
+    research_status: str = "MANUAL"
     last_checked_at: datetime | None = None
+    fresh_until: datetime | None = None
     confidence: float | None = Field(default=None, ge=0, le=100)
 
     @property
