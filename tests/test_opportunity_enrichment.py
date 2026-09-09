@@ -62,6 +62,14 @@ def _opportunity(product_id: str, platform: str) -> dict:
     )
 
 
+def _subreddit_from_query(query: str) -> str:
+    marker = "site:reddit.com/r/"
+    if marker not in query:
+        return "relationships"
+    remainder = query.split(marker, 1)[1]
+    return remainder.split("/", 1)[0].split()[0]
+
+
 class EnrichmentProvider(SearchProvider):
     async def search(
         self,
@@ -70,19 +78,21 @@ class EnrichmentProvider(SearchProvider):
     ) -> list[SearchHit]:
         query = discovery_query.query
         if "site:reddit.com/r/" in query and "/comments recent discussion" in query:
+            subreddit = _subreddit_from_query(query)
             rows = [
                 (
                     "Relationship uncertainty discussion",
-                    "https://www.reddit.com/r/relationships/comments/abc123/uncertain_relationship/",
+                    f"https://www.reddit.com/r/{subreddit}/comments/abc123/uncertain_relationship/",
                     "2 days ago - Recent discussion with active comments about relationship uncertainty.",
                     {},
                 )
             ]
         elif "site:reddit.com/r/" in query:
+            subreddit = _subreddit_from_query(query)
             rows = [
                 (
                     "Community rules",
-                    "https://www.reddit.com/r/relationships/about/rules/",
+                    f"https://www.reddit.com/r/{subreddit}/about/rules/",
                     (
                         "No self-promotion. External links are not allowed. "
                         "Disclosure required for affiliated recommendations."
@@ -139,11 +149,12 @@ class VerifiedRedditProvider(SearchProvider):
         limit: int = 5,
     ) -> list[SearchHit]:
         query = discovery_query.query
+        subreddit = _subreddit_from_query(query)
         if "/comments recent discussion" in query:
             rows = [
                 SearchHit(
                     title="Fresh thread",
-                    url="https://www.reddit.com/r/relationships/comments/fresh1/question/",
+                    url=f"https://www.reddit.com/r/{subreddit}/comments/fresh1/question/",
                     snippet="Active discussion about relationship uncertainty.",
                     query=query,
                     source_class=discovery_query.source_class,
@@ -154,7 +165,7 @@ class VerifiedRedditProvider(SearchProvider):
             rows = [
                 SearchHit(
                     title="Rules and promotion policy",
-                    url="https://www.reddit.com/r/relationships/about/rules/",
+                    url=f"https://www.reddit.com/r/{subreddit}/about/rules/",
                     snippet=(
                         "Promotion is allowed. Self-promotion is allowed. Links are allowed. "
                         "Product mentions are allowed. Promotional posts are allowed. "
@@ -320,6 +331,21 @@ def test_verified_reddit_research_models_special_promo_and_ai_constraints(monkey
     assert body["comments_allowed"] is True
     assert body["special_promotion_windows"][0]["kind"] == "designated_promotion_surface"
     assert body["ai_content_constraints"] == ["AI_CONTENT_DISCLOSURE_REQUIRED"]
+
+
+def test_find_opportunity_normalizes_string_uuid_cache_key() -> None:
+    product_id = _confirmed_product()
+    reddit = _opportunity(product_id, "REDDIT")
+    opportunity = audience_intelligence_service.find_opportunity(reddit["id"])
+    metadata = dict(opportunity.metadata)
+    metadata["cache_regression_marker"] = "updated"
+    audience_intelligence_service.update_opportunity(
+        opportunity.model_copy(update={"metadata": metadata})
+    )
+
+    reread = audience_intelligence_service.find_opportunity(reddit["id"])
+
+    assert reread.metadata["cache_regression_marker"] == "updated"
 
 
 def test_failed_enrichment_keeps_existing_discovery_evidence(monkeypatch) -> None:
