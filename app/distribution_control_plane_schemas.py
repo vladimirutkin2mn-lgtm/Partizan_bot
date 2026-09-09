@@ -60,7 +60,10 @@ class CommunityPolicyUpsertRequest(BaseModel):
     special_promotion_windows: list[dict] = Field(default_factory=list)
     ai_content_constraints: list[str] = Field(default_factory=list)
     evidence: list[dict] = Field(default_factory=list)
+    source: str = Field(default="manual_review", min_length=1, max_length=120)
+    research_status: str = Field(default="MANUAL", min_length=1, max_length=40)
     last_checked_at: datetime | None = None
+    fresh_until: datetime | None = None
     confidence: float | None = Field(default=None, ge=0, le=100)
 
 
