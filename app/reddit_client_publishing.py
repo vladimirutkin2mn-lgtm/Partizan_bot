@@ -103,6 +103,7 @@ class RedditConnectionView(BaseModel):
 
 
 class RedditPublishRequest(BaseModel):
+    confirm_publish: bool = False
     retry: bool = False
 
 
@@ -210,6 +211,8 @@ class HttpxRedditClientPublishTransport:
                 "refresh_token": refresh_token,
             }
         )
+        if not str(payload.get("scope") or "").strip():
+            payload = {**payload, "scope": " ".join(sorted(_REQUIRED_SCOPES))}
         bundle = self._token_bundle(payload, require_refresh=False)
         if not bundle.refresh_token:
             bundle = bundle.model_copy(update={"refresh_token": refresh_token})
@@ -268,9 +271,18 @@ class HttpxRedditClientPublishTransport:
         thing = things[0] if isinstance(things, list) and things else None
         thing_data = thing.get("data") if isinstance(thing, dict) else None
         fullname = str((thing_data or {}).get("name") or "").strip()
-        url = str((thing_data or {}).get("url") or "").strip()
+        raw_url = str(
+            (thing_data or {}).get("url") or (thing_data or {}).get("permalink") or ""
+        ).strip()
+        url = f"https://www.reddit.com{raw_url}" if raw_url.startswith("/") else raw_url
         if not fullname or not url:
             raise RedditClientPublishTransportError("PUBLISH_RESULT_NOT_CONFIRMED")
+        parsed_url = urlsplit(url)
+        host = parsed_url.netloc.lower().removeprefix("www.")
+        if parsed_url.scheme != "https" or (
+            host != "reddit.com" and not host.endswith(".reddit.com")
+        ):
+            raise RedditClientPublishTransportError("PUBLISH_RESULT_URL_INVALID")
         return RedditPublishResult(
             fullname=fullname,
             url=url,
@@ -622,6 +634,10 @@ class CustomerRedditClientPublishService:
         if str(project.get("product_id") or "") != str(experiment.product_id):
             raise CustomerRedditClientPublishError(
                 "Reddit action does not belong to this customer project"
+            )
+        if not payload.confirm_publish:
+            raise CustomerRedditClientPublishError(
+                "Explicit customer confirmation is required for each Reddit publish"
             )
 
         existing = self.get_receipt(action_id)
