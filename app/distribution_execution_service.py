@@ -21,7 +21,11 @@ from app.distribution_play_schemas import (
 )
 from app.distribution_policy import DistributionExecutionPolicy
 from app.distribution_schemas import DistributionActionView
-from app.distribution_types import DistributionActionStatus, DistributionActionType
+from app.distribution_types import (
+    DistributionActionStatus,
+    DistributionActionType,
+    DistributionPlatform,
+)
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ProductProfileView
 
@@ -125,6 +129,20 @@ class InMemoryDistributionExecutionService:
             medium=play.tactic_class.value,
         )
 
+        content_payload = {
+            "context_text": payload.context_text,
+            "hypothesis": play.hypothesis,
+            "execution_steps": play.execution_steps,
+            "success_metric": play.success_metric,
+            "disclosure_included": payload.disclosure_included,
+            "ai_disclosure_included": payload.ai_disclosure_included,
+            "community_policy_constraints_confirmed": (
+                payload.community_policy_constraints_confirmed
+            ),
+        }
+        if payload.title is not None:
+            content_payload["title"] = payload.title.strip()
+
         action = DistributionActionView(
             id=action_id,
             platform=play.platform,
@@ -138,12 +156,7 @@ class InMemoryDistributionExecutionService:
             attribution_level=play.attribution_level,
             target_url=target_url,
             content_text=payload.content_text,
-            content_payload={
-                "context_text": payload.context_text,
-                "hypothesis": play.hypothesis,
-                "execution_steps": play.execution_steps,
-                "success_metric": play.success_metric,
-            },
+            content_payload=content_payload,
             tracking_url=tracking_url,
             operational_metadata={
                 "distribution_play_id": str(play.id),
@@ -183,6 +196,16 @@ class InMemoryDistributionExecutionService:
         content_payload = dict(action.content_payload)
         if payload.context_text is not None:
             content_payload["context_text"] = payload.context_text
+        if payload.title is not None:
+            content_payload["title"] = payload.title.strip()
+        for key in (
+            "disclosure_included",
+            "ai_disclosure_included",
+            "community_policy_constraints_confirmed",
+        ):
+            value = getattr(payload, key)
+            if value is not None:
+                content_payload[key] = value
         updated = action.model_copy(
             update={
                 "target_url": payload.target_url or action.target_url,
@@ -323,6 +346,23 @@ class InMemoryDistributionExecutionService:
             experiment=running_experiment,
         )
 
+    def record_external_observation(
+        self,
+        action_id: UUID,
+        *,
+        provider: str,
+        observation: dict,
+    ) -> DistributionActionView:
+        action = self.get_action(action_id)
+        metadata = dict(action.operational_metadata)
+        observations = dict(metadata.get("external_observations") or {})
+        observations[provider] = dict(observation)
+        metadata["external_observations"] = observations
+        updated = action.model_copy(update={"operational_metadata": metadata})
+        self._actions[action_id] = updated
+        self._persist_action(updated)
+        return updated
+
     def finish_experiment(self, experiment_id: UUID) -> DistributionExperimentView:
         experiment = self.get_experiment(experiment_id)
         if experiment.status != DistributionExperimentStatus.RUNNING:
@@ -351,7 +391,7 @@ class InMemoryDistributionExecutionService:
         if payload is None:
             raise KeyError(experiment_id)
         experiment = DistributionExperimentView.model_validate(payload)
-        self._experiments[experiment_id] = experiment
+        self._experiments[experiment.id] = experiment
         return experiment
 
     def list_experiments(
@@ -483,6 +523,11 @@ class InMemoryDistributionExecutionService:
                 raise ValueError("Standalone post requires a target community URL")
             if not str(action.content_text or "").strip():
                 raise ValueError("Standalone post requires drafted content before approval")
+            if (
+                action.platform == DistributionPlatform.REDDIT
+                and not str(action.content_payload.get("title") or "").strip()
+            ):
+                raise ValueError("Reddit standalone post requires a title before approval")
             return
 
         if action.action_type == DistributionActionType.ORGANIC_VIDEO:
