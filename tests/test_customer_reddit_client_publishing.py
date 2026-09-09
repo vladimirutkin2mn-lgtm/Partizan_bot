@@ -34,7 +34,6 @@ from app.reddit_client_publishing import (
 )
 from app.runtime_store import get_runtime_store
 
-
 PUBLISH_CONFIRMATION = {"confirm_publish": True}
 
 
@@ -697,6 +696,29 @@ def test_missing_required_oauth_scopes_fail_closed() -> None:
     assert callback.status_code == 303
     assert "reddit=error" in callback.headers["location"]
     assert customer_reddit_client_publish_service.is_connected(preview.project_id) is False
+
+
+def test_service_requires_explicit_confirmation_before_publish_transport() -> None:
+    transport = FakeRedditClientTransport()
+    _enable_client_publish(transport)
+    client, preview = _registered_client()
+    _connect(client, preview.project_id)
+    product_id, action_id, _ = _product_and_action()
+    _bind_project_to_product(preview.project_id, product_id)
+    _select_client_owned(client, preview.project_id)
+
+    with pytest.raises(CustomerRedditClientPublishError, match="confirmation"):
+        import asyncio
+
+        asyncio.run(
+            customer_reddit_client_publish_service.publish(
+                preview.project_id,
+                preview.customer_token,
+                UUID(action_id),
+                RedditPublishRequest(),
+            )
+        )
+    assert transport.publish_calls == []
 
 
 def test_service_rejects_cross_project_action_before_using_reddit_token() -> None:
