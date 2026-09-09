@@ -128,7 +128,11 @@ class OpportunityEnrichmentService:
                 policy_proposal,
                 checked_at=now,
             )
-            fresh_targets = [target for target in action_targets if action_target_is_fresh(target, now=now)]
+            fresh_targets = [
+                target
+                for target in action_targets
+                if action_target_is_fresh(target, now=now)
+            ]
             ranking = self._reddit_ranking(
                 product_id=product.id,
                 opportunity=opportunity,
@@ -539,7 +543,8 @@ class RedditPolicyProposalBuilder:
                 f"{known} field(s) have explicit textual signals."
             )
         rationale.append(
-            "UNKNOWN is intentionally restrictive; PARTIAL research is persisted fail-closed and cannot authorize execution."
+            "UNKNOWN is intentionally restrictive; PARTIAL research is persisted "
+            "fail-closed and cannot authorize execution."
         )
         confidence = min(95.0, known * 12.0) if hits else 0.0
         return CommunityPolicyProposalView(
@@ -573,6 +578,24 @@ class RedditPolicyProposalBuilder:
         return "ALLOWED" if has_positive else "DISALLOWED"
 
     def _disclosure_state(self, text: str) -> str:
+        not_required_patterns = (
+            "no disclosure required",
+            "disclosure is not required",
+        )
+        if any(pattern in text for pattern in not_required_patterns):
+            stripped = text
+            for pattern in not_required_patterns:
+                stripped = stripped.replace(pattern, "")
+            if not any(
+                pattern in stripped
+                for pattern in (
+                    "disclosure required",
+                    "must disclose",
+                    "disclose your affiliation",
+                    "disclose affiliation",
+                )
+            ):
+                return "NOT_REQUIRED"
         required = any(
             pattern in text
             for pattern in (
@@ -582,13 +605,9 @@ class RedditPolicyProposalBuilder:
                 "disclose affiliation",
             )
         )
-        not_required = any(
-            pattern in text
-            for pattern in ("no disclosure required", "disclosure is not required")
-        )
-        if required == not_required:
-            return "UNKNOWN"
-        return "REQUIRED" if required else "NOT_REQUIRED"
+        if required:
+            return "REQUIRED"
+        return "UNKNOWN"
 
     def _special_promotion_windows(self, text: str, evidence: list[dict]) -> list[dict]:
         terms = ("megathread", "promo thread", "promotion thread", "self-promotion thread")
@@ -597,7 +616,10 @@ class RedditPolicyProposalBuilder:
         return [
             {
                 "kind": "designated_promotion_surface",
-                "description": "Promotion appears limited to a designated thread or window; verify the current pinned/rules surface before execution.",
+                "description": (
+                    "Promotion appears limited to a designated thread or window; verify the "
+                    "current pinned/rules surface before execution."
+                ),
                 "evidence_urls": [item["url"] for item in evidence[:5]],
             }
         ]
