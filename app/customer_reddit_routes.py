@@ -13,6 +13,7 @@ from app.customer_account import (
     customer_account_service,
 )
 from app.customer_funnel import CustomerProjectAccessError, CustomerProjectNotFoundError
+from app.distribution_execution_service import distribution_execution_service
 from app.reddit_client_publishing import (
     CustomerRedditClientPublishError,
     RedditClientPublishReceipt,
@@ -164,11 +165,25 @@ async def observe_customer_reddit_action(
 ) -> RedditPublishObservationView:
     customer_token = _project_token(session_token, project_id)
     try:
-        return await customer_reddit_client_publish_service.observe_publish(
+        view = await customer_reddit_client_publish_service.observe_publish(
             project_id,
             customer_token,
             action_id,
         )
+        if view.checked_at is not None and view.state is not None:
+            distribution_execution_service.record_external_observation(
+                action_id,
+                provider="reddit",
+                observation={
+                    "state": view.state.value,
+                    "score": view.score,
+                    "reply_count": view.reply_count,
+                    "restriction_signal": view.restriction_signal,
+                    "checked_at": view.checked_at.isoformat(),
+                    "executed_url": str(view.executed_url) if view.executed_url else None,
+                },
+            )
+        return view
     except CustomerRedditClientPublishError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
