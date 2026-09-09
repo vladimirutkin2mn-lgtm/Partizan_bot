@@ -110,8 +110,9 @@ class TelethonClientObservationTransport:
         target_username: str,
         message_id: int,
     ) -> TelegramRemoteObservationResult:
-        client = self._client(session)
+        client: TelegramClient | None = None
         try:
+            client = self._client(session)
             await client.connect()
             if not await client.is_user_authorized():
                 return TelegramRemoteObservationResult(
@@ -137,7 +138,11 @@ class TelethonClientObservationTransport:
         except Exception as exc:
             return self._safe_result(exc)
         finally:
-            await client.disconnect()
+            if client is not None:
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
 
     def _client(self, session: str) -> TelegramClient:
         api_id = self._settings.telegram_client_publish_api_id
@@ -200,6 +205,8 @@ class CustomerTelegramGovernanceService:
     def observation_blocker(self) -> str | None:
         if self._settings.telegram_client_publish_provider != "telethon":
             return "Telegram client-owned observation provider is unavailable"
+        if not self._settings.telegram_client_publish_public_ready:
+            return "Telegram client-owned observation is not enabled for customers yet"
         if (
             self._settings.telegram_client_publish_api_id is None
             or self._settings.telegram_client_publish_api_hash is None
@@ -270,6 +277,8 @@ class CustomerTelegramGovernanceService:
         record = self._store.get(CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE, str(project_id))
         if record is None:
             return self.automation_status(project_id, customer_token)
+        if record.get("status") == TelegramAutomationStatus.REVOKED.value:
+            return self.automation_status(project_id, customer_token)
         record["status"] = TelegramAutomationStatus.PAUSED.value
         record["paused_at"] = datetime.now(UTC).isoformat()
         self._store.put(CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE, str(project_id), record)
@@ -308,6 +317,16 @@ class CustomerTelegramGovernanceService:
         blockers = self._automation_blockers(project_id, project)
         if blockers:
             raise CustomerTelegramClientPublishError("; ".join(blockers))
+        self._require_action_ownership(project, action_id)
+        existing = customer_telegram_client_publish_service.get_receipt(action_id)
+        if existing is not None and (
+            not payload.retry or existing.outcome == TelegramClientPublishOutcome.EXECUTED
+        ):
+            return existing
+        if existing is not None and existing.outcome == TelegramClientPublishOutcome.IN_PROGRESS:
+            raise CustomerTelegramClientPublishError(
+                "The previous Telegram publish outcome is unknown; reconcile before retrying"
+            )
         self._enforce_automation_daily_limit(project_id, authorization.max_publishes_per_day)
         return await customer_telegram_client_publish_service.publish(
             project_id,
@@ -450,7 +469,7 @@ class CustomerTelegramGovernanceService:
             )
 
     def _optional_datetime(self, value: object) -> datetime | None:
-        if value in {None, ""}:
+        if value is None or value == "":
             return None
         parsed = datetime.fromisoformat(str(value))
         return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
