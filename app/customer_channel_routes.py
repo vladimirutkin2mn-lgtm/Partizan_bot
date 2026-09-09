@@ -21,6 +21,12 @@ from app.customer_funnel import (
     CustomerProjectNotFoundError,
     customer_funnel_service,
 )
+from app.telegram_client_governance import (
+    TelegramAutomationAuthorizationRequest,
+    TelegramAutomationView,
+    TelegramPublishObservationView,
+    customer_telegram_governance_service,
+)
 from app.telegram_client_publishing import (
     CustomerTelegramClientPublishError,
     TelegramClientPublishReceipt,
@@ -167,7 +173,74 @@ def disconnect_customer_telegram_connection(
 ) -> TelegramConnectionView:
     customer_token = _project_token(session_token, project_id)
     try:
-        return customer_telegram_client_publish_service.disconnect(project_id, customer_token)
+        result = customer_telegram_client_publish_service.disconnect(project_id, customer_token)
+        customer_telegram_governance_service.revoke_automation(project_id, customer_token)
+        return result
+    except CustomerTelegramClientPublishError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/telegram/automation",
+    response_model=TelegramAutomationView,
+)
+def get_customer_telegram_automation(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramAutomationView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return customer_telegram_governance_service.automation_status(project_id, customer_token)
+    except CustomerTelegramClientPublishError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.put(
+    "/customer/workspace/{project_id}/telegram/automation",
+    response_model=TelegramAutomationView,
+)
+def authorize_customer_telegram_automation(
+    project_id: UUID,
+    payload: TelegramAutomationAuthorizationRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramAutomationView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return customer_telegram_governance_service.authorize_automation(
+            project_id,
+            customer_token,
+            payload,
+        )
+    except CustomerTelegramClientPublishError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/automation/pause",
+    response_model=TelegramAutomationView,
+)
+def pause_customer_telegram_automation(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramAutomationView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return customer_telegram_governance_service.pause_automation(project_id, customer_token)
+    except CustomerTelegramClientPublishError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/customer/workspace/{project_id}/telegram/automation",
+    response_model=TelegramAutomationView,
+)
+def revoke_customer_telegram_automation(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramAutomationView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return customer_telegram_governance_service.revoke_automation(project_id, customer_token)
     except CustomerTelegramClientPublishError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -189,6 +262,68 @@ async def publish_customer_telegram_action(
             customer_token,
             action_id,
             payload,
+        )
+    except CustomerTelegramClientPublishError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/automation/actions/{action_id}/publish",
+    response_model=TelegramClientPublishReceipt,
+)
+async def automated_publish_customer_telegram_action(
+    project_id: UUID,
+    action_id: UUID,
+    payload: TelegramPublishRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramClientPublishReceipt:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return await customer_telegram_governance_service.automated_publish(
+            project_id,
+            customer_token,
+            action_id,
+            payload,
+        )
+    except CustomerTelegramClientPublishError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/actions/{action_id}/observe",
+    response_model=TelegramPublishObservationView,
+)
+async def observe_customer_telegram_action(
+    project_id: UUID,
+    action_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramPublishObservationView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return await customer_telegram_governance_service.observe_publish(
+            project_id,
+            customer_token,
+            action_id,
+        )
+    except CustomerTelegramClientPublishError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/telegram/actions/{action_id}/observation",
+    response_model=TelegramPublishObservationView,
+)
+def get_customer_telegram_action_observation(
+    project_id: UUID,
+    action_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramPublishObservationView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return customer_telegram_governance_service.get_observation(
+            project_id,
+            customer_token,
+            action_id,
         )
     except CustomerTelegramClientPublishError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
