@@ -18,14 +18,22 @@ class DistributionExperimentStatus(StrEnum):
 class DistributionExecutionPrepareRequest(BaseModel):
     destination_url: HttpUrl | None = None
     target_url: HttpUrl | None = None
+    title: str | None = Field(default=None, max_length=300)
     context_text: str | None = Field(default=None, max_length=8000)
     content_text: str | None = Field(default=None, max_length=12000)
+    disclosure_included: bool = False
+    ai_disclosure_included: bool = False
+    community_policy_constraints_confirmed: bool = False
 
 
 class DistributionActionEditRequest(BaseModel):
     target_url: HttpUrl | None = None
+    title: str | None = Field(default=None, max_length=300)
     context_text: str | None = Field(default=None, max_length=8000)
     content_text: str | None = Field(default=None, max_length=12000)
+    disclosure_included: bool | None = None
+    ai_disclosure_included: bool | None = None
+    community_policy_constraints_confirmed: bool | None = None
 
 
 class DistributionActionExecutionRequest(BaseModel):

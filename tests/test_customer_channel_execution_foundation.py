@@ -74,10 +74,7 @@ def test_reddit_and_telegram_expose_fail_closed_execution_capabilities() -> None
             "blocker": None,
         }
         assert publisher_modes["CLIENT_OWNED"]["available"] is False
-        if platform == "REDDIT":
-            assert "not implemented" in publisher_modes["CLIENT_OWNED"]["blocker"]
-        else:
-            assert "unavailable" in publisher_modes["CLIENT_OWNED"]["blocker"].lower()
+        assert "unavailable" in publisher_modes["CLIENT_OWNED"]["blocker"].lower()
         assert publisher_modes["PARTIZAN_MANAGED"]["available"] is False
 
         capabilities = {item["capability"]: item for item in channel["capabilities"]}
@@ -119,7 +116,7 @@ def test_unavailable_client_owned_publish_mode_fails_closed() -> None:
     )
 
     assert response.status_code == 409
-    assert "client-owned publish adapter is not implemented yet" in response.json()["detail"]
+    assert "Reddit client-owned publishing provider is unavailable" in response.json()["detail"]
     current = client.get(f"/customer/workspace/{preview.project_id}/channels")
     assert current.status_code == 200
     assert _by_platform(current.json(), "REDDIT")["publisher_mode"] == "MANUAL"
