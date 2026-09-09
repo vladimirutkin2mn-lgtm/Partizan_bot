@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
 import re
 import secrets
 from datetime import UTC, datetime, timedelta
@@ -396,7 +395,8 @@ class HttpxRedditClientPublishTransport:
             raise RedditClientPublishTransportError("PROVIDER_RESPONSE_INVALID") from None
         if not isinstance(payload, dict):
             raise RedditClientPublishTransportError("PROVIDER_RESPONSE_INVALID")
-        errors = payload.get("json", {}).get("errors") if isinstance(payload.get("json"), dict) else None
+        nested_json = payload.get("json")
+        errors = nested_json.get("errors") if isinstance(nested_json, dict) else None
         if errors:
             raise RedditClientPublishTransportError("API_REJECTED")
         if payload.get("error"):
