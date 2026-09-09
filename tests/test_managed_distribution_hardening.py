@@ -6,7 +6,7 @@ from app.customer_account import (
     customer_account_service,
 )
 from app.customer_funnel import customer_funnel_service
-from app.customer_schemas import CustomerPreviewRequest
+from app.customer_schemas import CustomerPreviewRequest, CustomerPreviewResponse
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.main import app
 from app.managed_distribution import managed_distribution_service
@@ -62,16 +62,18 @@ def _managed_inventory(client: TestClient) -> tuple[dict, dict]:
     return identity, publisher_response.json()
 
 
-def _registered_customer(client: TestClient):
-    preview = customer_funnel_service.create_preview(
-        CustomerPreviewRequest(
-            brief="AI bookkeeping assistant for US freelancers with a monthly subscription.",
-            website_url="https://example.com",
-            market="United States",
-            goal="Get paying customers",
-            budget_usd=1000,
-        )
+def _registered_customer(client: TestClient) -> CustomerPreviewResponse:
+    preview_response = client.post(
+        "/v1/customer-projects/preview",
+        json={
+            "brief": "AI bookkeeping assistant for US freelancers with a monthly subscription.",
+            "market": "United States",
+            "goal": "Get paying customers",
+            "budget_usd": 1000,
+        },
     )
+    assert preview_response.status_code == 201, preview_response.text
+    preview = CustomerPreviewResponse.model_validate(preview_response.json())
     response = client.post(
         "/customer/account/register",
         json={
