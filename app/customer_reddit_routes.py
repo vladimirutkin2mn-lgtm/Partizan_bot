@@ -159,7 +159,10 @@ async def publish_customer_reddit_action(
             project_id,
             customer_token,
             action_id,
-            RedditPublishRequest(retry=payload.retry),
+            RedditPublishRequest(
+                confirm_publish=payload.confirm_publish,
+                retry=payload.retry,
+            ),
         )
     except CustomerRedditClientPublishError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
