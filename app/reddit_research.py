@@ -35,7 +35,7 @@ def policy_freshness_reason(
         return "Reddit CommunityPolicy is stale and must be refreshed"
     if policy.fresh_until is not None and current > ensure_utc(policy.fresh_until):
         return "Reddit CommunityPolicy is stale and must be refreshed"
-    if policy.research_status in {"UNKNOWN", "STALE"}:
+    if policy.research_status.upper() not in {"MANUAL", "VERIFIED"}:
         return "Reddit CommunityPolicy research is not verified"
     return None
 
@@ -106,7 +106,9 @@ def _published_at(hit: SearchHit, checked_at: datetime) -> tuple[datetime | None
         try:
             if isinstance(raw, datetime):
                 return ensure_utc(raw), f"metadata.{key}"
-            return ensure_utc(datetime.fromisoformat(str(raw).replace("Z", "+00:00"))), f"metadata.{key}"
+            return ensure_utc(
+                datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            ), f"metadata.{key}"
         except (TypeError, ValueError):
             continue
 
