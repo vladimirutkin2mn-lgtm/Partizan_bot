@@ -54,7 +54,7 @@ class FakeDistributionExecution:
 
 
 class FakePublishService:
-    def __init__(self, receipt: TelegramClientPublishReceipt) -> None:
+    def __init__(self, receipt: TelegramClientPublishReceipt | None) -> None:
         self.receipt = receipt
         self.connected = True
         self.blocker: str | None = None
@@ -67,10 +67,13 @@ class FakePublishService:
         return self.connected
 
     def get_receipt(self, action_id):
+        if self.receipt is None:
+            return None
         return self.receipt if action_id == self.receipt.action_id else None
 
     async def publish(self, project_id, customer_token, action_id, payload):
         self.publish_calls.append((project_id, customer_token, action_id, payload.retry))
+        assert self.receipt is not None
         return self.receipt
 
 
@@ -249,6 +252,7 @@ async def test_automated_publish_rechecks_pause_revoke_and_daily_limit(monkeypat
             max_publishes_per_day=1,
         ),
     )
+    publish_service.receipt = None
     store.put(
         CUSTOMER_TELEGRAM_PUBLISH_GUARD_NAMESPACE,
         str(project_id),
@@ -270,15 +274,16 @@ async def test_automated_publish_rechecks_pause_revoke_and_daily_limit(monkeypat
             TelegramPublishRequest(),
         )
 
+    publish_service.receipt = receipt
     store.clear_namespace(CUSTOMER_TELEGRAM_PUBLISH_GUARD_NAMESPACE)
     result = await service.automated_publish(
         project_id,
         "customer-token",
         action.id,
-        TelegramPublishRequest(),
+        TelegramPublishRequest(retry=True),
     )
     assert result == receipt
-    assert len(publish_service.publish_calls) == 1
+    assert len(publish_service.publish_calls) == 0
 
     service.revoke_automation(project_id, "customer-token")
     with pytest.raises(CustomerTelegramClientPublishError, match="not explicitly enabled"):
