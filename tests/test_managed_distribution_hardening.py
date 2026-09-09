@@ -1,7 +1,10 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app.customer_account import customer_account_service
+from app.customer_account import (
+    CUSTOMER_ACCOUNT_SESSION_COOKIE,
+    customer_account_service,
+)
 from app.customer_funnel import customer_funnel_service
 from app.customer_schemas import CustomerPreviewRequest
 from app.distribution_control_plane_service import distribution_control_plane_service
@@ -137,9 +140,14 @@ def test_customer_assignment_route_hides_internal_publisher_mechanics() -> None:
     _managed_inventory(client)
     preview = _registered_customer(client)
     managed_distribution_service._settings.managed_distribution_public_ready = True
+    session_token = client.cookies.get(CUSTOMER_ACCOUNT_SESSION_COOKIE)
+    _, customer_token = customer_account_service.project_access(
+        session_token=session_token,
+        project_id=preview.project_id,
+    )
     project = customer_funnel_service.get_project_payload(
         preview.project_id,
-        preview.customer_token,
+        customer_token,
     )
     product_id = project["product_id"]
 
