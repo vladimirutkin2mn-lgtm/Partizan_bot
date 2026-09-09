@@ -19,6 +19,7 @@ from app.distribution_schemas import (
 from app.distribution_types import DistributionActionType, DistributionPlatform
 from app.llm import LLMMessage, LLMProvider, get_llm_provider
 from app.marketing_intelligence import marketing_task_for_action, render_marketing_guidance
+from app.reddit_research import action_target_is_fresh
 from app.schemas import ProductProfileView
 
 
@@ -92,8 +93,17 @@ class ActionTargetSelector:
             url = str(raw["url"])
             if not self._is_action_target(opportunity.platform, url) or url in seen:
                 continue
+            if (
+                opportunity.platform == DistributionPlatform.REDDIT
+                and not action_target_is_fresh(raw)
+            ):
+                continue
             candidates.append({**raw, "source": "enrichment.action_targets"})
             seen.add(url)
+
+        if opportunity.platform == DistributionPlatform.REDDIT:
+            return candidates
+
         for evidence in opportunity.evidence:
             if not isinstance(evidence, dict) or not evidence.get("url"):
                 continue
