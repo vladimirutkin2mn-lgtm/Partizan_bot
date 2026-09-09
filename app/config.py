@@ -28,6 +28,12 @@ class Settings(BaseSettings):
     telegram_client_publish_public_ready: bool = False
     telegram_client_publish_api_id: int | None = None
     telegram_client_publish_api_hash: SecretStr | None = None
+    reddit_client_publish_provider: str = "unavailable"
+    reddit_client_publish_public_ready: bool = False
+    reddit_commercial_access_verified: bool = False
+    reddit_client_publish_client_id: str | None = None
+    reddit_client_publish_client_secret: SecretStr | None = None
+    reddit_client_publish_user_agent: str | None = None
     creative_provider: str = "unavailable"
     creative_image_model: str = "gpt-image-2"
     creative_image_quality: str = "medium"
@@ -77,6 +83,7 @@ class Settings(BaseSettings):
         "telegram_research_api_hash",
         "telegram_research_session",
         "telegram_client_publish_api_hash",
+        "reddit_client_publish_client_secret",
         mode="before",
     )
     @classmethod
@@ -116,6 +123,8 @@ class Settings(BaseSettings):
         "stripe_issuing_webhook_api_version",
         "meta_oauth_app_id",
         "meta_oauth_api_version",
+        "reddit_client_publish_client_id",
+        "reddit_client_publish_user_agent",
         mode="before",
     )
     @classmethod
@@ -153,6 +162,18 @@ class Settings(BaseSettings):
         if normalized not in {"unavailable", "telethon"}:
             raise ValueError(
                 "TELEGRAM_CLIENT_PUBLISH_PROVIDER must be 'unavailable' or 'telethon'"
+            )
+        return normalized
+
+    @field_validator("reddit_client_publish_provider", mode="before")
+    @classmethod
+    def normalize_reddit_client_publish_provider(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if normalized not in {"unavailable", "oauth"}:
+            raise ValueError(
+                "REDDIT_CLIENT_PUBLISH_PROVIDER must be 'unavailable' or 'oauth'"
             )
         return normalized
 
