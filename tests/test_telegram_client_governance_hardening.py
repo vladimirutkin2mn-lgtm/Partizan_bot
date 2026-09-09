@@ -12,9 +12,9 @@ from app.runtime_store import MemoryRuntimeStateStore
 from app.telegram_client_governance import (
     CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE,
     CustomerTelegramGovernanceService,
-    TelethonClientObservationTransport,
     TelegramAutomationStatus,
     TelegramRemoteMessageState,
+    TelethonClientObservationTransport,
 )
 from app.telegram_client_publishing import (
     CUSTOMER_TELEGRAM_PUBLISH_GUARD_NAMESPACE,
