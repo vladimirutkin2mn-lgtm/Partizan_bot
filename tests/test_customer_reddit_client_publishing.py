@@ -2,10 +2,10 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import parse_qs, urlsplit
 from uuid import UUID
 
-import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
+import pytest
 
 from app.audience_intelligence_service import audience_intelligence_service
 from app.customer_account import customer_account_service
