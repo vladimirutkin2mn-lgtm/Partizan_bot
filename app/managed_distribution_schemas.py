@@ -47,7 +47,7 @@ class ManagedPublisherRegistrationRequest(BaseModel):
     partner_reference: str | None = Field(default=None, max_length=160)
 
     @model_validator(mode="after")
-    def validate_authorization(self) -> "ManagedPublisherRegistrationRequest":
+    def validate_authorization(self) -> ManagedPublisherRegistrationRequest:
         if not self.management_authorization_confirmed:
             raise ValueError("Managed publisher authorization must be explicitly confirmed")
         if self.ownership == ManagedPublisherOwnership.PARTNER_MANAGED:
