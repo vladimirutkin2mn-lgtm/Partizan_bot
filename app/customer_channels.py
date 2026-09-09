@@ -17,6 +17,7 @@ from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_types import DistributionPlatform
 from app.growth_balance import GrowthBalanceService
 from app.paid_provider_connections import paid_provider_connection_service
+from app.reddit_client_publishing import customer_reddit_client_publish_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.telegram_client_publishing import customer_telegram_client_publish_service
 
@@ -68,6 +69,7 @@ class CustomerChannelService:
         metrics = self._metrics_by_platform(project)
         meta_connected = self._meta_connected(project)
         telegram_connected = customer_telegram_client_publish_service.is_connected(project_id)
+        reddit_connected = customer_reddit_client_publish_service.is_connected(project_id)
         settlement_ready = bool(
             self._balance.rail_view(project_id).get("settlement_ready")
         )
@@ -96,6 +98,7 @@ class CustomerChannelService:
                         platform,
                         publisher_mode=publisher_modes[platform],
                         telegram_connected=telegram_connected,
+                        reddit_connected=reddit_connected,
                         execution_ready=execution_ready,
                         execution_blocker=execution_blocker,
                     ),
@@ -106,6 +109,7 @@ class CustomerChannelService:
                         platform,
                         meta_connected=meta_connected,
                         telegram_connected=telegram_connected,
+                        reddit_connected=reddit_connected,
                     ),
                     experiment_count=(item.experiment_count if item is not None else 0),
                     spend_usd=(item.spend if item is not None else 0.0),
@@ -245,12 +249,13 @@ class CustomerChannelService:
         # PublisherMode models who performs an organic/community publish action.
         # It is intentionally separate from paid-provider connection/readiness.
         if platform == DistributionPlatform.TELEGRAM:
-            telegram_blocker = customer_telegram_client_publish_service.readiness_blocker()
-            client_owned_available = telegram_blocker is None
-            client_owned_blocker = telegram_blocker
+            blocker = customer_telegram_client_publish_service.readiness_blocker()
+            client_owned_available = blocker is None
+            client_owned_blocker = blocker
         elif platform == DistributionPlatform.REDDIT:
-            client_owned_available = False
-            client_owned_blocker = "client-owned publish adapter is not implemented yet"
+            blocker = customer_reddit_client_publish_service.readiness_blocker()
+            client_owned_available = blocker is None
+            client_owned_blocker = blocker
         else:
             client_owned_available = False
             client_owned_blocker = "publisher-mode execution is not implemented for this channel yet"
@@ -277,9 +282,12 @@ class CustomerChannelService:
         *,
         publisher_mode: PublisherMode,
         telegram_connected: bool,
+        reddit_connected: bool,
         execution_ready: bool,
         execution_blocker: str | None,
     ) -> list[CustomerChannelCapabilityView]:
+        measure_ready = False
+        measure_blocker = "channel outcome adapter is not implemented yet"
         if platform == DistributionPlatform.INSTAGRAM:
             publish_ready = execution_ready
             publish_blocker = execution_blocker
@@ -288,6 +296,13 @@ class CustomerChannelService:
                 publisher_mode=publisher_mode,
                 telegram_connected=telegram_connected,
             )
+        elif platform == DistributionPlatform.REDDIT:
+            publish_ready, publish_blocker = self._reddit_publish_readiness(
+                publisher_mode=publisher_mode,
+                reddit_connected=reddit_connected,
+            )
+            measure_ready = publish_ready
+            measure_blocker = publish_blocker
         else:
             publish_ready = False
             publish_blocker = "channel publish adapter is not implemented yet"
@@ -308,8 +323,8 @@ class CustomerChannelService:
             ),
             CustomerChannelCapabilityView(
                 capability=ChannelCapability.MEASURE,
-                ready=False,
-                blocker="channel outcome adapter is not implemented yet",
+                ready=measure_ready,
+                blocker=(None if measure_ready else measure_blocker),
             ),
         ]
 
@@ -326,6 +341,21 @@ class CustomerChannelService:
             return False, "select Client-owned as the Telegram publisher mode"
         if not telegram_connected:
             return False, "connect an authorised Telegram account first"
+        return True, None
+
+    def _reddit_publish_readiness(
+        self,
+        *,
+        publisher_mode: PublisherMode,
+        reddit_connected: bool,
+    ) -> tuple[bool, str | None]:
+        blocker = customer_reddit_client_publish_service.readiness_blocker()
+        if blocker is not None:
+            return False, blocker
+        if publisher_mode != PublisherMode.CLIENT_OWNED:
+            return False, "select Client-owned as the Reddit publisher mode"
+        if not reddit_connected:
+            return False, "connect an authorised Reddit account first"
         return True, None
 
     def _metrics_by_platform(self, project: dict) -> dict[DistributionPlatform, object]:
@@ -388,9 +418,12 @@ class CustomerChannelService:
         *,
         meta_connected: bool,
         telegram_connected: bool,
+        reddit_connected: bool,
     ) -> bool | None:
         if platform == DistributionPlatform.INSTAGRAM:
             return meta_connected
+        if platform == DistributionPlatform.REDDIT:
+            return reddit_connected
         if platform == DistributionPlatform.TELEGRAM:
             return telegram_connected
         return None
