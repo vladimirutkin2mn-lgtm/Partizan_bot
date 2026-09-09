@@ -28,9 +28,12 @@ class DistributionAutoPrepareRequest(BaseModel):
 
 
 class DistributionContentDraft(BaseModel):
+    title: str | None = Field(default=None, max_length=300)
     context_text: str = Field(min_length=10, max_length=8000)
     content_text: str = Field(min_length=10, max_length=12000)
     rationale: str = Field(min_length=5, max_length=2000)
+    disclosure_included: bool = False
+    ai_disclosure_included: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,9 +195,11 @@ Non-negotiable rules:
 4. Do not write cold direct messages. The allowed action type is supplied explicitly.
 5. Community comments/replies should be useful in their own right.
    Do not include a product link unless it is explicitly allowed.
-6. If an applied community policy requires disclosure, include a clear short disclosure.
-7. Do not claim a platform rule permits something unless the applied CommunityPolicy explicitly says so.
-8. Keep the draft compatible with an approval-gated assisted/manual execution flow.
+6. If an applied community policy requires disclosure, include a clear short disclosure and set disclosure_included=true.
+7. If the policy requires AI-content disclosure, include it and set ai_disclosure_included=true.
+8. For STANDALONE_POST, provide a concise title that is suitable for the target community.
+9. Do not claim a platform rule permits something unless the applied CommunityPolicy explicitly says so.
+10. Keep the draft compatible with an approval-gated assisted/manual execution flow.
 Return only the requested structured schema.
 """
 
@@ -212,6 +217,7 @@ class DistributionActionComposer:
         target: SelectedActionTarget,
         policy: CommunityPolicyView | None,
     ) -> DistributionContentDraft:
+        self._validate_ai_policy(policy)
         if self._provider is None:
             return self._mock_draft(
                 product=product,
@@ -259,25 +265,37 @@ class DistributionActionComposer:
         policy: CommunityPolicyView | None,
     ) -> DistributionContentDraft:
         context = target.context_text[:8000]
-        disclosure = ""
-        if policy is not None and policy.disclosure_required:
-            disclosure = "Disclosure: this is a Partizan-operated account testing relevant tools. "
+        disclosure_required = bool(policy and policy.disclosure_required)
+        constraints = self._constraints(policy)
+        ai_disclosure_required = "AI_CONTENT_DISCLOSURE_REQUIRED" in constraints
+        disclosures: list[str] = []
+        if disclosure_required:
+            disclosures.append(
+                "Disclosure: this is a Partizan-operated account testing relevant tools."
+            )
+        if ai_disclosure_required:
+            disclosures.append("AI disclosure: this contribution was prepared with AI assistance.")
+        disclosure_prefix = " ".join(disclosures)
+        if disclosure_prefix:
+            disclosure_prefix += " "
 
+        title = None
         if play.action_type in {
             DistributionActionType.COMMENT,
             DistributionActionType.REPLY,
         }:
             content = (
-                f"{disclosure}One useful angle here is to separate the immediate question from the "
-                "underlying decision you are trying to make. Writing down the evidence for each "
-                "interpretation can make the next step much clearer."
+                f"{disclosure_prefix}One useful angle here is to separate the immediate question "
+                "from the underlying decision you are trying to make. Writing down the evidence "
+                "for each interpretation can make the next step much clearer."
             )
             rationale = "Value-first response grounded in the selected public discussion context."
         elif play.action_type == DistributionActionType.STANDALONE_POST:
+            title = f"A practical framework for {opportunity.title}"[:300]
             product_reference = product.value_proposition or product.description
             content = (
-                f"{disclosure}A practical framework for {opportunity.title}: start with the exact "
-                "question, list the assumptions behind it, then compare two or three possible "
+                f"{disclosure_prefix}A practical framework for {opportunity.title}: start with the "
+                "exact question, list the assumptions behind it, then compare two or three possible "
                 f"interpretations. One tool we are evaluating is {product.name}: {product_reference}"
             )
             rationale = "Educational standalone draft with transparent product context."
@@ -301,10 +319,23 @@ class DistributionActionComposer:
             raise ValueError(f"Unsupported action type for auto drafting: {play.action_type.value}")
 
         return DistributionContentDraft(
+            title=title,
             context_text=context,
             content_text=content[:12000],
             rationale=rationale,
+            disclosure_included=disclosure_required,
+            ai_disclosure_included=ai_disclosure_required,
         )
+
+    def _validate_ai_policy(self, policy: CommunityPolicyView | None) -> None:
+        if "AI_CONTENT_PROHIBITED" in self._constraints(policy):
+            raise ValueError("Community policy prohibits AI-generated content")
+
+    @staticmethod
+    def _constraints(policy: CommunityPolicyView | None) -> set[str]:
+        if policy is None:
+            return set()
+        return {str(item).upper() for item in policy.ai_content_constraints}
 
 
 class DistributionActionDraftingService:
@@ -341,8 +372,11 @@ class DistributionActionDraftingService:
             DistributionExecutionPrepareRequest(
                 destination_url=destination_url,
                 target_url=target.url,
+                title=draft.title,
                 context_text=draft.context_text,
                 content_text=draft.content_text,
+                disclosure_included=draft.disclosure_included,
+                ai_disclosure_included=draft.ai_disclosure_included,
             ),
         )
 
