@@ -2,7 +2,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.customer_account import customer_account_service
-from app.customer_channels import customer_channel_service
 from app.customer_funnel import customer_funnel_service
 from app.customer_schemas import CustomerPreviewRequest
 from app.distribution_control_plane_service import distribution_control_plane_service
