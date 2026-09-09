@@ -226,7 +226,7 @@ class OpportunityEnrichmentService:
         subreddit = str(
             opportunity.metadata.get("subreddit") or opportunity.title
         ).removeprefix("r/")
-        problem = (product.problem or product.description or product.name)[:240]
+        problem = (product.problem_or_desire or product.description or product.name)[:240]
         market = product.market or ""
         language = product.language or ""
         return DiscoveryQuery(
