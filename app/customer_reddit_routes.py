@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 
 from app.customer_account import (
     CUSTOMER_ACCOUNT_SESSION_COOKIE,
@@ -25,6 +26,11 @@ from app.reddit_client_publishing import (
 )
 
 router = APIRouter(tags=["customer-reddit"])
+
+
+class CustomerRedditPublishRequest(BaseModel):
+    confirm_publish: bool = False
+    retry: bool = False
 
 
 def _session_cookie(
@@ -139,16 +145,21 @@ def disconnect_customer_reddit_connection(
 async def publish_customer_reddit_action(
     project_id: UUID,
     action_id: UUID,
-    payload: RedditPublishRequest,
+    payload: CustomerRedditPublishRequest,
     session_token: Annotated[str | None, Depends(_session_cookie)] = None,
 ) -> RedditClientPublishReceipt:
     customer_token = _project_token(session_token, project_id)
+    if not payload.confirm_publish:
+        raise HTTPException(
+            status_code=409,
+            detail="Explicit customer confirmation is required for each Reddit publish",
+        )
     try:
         return await customer_reddit_client_publish_service.publish(
             project_id,
             customer_token,
             action_id,
-            payload,
+            RedditPublishRequest(retry=payload.retry),
         )
     except CustomerRedditClientPublishError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
