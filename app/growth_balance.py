@@ -14,6 +14,7 @@ from app.customer_funnel import (
     customer_funnel_service,
 )
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.stripe_objects import stripe_field
 
 GROWTH_BALANCE_TOPUP_NAMESPACE = "customer_growth_balance_topups"
 GROWTH_BALANCE_RAIL_NAMESPACE = "customer_growth_balance_rails"
@@ -86,10 +87,12 @@ class GrowthBalanceSettlementService:
         settings = self._settings()
         try:
             cardholder = self._retrieve_cardholder(str(settings.stripe_issuing_cardholder_id))
-            if str(cardholder.get("status") or "").lower() != "active":
+            if str(stripe_field(cardholder, "status", "")).lower() != "active":
                 return False, "STRIPE_ISSUING_CARDHOLDER_INACTIVE"
-            requirements = cardholder.get("requirements") or {}
-            if requirements.get("disabled_reason") or requirements.get("past_due"):
+            requirements = stripe_field(cardholder, "requirements")
+            if stripe_field(requirements, "disabled_reason") or stripe_field(
+                requirements, "past_due"
+            ):
                 return False, "STRIPE_ISSUING_CARDHOLDER_REQUIREMENTS_DUE"
             issuing_available = self._retrieve_issuing_available_cents(
                 settings.stripe_issuing_currency
@@ -143,9 +146,9 @@ class GrowthBalanceSettlementService:
             {
                 "project_id": str(project_id),
                 "provider": "stripe_issuing",
-                "card_id": str(card.get("id") or payload.get("card_id") or ""),
-                "card_last4": str(card.get("last4") or payload.get("card_last4") or ""),
-                "card_status": str(card.get("status") or target_status),
+                "card_id": str(stripe_field(card, "id") or payload.get("card_id") or ""),
+                "card_last4": str(stripe_field(card, "last4") or payload.get("card_last4") or ""),
+                "card_status": str(stripe_field(card, "status", target_status)),
                 "currency": settings.stripe_issuing_currency,
                 "allowed_categories": [ADVERTISING_MERCHANT_CATEGORY],
                 "acquisition_limit_cents": int(acquisition_capacity_cents),
@@ -184,7 +187,7 @@ class GrowthBalanceSettlementService:
         rail["bound_provider"] = "meta"
         rail["bound_provider_account_id"] = ad_account_id
         rail["bound_at"] = datetime.now(UTC).isoformat()
-        rail["card_status"] = str(card.get("status") or "active")
+        rail["card_status"] = str(stripe_field(card, "status", "active"))
         rail["updated_at"] = datetime.now(UTC).isoformat()
         self._store.put(GROWTH_BALANCE_RAIL_NAMESPACE, str(project_id), rail)
         return rail
@@ -202,7 +205,7 @@ class GrowthBalanceSettlementService:
             )
         except stripe.StripeError as exc:
             raise RuntimeError("Stripe Issuing card pause failed") from exc
-        rail["card_status"] = str(card.get("status") or "inactive")
+        rail["card_status"] = str(stripe_field(card, "status", "inactive"))
         rail["paused_reason"] = reason
         rail["paused_at"] = datetime.now(UTC).isoformat()
         rail["updated_at"] = datetime.now(UTC).isoformat()
@@ -224,7 +227,7 @@ class GrowthBalanceSettlementService:
             )
         except stripe.StripeError as exc:
             raise RuntimeError("Stripe Issuing card activation failed") from exc
-        rail["card_status"] = str(card.get("status") or "active")
+        rail["card_status"] = str(stripe_field(card, "status", "active"))
         rail["paused_reason"] = None
         rail["updated_at"] = datetime.now(UTC).isoformat()
         self._store.put(GROWTH_BALANCE_RAIL_NAMESPACE, str(project_id), rail)
@@ -240,22 +243,22 @@ class GrowthBalanceSettlementService:
         )
         return max(total, 0)
 
-    def record_transaction(self, transaction: dict) -> bool:
-        transaction_id = str(transaction.get("id") or "").strip()
-        card_id = self._object_id(transaction.get("card"))
+    def record_transaction(self, transaction: object) -> bool:
+        transaction_id = str(stripe_field(transaction, "id", "")).strip()
+        card_id = self._object_id(stripe_field(transaction, "card"))
         if not transaction_id or not card_id:
             return False
         rail = self._rail_for_card(card_id)
         if rail is None:
             return False
-        currency = str(transaction.get("currency") or "").lower()
+        currency = str(stripe_field(transaction, "currency", "")).lower()
         if currency != str(rail.get("currency") or "").lower():
             self.pause(UUID(str(rail["project_id"])), "UNEXPECTED_TRANSACTION_CURRENCY")
             raise ValueError("Issuing transaction currency does not match Growth Balance rail")
-        merchant_data = transaction.get("merchant_data") or {}
-        category = str(merchant_data.get("category") or "")
-        transaction_type = str(transaction.get("type") or "")
-        amount_cents = int(transaction.get("amount") or 0)
+        merchant_data = stripe_field(transaction, "merchant_data")
+        category = str(stripe_field(merchant_data, "category", ""))
+        transaction_type = str(stripe_field(transaction, "type", ""))
+        amount_cents = int(stripe_field(transaction, "amount", 0))
         payload = {
             "transaction_id": transaction_id,
             "project_id": str(rail["project_id"]),
@@ -265,8 +268,8 @@ class GrowthBalanceSettlementService:
             "currency": currency,
             "type": transaction_type,
             "merchant_category": category,
-            "merchant_name": str(merchant_data.get("name") or ""),
-            "authorization_id": self._object_id(transaction.get("authorization")),
+            "merchant_name": str(stripe_field(merchant_data, "name", "")),
+            "authorization_id": self._object_id(stripe_field(transaction, "authorization")),
             "updated_at": datetime.now(UTC).isoformat(),
         }
         self._store.put(GROWTH_BALANCE_TRANSACTION_NAMESPACE, transaction_id, payload)
@@ -274,8 +277,8 @@ class GrowthBalanceSettlementService:
             self.pause(UUID(str(rail["project_id"])), "UNEXPECTED_MERCHANT_CATEGORY")
         return True
 
-    def authorize_request(self, authorization: dict) -> bool:
-        card_id = self._object_id(authorization.get("card"))
+    def authorize_request(self, authorization: object) -> bool:
+        card_id = self._object_id(stripe_field(authorization, "card"))
         if not card_id:
             return False
         rail = self._rail_for_card(card_id)
@@ -283,13 +286,15 @@ class GrowthBalanceSettlementService:
             return False
         if rail.get("binding_status") != "BOUND" or rail.get("card_status") != "active":
             return False
-        pending = authorization.get("pending_request") or {}
-        amount_cents = int(pending.get("amount") or 0)
-        currency = str(pending.get("currency") or authorization.get("currency") or "").lower()
-        merchant_data = authorization.get("merchant_data") or {}
+        pending = stripe_field(authorization, "pending_request")
+        amount_cents = int(stripe_field(pending, "amount", 0))
+        currency = str(
+            stripe_field(pending, "currency") or stripe_field(authorization, "currency", "")
+        ).lower()
+        merchant_data = stripe_field(authorization, "merchant_data")
         if currency != str(rail.get("currency") or "").lower():
             return False
-        if str(merchant_data.get("category") or "") != ADVERTISING_MERCHANT_CATEGORY:
+        if str(stripe_field(merchant_data, "category", "")) != ADVERTISING_MERCHANT_CATEGORY:
             return False
         if amount_cents <= 0:
             return False
@@ -372,12 +377,12 @@ class GrowthBalanceSettlementService:
     def _retrieve_issuing_available_cents(self, currency: str) -> int:
         self._set_stripe_key()
         balance = stripe.Balance.retrieve()
-        issuing = balance.get("issuing") or {}
-        available = issuing.get("available") or []
+        issuing = stripe_field(balance, "issuing")
+        available = stripe_field(issuing, "available", [])
         return sum(
-            int(item.get("amount") or 0)
+            int(stripe_field(item, "amount", 0))
             for item in available
-            if str(item.get("currency") or "").lower() == currency.lower()
+            if str(stripe_field(item, "currency", "")).lower() == currency.lower()
         )
 
     def _create_card(self, **kwargs):
@@ -409,10 +414,11 @@ class GrowthBalanceSettlementService:
 
     @staticmethod
     def _object_id(value: object) -> str:
-        getter = getattr(value, "get", None)
-        if callable(getter):
-            return str(getter("id") or "")
-        return str(value or "")
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        return str(stripe_field(value, "id", ""))
 
 
 class GrowthBalanceService:
@@ -707,11 +713,11 @@ class GrowthBalanceService:
         if activate is not None:
             activate(project_id)
 
-    def authorize_request(self, authorization: dict) -> bool:
+    def authorize_request(self, authorization: object) -> bool:
         authorize = getattr(self._settlement, "authorize_request", None)
         return bool(authorize and authorize(authorization))
 
-    def record_issuing_transaction(self, transaction: dict) -> bool:
+    def record_issuing_transaction(self, transaction: object) -> bool:
         record = getattr(self._settlement, "record_transaction", None)
         return bool(record and record(transaction))
 

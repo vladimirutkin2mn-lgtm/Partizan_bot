@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from app.config import Settings, get_settings
 from app.customer_funnel import CustomerProjectNotFoundError
 from app.growth_balance import growth_balance_service
+from app.stripe_objects import stripe_field
 
 router = APIRouter(prefix="/v1", tags=["growth-balance"])
 
@@ -110,7 +111,7 @@ async def stripe_issuing_authorization_webhook(
         signature=stripe_signature,
         secret=secret,
     )
-    event_type = str(event.get("type") or "")
+    event_type = str(stripe_field(event, "type", ""))
     approved = False
     if event_type == "issuing_authorization.request":
         approved = growth_balance_service.authorize_request(event["data"]["object"])
@@ -138,7 +139,7 @@ async def stripe_issuing_events_webhook(
         signature=stripe_signature,
         secret=secret,
     )
-    event_type = str(event.get("type") or "")
+    event_type = str(stripe_field(event, "type", ""))
     if event_type in {"issuing_transaction.created", "issuing_transaction.updated"}:
         try:
             growth_balance_service.record_issuing_transaction(event["data"]["object"])

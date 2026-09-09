@@ -31,3 +31,25 @@ def test_bootstrap_and_runbook_keep_money_rail_disabled_until_explicit_setup() -
     assert "/growth-balance/rail/meta-binding" in runbook
     assert "does **not** automate adding the Partizan Issuing card" in runbook
     assert "Do not bypass preflight" in runbook
+
+
+def test_operator_can_enable_the_funded_rail_without_leaking_secrets() -> None:
+    script = (ROOT / "tools" / "enable_growth_balance_rail.sh").read_text(encoding="utf-8")
+
+    # Secrets are prompted, never accepted through argv, and never echoed back.
+    assert "[[ -t 0 ]] || fail" in script
+    assert "read -rsp" in script
+    # The rail cannot be enabled before the surrounding billing stack is live.
+    for required in (
+        "require_existing PARTIZAN_PUBLIC_BASE_URL",
+        "require_existing STRIPE_SECRET_KEY",
+        "require_existing STRIPE_WEBHOOK_SECRET",
+        "require_existing STRIPE_LAUNCH_PRICE_ID",
+        "require_existing STRIPE_AUTOPILOT_PRICE_ID",
+    ):
+        assert required in script
+    assert "set_key GROWTH_BALANCE_SETTLEMENT_PROVIDER stripe_issuing" in script
+    # A rejected preflight must not leave a half-enabled money rail behind.
+    assert "preflight_prod_host.sh" in script
+    assert 'cp "${BACKUP_FILE}" "${ENV_FILE}"' in script
+    assert "chmod 600" in script
