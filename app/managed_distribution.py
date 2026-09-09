@@ -56,9 +56,8 @@ class ManagedDistributionService:
         if not self._settings.managed_distribution_public_ready:
             return "Partizan Managed Distribution is not enabled for customers yet"
         if not self._eligible_publishers(platform):
-            if platform is None:
-                return "no eligible managed publisher inventory is available"
-            return f"no eligible managed publisher inventory is available for {platform.value}"
+            suffix = f" for {platform.value}" if platform is not None else ""
+            return f"no eligible managed publisher inventory is available{suffix}"
         return None
 
     def service_status(self, platform: DistributionPlatform) -> ManagedServiceStatusView:
@@ -97,12 +96,12 @@ class ManagedDistributionService:
                 raise ManagedDistributionError(
                     f"Managed action {action.value} is not allowed by the Distribution Identity"
                 )
-
-        for existing in self.list_publishers():
-            if existing.distribution_identity_id == identity.id:
-                raise ManagedDistributionError(
-                    "Distribution Identity is already registered as managed inventory"
-                )
+        if any(
+            row.distribution_identity_id == identity.id for row in self.list_publishers()
+        ):
+            raise ManagedDistributionError(
+                "Distribution Identity is already registered as managed inventory"
+            )
 
         now = datetime.now(UTC)
         publisher = ManagedPublisherView(
@@ -131,6 +130,17 @@ class ManagedDistributionService:
         self._persist_publisher(publisher)
         return publisher
 
+    def get_publisher(self, publisher_id: UUID) -> ManagedPublisherView:
+        cached = self._publishers.get(publisher_id)
+        if cached is not None:
+            return cached
+        payload = self._store.get(MANAGED_PUBLISHER_NAMESPACE, str(publisher_id))
+        if payload is None:
+            raise KeyError(publisher_id)
+        publisher = ManagedPublisherView.model_validate(payload)
+        self._publishers[publisher.id] = publisher
+        return publisher
+
     def list_publishers(
         self,
         platform: DistributionPlatform | None = None,
@@ -139,7 +149,10 @@ class ManagedDistributionService:
         rows = list(self._publishers.values())
         if platform is not None:
             rows = [row for row in rows if row.platform == platform]
-        return sorted(rows, key=lambda row: (row.platform.value, row.internal_label, str(row.id)))
+        return sorted(
+            rows,
+            key=lambda row: (row.platform.value, row.internal_label, str(row.id)),
+        )
 
     def set_health(
         self,
@@ -159,28 +172,12 @@ class ManagedDistributionService:
         self._persist_publisher(updated)
         return updated
 
-    def get_publisher(self, publisher_id: UUID) -> ManagedPublisherView:
-        cached = self._publishers.get(publisher_id)
-        if cached is not None:
-            return cached
-        payload = self._store.get(MANAGED_PUBLISHER_NAMESPACE, str(publisher_id))
-        if payload is None:
-            raise KeyError(publisher_id)
-        publisher = ManagedPublisherView.model_validate(payload)
-        self._publishers[publisher.id] = publisher
-        return publisher
-
     def select_candidates(
         self,
         payload: ManagedSelectionRequest,
     ) -> list[ManagedSelectionCandidateView]:
         candidates: list[ManagedSelectionCandidateView] = []
         for publisher in self._eligible_publishers(payload.platform):
-            identity = distribution_control_plane_service.get_identity(
-                publisher.distribution_identity_id
-            )
-            if identity.status != DistributionIdentityStatus.ACTIVE:
-                continue
             if payload.action_type not in publisher.allowed_actions:
                 continue
             if payload.opportunity_kind not in publisher.allowed_surfaces:
@@ -189,14 +186,13 @@ class ManagedDistributionService:
                 continue
             if self._has_reserved_assignment(publisher.id):
                 continue
-            capacity_remaining = self.capacity_remaining_24h(publisher.id)
-            if capacity_remaining <= 0:
+            remaining = self.capacity_remaining_24h(publisher.id)
+            if remaining <= 0:
                 continue
-
             score, reasons = self._selection_score(
                 publisher,
                 vertical=payload.vertical,
-                capacity_remaining=capacity_remaining,
+                capacity_remaining=remaining,
             )
             candidates.append(
                 ManagedSelectionCandidateView(
@@ -204,7 +200,7 @@ class ManagedDistributionService:
                     distribution_identity_id=publisher.distribution_identity_id,
                     ownership=publisher.ownership,
                     score=score,
-                    capacity_remaining_24h=capacity_remaining,
+                    capacity_remaining_24h=remaining,
                     reasons=reasons,
                 )
             )
@@ -229,11 +225,10 @@ class ManagedDistributionService:
         candidates = self.select_candidates(payload)
         if not candidates:
             raise ManagedDistributionError(
-                "No eligible managed publisher satisfies fit, health, policy surface, conflict and capacity gates"
+                "No eligible managed publisher satisfies fit, health, policy surface, "
+                "conflict and capacity gates"
             )
-        selected = candidates[0]
-        publisher = self.get_publisher(selected.managed_publisher_id)
-
+        publisher = self.get_publisher(candidates[0].managed_publisher_id)
         try:
             slot = distribution_control_plane_service.create_campaign_slot(
                 product_id,
@@ -262,7 +257,7 @@ class ManagedDistributionService:
             opportunity_kind=payload.opportunity_kind,
             opportunity_id=payload.opportunity_id,
             campaign_slot_id=slot.id,
-            conflict_group=(str(payload.conflict_group or "").strip() or None),
+            conflict_group=str(payload.conflict_group or "").strip() or None,
             status=ManagedAssignmentStatus.RESERVED,
             reserved_at=datetime.now(UTC),
         )
@@ -306,6 +301,7 @@ class ManagedDistributionService:
                 notes=payload.notes,
             ),
         )
+        now = execution.action.executed_at or datetime.now(UTC)
         distribution_execution_service.record_external_observation(
             action.id,
             provider="partizan_managed",
@@ -313,15 +309,13 @@ class ManagedDistributionService:
                 "assignment_id": str(assignment.id),
                 "ownership": assignment.ownership.value,
                 "service": MANAGED_SERVICE_LABEL,
-                "fulfilled_at": datetime.now(UTC).isoformat(),
+                "fulfilled_at": now.isoformat(),
             },
         )
         distribution_control_plane_service.set_campaign_slot_status(
             assignment.campaign_slot_id,
             CampaignSlotStatus.COMPLETED,
         )
-
-        fulfilled_at = execution.action.executed_at or datetime.now(UTC)
         updated = assignment.model_copy(
             update={
                 "status": ManagedAssignmentStatus.FULFILLED,
@@ -333,7 +327,7 @@ class ManagedDistributionService:
                     operational_cost_usd=payload.operational_cost_usd,
                     management_fee_usd=payload.management_fee_usd,
                 ),
-                "fulfilled_at": fulfilled_at,
+                "fulfilled_at": now,
             }
         )
         self._assignments[assignment.id] = updated
@@ -394,27 +388,24 @@ class ManagedDistributionService:
     def capacity_remaining_24h(self, publisher_id: UUID) -> int:
         publisher = self.get_publisher(publisher_id)
         cutoff = datetime.now(UTC) - MANAGED_CAPACITY_WINDOW
-        fulfilled = 0
-        for assignment in self.list_assignments():
-            if assignment.managed_publisher_id != publisher_id:
-                continue
-            if assignment.status != ManagedAssignmentStatus.FULFILLED:
-                continue
-            if assignment.fulfilled_at is not None and assignment.fulfilled_at >= cutoff:
-                fulfilled += 1
+        fulfilled = sum(
+            1
+            for row in self.list_assignments()
+            if row.managed_publisher_id == publisher_id
+            and row.status == ManagedAssignmentStatus.FULFILLED
+            and row.fulfilled_at is not None
+            and self._utc(row.fulfilled_at) >= cutoff
+        )
         return max(0, publisher.daily_action_capacity - fulfilled)
 
     def _eligible_publishers(
         self,
         platform: DistributionPlatform | None,
     ) -> list[ManagedPublisherView]:
-        rows = [
-            row
-            for row in self.list_publishers(platform)
-            if row.health == ManagedPublisherHealth.ELIGIBLE
-        ]
         eligible: list[ManagedPublisherView] = []
-        for row in rows:
+        for row in self.list_publishers(platform):
+            if row.health != ManagedPublisherHealth.ELIGIBLE:
+                continue
             try:
                 identity = distribution_control_plane_service.get_identity(
                     row.distribution_identity_id
@@ -439,26 +430,17 @@ class ManagedDistributionService:
         vertical: str,
         capacity_remaining: int,
     ) -> tuple[float, list[str]]:
-        requested_tokens = self._tokens(vertical)
-        publisher_tokens = self._tokens(" ".join(publisher.topic_verticals))
-        overlap = len(requested_tokens & publisher_tokens)
-        if requested_tokens and overlap:
-            fit = min(40.0, 20.0 + (20.0 * overlap / max(1, len(requested_tokens))))
-            fit_reason = "topic/vertical overlap"
-        else:
-            fit = 10.0
-            fit_reason = "broad vertical fallback"
-
+        requested = self._tokens(vertical)
+        available = self._tokens(" ".join(publisher.topic_verticals))
+        overlap = len(requested & available)
+        fit = (
+            min(40.0, 20.0 + (20.0 * overlap / max(1, len(requested))))
+            if requested and overlap
+            else 10.0
+        )
+        fit_reason = "topic/vertical overlap" if overlap else "broad vertical fallback"
         outcome = 30.0 * (publisher.prior_outcome_score / 100.0)
-        recency = 0.0
-        if publisher.last_activity_at is not None:
-            age = datetime.now(UTC) - self._utc(publisher.last_activity_at)
-            if age <= timedelta(days=7):
-                recency = 20.0
-            elif age <= timedelta(days=30):
-                recency = 10.0
-            elif age <= timedelta(days=90):
-                recency = 5.0
+        recency = self._recency_score(publisher.last_activity_at)
         capacity = 10.0 * min(1.0, capacity_remaining / publisher.daily_action_capacity)
         total = round(min(100.0, fit + outcome + recency + capacity), 2)
         return total, [
@@ -468,20 +450,28 @@ class ManagedDistributionService:
             f"capacity remaining {capacity_remaining}/{publisher.daily_action_capacity}",
         ]
 
+    @classmethod
+    def _recency_score(cls, last_activity_at: datetime | None) -> float:
+        if last_activity_at is None:
+            return 0.0
+        age = datetime.now(UTC) - cls._utc(last_activity_at)
+        if age <= timedelta(days=7):
+            return 20.0
+        if age <= timedelta(days=30):
+            return 10.0
+        if age <= timedelta(days=90):
+            return 5.0
+        return 0.0
+
     @staticmethod
     def _language_matches(requested: str, languages: list[str]) -> bool:
-        normalized = requested.strip().casefold()
-        return normalized in {item.strip().casefold() for item in languages}
+        value = requested.strip().casefold()
+        return value in {item.strip().casefold() for item in languages}
 
     @staticmethod
     def _tokens(value: str) -> set[str]:
-        return {
-            token
-            for token in "".join(
-                char.lower() if char.isalnum() else " " for char in value
-            ).split()
-            if len(token) >= 3
-        }
+        normalized = "".join(char.lower() if char.isalnum() else " " for char in value)
+        return {token for token in normalized.split() if len(token) >= 3}
 
     @staticmethod
     def _normalized_values(values: list[str]) -> list[str]:
