@@ -50,8 +50,18 @@ from app.customer_schemas import (
 from app.growth_balance import growth_balance_service
 from app.product_source import ProductSourceReadError
 from app.self_dogfood import SELF_DOGFOOD_ATTRIBUTION_COOKIE, self_dogfood_service
+from app.stripe_objects import stripe_field
 
 router = APIRouter(prefix="/v1", tags=["customer"])
+
+
+def _stripe_customer_id(source: object) -> str | None:
+    """Read the Stripe customer id off a Session or webhook object, if Stripe set one."""
+
+    customer = stripe_field(source, "customer")
+    if not customer:
+        return None
+    return str(stripe_field(customer, "id", customer))
 
 
 def _require_customer_token(customer_token: str | None) -> str:
@@ -248,13 +258,13 @@ def recover_customer_access(
             detail="Stripe payment verification is temporarily unavailable",
         ) from exc
 
-    metadata = session.get("metadata") or {}
+    metadata = stripe_field(session, "metadata")
     verified = (
-        str(session.get("id") or "") == payload.session_id
-        and session.get("payment_status") == "paid"
-        and str(session.get("client_reference_id") or "") == str(project_id)
-        and str(metadata.get("partizan_project_id") or "") == str(project_id)
-        and metadata.get("partizan_entitlement") == "launch_plan"
+        str(stripe_field(session, "id", "")) == payload.session_id
+        and stripe_field(session, "payment_status") == "paid"
+        and str(stripe_field(session, "client_reference_id", "")) == str(project_id)
+        and str(stripe_field(metadata, "partizan_project_id", "")) == str(project_id)
+        and stripe_field(metadata, "partizan_entitlement") == "launch_plan"
     )
     if not verified:
         raise HTTPException(status_code=401, detail="Paid Checkout Session could not be verified")
@@ -262,7 +272,7 @@ def recover_customer_access(
     unlocked = customer_funnel_service.unlock_launch(
         project_id,
         stripe_checkout_session_id=payload.session_id,
-        stripe_customer_id=(str(session["customer"]) if session.get("customer") else None),
+        stripe_customer_id=_stripe_customer_id(session),
     )
     if not unlocked:
         raise HTTPException(status_code=401, detail="Paid Checkout Session is not linked to this project")
@@ -272,7 +282,7 @@ def recover_customer_access(
         event_type="PAID",
         business_key=f"stripe-launch:{payload.session_id}",
         settings=settings,
-        revenue=round(float(session.get("amount_total") or 0) / 100, 2),
+        revenue=round(float(stripe_field(session, "amount_total", 0)) / 100, 2),
     )
 
     try:
@@ -417,18 +427,18 @@ def verify_growth_balance_topup(
         if pending is None:
             raise HTTPException(status_code=401, detail="Acquisition-budget checkout session is not pending")
         session = retrieve_launch_checkout(settings=settings, session_id=payload.session_id)
-        metadata = session.get("metadata") or {}
-        amount_total = int(session.get("amount_total") or 0)
-        currency = str(session.get("currency") or "").lower()
+        metadata = stripe_field(session, "metadata")
+        amount_total = int(stripe_field(session, "amount_total", 0))
+        currency = str(stripe_field(session, "currency", "")).lower()
         verified = (
-            str(session.get("id") or "") == payload.session_id
-            and str(session.get("client_reference_id") or "") == str(project_id)
-            and str(metadata.get("partizan_project_id") or "") == str(project_id)
-            and metadata.get("partizan_entitlement") == "growth_balance_topup"
-            and int(metadata.get("partizan_amount_cents") or 0)
+            str(stripe_field(session, "id", "")) == payload.session_id
+            and str(stripe_field(session, "client_reference_id", "")) == str(project_id)
+            and str(stripe_field(metadata, "partizan_project_id", "")) == str(project_id)
+            and stripe_field(metadata, "partizan_entitlement") == "growth_balance_topup"
+            and int(stripe_field(metadata, "partizan_amount_cents", 0))
             == int(pending.get("amount_cents") or 0)
-            and session.get("mode") == "payment"
-            and session.get("payment_status") == "paid"
+            and stripe_field(session, "mode") == "payment"
+            and stripe_field(session, "payment_status") == "paid"
             and amount_total == int(pending.get("amount_cents") or 0)
             and currency == "usd"
         )
@@ -439,7 +449,7 @@ def verify_growth_balance_topup(
             session_id=payload.session_id,
             amount_cents=amount_total,
             currency=currency,
-            stripe_customer_id=(str(session["customer"]) if session.get("customer") else None),
+            stripe_customer_id=_stripe_customer_id(session),
         )
         if not credited:
             raise HTTPException(
@@ -617,42 +627,46 @@ async def stripe_webhook(
     except (ValueError, stripe.error.SignatureVerificationError) as exc:
         raise HTTPException(status_code=400, detail="Invalid Stripe webhook signature") from exc
 
-    event_type = str(event["type"])
+    event_type = str(stripe_field(event, "type", ""))
     obj = event["data"]["object"]
-    metadata = obj.get("metadata") or {}
-    project_id_raw = metadata.get("partizan_project_id")
-    entitlement = metadata.get("partizan_entitlement")
+    metadata = stripe_field(obj, "metadata")
+    project_id_raw = stripe_field(metadata, "partizan_project_id")
+    entitlement = stripe_field(metadata, "partizan_entitlement")
 
     if event_type == "checkout.session.completed" and project_id_raw:
         try:
             project_id = UUID(str(project_id_raw))
         except ValueError:
             project_id = None
-        if project_id is not None and entitlement == "launch_plan" and obj.get("payment_status") == "paid":
+        if (
+            project_id is not None
+            and entitlement == "launch_plan"
+            and stripe_field(obj, "payment_status") == "paid"
+        ):
             unlocked = customer_funnel_service.unlock_launch(
                 project_id,
-                stripe_checkout_session_id=str(obj["id"]),
-                stripe_customer_id=(str(obj["customer"]) if obj.get("customer") else None),
+                stripe_checkout_session_id=str(stripe_field(obj, "id", "")),
+                stripe_customer_id=_stripe_customer_id(obj),
             )
             if unlocked:
                 self_dogfood_service.record_project_event_best_effort(
                     project_id,
                     event_type="PAID",
-                    business_key=f"stripe-launch:{obj['id']}",
+                    business_key=f"stripe-launch:{stripe_field(obj, 'id', '')}",
                     settings=settings,
-                    revenue=round(float(obj.get("amount_total") or 0) / 100, 2),
+                    revenue=round(float(stripe_field(obj, "amount_total", 0)) / 100, 2),
                 )
         elif (
             project_id is not None
             and entitlement == "growth_balance_topup"
-            and obj.get("payment_status") == "paid"
+            and stripe_field(obj, "payment_status") == "paid"
         ):
             growth_balance_service.credit_paid_checkout(
                 project_id,
-                session_id=str(obj["id"]),
-                amount_cents=int(obj.get("amount_total") or 0),
-                currency=str(obj.get("currency") or ""),
-                stripe_customer_id=(str(obj["customer"]) if obj.get("customer") else None),
+                session_id=str(stripe_field(obj, "id", "")),
+                amount_cents=int(stripe_field(obj, "amount_total", 0)),
+                currency=str(stripe_field(obj, "currency", "")),
+                stripe_customer_id=_stripe_customer_id(obj),
             )
 
     return {"received": True}
