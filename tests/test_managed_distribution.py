@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -304,7 +305,7 @@ def test_fulfillment_records_separate_costs_internal_audit_and_capacity() -> Non
     assert managed_observation["assignment_id"] == assignment["id"]
     assert "managed_publisher_id" not in managed_observation
     assert managed_distribution_service.capacity_remaining_24h(
-        publisher["id"]
+        UUID(publisher["id"])
     ) == 0
 
     customer_safe = managed_distribution_service.list_customer_assignments(
