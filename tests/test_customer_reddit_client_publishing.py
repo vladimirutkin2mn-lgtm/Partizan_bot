@@ -35,6 +35,9 @@ from app.reddit_client_publishing import (
 from app.runtime_store import get_runtime_store
 
 
+PUBLISH_CONFIRMATION = {"confirm_publish": True}
+
+
 class FakeRedditClientTransport:
     def __init__(self) -> None:
         self.exchange_calls: list[dict] = []
@@ -400,6 +403,13 @@ def _require_disclosure(opportunity_id: str) -> None:
     assert response.status_code == 200
 
 
+def _publish(client: TestClient, project_id, action_id: str):
+    return client.post(
+        f"/customer/workspace/{project_id}/reddit/actions/{action_id}/publish",
+        json=PUBLISH_CONFIRMATION,
+    )
+
+
 def test_reddit_client_owned_is_fail_closed_without_commercial_access() -> None:
     settings = customer_reddit_client_publish_service._settings
     settings.reddit_client_publish_provider = "oauth"
@@ -453,6 +463,24 @@ def test_oauth_tokens_are_encrypted_and_never_returned_to_browser() -> None:
     assert "refresh_token" not in str(connection_record)
 
 
+def test_publish_requires_explicit_per_action_confirmation() -> None:
+    transport = FakeRedditClientTransport()
+    _enable_client_publish(transport)
+    client, preview = _registered_client()
+    _connect(client, preview.project_id)
+    product_id, action_id, _ = _product_and_action()
+    _bind_project_to_product(preview.project_id, product_id)
+    _select_client_owned(client, preview.project_id)
+
+    blocked = client.post(
+        f"/customer/workspace/{preview.project_id}/reddit/actions/{action_id}/publish",
+        json={},
+    )
+    assert blocked.status_code == 409
+    assert "confirmation" in blocked.json()["detail"].lower()
+    assert transport.publish_calls == []
+
+
 def test_publish_requires_approved_action_and_rechecks_policy_freshness() -> None:
     transport = FakeRedditClientTransport()
     _enable_client_publish(transport)
@@ -462,10 +490,7 @@ def test_publish_requires_approved_action_and_rechecks_policy_freshness() -> Non
     _bind_project_to_product(preview.project_id, product_id)
     _select_client_owned(client, preview.project_id)
 
-    not_approved = client.post(
-        f"/customer/workspace/{preview.project_id}/reddit/actions/{action_id}/publish",
-        json={},
-    )
+    not_approved = _publish(client, preview.project_id, action_id)
     assert not_approved.status_code == 409
     assert "APPROVED" in not_approved.json()["detail"]
     assert transport.publish_calls == []
@@ -473,10 +498,7 @@ def test_publish_requires_approved_action_and_rechecks_policy_freshness() -> Non
     approved = TestClient(app).post(f"/v1/distribution-actions/{action_id}/approve")
     assert approved.status_code == 200, approved.text
     _make_policy_stale(opportunity_id)
-    stale = client.post(
-        f"/customer/workspace/{preview.project_id}/reddit/actions/{action_id}/publish",
-        json={},
-    )
+    stale = _publish(client, preview.project_id, action_id)
     assert stale.status_code == 409
     assert "stale" in stale.json()["detail"].lower()
     assert transport.publish_calls == []
@@ -493,10 +515,7 @@ def test_publish_rechecks_required_disclosure_without_changing_approved_text() -
     approved_text = distribution_execution_service.get_action(UUID(action_id)).content_text
 
     _require_disclosure(opportunity_id)
-    blocked = client.post(
-        f"/customer/workspace/{preview.project_id}/reddit/actions/{action_id}/publish",
-        json={},
-    )
+    blocked = _publish(client, preview.project_id, action_id)
     assert blocked.status_code == 409
     assert "disclosure" in blocked.json()["detail"].lower()
     assert transport.publish_calls == []
@@ -512,10 +531,7 @@ def test_approved_comment_publish_is_idempotent_and_records_safe_receipt() -> No
     _bind_project_to_product(preview.project_id, product_id)
     _select_client_owned(client, preview.project_id)
 
-    first = client.post(
-        f"/customer/workspace/{preview.project_id}/reddit/actions/{action_id}/publish",
-        json={},
-    )
+    first = _publish(client, preview.project_id, action_id)
     assert first.status_code == 200
     assert first.json()["outcome"] == "EXECUTED"
     assert first.json()["external_reference"] == "reddit-client:t1_comment123"
@@ -524,10 +540,7 @@ def test_approved_comment_publish_is_idempotent_and_records_safe_receipt() -> No
     assert transport.publish_calls[0]["target"].parent_fullname == "t3_fresh123"
     assert "customer-reddit-access-secret" not in first.text
 
-    second = client.post(
-        f"/customer/workspace/{preview.project_id}/reddit/actions/{action_id}/publish",
-        json={},
-    )
+    second = _publish(client, preview.project_id, action_id)
     assert second.status_code == 200
     assert second.json()["external_reference"] == first.json()["external_reference"]
     assert len(transport.publish_calls) == 1
@@ -544,10 +557,7 @@ def test_standalone_post_uses_first_class_approved_title_and_no_vote_or_dm_surfa
 
     action = distribution_execution_service.get_action(UUID(action_id))
     assert action.content_payload["title"].startswith("A practical framework")
-    published = client.post(
-        f"/customer/workspace/{preview.project_id}/reddit/actions/{action_id}/publish",
-        json={},
-    )
+    published = _publish(client, preview.project_id, action_id)
     assert published.status_code == 200
     assert published.json()["outcome"] == "EXECUTED"
     assert transport.publish_calls[0]["target"].title.startswith("A practical framework")
@@ -565,7 +575,7 @@ def test_standalone_post_uses_first_class_approved_title_and_no_vote_or_dm_surfa
     assert forbidden.isdisjoint(set(dir(HttpxRedditClientPublishTransport)))
 
 
-def test_wrong_subreddit_or_non_reddit_target_fails_before_transport() -> None:
+def test_wrong_subreddit_target_fails_before_transport() -> None:
     transport = FakeRedditClientTransport()
     _enable_client_publish(transport)
     client, preview = _registered_client()
@@ -576,27 +586,23 @@ def test_wrong_subreddit_or_non_reddit_target_fails_before_transport() -> None:
 
     edited = TestClient(app).patch(
         f"/v1/distribution-actions/{action_id}",
-        json={"target_url": "https://www.reddit.com/r/not_the_selected_sub/comments/fresh123/x/"},
+        json={
+            "target_url": (
+                "https://www.reddit.com/r/not_the_selected_sub/comments/fresh123/x/"
+            )
+        },
     )
-    if edited.status_code == 405:
-        edited = TestClient(app).put(
-            f"/v1/distribution-actions/{action_id}",
-            json={"target_url": "https://www.reddit.com/r/not_the_selected_sub/comments/fresh123/x/"},
-        )
     assert edited.status_code == 200, edited.text
     approved = TestClient(app).post(f"/v1/distribution-actions/{action_id}/approve")
     assert approved.status_code == 200, approved.text
 
-    blocked = client.post(
-        f"/customer/workspace/{preview.project_id}/reddit/actions/{action_id}/publish",
-        json={},
-    )
+    blocked = _publish(client, preview.project_id, action_id)
     assert blocked.status_code == 409
     assert "selected subreddit" in blocked.json()["detail"].lower()
     assert transport.publish_calls == []
 
 
-def test_observation_records_score_replies_then_removal_and_attaches_safe_action_summary() -> None:
+def test_observation_records_score_replies_removal_and_safe_action_summary() -> None:
     transport = FakeRedditClientTransport()
     transport.observations = [
         RedditObservationResult(
@@ -617,10 +623,7 @@ def test_observation_records_score_replies_then_removal_and_attaches_safe_action
     product_id, action_id, _ = _product_and_action()
     _bind_project_to_product(preview.project_id, product_id)
     _select_client_owned(client, preview.project_id)
-    assert client.post(
-        f"/customer/workspace/{preview.project_id}/reddit/actions/{action_id}/publish",
-        json={},
-    ).status_code == 200
+    assert _publish(client, preview.project_id, action_id).status_code == 200
 
     present = client.post(
         f"/customer/workspace/{preview.project_id}/reddit/actions/{action_id}/observe"
@@ -663,10 +666,7 @@ def test_reddit_transport_errors_remain_sanitized() -> None:
     _bind_project_to_product(preview.project_id, product_id)
     _select_client_owned(client, preview.project_id)
 
-    failed = client.post(
-        f"/customer/workspace/{preview.project_id}/reddit/actions/{action_id}/publish",
-        json={},
-    )
+    failed = _publish(client, preview.project_id, action_id)
     assert failed.status_code == 200
     assert failed.json()["outcome"] == "FAILED"
     assert failed.json()["metadata"]["error_code"] == "WRITE_FORBIDDEN"
