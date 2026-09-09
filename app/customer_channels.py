@@ -16,6 +16,7 @@ from app.customer_schemas import CustomerResearchResponse
 from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_types import DistributionPlatform
 from app.growth_balance import GrowthBalanceService
+from app.managed_distribution import managed_distribution_service
 from app.paid_provider_connections import paid_provider_connection_service
 from app.reddit_client_publishing import customer_reddit_client_publish_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
@@ -259,6 +260,7 @@ class CustomerChannelService:
         else:
             client_owned_available = False
             client_owned_blocker = "publisher-mode execution is not implemented for this channel yet"
+        managed_blocker = managed_distribution_service.readiness_blocker(platform)
         return [
             CustomerPublisherModeView(
                 mode=PublisherMode.MANUAL,
@@ -271,8 +273,8 @@ class CustomerChannelService:
             ),
             CustomerPublisherModeView(
                 mode=PublisherMode.PARTIZAN_MANAGED,
-                available=False,
-                blocker="Partizan Managed Distribution inventory is not implemented yet",
+                available=managed_blocker is None,
+                blocker=managed_blocker,
             ),
         ]
 
@@ -288,7 +290,13 @@ class CustomerChannelService:
     ) -> list[CustomerChannelCapabilityView]:
         measure_ready = False
         measure_blocker = "channel outcome adapter is not implemented yet"
-        if platform == DistributionPlatform.INSTAGRAM:
+        if publisher_mode == PublisherMode.PARTIZAN_MANAGED:
+            managed_blocker = managed_distribution_service.readiness_blocker(platform)
+            publish_ready = managed_blocker is None
+            publish_blocker = managed_blocker
+            measure_ready = publish_ready
+            measure_blocker = managed_blocker
+        elif platform == DistributionPlatform.INSTAGRAM:
             publish_ready = execution_ready
             publish_blocker = execution_blocker
         elif platform == DistributionPlatform.TELEGRAM:

@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     reddit_client_publish_client_id: str | None = None
     reddit_client_publish_client_secret: SecretStr | None = None
     reddit_client_publish_user_agent: str | None = None
+    managed_distribution_public_ready: bool = False
     creative_provider: str = "unavailable"
     creative_image_model: str = "gpt-image-2"
     creative_image_quality: str = "medium"

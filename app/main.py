@@ -18,6 +18,7 @@ from app.growth_balance_funding_policy import enable_checkout_first_growth_balan
 from app.growth_balance_rail_routes import router as growth_balance_rail_router
 from app.icp_service import icp_service
 from app.logging import configure_logging
+from app.managed_distribution_routes import customer_router as customer_managed_distribution_router
 from app.operator_auth import require_control_plane_operator
 from app.product_intake import product_intake_service
 from app.schemas import (
@@ -43,6 +44,7 @@ app.include_router(customer_router)
 app.include_router(customer_account_router)
 app.include_router(customer_project_router)
 app.include_router(customer_channel_router)
+app.include_router(customer_managed_distribution_router)
 app.include_router(customer_reddit_router)
 app.include_router(customer_autoresearch_router)
 app.include_router(growth_balance_rail_router)

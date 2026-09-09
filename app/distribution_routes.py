@@ -12,6 +12,7 @@ from app.distribution_execution_routes import router as execution_router
 from app.distribution_learning_routes import router as learning_router
 from app.distribution_schemas import AudienceDistributionMapView
 from app.icp_service import icp_service
+from app.managed_distribution_routes import operator_router as managed_distribution_router
 from app.meta_paid_control_routes import router as meta_paid_control_router
 from app.opportunity_enrichment_routes import router as enrichment_router
 from app.outreach_autosend_routes import router as outreach_autosend_router
@@ -32,6 +33,7 @@ from app.worker_health_routes import router as worker_health_router
 
 router = APIRouter(prefix="/v1", tags=["distribution"])
 router.include_router(control_plane_router)
+router.include_router(managed_distribution_router)
 router.include_router(execution_router)
 router.include_router(learning_router)
 router.include_router(event_integration_router)
