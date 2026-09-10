@@ -86,7 +86,7 @@ class InMemoryDistributionAnalyticsService:
             event_type=payload.event_type,
             actor_id=payload.actor_id,
             revenue=payload.revenue,
-            occurred_at=payload.occurred_at or datetime.now(UTC),
+            occurred_at=self._utc(payload.occurred_at or datetime.now(UTC)),
             properties=payload.properties,
             attributed_by=attributed_by,
         )
@@ -113,8 +113,12 @@ class InMemoryDistributionAnalyticsService:
         experiment = distribution_execution_service.get_experiment(experiment_id)
         self._ensure_measurable(experiment.status)
         action = distribution_execution_service.get_action(experiment.action_id)
-        publisher_mode = payload.publisher_mode or self._publisher_mode(action)
-        action_type = payload.action_type or action.action_type
+        publisher_mode = self._publisher_mode(action)
+        action_type = action.action_type
+        if payload.publisher_mode is not None and payload.publisher_mode != publisher_mode:
+            raise ValueError("publisher_mode does not match DistributionAction provenance")
+        if payload.action_type is not None and payload.action_type != action_type:
+            raise ValueError("action_type does not match DistributionAction")
 
         cached = self._spend.get(payload.spend_id)
         if cached is not None:
@@ -135,7 +139,7 @@ class InMemoryDistributionAnalyticsService:
             evidence_kind=payload.evidence_kind,
             publisher_mode=publisher_mode,
             action_type=action_type,
-            occurred_at=payload.occurred_at or datetime.now(UTC),
+            occurred_at=self._utc(payload.occurred_at or datetime.now(UTC)),
             properties=payload.properties,
         )
         inserted = self._store.put_if_absent(
@@ -245,9 +249,7 @@ class InMemoryDistributionAnalyticsService:
             item.id: item
             for item in distribution_execution_service.list_experiments(product_id)
         }
-        action_ids = {
-            experiment.action_id for experiment in experiments.values()
-        }
+        action_ids = {experiment.action_id for experiment in experiments.values()}
         self._hydrate_facts()
         groups: dict[tuple, list[tuple[float, datetime]]] = {}
         for entry in self._spend.values():
@@ -262,7 +264,7 @@ class InMemoryDistributionAnalyticsService:
             mode = entry.publisher_mode or self._publisher_mode(action)
             action_type = entry.action_type or action.action_type
             groups.setdefault((action.platform, action_type, mode), []).append(
-                (entry.amount, entry.occurred_at)
+                (entry.amount, self._utc(entry.occurred_at))
             )
 
         for payload in self._store.list_namespace(MANAGED_ASSIGNMENT_NAMESPACE):
@@ -282,7 +284,7 @@ class InMemoryDistributionAnalyticsService:
             try:
                 platform = DistributionPlatform(str(payload["platform"]))
                 action_type = DistributionActionType(str(payload["action_type"]))
-                occurred_at = datetime.fromisoformat(str(payload["fulfilled_at"]))
+                occurred_at = self._utc(datetime.fromisoformat(str(payload["fulfilled_at"])))
             except (KeyError, ValueError):
                 continue
             groups.setdefault(
@@ -458,7 +460,7 @@ class InMemoryDistributionAnalyticsService:
             event_type=str(payload["event_type"]),
             actor_id=payload.get("actor_id"),
             revenue=float(payload.get("revenue", 0)),
-            occurred_at=datetime.fromisoformat(str(payload["occurred_at"])),
+            occurred_at=self._utc(datetime.fromisoformat(str(payload["occurred_at"]))),
             properties=dict(payload.get("properties", {})),
             attributed_by=str(payload["attributed_by"]),
         )
@@ -478,7 +480,7 @@ class InMemoryDistributionAnalyticsService:
             ),
             publisher_mode=PublisherMode(str(raw_mode)) if raw_mode else None,
             action_type=DistributionActionType(str(raw_action)) if raw_action else None,
-            occurred_at=datetime.fromisoformat(str(payload["occurred_at"])),
+            occurred_at=self._utc(datetime.fromisoformat(str(payload["occurred_at"]))),
             properties=dict(payload.get("properties", {})),
         )
 
@@ -498,7 +500,8 @@ class InMemoryDistributionAnalyticsService:
         experiment_id: UUID,
     ) -> None:
         occurred_at_changed = (
-            payload.occurred_at is not None and existing.occurred_at != payload.occurred_at
+            payload.occurred_at is not None
+            and existing.occurred_at != self._utc(payload.occurred_at)
         )
         if (
             existing.experiment_id != experiment_id
@@ -520,7 +523,8 @@ class InMemoryDistributionAnalyticsService:
         action_type: DistributionActionType,
     ) -> None:
         occurred_at_changed = (
-            payload.occurred_at is not None and existing.occurred_at != payload.occurred_at
+            payload.occurred_at is not None
+            and existing.occurred_at != self._utc(payload.occurred_at)
         )
         if (
             existing.experiment_id != experiment_id
@@ -570,9 +574,14 @@ class InMemoryDistributionAnalyticsService:
         self,
         entries: list[DistributionSpendEntry],
     ) -> DistributionCostBreakdownView:
+        observed = [
+            item
+            for item in entries
+            if item.evidence_kind == DistributionEvidenceKind.OBSERVED
+        ]
         totals = {
             category: round(
-                sum(item.amount for item in entries if item.category == category),
+                sum(item.amount for item in observed if item.category == category),
                 2,
             )
             for category in DistributionCostCategory
@@ -699,6 +708,12 @@ class InMemoryDistributionAnalyticsService:
         if denominator == 0:
             return None
         return round(numerator / denominator, 4)
+
+    @staticmethod
+    def _utc(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
     def reset(self) -> None:
         self._events.clear()
