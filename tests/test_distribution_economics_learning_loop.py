@@ -293,13 +293,14 @@ def test_reply_and_removal_outcomes_stop_pattern_and_persist_learning() -> None:
     assert client.post(f"/v1/distribution-experiments/{experiment_id}/finish").status_code == 200
     portfolio = client.get(f"/v1/products/{product_id}/distribution-portfolio?max_items=12")
     assert portfolio.status_code == 200
-    tactic_id = plan["action"]["operational_metadata"]["tactic_id"]
-    same_tactic = next(
+    action = plan["action"]
+    same_pattern = next(
         item
         for item in portfolio.json()["items"]
-        if item["play"]["tactic_id"] == tactic_id
+        if item["play"]["opportunity_id"] == action["opportunity_id"]
+        and item["play"]["action_type"] == action["action_type"]
     )
-    assert any("Community/action penalty" in item for item in same_tactic["rationale"])
+    assert any("Community/action penalty" in item for item in same_pattern["rationale"])
 
 
 def test_reddit_research_prior_outcomes_reward_replies_and_penalize_removals(monkeypatch) -> None:
