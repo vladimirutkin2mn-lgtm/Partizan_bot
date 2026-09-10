@@ -88,7 +88,19 @@ jobs:
           # every deploy detaches the API from it and public routing breaks.
           PARTIZAN_MANAGED_EDGE: ${{ vars.PARTIZAN_MANAGED_EDGE || 'true' }}
           PARTIZAN_EXTRA_COMPOSE_FILES: ${{ vars.PARTIZAN_EXTRA_COMPOSE_FILES }}
-        run: bash tools/deploy_prod_remote.sh
+        shell: bash
+        run: |
+          set +e
+          bash tools/deploy_prod_remote.sh
+          deploy_status=$?
+          set -e
+
+          if (( deploy_status != 0 )); then
+            if [[ "${PARTIZAN_MANAGED_EDGE}" == "false" && -n "${PARTIZAN_PUBLIC_URL}" ]]; then
+              bash tools/diagnose_shared_host_tls.sh || true
+            fi
+            exit "${deploy_status}"
+          fi
 
       - name: Open or update production deploy incident
         if: ${{ failure() }}
