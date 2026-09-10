@@ -41,21 +41,31 @@ else
   echo "tcp-443-listener=ss-unavailable"
 fi
 
-echo "-- Docker containers publishing or likely terminating TLS"
+echo "-- Docker TLS-terminator summary"
 if command -v docker >/dev/null 2>&1; then
-  docker_rows="$(docker ps --format '{{.Names}}\t{{.Image}}\t{{.Ports}}' 2>/dev/null || true)"
-  matching_rows="$(printf '%s\n' "${docker_rows}" | grep -Ei '(:443->|caddy|nginx|traefik|haproxy|envoy)' || true)"
-  if [[ -n "${matching_rows}" ]]; then
-    printf '%s\n' "${matching_rows}"
-  else
-    echo "docker-tls-candidate=none-visible"
+  docker_rows="$(docker ps --format '{{.Image}}\t{{.Ports}}' 2>/dev/null || true)"
+  published_443_count="$(printf '%s\n' "${docker_rows}" | grep -Ec ':443->' || true)"
+  echo "docker-published-443-count=${published_443_count}"
+  proxy_kind="unknown"
+  if printf '%s\n' "${docker_rows}" | grep -Eiq 'caddy'; then
+    proxy_kind="caddy"
+  elif printf '%s\n' "${docker_rows}" | grep -Eiq 'nginx'; then
+    proxy_kind="nginx"
+  elif printf '%s\n' "${docker_rows}" | grep -Eiq 'traefik'; then
+    proxy_kind="traefik"
+  elif printf '%s\n' "${docker_rows}" | grep -Eiq 'haproxy'; then
+    proxy_kind="haproxy"
+  elif printf '%s\n' "${docker_rows}" | grep -Eiq 'envoy'; then
+    proxy_kind="envoy"
   fi
+  echo "docker-proxy-kind=${proxy_kind}"
 else
-  echo "docker-tls-candidate=docker-unavailable"
+  echo "docker-published-443-count=unavailable"
+  echo "docker-proxy-kind=unavailable"
 fi
 
 echo "-- Local loopback SNI probe"
-loopback_ok=false
+loopback_tls_ok=false
 if command -v curl >/dev/null 2>&1; then
   set +e
   loopback_result="$(curl --silent --show-error --max-time 10 \
@@ -66,8 +76,8 @@ if command -v curl >/dev/null 2>&1; then
   loopback_rc=$?
   set -e
   echo "loopback-curl-rc=${loopback_rc} ${loopback_result}"
-  if [[ ${loopback_rc} -eq 0 && "${loopback_result}" == *"http=200"* ]]; then
-    loopback_ok=true
+  if [[ ${loopback_rc} -eq 0 ]]; then
+    loopback_tls_ok=true
   fi
 else
   echo "loopback-curl=curl-unavailable"
@@ -118,10 +128,10 @@ else
   echo "dns-target-probe=unavailable"
 fi
 
-if [[ "${loopback_ok}" == "true" ]]; then
-  echo "classification=local_tls_ok_check_dns_or_upstream_path"
+if [[ "${loopback_tls_ok}" == "true" ]]; then
+  echo "classification=local_tls_handshake_ok_check_proxy_route_or_external_dns"
 else
-  echo "classification=local_sni_failed_check_shared_proxy_certificate_and_host_route"
+  echo "classification=local_sni_tls_failed_check_shared_proxy_certificate_and_host_route"
 fi
 
 echo "shared-host TLS diagnostics are read-only; no proxy reload/restart was attempted"
