@@ -50,6 +50,7 @@ jobs:
           bash -n tools/preflight_prod_host.sh
           bash -n tools/bootstrap_prod_host.sh
           bash -n tools/compose_shared_host.sh
+          bash -n tools/diagnose_shared_host_tls.sh
       - name: Migrate database
         run: alembic upgrade head
       - name: Test
