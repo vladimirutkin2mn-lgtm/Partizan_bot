@@ -467,14 +467,24 @@ class OpportunityEnrichmentService:
         ]
         if not matching:
             return 50.0
-        event_count = sum(item.event_count for item in matching)
+
+        visits = sum(item.metrics.visits for item in matching)
+        signups = sum(item.metrics.signups for item in matching)
+        activated = sum(item.metrics.activated_users for item in matching)
         paid_users = sum(item.metrics.paid_users for item in matching)
         revenue = sum(item.metrics.revenue for item in matching)
-        score = 40.0 + min(30.0, event_count * 3.0)
+        replies = sum(item.replies for item in matching)
+        removals = sum(item.removals for item in matching)
+
+        positive_funnel_signal = visits + signups + activated
+        score = 40.0 + min(20.0, positive_funnel_signal * 2.0)
+        score += min(15.0, replies * 3.0)
         if paid_users:
             score += 20.0
         if revenue > 0:
             score += 10.0
+        if removals:
+            score -= min(60.0, removals * 40.0)
         return max(0.0, min(100.0, score))
 
 
