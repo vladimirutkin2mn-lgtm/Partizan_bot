@@ -10,7 +10,9 @@ from app.audience_intelligence_service import (
 from app.community_distribution_acceptance import CommunityDistributionAcceptanceService
 from app.config import Settings
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
+from app.distribution_analytics_service import DISTRIBUTION_SPEND_NAMESPACE
 from app.distribution_control_plane_service import COMMUNITY_POLICY_NAMESPACE
+from app.distribution_execution_service import DISTRIBUTION_EXPERIMENT_NAMESPACE
 from app.reddit_client_publishing import CUSTOMER_REDDIT_CONNECTION_NAMESPACE
 from app.runtime_store import MemoryRuntimeStateStore
 
@@ -115,3 +117,45 @@ def test_malformed_reddit_action_targets_are_ignored_without_crashing_report() -
         phase = _phase(service.report(project_id), 252)
         assert _check(phase, "real_reddit_research_and_verified_policy").satisfied is True
         assert _check(phase, "fresh_reddit_thread_target").satisfied is False
+
+
+def test_phase7_requires_explicit_observed_spend_evidence_kind() -> None:
+    store = MemoryRuntimeStateStore()
+    project_id, product_id = _project(store)
+    experiment_id = uuid4()
+    spend_id = uuid4()
+    service = CommunityDistributionAcceptanceService(store=store, settings=_settings())
+
+    store.put(
+        DISTRIBUTION_EXPERIMENT_NAMESPACE,
+        str(experiment_id),
+        {
+            "id": str(experiment_id),
+            "product_id": str(product_id),
+        },
+    )
+    store.put(
+        DISTRIBUTION_SPEND_NAMESPACE,
+        str(spend_id),
+        {
+            "spend_id": str(spend_id),
+            "experiment_id": str(experiment_id),
+            "amount": 10,
+        },
+    )
+
+    phase = _phase(service.report(project_id), 255)
+    assert _check(phase, "observed_real_cost").satisfied is False
+
+    store.put(
+        DISTRIBUTION_SPEND_NAMESPACE,
+        str(spend_id),
+        {
+            "spend_id": str(spend_id),
+            "experiment_id": str(experiment_id),
+            "amount": 10,
+            "evidence_kind": "OBSERVED",
+        },
+    )
+    phase = _phase(service.report(project_id), 255)
+    assert _check(phase, "observed_real_cost").satisfied is True
