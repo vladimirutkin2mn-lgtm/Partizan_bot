@@ -4,10 +4,17 @@ from typing import Any
 from uuid import UUID
 
 from app.analytics_schemas import ExperimentMetricsView
+from app.channel_execution import PublisherMode
 from app.distribution_analytics_schemas import (
+    CustomerDistributionCostBreakdownView,
+    CustomerDistributionEconomicsView,
     DistributionAnalyticsEventCreate,
     DistributionAnalyticsEventReceipt,
+    DistributionCostBreakdownView,
+    DistributionCostCategory,
+    DistributionEvidenceKind,
     DistributionExperimentAnalyticsView,
+    DistributionPricingAssumptionView,
     DistributionProductAnalyticsView,
     DistributionSliceMetricsView,
     DistributionSpendCreate,
@@ -16,10 +23,14 @@ from app.distribution_analytics_schemas import (
 from app.distribution_execution_schemas import DistributionExperimentStatus
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_service import distribution_play_service
+from app.distribution_types import DistributionActionType, DistributionPlatform
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 DISTRIBUTION_ANALYTICS_EVENT_NAMESPACE = "distribution_analytics_event"
 DISTRIBUTION_SPEND_NAMESPACE = "distribution_experiment_spend"
+MANAGED_ASSIGNMENT_NAMESPACE = "managed_distribution_assignment"
+REDDIT_OBSERVATION_NAMESPACE = "customer_reddit_publish_observation"
+TELEGRAM_OBSERVATION_NAMESPACE = "customer_telegram_publish_observation"
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +50,10 @@ class DistributionSpendEntry:
     spend_id: UUID
     experiment_id: UUID
     amount: float
+    category: DistributionCostCategory
+    evidence_kind: DistributionEvidenceKind
+    publisher_mode: PublisherMode | None
+    action_type: DistributionActionType | None
     occurred_at: datetime
     properties: dict[str, Any]
 
@@ -71,7 +86,7 @@ class InMemoryDistributionAnalyticsService:
             event_type=payload.event_type,
             actor_id=payload.actor_id,
             revenue=payload.revenue,
-            occurred_at=payload.occurred_at or datetime.now(UTC),
+            occurred_at=self._utc(payload.occurred_at or datetime.now(UTC)),
             properties=payload.properties,
             attributed_by=attributed_by,
         )
@@ -97,17 +112,34 @@ class InMemoryDistributionAnalyticsService:
     ) -> DistributionSpendReceipt:
         experiment = distribution_execution_service.get_experiment(experiment_id)
         self._ensure_measurable(experiment.status)
+        action = distribution_execution_service.get_action(experiment.action_id)
+        publisher_mode = self._publisher_mode(action)
+        action_type = action.action_type
+        if payload.publisher_mode is not None and payload.publisher_mode != publisher_mode:
+            raise ValueError("publisher_mode does not match DistributionAction provenance")
+        if payload.action_type is not None and payload.action_type != action_type:
+            raise ValueError("action_type does not match DistributionAction")
 
         cached = self._spend.get(payload.spend_id)
         if cached is not None:
-            self._assert_same_spend(cached, payload, experiment_id)
+            self._assert_same_spend(
+                cached,
+                payload,
+                experiment_id,
+                publisher_mode=publisher_mode,
+                action_type=action_type,
+            )
             return self._spend_receipt(cached, duplicate=True)
 
         entry = DistributionSpendEntry(
             spend_id=payload.spend_id,
             experiment_id=experiment_id,
             amount=payload.amount,
-            occurred_at=payload.occurred_at or datetime.now(UTC),
+            category=payload.category,
+            evidence_kind=payload.evidence_kind,
+            publisher_mode=publisher_mode,
+            action_type=action_type,
+            occurred_at=self._utc(payload.occurred_at or datetime.now(UTC)),
             properties=payload.properties,
         )
         inserted = self._store.put_if_absent(
@@ -119,7 +151,13 @@ class InMemoryDistributionAnalyticsService:
             existing = self._get_spend(entry.spend_id)
             if existing is None:
                 raise RuntimeError("spend idempotency reservation disappeared after conflict")
-            self._assert_same_spend(existing, payload, experiment_id)
+            self._assert_same_spend(
+                existing,
+                payload,
+                experiment_id,
+                publisher_mode=publisher_mode,
+                action_type=action_type,
+            )
             return self._spend_receipt(existing, duplicate=True)
 
         self._spend[entry.spend_id] = entry
@@ -140,12 +178,18 @@ class InMemoryDistributionAnalyticsService:
             event for event in self._events.values() if event.experiment_id == experiment_id
         ]
         spend = [entry for entry in self._spend.values() if entry.experiment_id == experiment_id]
+        costs = self._sum_costs([self._costs(spend), self._managed_costs(action.id)])
+        replies, removals = self._platform_outcomes(action.id, events)
         return DistributionExperimentAnalyticsView(
             experiment=experiment,
             action=action,
             play=play,
             event_count=len(events),
-            metrics=self._metrics(events, spend),
+            metrics=self._metrics(events, costs),
+            publisher_mode=self._publisher_mode(action),
+            replies=replies,
+            removals=removals,
+            costs=costs,
         )
 
     def product_analytics(self, product_id: UUID) -> DistributionProductAnalyticsView:
@@ -154,6 +198,7 @@ class InMemoryDistributionAnalyticsService:
         total_spend = round(sum(item.metrics.spend for item in analytics), 2)
         total_paid_users = sum(item.metrics.paid_users for item in analytics)
         total_revenue = round(sum(item.metrics.revenue for item in analytics), 2)
+        total_costs = self._sum_costs([item.costs for item in analytics])
         blended_cac = (
             round(total_spend / total_paid_users, 2) if total_paid_users else None
         )
@@ -173,8 +218,102 @@ class InMemoryDistributionAnalyticsService:
             total_revenue=total_revenue,
             blended_cac=blended_cac,
             blended_roas=blended_roas,
+            total_costs=total_costs,
             experiments=analytics,
             breakdowns=self._breakdowns(analytics),
+        )
+
+    def customer_economics(self, product_id: UUID) -> CustomerDistributionEconomicsView:
+        analytics = self.product_analytics(product_id)
+        costs = analytics.total_costs
+        return CustomerDistributionEconomicsView(
+            product_id=product_id,
+            experiment_count=analytics.experiment_count,
+            costs=CustomerDistributionCostBreakdownView(
+                research_fee=costs.research_fee,
+                execution_fee=costs.execution_fee,
+                distribution_spend=costs.distribution_spend,
+                total=costs.customer_total,
+            ),
+            paid_users=analytics.total_paid_users,
+            revenue=analytics.total_revenue,
+            cac=analytics.blended_cac,
+            roas=analytics.blended_roas,
+        )
+
+    def pricing_assumptions(
+        self,
+        product_id: UUID,
+    ) -> list[DistributionPricingAssumptionView]:
+        experiments = {
+            item.id: item
+            for item in distribution_execution_service.list_experiments(product_id)
+        }
+        action_ids = {experiment.action_id for experiment in experiments.values()}
+        self._hydrate_facts()
+        groups: dict[tuple, list[tuple[float, datetime]]] = {}
+        for entry in self._spend.values():
+            experiment = experiments.get(entry.experiment_id)
+            if experiment is None:
+                continue
+            if entry.category != DistributionCostCategory.OPERATING_COST:
+                continue
+            if entry.evidence_kind != DistributionEvidenceKind.OBSERVED:
+                continue
+            action = distribution_execution_service.get_action(experiment.action_id)
+            mode = entry.publisher_mode or self._publisher_mode(action)
+            action_type = entry.action_type or action.action_type
+            groups.setdefault((action.platform, action_type, mode), []).append(
+                (entry.amount, self._utc(entry.occurred_at))
+            )
+
+        for payload in self._store.list_namespace(MANAGED_ASSIGNMENT_NAMESPACE):
+            action_id_raw = payload.get("action_id")
+            if not action_id_raw:
+                continue
+            try:
+                action_id = UUID(str(action_id_raw))
+            except ValueError:
+                continue
+            if action_id not in action_ids or str(payload.get("status")) != "FULFILLED":
+                continue
+            cost = payload.get("cost") if isinstance(payload.get("cost"), dict) else {}
+            amount = float(cost.get("operational_cost_usd") or 0)
+            if amount <= 0:
+                continue
+            try:
+                platform = DistributionPlatform(str(payload["platform"]))
+                action_type = DistributionActionType(str(payload["action_type"]))
+                occurred_at = self._utc(datetime.fromisoformat(str(payload["fulfilled_at"])))
+            except (KeyError, ValueError):
+                continue
+            groups.setdefault(
+                (platform, action_type, PublisherMode.PARTIZAN_MANAGED),
+                [],
+            ).append((amount, occurred_at))
+
+        rows: list[DistributionPricingAssumptionView] = []
+        for (platform, action_type, mode), samples in groups.items():
+            rows.append(
+                DistributionPricingAssumptionView(
+                    platform=platform,
+                    action_type=action_type,
+                    publisher_mode=mode,
+                    observed_operating_cost=round(
+                        sum(amount for amount, _ in samples) / len(samples),
+                        2,
+                    ),
+                    sample_count=len(samples),
+                    updated_at=max(occurred_at for _, occurred_at in samples),
+                )
+            )
+        return sorted(
+            rows,
+            key=lambda row: (
+                row.platform.value,
+                row.action_type.value,
+                row.publisher_mode.value,
+            ),
         )
 
     def _breakdowns(
@@ -186,6 +325,21 @@ class InMemoryDistributionAnalyticsService:
             keys = [
                 ("PLATFORM", item.play.platform.value, item.play.platform.value),
                 ("TACTIC", item.play.tactic_id, item.play.tactic_id),
+                (
+                    "PUBLISHER_MODE",
+                    item.publisher_mode.value,
+                    item.publisher_mode.value,
+                ),
+                (
+                    "ACTION_TYPE",
+                    item.action.action_type.value,
+                    item.action.action_type.value,
+                ),
+                (
+                    "OPPORTUNITY",
+                    str(item.action.opportunity_id),
+                    str(item.action.opportunity_id),
+                ),
             ]
             if item.action.distribution_identity_id is not None:
                 identity_key = str(item.action.distribution_identity_id)
@@ -209,6 +363,8 @@ class InMemoryDistributionAnalyticsService:
                     revenue=revenue,
                     cac=round(spend / paid, 2) if paid else None,
                     roas=round(revenue / spend, 3) if spend else None,
+                    replies=sum(item.replies for item in items),
+                    removals=sum(item.removals for item in items),
                 )
             )
         return sorted(rows, key=lambda row: (row.dimension, row.key))
@@ -260,6 +416,10 @@ class InMemoryDistributionAnalyticsService:
             "spend_id": str(entry.spend_id),
             "experiment_id": str(entry.experiment_id),
             "amount": entry.amount,
+            "category": entry.category.value,
+            "evidence_kind": entry.evidence_kind.value,
+            "publisher_mode": entry.publisher_mode.value if entry.publisher_mode else None,
+            "action_type": entry.action_type.value if entry.action_type else None,
             "occurred_at": entry.occurred_at.isoformat(),
             "properties": entry.properties,
         }
@@ -288,6 +448,8 @@ class InMemoryDistributionAnalyticsService:
             spend_id=entry.spend_id,
             experiment_id=entry.experiment_id,
             amount=entry.amount,
+            category=entry.category,
+            evidence_kind=entry.evidence_kind,
             duplicate=duplicate,
         )
 
@@ -298,17 +460,27 @@ class InMemoryDistributionAnalyticsService:
             event_type=str(payload["event_type"]),
             actor_id=payload.get("actor_id"),
             revenue=float(payload.get("revenue", 0)),
-            occurred_at=datetime.fromisoformat(str(payload["occurred_at"])),
+            occurred_at=self._utc(datetime.fromisoformat(str(payload["occurred_at"]))),
             properties=dict(payload.get("properties", {})),
             attributed_by=str(payload["attributed_by"]),
         )
 
     def _spend_from_payload(self, payload: dict) -> DistributionSpendEntry:
+        raw_mode = payload.get("publisher_mode")
+        raw_action = payload.get("action_type")
         return DistributionSpendEntry(
             spend_id=UUID(str(payload["spend_id"])),
             experiment_id=UUID(str(payload["experiment_id"])),
             amount=float(payload["amount"]),
-            occurred_at=datetime.fromisoformat(str(payload["occurred_at"])),
+            category=DistributionCostCategory(
+                str(payload.get("category") or DistributionCostCategory.DISTRIBUTION_SPEND.value)
+            ),
+            evidence_kind=DistributionEvidenceKind(
+                str(payload.get("evidence_kind") or DistributionEvidenceKind.OBSERVED.value)
+            ),
+            publisher_mode=PublisherMode(str(raw_mode)) if raw_mode else None,
+            action_type=DistributionActionType(str(raw_action)) if raw_action else None,
+            occurred_at=self._utc(datetime.fromisoformat(str(payload["occurred_at"]))),
             properties=dict(payload.get("properties", {})),
         )
 
@@ -328,7 +500,8 @@ class InMemoryDistributionAnalyticsService:
         experiment_id: UUID,
     ) -> None:
         occurred_at_changed = (
-            payload.occurred_at is not None and existing.occurred_at != payload.occurred_at
+            payload.occurred_at is not None
+            and existing.occurred_at != self._utc(payload.occurred_at)
         )
         if (
             existing.experiment_id != experiment_id
@@ -345,13 +518,21 @@ class InMemoryDistributionAnalyticsService:
         existing: DistributionSpendEntry,
         payload: DistributionSpendCreate,
         experiment_id: UUID,
+        *,
+        publisher_mode: PublisherMode,
+        action_type: DistributionActionType,
     ) -> None:
         occurred_at_changed = (
-            payload.occurred_at is not None and existing.occurred_at != payload.occurred_at
+            payload.occurred_at is not None
+            and existing.occurred_at != self._utc(payload.occurred_at)
         )
         if (
             existing.experiment_id != experiment_id
             or existing.amount != payload.amount
+            or existing.category != payload.category
+            or existing.evidence_kind != payload.evidence_kind
+            or existing.publisher_mode != publisher_mode
+            or existing.action_type != action_type
             or existing.properties != payload.properties
             or occurred_at_changed
         ):
@@ -360,9 +541,9 @@ class InMemoryDistributionAnalyticsService:
     def _metrics(
         self,
         events: list[DistributionAttributedEvent],
-        spend_entries: list[DistributionSpendEntry],
+        costs: DistributionCostBreakdownView,
     ) -> ExperimentMetricsView:
-        spend = round(sum(entry.amount for entry in spend_entries), 2)
+        spend = costs.customer_total
         visits = sum(event.event_type == "VISIT" for event in events)
         signups = self._unique_conversions(events, "SIGNUP")
         activated = self._unique_conversions(events, "ACTIVATED")
@@ -389,6 +570,128 @@ class InMemoryDistributionAnalyticsService:
             ),
         )
 
+    def _costs(
+        self,
+        entries: list[DistributionSpendEntry],
+    ) -> DistributionCostBreakdownView:
+        observed = [
+            item
+            for item in entries
+            if item.evidence_kind == DistributionEvidenceKind.OBSERVED
+        ]
+        totals = {
+            category: round(
+                sum(item.amount for item in observed if item.category == category),
+                2,
+            )
+            for category in DistributionCostCategory
+        }
+        customer_total = round(
+            totals[DistributionCostCategory.RESEARCH_FEE]
+            + totals[DistributionCostCategory.EXECUTION_FEE]
+            + totals[DistributionCostCategory.DISTRIBUTION_SPEND],
+            2,
+        )
+        return DistributionCostBreakdownView(
+            research_fee=totals[DistributionCostCategory.RESEARCH_FEE],
+            execution_fee=totals[DistributionCostCategory.EXECUTION_FEE],
+            distribution_spend=totals[DistributionCostCategory.DISTRIBUTION_SPEND],
+            operating_cost=totals[DistributionCostCategory.OPERATING_COST],
+            customer_total=customer_total,
+        )
+
+    def _managed_costs(self, action_id: UUID) -> DistributionCostBreakdownView:
+        for payload in self._store.list_namespace(MANAGED_ASSIGNMENT_NAMESPACE):
+            if str(payload.get("action_id") or "") != str(action_id):
+                continue
+            if str(payload.get("status") or "") != "FULFILLED":
+                continue
+            raw = payload.get("cost") if isinstance(payload.get("cost"), dict) else {}
+            distribution = round(float(raw.get("distribution_spend_usd") or 0), 2)
+            execution = round(float(raw.get("management_fee_usd") or 0), 2)
+            operating = round(float(raw.get("operational_cost_usd") or 0), 2)
+            return DistributionCostBreakdownView(
+                distribution_spend=distribution,
+                execution_fee=execution,
+                operating_cost=operating,
+                customer_total=round(distribution + execution, 2),
+            )
+        return DistributionCostBreakdownView()
+
+    def _sum_costs(self, rows) -> DistributionCostBreakdownView:
+        rows = list(rows)
+        research = round(sum(item.research_fee for item in rows), 2)
+        execution = round(sum(item.execution_fee for item in rows), 2)
+        distribution = round(sum(item.distribution_spend for item in rows), 2)
+        operating = round(sum(item.operating_cost for item in rows), 2)
+        return DistributionCostBreakdownView(
+            research_fee=research,
+            execution_fee=execution,
+            distribution_spend=distribution,
+            operating_cost=operating,
+            customer_total=round(research + execution + distribution, 2),
+        )
+
+    def _publisher_mode(self, action) -> PublisherMode:
+        raw = action.operational_metadata.get("publisher_mode")
+        if raw:
+            try:
+                return PublisherMode(str(raw).upper())
+            except ValueError:
+                pass
+        observations = action.operational_metadata.get("external_observations")
+        if isinstance(observations, dict) and "partizan_managed" in observations:
+            return PublisherMode.PARTIZAN_MANAGED
+        external_reference = str(action.operational_metadata.get("external_reference") or "")
+        if external_reference.startswith(("reddit-client:", "telegram-client:")):
+            return PublisherMode.CLIENT_OWNED
+        return PublisherMode.MANUAL
+
+    def _platform_outcomes(
+        self,
+        action_id: UUID,
+        events: list[DistributionAttributedEvent],
+    ) -> tuple[int, int]:
+        replies = self._reply_count(events)
+        removals = self._removal_count(events)
+
+        reddit = self._store.get(REDDIT_OBSERVATION_NAMESPACE, str(action_id))
+        if reddit:
+            history = [item for item in reddit.get("history", []) if isinstance(item, dict)]
+            reply_counts = [
+                int(item["reply_count"])
+                for item in history
+                if isinstance(item.get("reply_count"), int)
+                and not isinstance(item.get("reply_count"), bool)
+                and item["reply_count"] >= 0
+            ]
+            if reply_counts:
+                replies = max(replies, max(reply_counts))
+            if any(str(item.get("state") or "").upper() == "REMOVED" for item in history):
+                removals = max(removals, 1)
+
+        telegram = self._store.get(TELEGRAM_OBSERVATION_NAMESPACE, str(action_id))
+        if telegram:
+            history = [item for item in telegram.get("history", []) if isinstance(item, dict)]
+            if any(str(item.get("state") or "").upper() == "REMOVED" for item in history):
+                removals = max(removals, 1)
+        return replies, removals
+
+    def _reply_count(self, events: list[DistributionAttributedEvent]) -> int:
+        replies = [event for event in events if event.event_type == "REPLY"]
+        explicit_counts = [
+            int(event.properties["count"])
+            for event in replies
+            if isinstance(event.properties.get("count"), int)
+            and not isinstance(event.properties.get("count"), bool)
+        ]
+        if explicit_counts:
+            return max(explicit_counts)
+        return len(replies)
+
+    def _removal_count(self, events: list[DistributionAttributedEvent]) -> int:
+        return 1 if any(event.event_type == "REMOVED" for event in events) else 0
+
     def _unique_conversions(
         self,
         events: list[DistributionAttributedEvent],
@@ -405,6 +708,12 @@ class InMemoryDistributionAnalyticsService:
         if denominator == 0:
             return None
         return round(numerator / denominator, 4)
+
+    @staticmethod
+    def _utc(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
     def reset(self) -> None:
         self._events.clear()

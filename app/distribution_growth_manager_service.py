@@ -60,7 +60,13 @@ class InMemoryDistributionGrowthManagerService:
             decision = self._get_decision(decision_id)
             return decision.model_copy(update={"duplicate": True})
 
-        action, rationale = self._decide(product.max_cac, play, analytics.metrics)
+        action, rationale = self._decide(
+            product.max_cac,
+            play,
+            analytics.metrics,
+            replies=analytics.replies,
+            removals=analytics.removals,
+        )
         budget_remaining = self._budget_remaining(
             product.budget,
             product_analytics.total_spend,
@@ -89,6 +95,10 @@ class InMemoryDistributionGrowthManagerService:
             tactic_id=play.tactic_id,
             opportunity_id=play.opportunity_id,
             distribution_identity_id=analytics.action.distribution_identity_id,
+            publisher_mode=analytics.publisher_mode,
+            action_type=analytics.action.action_type,
+            replies=analytics.replies,
+            removals=analytics.removals,
             budget_remaining=budget_remaining,
             recommended_budget_increment=increment,
             created_at=now,
@@ -104,16 +114,22 @@ class InMemoryDistributionGrowthManagerService:
             tactic_id=play.tactic_id,
             opportunity_id=play.opportunity_id,
             distribution_identity_id=analytics.action.distribution_identity_id,
+            publisher_mode=analytics.publisher_mode,
+            action_type=analytics.action.action_type,
             action=action,
             observed_cac=analytics.metrics.cac,
             paid_users=analytics.metrics.paid_users,
             revenue=analytics.metrics.revenue,
+            replies=analytics.replies,
+            removals=analytics.removals,
             summary=(
-                f"{play.platform.value}/{play.tactic_id}: action={action}; "
+                f"{play.platform.value}/{play.tactic_id}/{analytics.publisher_mode.value}/"
+                f"{analytics.action.action_type.value}: action={action}; "
                 f"spend={analytics.metrics.spend:.2f}; "
                 f"paid={analytics.metrics.paid_users}; "
                 f"CAC={analytics.metrics.cac}; "
-                f"revenue={analytics.metrics.revenue:.2f}."
+                f"revenue={analytics.metrics.revenue:.2f}; "
+                f"replies={analytics.replies}; removals={analytics.removals}."
             ),
             created_at=now,
         )
@@ -381,6 +397,22 @@ class InMemoryDistributionGrowthManagerService:
         target_cac: float | None,
         experiments,
     ) -> tuple[float, str]:
+        community_peers = [
+            item
+            for item in experiments
+            if item.action.opportunity_id == play.opportunity_id
+            and item.action.action_type == play.action_type
+        ]
+        if any(item.removals > 0 for item in community_peers):
+            return -35.0, (
+                "Community/action penalty: a prior execution was removed on this exact opportunity."
+            )
+        community_replies = sum(item.replies for item in community_peers)
+        if community_replies > 0:
+            community_bonus = min(10.0, 3.0 + community_replies)
+        else:
+            community_bonus = 0.0
+
         peers = [
             item
             for item in experiments
@@ -388,6 +420,10 @@ class InMemoryDistributionGrowthManagerService:
             and item.play.tactic_id == play.tactic_id
         ]
         if not peers:
+            if community_bonus:
+                return community_bonus, (
+                    f"Community/action evidence bonus: {community_replies} observed replies."
+                )
             return 0.0, "No prior observed economics for this platform+tactic."
         spend = sum(item.metrics.spend for item in peers)
         paid = sum(item.metrics.paid_users for item in peers)
@@ -395,11 +431,11 @@ class InMemoryDistributionGrowthManagerService:
         if target_cac is not None and cac is not None:
             ratio = cac / target_cac if target_cac else float("inf")
             if paid >= MIN_SCALE_PAID_USERS and ratio <= 0.8:
-                return 15.0, (
+                return min(20.0, 15.0 + community_bonus), (
                     f"Winner bonus: observed peer CAC={cac:.2f} below target."
                 )
             if ratio <= 1.0:
-                return 8.0, (
+                return min(15.0, 8.0 + community_bonus), (
                     f"Positive bonus: observed peer CAC={cac:.2f} within target."
                 )
             if ratio > 1.5 and paid >= 1:
@@ -412,12 +448,32 @@ class InMemoryDistributionGrowthManagerService:
                 f"Loss penalty: {spend:.2f} peer spend with no paid users."
             )
         if paid > 0:
-            return 4.0, f"Evidence bonus: peer tactic produced {paid} paid users."
+            return min(12.0, 4.0 + community_bonus), (
+                f"Evidence bonus: peer tactic produced {paid} paid users."
+            )
+        if community_bonus:
+            return community_bonus, (
+                f"Community/action evidence bonus: {community_replies} observed replies."
+            )
         return -5.0, (
             "Weak evidence penalty: peer tactic has spend but no conversion signal."
         )
 
-    def _decide(self, target_cac, play, metrics) -> tuple[str, list[str]]:
+    def _decide(
+        self,
+        target_cac,
+        play,
+        metrics,
+        *,
+        replies: int = 0,
+        removals: int = 0,
+    ) -> tuple[str, list[str]]:
+        if removals > 0:
+            return "STOP", [
+                "The published action was removed; stop this exact community/action execution pattern.",
+                "Future research should re-check community policy and choose a different tactic or target.",
+            ]
+
         if target_cac is not None:
             if metrics.paid_users >= MIN_SCALE_PAID_USERS and metrics.cac is not None:
                 ratio = metrics.cac / target_cac if target_cac else float("inf")
@@ -472,6 +528,10 @@ class InMemoryDistributionGrowthManagerService:
                 return "MODIFY", [
                     "Signups arrive but no paid users; change activation/offer/paywall."
                 ]
+            if replies > 0:
+                return "CONTINUE", [
+                    f"Observed {replies} community replies; keep collecting conversion signal."
+                ]
             return "CONTINUE", [
                 "Insufficient conversion signal to scale or stop yet."
             ]
@@ -487,6 +547,10 @@ class InMemoryDistributionGrowthManagerService:
         if metrics.visits >= 20:
             return "MODIFY", [
                 "Visits exist but no paid conversion; change one bottleneck."
+            ]
+        if replies > 0:
+            return "CONTINUE", [
+                f"Observed {replies} community replies; keep collecting conversion signal."
             ]
         return "CONTINUE", ["Insufficient signal and no CAC target configured."]
 
