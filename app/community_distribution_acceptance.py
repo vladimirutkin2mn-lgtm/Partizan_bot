@@ -115,7 +115,7 @@ class CommunityDistributionAcceptanceService:
         self._settings = settings or get_settings()
 
     def report(self, project_id: UUID | None = None) -> CommunityDistributionAcceptanceReport:
-        project, product_id = self._scope(project_id)
+        _, product_id = self._scope(project_id)
         production_eligible, environment_blockers = self._production_environment()
         projects = self._projects()
         experiments = self._experiments(product_id)
@@ -405,7 +405,10 @@ class CommunityDistributionAcceptanceService:
                 bool(attributed),
                 "A downstream funnel event is attributed to a confirmed Reddit publish experiment."
                 if attributed
-                else "No downstream VISIT/SIGNUP/ACTIVATED/PAID event is tied to a confirmed Reddit publish experiment.",
+                else (
+                    "No downstream VISIT/SIGNUP/ACTIVATED/PAID event is tied to a confirmed "
+                    "Reddit publish experiment."
+                ),
                 count=len(attributed),
             ),
             self._check(
@@ -414,7 +417,10 @@ class CommunityDistributionAcceptanceService:
                 bool(end_to_end),
                 "The same Reddit action has publish, observation and downstream attribution evidence."
                 if end_to_end
-                else "No single Reddit action currently has the full publish + observation + attribution chain.",
+                else (
+                    "No single Reddit action currently has the full publish + observation + "
+                    "attribution chain."
+                ),
                 count=len(end_to_end),
             ),
         ]
@@ -582,7 +588,10 @@ class CommunityDistributionAcceptanceService:
                 bool(complete_ids),
                 "The same executed experiment has observed cost, outcome and measured next decision."
                 if complete_ids
-                else "No single executed experiment currently has observed cost + outcome + decision evidence.",
+                else (
+                    "No single executed experiment currently has observed cost + outcome + "
+                    "decision evidence."
+                ),
                 count=len(complete_ids),
                 sample=self._decision_sample(complete_decisions[0]) if complete_decisions else {},
             ),
