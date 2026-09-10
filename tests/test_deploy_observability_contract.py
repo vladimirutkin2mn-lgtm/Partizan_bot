@@ -44,8 +44,8 @@ def test_shared_host_deploy_failure_collects_read_only_tls_diagnostics() -> None
     assert "docker ps --format" in diagnostic
     assert "--resolve" in diagnostic
     assert "openssl s_client" in diagnostic
-    assert "classification=local_tls_ok_check_dns_or_upstream_path" in diagnostic
-    assert "classification=local_sni_failed_check_shared_proxy_certificate_and_host_route" in diagnostic
+    assert "classification=local_tls_handshake_ok_check_proxy_route_or_external_dns" in diagnostic
+    assert "classification=local_sni_tls_failed_check_shared_proxy_certificate_and_host_route" in diagnostic
 
     forbidden_mutations = (
         "docker restart",
