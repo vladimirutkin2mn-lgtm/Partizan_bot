@@ -21,7 +21,11 @@ Evidence kinds:
 
 Legacy `/distribution-experiments/{experiment_id}/spend` calls that omit the new fields remain backward compatible and are interpreted as `DISTRIBUTION_SPEND` + `OBSERVED`.
 
-Customer CAC/ROAS use customer-visible cost (`RESEARCH_FEE + EXECUTION_FEE + DISTRIBUTION_SPEND`). Internal `OPERATING_COST` is tracked separately and cannot leak through the customer economics response.
+Only `OBSERVED` cost facts participate in experiment/product economics, CAC/ROAS, customer totals and Growth Manager decisions. `ESTIMATE` and `SYNTHETIC` facts remain durably stored as evidence, but cannot change measured economics or decisions.
+
+Customer CAC/ROAS use observed customer-visible cost (`RESEARCH_FEE + EXECUTION_FEE + DISTRIBUTION_SPEND`). Internal `OPERATING_COST` is tracked separately and cannot leak through the customer economics response.
+
+Optional `publisher_mode` and `action_type` values supplied with spend ingestion are assertions against the actual `DistributionAction` provenance. A mismatch is rejected rather than allowing analytics provenance to be rewritten.
 
 Fulfilled `PARTIZAN_MANAGED` assignments are reused directly as cost evidence: `distribution_spend_usd` maps to distribution spend, `management_fee_usd` to execution fee and `operational_cost_usd` to internal operating cost. The analytics layer does not require a duplicate spend record for those facts.
 
