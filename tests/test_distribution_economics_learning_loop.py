@@ -109,7 +109,7 @@ def _event(experiment_id: str, event_type: str, **fields) -> dict:
     return response.json()
 
 
-def test_cost_categories_keep_internal_operating_cost_out_of_customer_economics() -> None:
+def test_cost_categories_keep_non_observed_and_internal_cost_out_of_customer_economics() -> None:
     product_id = _product()
     plan = _run_experiment(product_id)
     experiment_id = plan["experiment"]["id"]
@@ -135,6 +135,18 @@ def test_cost_categories_keep_internal_operating_cost_out_of_customer_economics(
         category="OPERATING_COST",
         evidence_kind="SYNTHETIC",
     )
+    _spend(
+        experiment_id,
+        500,
+        category="EXECUTION_FEE",
+        evidence_kind="ESTIMATE",
+    )
+    _spend(
+        experiment_id,
+        1000,
+        category="DISTRIBUTION_SPEND",
+        evidence_kind="SYNTHETIC",
+    )
 
     analytics = client.get(f"/v1/distribution-experiments/{experiment_id}/analytics")
     assert analytics.status_code == 200
@@ -144,7 +156,7 @@ def test_cost_categories_keep_internal_operating_cost_out_of_customer_economics(
         "research_fee": 5.0,
         "execution_fee": 10.0,
         "distribution_spend": 20.0,
-        "operating_cost": 136.0,
+        "operating_cost": 7.0,
         "customer_total": 35.0,
     }
     assert body["publisher_mode"] == "MANUAL"
@@ -170,6 +182,32 @@ def test_cost_categories_keep_internal_operating_cost_out_of_customer_economics(
             "updated_at": pricing.json()[0]["updated_at"],
         }
     ]
+
+
+def test_spend_provenance_fields_are_assertions_not_overrides() -> None:
+    product_id = _product()
+    plan = _run_experiment(product_id)
+    experiment_id = plan["experiment"]["id"]
+
+    wrong_mode = client.post(
+        f"/v1/distribution-experiments/{experiment_id}/spend",
+        json={
+            "amount": 1,
+            "publisher_mode": "PARTIZAN_MANAGED",
+        },
+    )
+    assert wrong_mode.status_code == 409
+    assert "publisher_mode does not match" in wrong_mode.json()["detail"]
+
+    wrong_action = client.post(
+        f"/v1/distribution-experiments/{experiment_id}/spend",
+        json={
+            "amount": 1,
+            "action_type": "COMMENT",
+        },
+    )
+    assert wrong_action.status_code == 409
+    assert "action_type does not match" in wrong_action.json()["detail"]
 
 
 def test_managed_fulfillment_costs_are_reused_without_customer_internal_cost_leakage() -> None:
