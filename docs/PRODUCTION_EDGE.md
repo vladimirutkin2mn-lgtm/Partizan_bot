@@ -122,6 +122,20 @@ Back up that file before editing it — it carries the neighbouring products' ro
 
 Certificates live with the proxy that issues them, so `partizan_caddy_data` and `partizan_caddy_config` are never created in this mode.
 
+### Shared-host TLS incident triage
+
+When a shared-host deployment fails after internal `/health/live`, `/health/ready` and `/version` have already passed, the deployment workflow runs `tools/diagnose_shared_host_tls.sh` before keeping the job failed. The diagnostic is intentionally read-only: it does not reload or restart the neighbouring proxy and does not inspect or print `.env.prod`.
+
+The diagnostic reports public DNS resolution as seen from the production host, visible TCP/443 listeners, a sanitized Docker proxy summary, a loopback SNI/TLS probe, a certificate summary when a certificate is presented, and per-DNS-target TLS probes.
+
+Interpret the classification conservatively:
+
+- `local_sni_tls_failed_check_shared_proxy_certificate_and_host_route` means the hostname cannot complete TLS against the local host's port 443. Check the shared proxy's certificate issuance/state and whether it still has a site/SNI route for the Partizan hostname before touching Partizan containers.
+- `local_tls_handshake_ok_check_proxy_route_or_external_dns` means TLS can complete locally with the requested hostname. If the GitHub runner still fails, compare the reported DNS targets and inspect upstream DNS/load-balancer/firewall routing. If TLS succeeds but the local probe returns a non-200 HTTP status, inspect the shared proxy's route to `partizan-api:8000`.
+- `tcp-443-listener=none-visible` means there is no visible local TCP listener on 443; confirm whether TLS is intentionally terminated on another host or load balancer before attempting any proxy restart.
+
+A TLS diagnostic result is evidence for an operator action, not permission for Partizan automation to mutate the shared proxy. The external proxy remains owned by its host project because a reload/restart can interrupt every product behind it.
+
 ## TLS state
 
 `Caddyfile.prod` uses Caddy's automatic HTTPS for the explicitly configured hostname. Certificate/account state is stored in named host volumes:
