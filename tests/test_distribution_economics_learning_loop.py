@@ -255,10 +255,11 @@ def test_reply_and_removal_outcomes_stop_pattern_and_persist_learning() -> None:
     assert client.post(f"/v1/distribution-experiments/{experiment_id}/finish").status_code == 200
     portfolio = client.get(f"/v1/products/{product_id}/distribution-portfolio?max_items=12")
     assert portfolio.status_code == 200
+    tactic_id = plan["action"]["operational_metadata"]["tactic_id"]
     same_tactic = next(
         item
         for item in portfolio.json()["items"]
-        if item["play"]["tactic_id"] == plan["play"]["tactic_id"]
+        if item["play"]["tactic_id"] == tactic_id
     )
     assert any("Community/action penalty" in item for item in same_tactic["rationale"])
 
