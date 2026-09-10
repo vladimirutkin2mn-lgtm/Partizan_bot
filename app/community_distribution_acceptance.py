@@ -508,7 +508,7 @@ class CommunityDistributionAcceptanceService:
             row
             for row in self._store.list_namespace(DISTRIBUTION_SPEND_NAMESPACE)
             if str(row.get("experiment_id")) in experiments
-            and str(row.get("evidence_kind") or "OBSERVED").upper() == "OBSERVED"
+            and str(row.get("evidence_kind") or "").upper() == "OBSERVED"
             and self._positive_number(row.get("amount"))
         ]
         managed = [
