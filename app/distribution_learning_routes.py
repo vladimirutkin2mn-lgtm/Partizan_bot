@@ -9,6 +9,7 @@ from app.distribution_analytics_schemas import (
     DistributionGrowthDecisionView,
     DistributionLearningMemoryView,
     DistributionPortfolioView,
+    DistributionPricingAssumptionView,
     DistributionProductAnalyticsView,
     DistributionSpendCreate,
     DistributionSpendReceipt,
@@ -92,6 +93,16 @@ async def get_distribution_product_analytics(
     product_id: UUID,
 ) -> DistributionProductAnalyticsView:
     return distribution_analytics_service.product_analytics(product_id)
+
+
+@router.get(
+    "/products/{product_id}/distribution-pricing-assumptions",
+    response_model=list[DistributionPricingAssumptionView],
+)
+async def get_distribution_pricing_assumptions(
+    product_id: UUID,
+) -> list[DistributionPricingAssumptionView]:
+    return distribution_analytics_service.pricing_assumptions(product_id)
 
 
 @router.post(
