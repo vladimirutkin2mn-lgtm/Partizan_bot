@@ -748,7 +748,10 @@ class CommunityDistributionAcceptanceService:
             if project_ids and str(row.get("project_id")) not in project_ids:
                 continue
             if required_scopes is not None:
-                scopes = {str(item) for item in row.get("scopes", [])}
+                raw_scopes = row.get("scopes")
+                if not isinstance(raw_scopes, (list, tuple, set)):
+                    continue
+                scopes = {str(item) for item in raw_scopes if item is not None}
                 if not required_scopes.issubset(scopes):
                     continue
             rows.append(row)
@@ -821,7 +824,10 @@ class CommunityDistributionAcceptanceService:
                 if isinstance(metadata.get("enrichment"), dict)
                 else {}
             )
-            for target in enrichment.get("action_targets", []):
+            raw_targets = enrichment.get("action_targets")
+            if not isinstance(raw_targets, list):
+                continue
+            for target in raw_targets:
                 if isinstance(target, dict) and action_target_is_fresh(target):
                     targets.append(target)
         return targets
