@@ -23,11 +23,14 @@ from app.distribution_analytics_schemas import (
 from app.distribution_execution_schemas import DistributionExperimentStatus
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_service import distribution_play_service
-from app.distribution_types import DistributionActionType
+from app.distribution_types import DistributionActionType, DistributionPlatform
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 DISTRIBUTION_ANALYTICS_EVENT_NAMESPACE = "distribution_analytics_event"
 DISTRIBUTION_SPEND_NAMESPACE = "distribution_experiment_spend"
+MANAGED_ASSIGNMENT_NAMESPACE = "managed_distribution_assignment"
+REDDIT_OBSERVATION_NAMESPACE = "customer_reddit_publish_observation"
+TELEGRAM_OBSERVATION_NAMESPACE = "customer_telegram_publish_observation"
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,7 +174,8 @@ class InMemoryDistributionAnalyticsService:
             event for event in self._events.values() if event.experiment_id == experiment_id
         ]
         spend = [entry for entry in self._spend.values() if entry.experiment_id == experiment_id]
-        costs = self._costs(spend)
+        costs = self._sum_costs([self._costs(spend), self._managed_costs(action.id)])
+        replies, removals = self._platform_outcomes(action.id, events)
         return DistributionExperimentAnalyticsView(
             experiment=experiment,
             action=action,
@@ -179,8 +183,8 @@ class InMemoryDistributionAnalyticsService:
             event_count=len(events),
             metrics=self._metrics(events, costs),
             publisher_mode=self._publisher_mode(action),
-            replies=self._reply_count(events),
-            removals=self._removal_count(events),
+            replies=replies,
+            removals=removals,
             costs=costs,
         )
 
@@ -190,7 +194,7 @@ class InMemoryDistributionAnalyticsService:
         total_spend = round(sum(item.metrics.spend for item in analytics), 2)
         total_paid_users = sum(item.metrics.paid_users for item in analytics)
         total_revenue = round(sum(item.metrics.revenue for item in analytics), 2)
-        total_costs = self._sum_costs(item.costs for item in analytics)
+        total_costs = self._sum_costs([item.costs for item in analytics])
         blended_cac = (
             round(total_spend / total_paid_users, 2) if total_paid_users else None
         )
@@ -241,8 +245,11 @@ class InMemoryDistributionAnalyticsService:
             item.id: item
             for item in distribution_execution_service.list_experiments(product_id)
         }
+        action_ids = {
+            experiment.action_id for experiment in experiments.values()
+        }
         self._hydrate_facts()
-        groups: dict[tuple, list[DistributionSpendEntry]] = {}
+        groups: dict[tuple, list[tuple[float, datetime]]] = {}
         for entry in self._spend.values():
             experiment = experiments.get(entry.experiment_id)
             if experiment is None:
@@ -254,21 +261,48 @@ class InMemoryDistributionAnalyticsService:
             action = distribution_execution_service.get_action(experiment.action_id)
             mode = entry.publisher_mode or self._publisher_mode(action)
             action_type = entry.action_type or action.action_type
-            groups.setdefault((action.platform, action_type, mode), []).append(entry)
+            groups.setdefault((action.platform, action_type, mode), []).append(
+                (entry.amount, entry.occurred_at)
+            )
+
+        for payload in self._store.list_namespace(MANAGED_ASSIGNMENT_NAMESPACE):
+            action_id_raw = payload.get("action_id")
+            if not action_id_raw:
+                continue
+            try:
+                action_id = UUID(str(action_id_raw))
+            except ValueError:
+                continue
+            if action_id not in action_ids or str(payload.get("status")) != "FULFILLED":
+                continue
+            cost = payload.get("cost") if isinstance(payload.get("cost"), dict) else {}
+            amount = float(cost.get("operational_cost_usd") or 0)
+            if amount <= 0:
+                continue
+            try:
+                platform = DistributionPlatform(str(payload["platform"]))
+                action_type = DistributionActionType(str(payload["action_type"]))
+                occurred_at = datetime.fromisoformat(str(payload["fulfilled_at"]))
+            except (KeyError, ValueError):
+                continue
+            groups.setdefault(
+                (platform, action_type, PublisherMode.PARTIZAN_MANAGED),
+                [],
+            ).append((amount, occurred_at))
 
         rows: list[DistributionPricingAssumptionView] = []
-        for (platform, action_type, mode), entries in groups.items():
+        for (platform, action_type, mode), samples in groups.items():
             rows.append(
                 DistributionPricingAssumptionView(
                     platform=platform,
                     action_type=action_type,
                     publisher_mode=mode,
                     observed_operating_cost=round(
-                        sum(item.amount for item in entries) / len(entries),
+                        sum(amount for amount, _ in samples) / len(samples),
                         2,
                     ),
-                    sample_count=len(entries),
-                    updated_at=max(item.occurred_at for item in entries),
+                    sample_count=len(samples),
+                    updated_at=max(occurred_at for _, occurred_at in samples),
                 )
             )
         return sorted(
@@ -557,7 +591,26 @@ class InMemoryDistributionAnalyticsService:
             customer_total=customer_total,
         )
 
+    def _managed_costs(self, action_id: UUID) -> DistributionCostBreakdownView:
+        for payload in self._store.list_namespace(MANAGED_ASSIGNMENT_NAMESPACE):
+            if str(payload.get("action_id") or "") != str(action_id):
+                continue
+            if str(payload.get("status") or "") != "FULFILLED":
+                continue
+            raw = payload.get("cost") if isinstance(payload.get("cost"), dict) else {}
+            distribution = round(float(raw.get("distribution_spend_usd") or 0), 2)
+            execution = round(float(raw.get("management_fee_usd") or 0), 2)
+            operating = round(float(raw.get("operational_cost_usd") or 0), 2)
+            return DistributionCostBreakdownView(
+                distribution_spend=distribution,
+                execution_fee=execution,
+                operating_cost=operating,
+                customer_total=round(distribution + execution, 2),
+            )
+        return DistributionCostBreakdownView()
+
     def _sum_costs(self, rows) -> DistributionCostBreakdownView:
+        rows = list(rows)
         research = round(sum(item.research_fee for item in rows), 2)
         execution = round(sum(item.execution_fee for item in rows), 2)
         distribution = round(sum(item.distribution_spend for item in rows), 2)
@@ -580,7 +633,40 @@ class InMemoryDistributionAnalyticsService:
         observations = action.operational_metadata.get("external_observations")
         if isinstance(observations, dict) and "partizan_managed" in observations:
             return PublisherMode.PARTIZAN_MANAGED
+        external_reference = str(action.operational_metadata.get("external_reference") or "")
+        if external_reference.startswith(("reddit-client:", "telegram-client:")):
+            return PublisherMode.CLIENT_OWNED
         return PublisherMode.MANUAL
+
+    def _platform_outcomes(
+        self,
+        action_id: UUID,
+        events: list[DistributionAttributedEvent],
+    ) -> tuple[int, int]:
+        replies = self._reply_count(events)
+        removals = self._removal_count(events)
+
+        reddit = self._store.get(REDDIT_OBSERVATION_NAMESPACE, str(action_id))
+        if reddit:
+            history = [item for item in reddit.get("history", []) if isinstance(item, dict)]
+            reply_counts = [
+                int(item["reply_count"])
+                for item in history
+                if isinstance(item.get("reply_count"), int)
+                and not isinstance(item.get("reply_count"), bool)
+                and item["reply_count"] >= 0
+            ]
+            if reply_counts:
+                replies = max(replies, max(reply_counts))
+            if any(str(item.get("state") or "").upper() == "REMOVED" for item in history):
+                removals = max(removals, 1)
+
+        telegram = self._store.get(TELEGRAM_OBSERVATION_NAMESPACE, str(action_id))
+        if telegram:
+            history = [item for item in telegram.get("history", []) if isinstance(item, dict)]
+            if any(str(item.get("state") or "").upper() == "REMOVED" for item in history):
+                removals = max(removals, 1)
+        return replies, removals
 
     def _reply_count(self, events: list[DistributionAttributedEvent]) -> int:
         replies = [event for event in events if event.event_type == "REPLY"]
