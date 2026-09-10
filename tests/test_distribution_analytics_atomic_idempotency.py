@@ -15,6 +15,7 @@ from app.distribution_analytics_service import (
 )
 from app.distribution_execution_schemas import DistributionExperimentStatus
 from app.distribution_execution_service import distribution_execution_service
+from app.distribution_types import DistributionActionType
 from app.runtime_store import MemoryRuntimeStateStore
 
 
@@ -94,9 +95,19 @@ def test_spend_ingestion_uses_atomic_reservation_and_checks_full_retry(monkeypat
     store = AtomicOnlyStore()
     service = InMemoryDistributionAnalyticsService(store=store)
     experiment_id = uuid4()
+    action_id = uuid4()
     spend_id = uuid4()
-    experiment = SimpleNamespace(id=experiment_id, status=DistributionExperimentStatus.RUNNING)
+    experiment = SimpleNamespace(
+        id=experiment_id,
+        action_id=action_id,
+        status=DistributionExperimentStatus.RUNNING,
+    )
+    action = SimpleNamespace(
+        operational_metadata={},
+        action_type=DistributionActionType.COMMENT,
+    )
     monkeypatch.setattr(distribution_execution_service, "get_experiment", lambda _: experiment)
+    monkeypatch.setattr(distribution_execution_service, "get_action", lambda _: action)
     occurred_at = datetime(2026, 8, 15, 12, 0, tzinfo=UTC)
     payload = DistributionSpendCreate(
         spend_id=spend_id,
