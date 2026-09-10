@@ -33,6 +33,33 @@ def test_deploy_propagates_and_verifies_exact_release_sha() -> None:
     assert "PARTIZAN_RELEASE_SHA: ${PARTIZAN_RELEASE_SHA:-unknown}" in compose
 
 
+def test_shared_host_deploy_failure_collects_read_only_tls_diagnostics() -> None:
+    workflow = _text(".github/workflows/deploy-production.yml")
+    diagnostic = _text("tools/diagnose_shared_host_tls.sh")
+
+    assert '[[ "${PARTIZAN_MANAGED_EDGE}" == "false"' in workflow
+    assert "bash tools/diagnose_shared_host_tls.sh || true" in workflow
+    assert "getent ahosts" in diagnostic
+    assert "ss -ltnp" in diagnostic
+    assert "docker ps --format" in diagnostic
+    assert "--resolve" in diagnostic
+    assert "openssl s_client" in diagnostic
+    assert "classification=local_tls_handshake_ok_check_proxy_route_or_external_dns" in diagnostic
+    assert "classification=local_sni_tls_failed_check_shared_proxy_certificate_and_host_route" in diagnostic
+
+    forbidden_mutations = (
+        "docker restart",
+        "docker compose restart",
+        "systemctl restart",
+        "systemctl reload",
+        "caddy reload",
+        "nginx -s reload",
+    )
+    assert all(command not in diagnostic for command in forbidden_mutations)
+    assert ".env.prod" not in diagnostic
+    assert 'echo "${DEPLOY_HOST}"' not in diagnostic
+
+
 def test_meta_oauth_handoff_is_versioned_with_exact_callback_and_scopes() -> None:
     runbook = _text("docs/META_OAUTH_REQUEST.md")
 
