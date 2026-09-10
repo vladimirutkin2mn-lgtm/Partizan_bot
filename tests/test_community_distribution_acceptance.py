@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from pydantic import SecretStr
-
 from app.audience_intelligence_service import (
     AUDIENCE_MAP_NAMESPACE,
     AUDIENCE_OPPORTUNITY_NAMESPACE,
