@@ -98,6 +98,44 @@ def test_shared_host_route_repair_is_guarded_and_rollback_safe() -> None:
     assert all(value not in repair for value in forbidden_disclosures)
 
 
+def test_shared_host_route_repair_refuses_stale_config_mount() -> None:
+    repair = _text("tools/ensure_shared_host_caddy_route.sh")
+
+    digest_marker = 'host_config_digest="$(sha256sum "${caddy_source}"'
+    mutation_marker = 'cat "${candidate}" > "${caddy_source}"'
+
+    assert digest_marker in repair
+    assert "sh -c 'sha256sum /etc/caddy/Caddyfile'" in repair
+    assert repair.index(digest_marker) < repair.index(mutation_marker)
+    assert "proxy is reading a stale bind-mounted Caddyfile" in repair
+    assert "recreate the shared proxy container" in repair
+    assert "proxy config mount is live" in repair
+
+    # Route presence must be read from the host file the repair actually writes,
+    # not from the container view, so a detached mount cannot report a route that
+    # the live config no longer serves.
+    assert 'grep -Fq -- "${host}" "${caddy_source}"' in repair
+
+    # `caddy reload` is a no-op on identical bytes, so the running config is the
+    # only proof that the route went live.
+    assert "http://127.0.0.1:2019/config/apps/http/servers" in repair
+    assert "reloaded config does not serve the target host" in repair
+    assert "target host present in running config" in repair
+
+    # Only executable lines matter here: the comments deliberately name the
+    # inode-replacing commands they warn about.
+    executable = "\n".join(
+        line for line in repair.splitlines() if not line.lstrip().startswith("#")
+    )
+    forbidden_inode_replacing_writes = (
+        "sed -i",
+        'mv "${candidate}"',
+        'cp "${candidate}" "${caddy_source}"',
+        "tee ${caddy_source}",
+    )
+    assert all(command not in executable for command in forbidden_inode_replacing_writes)
+
+
 def test_deploy_propagates_and_verifies_exact_release_sha() -> None:
     workflow = _text(".github/workflows/deploy-production.yml")
     deploy = _text("tools/deploy_prod_remote.sh")

@@ -115,9 +115,36 @@ if ! docker exec "${tls_container_id}" caddy validate \
   exit 1
 fi
 
+# The active Caddyfile is bind-mounted read-only inside the shared Caddy container.
+# Resolve only the source backing this exact destination, keep it private, and edit
+# that host file through a validated candidate. No unrelated mounts are printed.
+caddy_source="$(docker container inspect \
+  --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{"\n"}}{{end}}{{end}}' \
+  "${tls_container_id}" | awk 'NF {print; exit}')"
+if [[ -z "${caddy_source}" || "${caddy_source}" != /* || ! -f "${caddy_source}" || ! -w "${caddy_source}" ]]; then
+  rollback_network_if_added
+  echo "shared Caddy route repair: host-side Caddyfile source is unavailable or not writable" >&2
+  exit 1
+fi
+
+# A single-file bind mount is pinned to the inode present at container start. Any
+# deploy that replaces that file instead of rewriting it in place (rsync, git
+# checkout, `sed -i`, `mv`) leaves the proxy reading a detached inode, so every
+# host-side edit and every `caddy reload` is a silent no-op. Compare both views
+# before mutating anything; this script must not restart another project's proxy.
+host_config_digest="$(sha256sum "${caddy_source}" | awk '{print $1}')"
+container_config_digest="$(docker exec "${tls_container_id}" \
+  sh -c 'sha256sum /etc/caddy/Caddyfile' 2>/dev/null | awk '{print $1}')"
+if [[ -z "${container_config_digest}" || "${host_config_digest}" != "${container_config_digest}" ]]; then
+  rollback_network_if_added
+  echo "shared Caddy route repair: proxy is reading a stale bind-mounted Caddyfile; recreate the shared proxy container so the mount re-binds the current host file" >&2
+  exit 1
+fi
+
+echo "shared Caddy route repair: proxy config mount is live"
+
 target_route_present=false
-if docker exec "${tls_container_id}" sh -c \
-  'grep -Fq -- "$1" /etc/caddy/Caddyfile' sh "${host}" >/dev/null 2>&1; then
+if grep -Fq -- "${host}" "${caddy_source}"; then
   target_route_present=true
 fi
 
@@ -138,18 +165,6 @@ echo "shared Caddy route repair: upstream preflight ok"
 if [[ "${target_route_present}" == "true" ]]; then
   echo "shared Caddy route repair: target host route already present and upstream reachable"
   exit 0
-fi
-
-# The active Caddyfile is bind-mounted read-only inside the shared Caddy container.
-# Resolve only the source backing this exact destination, keep it private, and edit
-# that host file through a validated candidate. No unrelated mounts are printed.
-caddy_source="$(docker container inspect \
-  --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{"\n"}}{{end}}{{end}}' \
-  "${tls_container_id}" | awk 'NF {print; exit}')"
-if [[ -z "${caddy_source}" || "${caddy_source}" != /* || ! -f "${caddy_source}" || ! -w "${caddy_source}" ]]; then
-  rollback_network_if_added
-  echo "shared Caddy route repair: host-side Caddyfile source is unavailable or not writable" >&2
-  exit 1
 fi
 
 backup="$(mktemp /tmp/Caddyfile.partizan.backup.XXXXXX)"
@@ -208,6 +223,23 @@ if ! docker exec "${tls_container_id}" caddy reload \
   echo "shared Caddy route repair: Caddy reload failed" >&2
   exit 1
 fi
+
+# `caddy reload` exits 0 and logs "config is unchanged" when it re-reads identical
+# bytes, so a successful exit code alone does not prove the route is live. Ask the
+# admin API which hosts the running config actually serves.
+route_loaded=false
+if docker exec "${tls_container_id}" sh -c \
+  'wget -q -O - http://127.0.0.1:2019/config/apps/http/servers 2>/dev/null | grep -Fq -- "\"$1\""' \
+  sh "${host}"; then
+  route_loaded=true
+fi
+if [[ "${route_loaded}" != "true" ]]; then
+  rollback
+  echo "shared Caddy route repair: reloaded config does not serve the target host" >&2
+  exit 1
+fi
+
+echo "shared Caddy route repair: target host present in running config"
 
 route_healthy=false
 for _ in $(seq 1 15); do
