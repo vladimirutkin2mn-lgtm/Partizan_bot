@@ -58,7 +58,14 @@ def test_shared_host_route_repair_is_guarded_and_rollback_safe() -> None:
     assert "docker-compose.shared-host.yml" in repair
     assert "Partizan API is not attached to configured edge network" in repair
     assert "proxy attached to Partizan edge network" in repair
-    assert "test -r /etc/caddy/Caddyfile && test -w /etc/caddy/Caddyfile" in repair
+    assert "docker container inspect" in repair
+    assert 'eq .Destination "/etc/caddy/Caddyfile"' in repair
+    assert "host-side Caddyfile source is unavailable or not writable" in repair
+    assert "mktemp /tmp/Caddyfile.partizan.backup" in repair
+    assert "mktemp /tmp/Caddyfile.partizan.candidate" in repair
+    assert 'docker cp "${candidate}"' in repair
+    assert 'cat "${candidate}" > "${caddy_source}"' in repair
+    assert 'cat "${backup}" > "${caddy_source}"' in repair
     assert "existing Caddyfile is invalid; refusing mutation" in repair
     assert 'wget -q -O /dev/null -T 5 "http://$1/health/live"' in repair
     assert "BEGIN PARTIZAN MANAGED ROUTE" in repair
@@ -66,6 +73,7 @@ def test_shared_host_route_repair_is_guarded_and_rollback_safe() -> None:
     assert "caddy validate" in repair
     assert "caddy reload" in repair
     assert "rollback_network_if_added()" in repair
+    assert "restore_caddyfile()" in repair
     assert "rollback()" in repair
     assert '--resolve "${host}:443:127.0.0.1"' in repair
     assert "route restored and local TLS health verified" in repair
@@ -81,10 +89,11 @@ def test_shared_host_route_repair_is_guarded_and_rollback_safe() -> None:
 
     forbidden_disclosures = (
         "cat /etc/caddy/Caddyfile",
-        "docker inspect",
+        "docker inspect ",
         "printenv",
         'echo "${edge_network}"',
         'echo "${DEPLOY_PATH}"',
+        'echo "${caddy_source}"',
     )
     assert all(value not in repair for value in forbidden_disclosures)
 
