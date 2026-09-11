@@ -27,6 +27,8 @@ set -euo pipefail
 host="$1"
 deploy_path="$2"
 upstream="partizan-api:8000"
+container_caddyfile="/etc/caddy/Caddyfile"
+container_candidate="/tmp/Caddyfile.partizan.candidate"
 
 if [[ "${host}" != "partizanlabs.com" ]]; then
   echo "shared Caddy route repair: unexpected host" >&2
@@ -106,14 +108,8 @@ rollback_network_if_added() {
   fi
 }
 
-if ! docker exec "${tls_container_id}" sh -c 'test -r /etc/caddy/Caddyfile && test -w /etc/caddy/Caddyfile'; then
-  rollback_network_if_added
-  echo "shared Caddy route repair: Caddyfile is not readable and writable" >&2
-  exit 1
-fi
-
 if ! docker exec "${tls_container_id}" caddy validate \
-  --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
+  --config "${container_caddyfile}" --adapter caddyfile >/dev/null 2>&1; then
   rollback_network_if_added
   echo "shared Caddy route repair: existing Caddyfile is invalid; refusing mutation" >&2
   exit 1
@@ -144,39 +140,70 @@ if [[ "${target_route_present}" == "true" ]]; then
   exit 0
 fi
 
-backup="/tmp/Caddyfile.partizan.$$.bak"
-docker exec "${tls_container_id}" cp /etc/caddy/Caddyfile "${backup}"
-
-rollback() {
-  echo "shared Caddy route repair: rolling back Caddyfile" >&2
-  docker exec "${tls_container_id}" cp "${backup}" /etc/caddy/Caddyfile || true
-  docker exec "${tls_container_id}" caddy validate \
-    --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 || true
-  docker exec "${tls_container_id}" caddy reload \
-    --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 || true
-  docker exec "${tls_container_id}" rm -f "${backup}" >/dev/null 2>&1 || true
+# The active Caddyfile is bind-mounted read-only inside the shared Caddy container.
+# Resolve only the source backing this exact destination, keep it private, and edit
+# that host file through a validated candidate. No unrelated mounts are printed.
+caddy_source="$(docker container inspect \
+  --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{"\n"}}{{end}}{{end}}' \
+  "${tls_container_id}" | awk 'NF {print; exit}')"
+if [[ -z "${caddy_source}" || "${caddy_source}" != /* || ! -f "${caddy_source}" || ! -w "${caddy_source}" ]]; then
   rollback_network_if_added
-}
-
-if ! docker exec "${tls_container_id}" sh -c '
-  printf "\n# BEGIN PARTIZAN MANAGED ROUTE\n%s {\n\treverse_proxy %s\n}\n# END PARTIZAN MANAGED ROUTE\n" "$1" "$2" >> /etc/caddy/Caddyfile
-' sh "${host}" "${upstream}"; then
-  rollback
-  echo "shared Caddy route repair: unable to write target route" >&2
+  echo "shared Caddy route repair: host-side Caddyfile source is unavailable or not writable" >&2
   exit 1
 fi
 
+backup="$(mktemp /tmp/Caddyfile.partizan.backup.XXXXXX)"
+candidate="$(mktemp /tmp/Caddyfile.partizan.candidate.XXXXXX)"
+cleanup_files() {
+  rm -f "${backup}" "${candidate}"
+  docker exec "${tls_container_id}" rm -f "${container_candidate}" >/dev/null 2>&1 || true
+}
+trap cleanup_files EXIT
+
+cp -- "${caddy_source}" "${backup}"
+cp -- "${caddy_source}" "${candidate}"
+printf '\n# BEGIN PARTIZAN MANAGED ROUTE\n%s {\n\treverse_proxy %s\n}\n# END PARTIZAN MANAGED ROUTE\n' \
+  "${host}" "${upstream}" >> "${candidate}"
+
+docker cp "${candidate}" "${tls_container_id}:${container_candidate}"
 if ! docker exec "${tls_container_id}" caddy validate \
-  --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
-  rollback
+  --config "${container_candidate}" --adapter caddyfile >/dev/null 2>&1; then
+  rollback_network_if_added
   echo "shared Caddy route repair: candidate Caddyfile validation failed" >&2
   exit 1
 fi
 
 echo "shared Caddy route repair: candidate config valid"
 
+restore_caddyfile() {
+  cat "${backup}" > "${caddy_source}" || true
+  docker exec "${tls_container_id}" caddy validate \
+    --config "${container_caddyfile}" --adapter caddyfile >/dev/null 2>&1 || true
+  docker exec "${tls_container_id}" caddy reload \
+    --config "${container_caddyfile}" --adapter caddyfile >/dev/null 2>&1 || true
+}
+
+rollback() {
+  echo "shared Caddy route repair: rolling back Caddyfile" >&2
+  restore_caddyfile
+  rollback_network_if_added
+}
+
+if ! cat "${candidate}" > "${caddy_source}"; then
+  rollback
+  echo "shared Caddy route repair: unable to update host-side Caddyfile" >&2
+  exit 1
+fi
+
+if ! docker exec "${tls_container_id}" caddy validate \
+  --config "${container_caddyfile}" --adapter caddyfile >/dev/null 2>&1; then
+  rollback
+  echo "shared Caddy route repair: active Caddyfile validation failed after update" >&2
+  exit 1
+fi
+
 if ! docker exec "${tls_container_id}" caddy reload \
-  --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
+  --config "${container_caddyfile}" --adapter caddyfile >/dev/null 2>&1; then
   rollback
   echo "shared Caddy route repair: Caddy reload failed" >&2
   exit 1
@@ -199,6 +226,5 @@ if [[ "${route_healthy}" != "true" ]]; then
   exit 1
 fi
 
-docker exec "${tls_container_id}" rm -f "${backup}"
 echo "shared Caddy route repair: route restored and local TLS health verified"
 REMOTE
