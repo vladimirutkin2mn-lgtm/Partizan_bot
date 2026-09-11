@@ -104,6 +104,7 @@ jobs:
         if: ${{ steps.freshness.outputs.deploy_allowed == 'true' }}
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
           PARTIZAN_PUBLIC_URL: ${{ secrets.PARTIZAN_PUBLIC_URL }}
           PARTIZAN_MANAGED_EDGE: ${{ vars.PARTIZAN_MANAGED_EDGE || 'true' }}
         shell: bash
