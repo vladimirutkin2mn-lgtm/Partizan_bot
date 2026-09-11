@@ -107,16 +107,25 @@ bash /path/to/partizan/tools/compose_shared_host.sh ps
 bash /path/to/partizan/tools/compose_shared_host.sh logs --tail=50 api
 ```
 
-**3. The proxy routes the hostname.** That configuration belongs to the other project and is edited there, for example as a Caddy site block:
+**3. The proxy imports a route directory Partizan can own.** The neighbouring project's own config file stays untouched. Its proxy must instead mount a directory and import it:
+
+```text
+import /etc/caddy/conf.d/*.caddy
+```
+
+mounted from a host path **outside that project's deploy path**, because a deploy that syncs with `--delete` removes anything written inside it. Mount it as a directory, never as a single file: a single-file bind mount is pinned to the inode present at container start, so a deploy that replaces the file leaves the proxy reading a detached copy where every later write and every `caddy reload` is a silent no-op — reload even reports `config is unchanged` while serving the old routes.
+
+`tools/ensure_shared_host_caddy_route.sh` then writes exactly one file there, `partizan.caddy`:
 
 ```text
 partizan.example.com {
-	encode zstd gzip
 	reverse_proxy partizan-api:8000
 }
 ```
 
-Back up that file before editing it — it carries the neighbouring products' routing. If the proxy's admin API is disabled, a config reload does nothing and the proxy container has to be restarted, which briefly interrupts every product behind it. Confirm each neighbour serves again afterwards.
+It refuses to run if the proxy exposes no such writable directory, and it verifies the hostname in the proxy's **running** config through the admin API before reporting success, because a correct file still serves nothing if the entry point does not import the directory. On any failure it restores the previous file — removing it entirely if this run created it — and reloads.
+
+An empty or missing import directory is a valid Caddy config, so adding the import costs the neighbouring project no risk.
 
 `PARTIZAN_PUBLIC_BASE_URL`, `PARTIZAN_PUBLIC_HOST` and `PARTIZAN_PUBLIC_URL` mean the same thing in both modes, and the public HTTPS smoke still applies — it is verifying the shared proxy's route rather than a Partizan-owned listener.
 

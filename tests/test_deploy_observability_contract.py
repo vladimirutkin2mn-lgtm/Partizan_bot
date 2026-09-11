@@ -59,13 +59,12 @@ def test_shared_host_route_repair_is_guarded_and_rollback_safe() -> None:
     assert "Partizan API is not attached to configured edge network" in repair
     assert "proxy attached to Partizan edge network" in repair
     assert "docker container inspect" in repair
-    assert 'eq .Destination "/etc/caddy/Caddyfile"' in repair
-    assert "host-side Caddyfile source is unavailable or not writable" in repair
+    assert 'eq .Destination "/etc/caddy/conf.d"' in repair
+    assert "proxy exposes no writable imported route directory" in repair
     assert "mktemp /tmp/Caddyfile.partizan.backup" in repair
     assert "mktemp /tmp/Caddyfile.partizan.candidate" in repair
-    assert 'docker cp "${candidate}"' in repair
-    assert 'cat "${candidate}" > "${caddy_source}"' in repair
-    assert 'cat "${backup}" > "${caddy_source}"' in repair
+    assert 'cat "${candidate}" > "${route_file}"' in repair
+    assert 'cat "${backup}" > "${route_file}"' in repair
     assert "existing Caddyfile is invalid; refusing mutation" in repair
     assert 'wget -q -O /dev/null -T 5 "http://$1/health/live"' in repair
     assert "BEGIN PARTIZAN MANAGED ROUTE" in repair
@@ -73,7 +72,7 @@ def test_shared_host_route_repair_is_guarded_and_rollback_safe() -> None:
     assert "caddy validate" in repair
     assert "caddy reload" in repair
     assert "rollback_network_if_added()" in repair
-    assert "restore_caddyfile()" in repair
+    assert "restore_route_file()" in repair
     assert "rollback()" in repair
     assert '--resolve "${host}:443:127.0.0.1"' in repair
     assert "route restored and local TLS health verified" in repair
@@ -96,6 +95,51 @@ def test_shared_host_route_repair_is_guarded_and_rollback_safe() -> None:
         'echo "${caddy_source}"',
     )
     assert all(value not in repair for value in forbidden_disclosures)
+
+
+def test_shared_host_route_repair_owns_only_its_imported_route_file() -> None:
+    repair = _text("tools/ensure_shared_host_caddy_route.sh")
+
+    # The route belongs in the directory the shared proxy imports, never in the
+    # other project's Caddyfile: their deploy rsyncs with --delete and would
+    # remove anything written there.
+    assert 'route_file="${conf_dir_source}/partizan.caddy"' in repair
+    assert 'eq .Destination "/etc/caddy/conf.d"' in repair
+
+    executable = "\n".join(
+        line for line in repair.splitlines() if not line.lstrip().startswith("#")
+    )
+    assert "caddy_source" not in executable
+
+    # A single-file bind mount pins the inode present at container start, so a
+    # deploy that replaces the file detaches the proxy from it and both writes
+    # and reloads become silent no-ops. Never resolve that mount destination.
+    assert 'eq .Destination "/etc/caddy/Caddyfile"' not in repair
+
+    # `caddy reload` exits 0 and reports "config is unchanged" when it re-reads
+    # identical bytes, so the running config is the only proof the route is live.
+    assert "http://127.0.0.1:2019/config/apps/http/servers" in repair
+    assert "route_is_served()" in repair
+    assert "reloaded config does not serve the target host" in repair
+    assert "target host present in running config" in repair
+
+    # Writing the file must not be enough to claim success on its own.
+    served_marker = "if ! route_is_served; then"
+    sni_marker = '--resolve "${host}:443:127.0.0.1"'
+    assert repair.index(served_marker) < repair.index(sni_marker)
+
+    # A route this run created must be removed again on rollback, not left
+    # behind as a half-applied config.
+    assert "route_file_existed=false" in repair
+    assert 'rm -f "${route_file}"' in repair
+
+    forbidden_inode_replacing_writes = (
+        "sed -i",
+        'mv "${candidate}"',
+        'cp "${candidate}" "${route_file}"',
+        "tee ${route_file}",
+    )
+    assert all(command not in executable for command in forbidden_inode_replacing_writes)
 
 
 def test_deploy_propagates_and_verifies_exact_release_sha() -> None:
