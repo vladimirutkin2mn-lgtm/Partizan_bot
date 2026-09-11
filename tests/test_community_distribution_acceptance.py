@@ -226,9 +226,7 @@ def test_phase2_and_phase4_recognize_only_real_research_provenance() -> None:
 
     first = service.report(project_id)
     assert _check(_phase(first, 250), "real_native_telegram_research").satisfied is True
-    assert _check(
-        _phase(first, 252), "real_reddit_research_and_verified_policy"
-    ).satisfied is False
+    assert _check(_phase(first, 252), "real_reddit_indexed_policy_research").satisfied is False
 
     store.put(
         COMMUNITY_POLICY_NAMESPACE,
@@ -242,11 +240,59 @@ def test_phase2_and_phase4_recognize_only_real_research_provenance() -> None:
         },
     )
     second = service.report(project_id)
-    reddit_check = _check(
-        _phase(second, 252), "real_reddit_research_and_verified_policy"
-    )
+    phase4 = _phase(second, 252)
+    reddit_check = _check(phase4, "real_reddit_indexed_policy_research")
     assert reddit_check.satisfied is True
     assert reddit_check.sample["policy_source"] == "indexed_public_research"
+    assert _check(phase4, "reddit_ambiguous_policy_fail_closed").satisfied is True
+
+
+def test_phase4_accepts_evidence_backed_partial_research_only_while_fail_closed() -> None:
+    store = MemoryRuntimeStateStore()
+    project_id, product_id = _scope(store)
+    reddit_id = uuid4()
+    policy_id = uuid4()
+    checked_at = datetime.now(UTC).isoformat()
+    reddit = {
+        "id": str(reddit_id),
+        "platform": "REDDIT",
+        "url": "https://www.reddit.com/r/example/",
+        "metadata": {"enrichment": {"action_targets": []}},
+    }
+    store.put(AUDIENCE_OPPORTUNITY_NAMESPACE, str(reddit_id), reddit)
+    store.put(
+        AUDIENCE_MAP_NAMESPACE,
+        str(product_id),
+        {
+            "product_id": str(product_id),
+            "opportunities": [reddit],
+        },
+    )
+    store.put(
+        COMMUNITY_POLICY_NAMESPACE,
+        str(reddit_id),
+        {
+            "id": str(policy_id),
+            "opportunity_id": str(reddit_id),
+            "source": "indexed_public_research",
+            "research_status": "PARTIAL",
+            "last_checked_at": checked_at,
+            "evidence": [{"url": "https://www.reddit.com/r/example/about/rules"}],
+        },
+    )
+
+    phase4 = _phase(
+        CommunityDistributionAcceptanceService(store=store, settings=_settings()).report(project_id),
+        252,
+    )
+
+    research = _check(phase4, "real_reddit_indexed_policy_research")
+    safety = _check(phase4, "reddit_ambiguous_policy_fail_closed")
+    assert research.satisfied is True
+    assert research.sample["policy_status"] == "PARTIAL"
+    assert safety.satisfied is True
+    assert safety.evidence_count == 1
+    assert phase4.evidence_complete is True
 
 
 def test_phase3_requires_same_action_publish_and_observation() -> None:
