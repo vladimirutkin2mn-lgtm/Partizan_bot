@@ -12,12 +12,29 @@ def test_deploy_workflow_opens_and_closes_one_production_incident() -> None:
 
     assert "issues: write" in workflow
     assert "Open or update production deploy incident" in workflow
-    assert "if: ${{ failure() }}" in workflow
+    assert "failure() && steps.freshness.outputs.deploy_allowed == 'true'" in workflow
     assert "🚨 Production deploy failing" in workflow
     assert "gh issue create" in workflow
     assert "Close recovered production deploy incident" in workflow
-    assert "if: ${{ success() }}" in workflow
+    assert "success() && steps.freshness.outputs.deploy_allowed == 'true'" in workflow
     assert "gh issue close" in workflow
+
+
+def test_deploy_refuses_stale_release_before_production_mutation() -> None:
+    workflow = _text(".github/workflows/deploy-production.yml")
+
+    freshness_marker = "- name: Refuse stale production release"
+    mutation_marker = "- name: Deploy, migrate and smoke Partizan"
+
+    assert freshness_marker in workflow
+    assert mutation_marker in workflow
+    assert workflow.index(freshness_marker) < workflow.index(mutation_marker)
+    assert "git ls-remote origin refs/heads/main" in workflow
+    assert "Unable to resolve current main HEAD; refusing production mutation" in workflow
+    assert 'echo "deploy_allowed=false" >> "$GITHUB_OUTPUT"' in workflow
+    assert "Skipping stale production deploy" in workflow
+    assert 'echo "deploy_allowed=true" >> "$GITHUB_OUTPUT"' in workflow
+    assert workflow.count("steps.freshness.outputs.deploy_allowed == 'true'") >= 7
 
 
 def test_deploy_propagates_and_verifies_exact_release_sha() -> None:
