@@ -1,0 +1,75 @@
+name: Community distribution acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_id:
+        description: "Optional customer project UUID to scope the evidence report"
+        required: false
+        type: string
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require production verification configuration
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          missing=()
+          [[ -z "${DEPLOY_HOST}" ]] && missing+=(DEPLOY_HOST)
+          [[ -z "${DEPLOY_SSH_KEY}" ]] && missing+=(DEPLOY_SSH_KEY)
+          [[ -z "${DEPLOY_SSH_KNOWN_HOSTS}" ]] && missing+=(DEPLOY_SSH_KNOWN_HOSTS)
+          [[ -z "${DEPLOY_PATH}" ]] && missing+=(DEPLOY_PATH)
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing production verification configuration: ${missing[*]}"
+            exit 1
+          fi
+      - name: Validate optional project scope
+        id: scope
+        env:
+          PROJECT_ID: ${{ inputs.project_id }}
+        shell: bash
+        run: |
+          if [[ -z "${PROJECT_ID}" ]]; then
+            echo "project_id=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          canonical="$(python -c 'import sys, uuid; print(uuid.UUID(sys.argv[1]))' "${PROJECT_ID}")"
+          echo "project_id=${canonical}" >> "$GITHUB_OUTPUT"
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin production host key
+        env:
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Collect read-only production acceptance evidence
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          PROJECT_ID: ${{ steps.scope.outputs.project_id }}
+        shell: bash
+        run: |
+          remote_args="--pretty"
+          if [[ -n "${PROJECT_ID}" ]]; then
+            remote_args="--project-id ${PROJECT_ID} --pretty"
+          fi
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api python - ${remote_args}" \
+            < tools/report_community_distribution_acceptance.py
