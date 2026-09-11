@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 from urllib.parse import urlsplit
@@ -27,6 +27,7 @@ from app.distribution_execution_service import (
     DISTRIBUTION_EXPERIMENT_NAMESPACE,
 )
 from app.distribution_growth_manager_service import DISTRIBUTION_DECISION_NAMESPACE
+from app.distribution_schemas import CommunityPolicyView
 from app.managed_distribution import (
     MANAGED_ASSIGNMENT_NAMESPACE,
     MANAGED_PUBLISHER_NAMESPACE,
@@ -36,7 +37,11 @@ from app.reddit_client_publishing import (
     CUSTOMER_REDDIT_OBSERVATION_NAMESPACE,
     CUSTOMER_REDDIT_PUBLISH_RECEIPT_NAMESPACE,
 )
-from app.reddit_research import action_target_is_fresh
+from app.reddit_research import (
+    REDDIT_POLICY_MAX_AGE,
+    action_target_is_fresh,
+    policy_freshness_reason,
+)
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.telegram_client_governance import CUSTOMER_TELEGRAM_OBSERVATION_NAMESPACE
 from app.telegram_client_publishing import (
@@ -271,13 +276,18 @@ class CommunityDistributionAcceptanceService:
             row
             for row in self._store.list_namespace(COMMUNITY_POLICY_NAMESPACE)
             if str(row.get("opportunity_id")) in opportunity_ids
-            and str(row.get("source") or "") == "indexed_public_research"
-            and str(row.get("research_status") or "").upper() == "VERIFIED"
-            and row.get("last_checked_at")
-            and bool(row.get("evidence"))
+            and self._current_indexed_reddit_policy(row)
         ]
-        verified_ids = {str(row.get("opportunity_id")) for row in policies}
-        researched = [row for row in reddit if str(row.get("id")) in verified_ids]
+        researched_ids = {str(row.get("opportunity_id")) for row in policies}
+        researched = [row for row in reddit if str(row.get("id")) in researched_ids]
+        partial_policies = [
+            row
+            for row in policies
+            if str(row.get("research_status") or "").upper() == "PARTIAL"
+        ]
+        ambiguous_fail_closed = all(
+            self._reddit_partial_policy_remains_fail_closed(row) for row in partial_policies
+        )
         fresh_targets = self._fresh_reddit_targets(researched)
         real_search_ready = self._real_search_ready()
         sample = self._reddit_research_sample(researched[0], policies) if researched else {}
@@ -292,15 +302,30 @@ class CommunityDistributionAcceptanceService:
                 required=False,
             ),
             self._check(
-                "real_reddit_research_and_verified_policy",
+                "real_reddit_indexed_policy_research",
                 AcceptanceCheckKind.EVIDENCE,
                 bool(researched),
-                "A concrete Reddit opportunity has verified indexed policy research."
+                "A concrete Reddit opportunity has fresh evidence-backed indexed policy research."
                 if researched
-                else "No scoped Reddit opportunity with VERIFIED indexed policy research found.",
+                else (
+                    "No scoped Reddit opportunity with fresh evidence-backed indexed policy "
+                    "research found."
+                ),
                 count=len(researched),
                 latest=self._latest(policies, ("last_checked_at",)),
                 sample=sample,
+            ),
+            self._check(
+                "reddit_ambiguous_policy_fail_closed",
+                AcceptanceCheckKind.POLICY,
+                bool(researched) and ambiguous_fail_closed,
+                (
+                    "Ambiguous indexed Reddit policies remain blocked by the execution freshness "
+                    "gate."
+                )
+                if researched and ambiguous_fail_closed
+                else "At least one ambiguous indexed Reddit policy is not proven fail-closed.",
+                count=len(partial_policies),
             ),
             self._check(
                 "fresh_reddit_thread_target",
@@ -831,6 +856,37 @@ class CommunityDistributionAcceptanceService:
                 if isinstance(target, dict) and action_target_is_fresh(target):
                     targets.append(target)
         return targets
+
+    def _current_indexed_reddit_policy(self, row: dict) -> bool:
+        if str(row.get("source") or "") != "indexed_public_research":
+            return False
+        if str(row.get("research_status") or "").upper() not in {"PARTIAL", "VERIFIED"}:
+            return False
+        evidence = row.get("evidence")
+        if not isinstance(evidence, list) or not evidence:
+            return False
+        checked_at = self._datetime(row.get("last_checked_at"))
+        if checked_at is None:
+            return False
+        now = datetime.now(UTC)
+        if checked_at > now + timedelta(minutes=5):
+            return False
+        if now - checked_at > REDDIT_POLICY_MAX_AGE:
+            return False
+        fresh_until = self._datetime(row.get("fresh_until"))
+        if fresh_until is not None and now > fresh_until:
+            return False
+        return True
+
+    @staticmethod
+    def _reddit_partial_policy_remains_fail_closed(row: dict) -> bool:
+        if str(row.get("research_status") or "").upper() != "PARTIAL":
+            return True
+        try:
+            policy = CommunityPolicyView.model_validate(row)
+        except ValueError:
+            return False
+        return policy_freshness_reason(policy) is not None
 
     def _observation_action_ids(self, namespace: str) -> set[str]:
         result: set[str] = set()

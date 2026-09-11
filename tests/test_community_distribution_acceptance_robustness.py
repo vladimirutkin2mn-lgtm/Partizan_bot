@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from app.audience_intelligence_service import (
@@ -115,8 +115,48 @@ def test_malformed_reddit_action_targets_are_ignored_without_crashing_report() -
         )
 
         phase = _phase(service.report(project_id), 252)
-        assert _check(phase, "real_reddit_research_and_verified_policy").satisfied is True
+        assert _check(phase, "real_reddit_indexed_policy_research").satisfied is True
         assert _check(phase, "fresh_reddit_thread_target").satisfied is False
+
+
+def test_stale_partial_reddit_policy_does_not_satisfy_phase4_acceptance() -> None:
+    store = MemoryRuntimeStateStore()
+    project_id, product_id = _project(store)
+    opportunity_id = uuid4()
+    policy_id = uuid4()
+    opportunity = {
+        "id": str(opportunity_id),
+        "platform": "REDDIT",
+        "url": "https://www.reddit.com/r/example/",
+        "metadata": {"enrichment": {"action_targets": []}},
+    }
+    store.put(AUDIENCE_OPPORTUNITY_NAMESPACE, str(opportunity_id), opportunity)
+    store.put(
+        AUDIENCE_MAP_NAMESPACE,
+        str(product_id),
+        {"product_id": str(product_id), "opportunities": [opportunity]},
+    )
+    store.put(
+        COMMUNITY_POLICY_NAMESPACE,
+        str(opportunity_id),
+        {
+            "id": str(policy_id),
+            "opportunity_id": str(opportunity_id),
+            "source": "indexed_public_research",
+            "research_status": "PARTIAL",
+            "last_checked_at": (datetime.now(UTC) - timedelta(days=8)).isoformat(),
+            "evidence": [{"url": "https://www.reddit.com/r/example/about/rules"}],
+        },
+    )
+
+    phase = _phase(
+        CommunityDistributionAcceptanceService(store=store, settings=_settings()).report(project_id),
+        252,
+    )
+
+    assert _check(phase, "real_reddit_indexed_policy_research").satisfied is False
+    assert _check(phase, "reddit_ambiguous_policy_fail_closed").satisfied is False
+    assert phase.evidence_complete is False
 
 
 def test_phase7_requires_explicit_observed_spend_evidence_kind() -> None:
