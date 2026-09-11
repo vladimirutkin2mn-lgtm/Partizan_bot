@@ -86,7 +86,19 @@ if [[ "${proxy_kind}" == "caddy" && -n "${tls_container_id}" ]]; then
     echo "caddy-config-validation=unavailable"
   fi
 
-  if [[ "${caddyfile_readable}" == "true" ]]; then
+  # Read the running config rather than the Caddyfile: routes are imported from
+  # a separate directory, so the entry point on its own says nothing about which
+  # hosts are actually served.
+  if docker exec "${tls_container_id}" sh -c \
+    'wget -q -O - http://127.0.0.1:2019/config/apps/http/servers >/dev/null 2>&1'; then
+    if docker exec "${tls_container_id}" sh -c \
+      'wget -q -O - http://127.0.0.1:2019/config/apps/http/servers 2>/dev/null | grep -Fq -- "\"$1\""' \
+      sh "${host}" >/dev/null 2>&1; then
+      echo "caddy-target-host-route=present"
+    else
+      echo "caddy-target-host-route=missing"
+    fi
+  elif [[ "${caddyfile_readable}" == "true" ]]; then
     if docker exec "${tls_container_id}" sh -c \
       'grep -Fq -- "$1" /etc/caddy/Caddyfile' sh "${host}" >/dev/null 2>&1; then
       echo "caddy-target-host-route=present"

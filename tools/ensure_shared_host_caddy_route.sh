@@ -28,7 +28,6 @@ host="$1"
 deploy_path="$2"
 upstream="partizan-api:8000"
 container_caddyfile="/etc/caddy/Caddyfile"
-container_candidate="/tmp/Caddyfile.partizan.candidate"
 
 if [[ "${host}" != "partizanlabs.com" ]]; then
   echo "shared Caddy route repair: unexpected host" >&2
@@ -115,39 +114,6 @@ if ! docker exec "${tls_container_id}" caddy validate \
   exit 1
 fi
 
-# The active Caddyfile is bind-mounted read-only inside the shared Caddy container.
-# Resolve only the source backing this exact destination, keep it private, and edit
-# that host file through a validated candidate. No unrelated mounts are printed.
-caddy_source="$(docker container inspect \
-  --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{"\n"}}{{end}}{{end}}' \
-  "${tls_container_id}" | awk 'NF {print; exit}')"
-if [[ -z "${caddy_source}" || "${caddy_source}" != /* || ! -f "${caddy_source}" || ! -w "${caddy_source}" ]]; then
-  rollback_network_if_added
-  echo "shared Caddy route repair: host-side Caddyfile source is unavailable or not writable" >&2
-  exit 1
-fi
-
-# A single-file bind mount is pinned to the inode present at container start. Any
-# deploy that replaces that file instead of rewriting it in place (rsync, git
-# checkout, `sed -i`, `mv`) leaves the proxy reading a detached inode, so every
-# host-side edit and every `caddy reload` is a silent no-op. Compare both views
-# before mutating anything; this script must not restart another project's proxy.
-host_config_digest="$(sha256sum "${caddy_source}" | awk '{print $1}')"
-container_config_digest="$(docker exec "${tls_container_id}" \
-  sh -c 'sha256sum /etc/caddy/Caddyfile' 2>/dev/null | awk '{print $1}')"
-if [[ -z "${container_config_digest}" || "${host_config_digest}" != "${container_config_digest}" ]]; then
-  rollback_network_if_added
-  echo "shared Caddy route repair: proxy is reading a stale bind-mounted Caddyfile; recreate the shared proxy container so the mount re-binds the current host file" >&2
-  exit 1
-fi
-
-echo "shared Caddy route repair: proxy config mount is live"
-
-target_route_present=false
-if grep -Fq -- "${host}" "${caddy_source}"; then
-  target_route_present=true
-fi
-
 if ! docker exec "${tls_container_id}" sh -c 'command -v wget >/dev/null 2>&1'; then
   rollback_network_if_added
   echo "shared Caddy route repair: proxy container cannot probe upstream safely" >&2
@@ -162,58 +128,93 @@ fi
 
 echo "shared Caddy route repair: upstream preflight ok"
 
-if [[ "${target_route_present}" == "true" ]]; then
-  echo "shared Caddy route repair: target host route already present and upstream reachable"
-  exit 0
+# Partizan owns exactly one file in the directory the shared proxy imports, and
+# never edits the other project's Caddyfile. That directory is mounted from
+# outside their deploy path, so their `rsync --delete` cannot remove the route.
+# It also has to be a directory mount rather than a single-file one: a
+# single-file bind mount is pinned to the inode present at container start, so a
+# deploy that replaces the file leaves the proxy reading a detached copy where
+# every write and every reload is a silent no-op.
+conf_dir_source="$(docker container inspect \
+  --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/conf.d"}}{{.Source}}{{"\n"}}{{end}}{{end}}' \
+  "${tls_container_id}" | awk 'NF {print; exit}')"
+if [[ -z "${conf_dir_source}" || "${conf_dir_source}" != /* || ! -d "${conf_dir_source}" || ! -w "${conf_dir_source}" ]]; then
+  rollback_network_if_added
+  echo "shared Caddy route repair: proxy exposes no writable imported route directory" >&2
+  exit 1
 fi
 
+route_file="${conf_dir_source}/partizan.caddy"
 backup="$(mktemp /tmp/Caddyfile.partizan.backup.XXXXXX)"
 candidate="$(mktemp /tmp/Caddyfile.partizan.candidate.XXXXXX)"
 cleanup_files() {
   rm -f "${backup}" "${candidate}"
-  docker exec "${tls_container_id}" rm -f "${container_candidate}" >/dev/null 2>&1 || true
 }
 trap cleanup_files EXIT
 
-cp -- "${caddy_source}" "${backup}"
-cp -- "${caddy_source}" "${candidate}"
-printf '\n# BEGIN PARTIZAN MANAGED ROUTE\n%s {\n\treverse_proxy %s\n}\n# END PARTIZAN MANAGED ROUTE\n' \
-  "${host}" "${upstream}" >> "${candidate}"
-
-docker cp "${candidate}" "${tls_container_id}:${container_candidate}"
-if ! docker exec "${tls_container_id}" caddy validate \
-  --config "${container_candidate}" --adapter caddyfile >/dev/null 2>&1; then
-  rollback_network_if_added
-  echo "shared Caddy route repair: candidate Caddyfile validation failed" >&2
-  exit 1
+route_file_existed=false
+if [[ -f "${route_file}" ]]; then
+  route_file_existed=true
+  cp -- "${route_file}" "${backup}"
 fi
 
-echo "shared Caddy route repair: candidate config valid"
+# Same response hardening the managed-edge Caddyfile.prod applies, so the two
+# edge modes do not serve different security headers for the same hostname.
+{
+  echo "# BEGIN PARTIZAN MANAGED ROUTE"
+  printf '%s {\n' "${host}"
+  printf '\tencode zstd gzip\n\n'
+  printf '\theader {\n'
+  printf '\t\tX-Content-Type-Options "nosniff"\n'
+  printf '\t\tReferrer-Policy "strict-origin-when-cross-origin"\n'
+  printf '\t\tPermissions-Policy "camera=(), microphone=(), geolocation=()"\n'
+  printf '\t\t-Server\n'
+  printf '\t}\n\n'
+  printf '\treverse_proxy %s\n' "${upstream}"
+  printf '}\n'
+  echo "# END PARTIZAN MANAGED ROUTE"
+} > "${candidate}"
 
-restore_caddyfile() {
-  cat "${backup}" > "${caddy_source}" || true
-  docker exec "${tls_container_id}" caddy validate \
-    --config "${container_caddyfile}" --adapter caddyfile >/dev/null 2>&1 || true
+# The running config is the only proof that the route is live: the file can be
+# correct while the shared Caddyfile no longer imports the directory holding it.
+route_is_served() {
+  docker exec "${tls_container_id}" sh -c \
+    'wget -q -O - http://127.0.0.1:2019/config/apps/http/servers 2>/dev/null | grep -Fq -- "\"$1\""' \
+    sh "${host}"
+}
+
+if [[ "${route_file_existed}" == "true" ]] && cmp -s "${candidate}" "${route_file}" && route_is_served; then
+  echo "shared Caddy route repair: target host route already live and upstream reachable"
+  exit 0
+fi
+
+restore_route_file() {
+  if [[ "${route_file_existed}" == "true" ]]; then
+    cat "${backup}" > "${route_file}" || true
+  else
+    rm -f "${route_file}"
+  fi
   docker exec "${tls_container_id}" caddy reload \
     --config "${container_caddyfile}" --adapter caddyfile >/dev/null 2>&1 || true
 }
 
 rollback() {
-  echo "shared Caddy route repair: rolling back Caddyfile" >&2
-  restore_caddyfile
+  echo "shared Caddy route repair: rolling back managed route" >&2
+  restore_route_file
   rollback_network_if_added
 }
 
-if ! cat "${candidate}" > "${caddy_source}"; then
+if ! cat "${candidate}" > "${route_file}"; then
   rollback
-  echo "shared Caddy route repair: unable to update host-side Caddyfile" >&2
+  echo "shared Caddy route repair: unable to write the managed route file" >&2
   exit 1
 fi
+chmod 644 "${route_file}"
 
 if ! docker exec "${tls_container_id}" caddy validate \
   --config "${container_caddyfile}" --adapter caddyfile >/dev/null 2>&1; then
   rollback
-  echo "shared Caddy route repair: active Caddyfile validation failed after update" >&2
+  echo "shared Caddy route repair: config validation failed after adding the managed route" >&2
   exit 1
 fi
 
@@ -224,16 +225,10 @@ if ! docker exec "${tls_container_id}" caddy reload \
   exit 1
 fi
 
-# `caddy reload` exits 0 and logs "config is unchanged" when it re-reads identical
-# bytes, so a successful exit code alone does not prove the route is live. Ask the
-# admin API which hosts the running config actually serves.
-route_loaded=false
-if docker exec "${tls_container_id}" sh -c \
-  'wget -q -O - http://127.0.0.1:2019/config/apps/http/servers 2>/dev/null | grep -Fq -- "\"$1\""' \
-  sh "${host}"; then
-  route_loaded=true
-fi
-if [[ "${route_loaded}" != "true" ]]; then
+# `caddy reload` exits 0 and logs "config is unchanged" when it re-reads
+# identical bytes, so a successful exit code alone does not prove the route is
+# live - the shared Caddyfile has to import the directory as well.
+if ! route_is_served; then
   rollback
   echo "shared Caddy route repair: reloaded config does not serve the target host" >&2
   exit 1
