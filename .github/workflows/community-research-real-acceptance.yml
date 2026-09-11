@@ -94,6 +94,17 @@ jobs:
             "cd '${DEPLOY_PATH}' && docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api python -" \
             < tools/run_community_research_acceptance.py
 
+      - name: Report sanitized Reddit policy gaps
+        if: ${{ steps.freshness.outputs.research_allowed == 'true' }}
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api python -" \
+            < tools/report_reddit_policy_unknowns.py
+
       - name: Report acceptance after research
         if: ${{ steps.freshness.outputs.research_allowed == 'true' }}
         env:
