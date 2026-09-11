@@ -2,7 +2,13 @@
 set -euo pipefail
 
 : "${DEPLOY_HOST:?DEPLOY_HOST is required}"
+: "${DEPLOY_PATH:?DEPLOY_PATH is required}"
 : "${PARTIZAN_PUBLIC_URL:?PARTIZAN_PUBLIC_URL is required}"
+
+if [[ "${DEPLOY_PATH}" != /* ]]; then
+  echo "Refusing shared Caddy mutation: DEPLOY_PATH must be absolute" >&2
+  exit 1
+fi
 
 public_host="${PARTIZAN_PUBLIC_URL#https://}"
 public_host="${public_host%%/*}"
@@ -15,23 +21,42 @@ fi
 
 echo "==> Ensuring shared-host Caddy route for ${public_host}"
 
-ssh -o BatchMode=yes "${DEPLOY_HOST}" bash -s -- "${public_host}" <<'REMOTE'
+ssh -o BatchMode=yes "${DEPLOY_HOST}" bash -s -- "${public_host}" "${DEPLOY_PATH}" <<'REMOTE'
 set -euo pipefail
 
 host="$1"
+deploy_path="$2"
 upstream="partizan-api:8000"
 
 if [[ "${host}" != "partizanlabs.com" ]]; then
   echo "shared Caddy route repair: unexpected host" >&2
   exit 1
 fi
-
+if [[ "${deploy_path}" != /* || ! -f "${deploy_path}/.env.prod" ]]; then
+  echo "shared Caddy route repair: production path is unavailable" >&2
+  exit 1
+fi
 if ! command -v docker >/dev/null 2>&1; then
   echo "shared Caddy route repair: docker unavailable" >&2
   exit 1
 fi
 
-docker_rows="$(docker ps --format '{{.ID}}\t{{.Image}}\t{{.Ports}}')"
+edge_network="$(grep -E '^PARTIZAN_EDGE_NETWORK=' "${deploy_path}/.env.prod" | tail -n 1 | cut -d= -f2-)"
+edge_network="${edge_network%$'\r'}"
+edge_network="${edge_network#\"}"
+edge_network="${edge_network%\"}"
+edge_network="${edge_network#\'}"
+edge_network="${edge_network%\'}"
+if [[ -z "${edge_network}" || ! "${edge_network}" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+  echo "shared Caddy route repair: configured edge network is missing or invalid" >&2
+  exit 1
+fi
+if ! docker network inspect "${edge_network}" >/dev/null 2>&1; then
+  echo "shared Caddy route repair: configured edge network does not exist" >&2
+  exit 1
+fi
+
+docker_rows="$(docker ps --no-trunc --format '{{.ID}}\t{{.Image}}\t{{.Ports}}')"
 published_443_count="$(printf '%s\n' "${docker_rows}" | grep -Ec ':443->' || true)"
 if [[ "${published_443_count}" != "1" ]]; then
   echo "shared Caddy route repair: expected exactly one published 443 container, found ${published_443_count}" >&2
@@ -45,34 +70,79 @@ if [[ -z "${tls_container_id}" || ! "${tls_container_image}" =~ [Cc]addy ]]; the
   exit 1
 fi
 
+api_container_id="$(
+  cd "${deploy_path}" &&
+  docker compose \
+    -f docker-compose.prod.yml \
+    -f docker-compose.shared-host.yml \
+    --env-file .env.prod \
+    ps -q api | head -n 1
+)"
+if [[ -z "${api_container_id}" ]]; then
+  echo "shared Caddy route repair: Partizan API container is unavailable" >&2
+  exit 1
+fi
+
+network_members="$(docker network inspect "${edge_network}" \
+  --format '{{range $id, $_ := .Containers}}{{$id}}{{"\n"}}{{end}}')"
+if ! printf '%s\n' "${network_members}" | grep -Fxq "${api_container_id}"; then
+  echo "shared Caddy route repair: Partizan API is not attached to configured edge network" >&2
+  exit 1
+fi
+
+connected_by_repair=false
+if ! printf '%s\n' "${network_members}" | grep -Fxq "${tls_container_id}"; then
+  if ! docker network connect "${edge_network}" "${tls_container_id}"; then
+    echo "shared Caddy route repair: unable to connect proxy to Partizan edge network" >&2
+    exit 1
+  fi
+  connected_by_repair=true
+  echo "shared Caddy route repair: proxy attached to Partizan edge network"
+fi
+
+rollback_network_if_added() {
+  if [[ "${connected_by_repair}" == "true" ]]; then
+    docker network disconnect "${edge_network}" "${tls_container_id}" >/dev/null 2>&1 || true
+  fi
+}
+
 if ! docker exec "${tls_container_id}" sh -c 'test -r /etc/caddy/Caddyfile && test -w /etc/caddy/Caddyfile'; then
+  rollback_network_if_added
   echo "shared Caddy route repair: Caddyfile is not readable and writable" >&2
   exit 1
 fi
 
 if ! docker exec "${tls_container_id}" caddy validate \
   --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
+  rollback_network_if_added
   echo "shared Caddy route repair: existing Caddyfile is invalid; refusing mutation" >&2
   exit 1
 fi
 
+target_route_present=false
 if docker exec "${tls_container_id}" sh -c \
   'grep -Fq -- "$1" /etc/caddy/Caddyfile' sh "${host}" >/dev/null 2>&1; then
-  echo "shared Caddy route repair: target host route already present; no mutation needed"
-  exit 0
+  target_route_present=true
 fi
 
 if ! docker exec "${tls_container_id}" sh -c 'command -v wget >/dev/null 2>&1'; then
+  rollback_network_if_added
   echo "shared Caddy route repair: proxy container cannot probe upstream safely" >&2
   exit 1
 fi
 if ! docker exec "${tls_container_id}" sh -c \
   'wget -q -O /dev/null -T 5 "http://$1/health/live"' sh "${upstream}"; then
+  rollback_network_if_added
   echo "shared Caddy route repair: Partizan upstream is not healthy from proxy network" >&2
   exit 1
 fi
 
 echo "shared Caddy route repair: upstream preflight ok"
+
+if [[ "${target_route_present}" == "true" ]]; then
+  echo "shared Caddy route repair: target host route already present and upstream reachable"
+  exit 0
+fi
 
 backup="/tmp/Caddyfile.partizan.$$.bak"
 docker exec "${tls_container_id}" cp /etc/caddy/Caddyfile "${backup}"
@@ -85,6 +155,7 @@ rollback() {
   docker exec "${tls_container_id}" caddy reload \
     --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1 || true
   docker exec "${tls_container_id}" rm -f "${backup}" >/dev/null 2>&1 || true
+  rollback_network_if_added
 }
 
 if ! docker exec "${tls_container_id}" sh -c '
