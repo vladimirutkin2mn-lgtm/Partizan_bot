@@ -16,6 +16,7 @@ def test_real_community_research_workflow_is_guarded_and_targeted() -> None:
     assert "contents: write" not in workflow
     assert "issues: write" not in workflow
     assert "run_community_research_acceptance.py" in workflow
+    assert "report_reddit_policy_unknowns.py" in workflow
     assert "report_community_distribution_acceptance.py" in workflow
 
     forbidden = (
@@ -75,3 +76,30 @@ def test_real_community_research_requires_prior_customer_research_consent() -> N
     assert 'source="CONFIRMED_CUSTOMER_PREVIEW_RESEARCH"' in runner
     assert "NO_ELIGIBLE_CONFIRMED_RESEARCH_CONTEXT" in runner
     assert "existing_map: AudienceDistributionMapView | None" in runner
+
+
+def test_reddit_policy_gap_report_is_recent_aggregate_only() -> None:
+    reporter = Path("tools/report_reddit_policy_unknowns.py").read_text(
+        encoding="utf-8"
+    )
+
+    for field in (
+        "commercial_participation",
+        "self_promotion",
+        "links",
+        "product_mentions",
+        "standalone_posts",
+        "comments",
+        "disclosure",
+    ):
+        assert f'"{field}"' in reporter
+
+    assert "RECENT_WINDOW = timedelta(minutes=20)" in reporter
+    assert "unknown_field_counts" in reporter
+    assert "research_status_counts" in reporter
+    assert "opportunity.id" not in reporter
+    assert "canonical_key" not in reporter
+    assert "subreddit" not in reporter
+    assert "url" not in reporter
+    assert "title" not in reporter
+    assert "snippet" not in reporter
