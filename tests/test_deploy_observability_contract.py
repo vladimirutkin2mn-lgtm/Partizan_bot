@@ -44,6 +44,12 @@ def test_shared_host_deploy_failure_collects_read_only_tls_diagnostics() -> None
     assert "docker ps --format" in diagnostic
     assert "--resolve" in diagnostic
     assert "openssl s_client" in diagnostic
+    assert "caddy validate" in diagnostic
+    assert "caddy-config-validation=ok" in diagnostic
+    assert "caddy-target-host-route=present" in diagnostic
+    assert "caddy-target-host-route=missing" in diagnostic
+    assert "caddy-target-certificate-storage=present" in diagnostic
+    assert "caddy-target-certificate-storage=missing" in diagnostic
     assert "classification=local_tls_handshake_ok_check_proxy_route_or_external_dns" in diagnostic
     assert "classification=local_sni_tls_failed_check_shared_proxy_certificate_and_host_route" in diagnostic
 
@@ -56,8 +62,15 @@ def test_shared_host_deploy_failure_collects_read_only_tls_diagnostics() -> None
         "nginx -s reload",
     )
     assert all(command not in diagnostic for command in forbidden_mutations)
-    assert ".env.prod" not in diagnostic
-    assert 'echo "${DEPLOY_HOST}"' not in diagnostic
+
+    forbidden_disclosures = (
+        ".env.prod",
+        'echo "${DEPLOY_HOST}"',
+        "cat /etc/caddy/Caddyfile",
+        "docker inspect",
+        "printenv",
+    )
+    assert all(value not in diagnostic for value in forbidden_disclosures)
 
 
 def test_meta_oauth_handoff_is_versioned_with_exact_callback_and_scopes() -> None:
