@@ -140,9 +140,6 @@ if [[ "${target_route_present}" == "true" ]]; then
   exit 0
 fi
 
-# The active Caddyfile is bind-mounted read-only inside the shared Caddy container.
-# Resolve only the source backing this exact destination, keep it private, and edit
-# that host file through a validated candidate. No unrelated mounts are printed.
 caddy_source="$(docker container inspect \
   --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{"\n"}}{{end}}{{end}}' \
   "${tls_container_id}" | awk 'NF {print; exit}')"
@@ -189,6 +186,47 @@ rollback() {
   rollback_network_if_added
 }
 
+report_target_tls_failure() {
+  echo "-- Partizan target-only Caddy TLS diagnostics"
+  target_logs="$(docker logs --since 2m "${tls_container_id}" 2>&1 | grep -Fi -- "${host}" | tail -n 30 || true)"
+  if [[ -n "${target_logs}" ]]; then
+    printf '%s\n' "${target_logs}" | sed -E \
+      's/((access_)?token|authorization|password|secret|api[_-]?key)(["=: ]+)[^ ,"}]+/\1\3[redacted]/Ig'
+  else
+    echo "caddy-target-log-lines=none"
+  fi
+
+  cert_path="$(docker exec "${tls_container_id}" sh -c \
+    'find /data/caddy/certificates -type f -path "*/$1/*" -name "*.crt" -print -quit 2>/dev/null' \
+    sh "${host}" 2>/dev/null || true)"
+  if [[ -n "${cert_path}" ]] && command -v openssl >/dev/null 2>&1; then
+    stored_cert="$(mktemp /tmp/partizan-stored-cert.XXXXXX)"
+    if docker cp "${tls_container_id}:${cert_path}" "${stored_cert}" >/dev/null 2>&1 && \
+      openssl x509 -in "${stored_cert}" -noout >/dev/null 2>&1; then
+      if openssl x509 -in "${stored_cert}" -checkend 0 -noout >/dev/null 2>&1; then
+        echo "caddy-target-stored-certificate-valid-now=true"
+      else
+        echo "caddy-target-stored-certificate-valid-now=false"
+      fi
+      openssl x509 -in "${stored_cert}" -noout -dates 2>/dev/null | sed 's/^/caddy-target-stored-cert-/'
+    else
+      echo "caddy-target-stored-certificate-readable=false"
+    fi
+    rm -f "${stored_cert}"
+  else
+    echo "caddy-target-stored-certificate=unavailable"
+  fi
+
+  if command -v openssl >/dev/null 2>&1; then
+    set +e
+    sni_summary="$(timeout 8 openssl s_client -connect 127.0.0.1:443 -servername "${host}" -brief </dev/null 2>&1 | tail -n 8)"
+    sni_rc=$?
+    set -e
+    echo "caddy-target-local-sni-openssl-rc=${sni_rc}"
+    printf '%s\n' "${sni_summary}" | sed 's/^/caddy-target-local-sni: /'
+  fi
+}
+
 if ! cat "${candidate}" > "${caddy_source}"; then
   rollback
   echo "shared Caddy route repair: unable to update host-side Caddyfile" >&2
@@ -221,6 +259,7 @@ for _ in $(seq 1 15); do
 done
 
 if [[ "${route_healthy}" != "true" ]]; then
+  report_target_tls_failure
   rollback
   echo "shared Caddy route repair: local SNI health check failed after reload" >&2
   exit 1
