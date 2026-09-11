@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from dataclasses import dataclass
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.audience_intelligence import AudienceIntelligenceEngine
 from app.audience_intelligence_service import (
@@ -12,6 +12,7 @@ from app.audience_intelligence_service import (
     audience_intelligence_service,
 )
 from app.community_distribution_acceptance import community_distribution_acceptance_service
+from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
 from app.distribution_schemas import (
     AudienceDistributionMapView,
     DistributionOpportunitySeed,
@@ -28,13 +29,19 @@ from app.search import get_search_provider
 
 TARGET_ISSUES = {250, 252}
 MAX_REDDIT_ENRICHMENTS = 3
+ALLOWED_CONFIRMED_PREVIEW_RESEARCH_STATES = {
+    "FOUND",
+    "NEEDS_MORE_RESEARCH",
+    "UNAVAILABLE",
+}
 
 
 @dataclass(frozen=True, slots=True)
 class EligibleResearchContext:
     product: object
     icp_result: object
-    existing_map: AudienceDistributionMapView
+    existing_map: AudienceDistributionMapView | None
+    source: str
 
 
 def _phase_state() -> dict[int, tuple[bool, bool]]:
@@ -46,41 +53,93 @@ def _phase_state() -> dict[int, tuple[bool, bool]]:
     }
 
 
-def _select_existing_research_context() -> EligibleResearchContext | None:
+def _context_for_product(
+    product_id: UUID,
+    *,
+    existing_map: AudienceDistributionMapView | None,
+    source: str,
+) -> EligibleResearchContext | None:
+    try:
+        product = product_intake_service.get_product(product_id)
+        icp_result = icp_service.get(product_id)
+    except (KeyError, ValueError):
+        return None
+    if product.status != ProductProfileStatus.CONFIRMED or not icp_result.icps:
+        return None
+    return EligibleResearchContext(
+        product=product,
+        icp_result=icp_result,
+        existing_map=existing_map,
+        source=source,
+    )
+
+
+def _select_existing_distribution_context() -> EligibleResearchContext | None:
     store = get_runtime_store()
     candidates: list[tuple[int, str, EligibleResearchContext]] = []
     for payload in store.list_namespace(AUDIENCE_MAP_NAMESPACE):
         try:
             existing_map = AudienceDistributionMapView.model_validate(payload)
-            product = product_intake_service.get_product(existing_map.product_id)
-            icp_result = icp_service.get(existing_map.product_id)
-        except (KeyError, ValueError):
+        except ValueError:
             continue
-        if product.status != ProductProfileStatus.CONFIRMED or not icp_result.icps:
+        context = _context_for_product(
+            existing_map.product_id,
+            existing_map=existing_map,
+            source="EXISTING_DISTRIBUTION_MAP",
+        )
+        if context is None:
             continue
         existing_platforms = {item.platform for item in existing_map.opportunities}
         target_overlap = sum(
             platform in existing_platforms
             for platform in (DistributionPlatform.TELEGRAM, DistributionPlatform.REDDIT)
         )
-        candidates.append(
-            (
-                target_overlap,
-                str(existing_map.product_id),
-                EligibleResearchContext(
-                    product=product,
-                    icp_result=icp_result,
-                    existing_map=existing_map,
-                ),
-            )
-        )
+        candidates.append((target_overlap, str(existing_map.product_id), context))
     if not candidates:
         return None
     candidates.sort(key=lambda item: (-item[0], item[1]))
     return candidates[0][2]
 
 
-def _opportunity_key(item: DistributionOpportunityView | DistributionOpportunitySeed) -> tuple[str, str, str]:
+def _select_confirmed_customer_context() -> EligibleResearchContext | None:
+    store = get_runtime_store()
+    candidates: list[tuple[int, str, EligibleResearchContext]] = []
+    state_priority = {"FOUND": 0, "NEEDS_MORE_RESEARCH": 1, "UNAVAILABLE": 2}
+    for project in store.list_namespace(CUSTOMER_PROJECT_NAMESPACE):
+        if project.get("deleted_at") or project.get("understanding_confirmed") is not True:
+            continue
+        product_id_raw = project.get("product_id")
+        preview = project.get("preview")
+        if not product_id_raw or not isinstance(preview, dict):
+            continue
+        research_state = str(preview.get("free_research_status") or "").upper()
+        if research_state not in ALLOWED_CONFIRMED_PREVIEW_RESEARCH_STATES:
+            continue
+        try:
+            product_id = UUID(str(product_id_raw))
+        except (TypeError, ValueError):
+            continue
+        context = _context_for_product(
+            product_id,
+            existing_map=None,
+            source="CONFIRMED_CUSTOMER_PREVIEW_RESEARCH",
+        )
+        if context is None:
+            continue
+        candidates.append((state_priority[research_state], str(product_id), context))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    return candidates[0][2]
+
+
+def _select_research_context() -> EligibleResearchContext | None:
+    return _select_existing_distribution_context() or _select_confirmed_customer_context()
+
+
+def _opportunity_key(
+    item: DistributionOpportunityView | DistributionOpportunitySeed,
+) -> tuple[str, str, str]:
     return (str(item.icp_id), item.platform.value, item.canonical_key)
 
 
@@ -89,7 +148,8 @@ def _persist_discovery(
     seeds: list[DistributionOpportunitySeed],
 ) -> list[DistributionOpportunityView]:
     store = get_runtime_store()
-    opportunities = list(context.existing_map.opportunities)
+    existing_map = context.existing_map
+    opportunities = list(existing_map.opportunities) if existing_map is not None else []
     index_by_key = {_opportunity_key(item): index for index, item in enumerate(opportunities)}
     refreshed: list[DistributionOpportunityView] = []
 
@@ -115,9 +175,14 @@ def _persist_discovery(
         )
         refreshed.append(view)
 
+    if not opportunities:
+        return refreshed
+
     updated_map = AudienceDistributionMapView(
-        product_id=context.existing_map.product_id,
-        top_icp_count=max(1, context.existing_map.top_icp_count),
+        product_id=context.product.id,
+        top_icp_count=(
+            max(1, existing_map.top_icp_count) if existing_map is not None else 1
+        ),
         opportunity_count=len(opportunities),
         opportunities=opportunities,
     )
@@ -135,7 +200,10 @@ async def _run() -> dict:
     phase_state = _phase_state()
     missing_state = sorted(TARGET_ISSUES - set(phase_state))
     if missing_state:
-        return {"status": "INVALID_ACCEPTANCE_STATE", "missing_issue_numbers": missing_state}
+        return {
+            "status": "INVALID_ACCEPTANCE_STATE",
+            "missing_issue_numbers": missing_state,
+        }
 
     requested = {
         issue_number
@@ -154,10 +222,10 @@ async def _run() -> dict:
             "requested_issue_numbers": [],
         }
 
-    context = _select_existing_research_context()
+    context = _select_research_context()
     if context is None:
         return {
-            "status": "NO_ELIGIBLE_EXISTING_RESEARCH_CONTEXT",
+            "status": "NO_ELIGIBLE_CONFIRMED_RESEARCH_CONTEXT",
             "blocked_issue_numbers": blocked,
             "requested_issue_numbers": sorted(requested),
         }
@@ -212,6 +280,7 @@ async def _run() -> dict:
     )
     return {
         "status": "COMPLETED",
+        "context_source": context.source,
         "requested_issue_numbers": sorted(requested),
         "blocked_issue_numbers": blocked,
         "discovered_opportunity_count": len(refreshed),
@@ -229,7 +298,12 @@ def main() -> int:
     try:
         result = asyncio.run(_run())
     except Exception as exc:  # fail closed without echoing customer/provider payloads
-        print(json.dumps({"status": "FAILED", "error_type": type(exc).__name__}, sort_keys=True))
+        print(
+            json.dumps(
+                {"status": "FAILED", "error_type": type(exc).__name__},
+                sort_keys=True,
+            )
+        )
         return 1
     print(json.dumps(result, sort_keys=True))
     return 0
