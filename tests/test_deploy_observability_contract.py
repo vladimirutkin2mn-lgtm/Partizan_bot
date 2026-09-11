@@ -98,6 +98,24 @@ def test_shared_host_route_repair_is_guarded_and_rollback_safe() -> None:
     assert all(value not in repair for value in forbidden_disclosures)
 
 
+def test_shared_host_route_repair_reports_target_only_tls_failure_context() -> None:
+    repair = _text("tools/ensure_shared_host_caddy_route.sh")
+
+    assert "report_target_tls_failure()" in repair
+    assert "-- Partizan target-only Caddy TLS diagnostics" in repair
+    assert 'docker logs --since 2m "${tls_container_id}"' in repair
+    assert 'grep -Fi -- "${host}"' in repair
+    assert "tail -n 30" in repair
+    assert "[redacted]" in repair
+    assert '-name "*.crt"' in repair
+    assert "caddy-target-stored-certificate-valid-now=true" in repair
+    assert "caddy-target-stored-certificate-valid-now=false" in repair
+    assert "openssl x509" in repair
+    assert "openssl s_client" in repair
+    assert "report_target_tls_failure\n  rollback" in repair
+    assert "*.key" not in repair
+
+
 def test_deploy_propagates_and_verifies_exact_release_sha() -> None:
     workflow = _text(".github/workflows/deploy-production.yml")
     deploy = _text("tools/deploy_prod_remote.sh")
