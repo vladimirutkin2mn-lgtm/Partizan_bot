@@ -38,7 +38,28 @@ jobs:
         with:
           ref: ${{ steps.release.outputs.sha }}
 
+      - name: Refuse stale production release
+        id: freshness
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        shell: bash
+        run: |
+          current_main_sha="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [[ ! "${current_main_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Unable to resolve current main HEAD; refusing production mutation"
+            exit 1
+          fi
+
+          if [[ "${RELEASE_SHA}" != "${current_main_sha}" ]]; then
+            echo "deploy_allowed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping stale production deploy: release ${RELEASE_SHA} is not current main ${current_main_sha}"
+            exit 0
+          fi
+
+          echo "deploy_allowed=true" >> "$GITHUB_OUTPUT"
+
       - name: Require deployment configuration
+        if: ${{ steps.freshness.outputs.deploy_allowed == 'true' }}
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -57,11 +78,13 @@ jobs:
           fi
 
       - name: Start SSH agent
+        if: ${{ steps.freshness.outputs.deploy_allowed == 'true' }}
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
 
       - name: Pin production host key
+        if: ${{ steps.freshness.outputs.deploy_allowed == 'true' }}
         env:
           DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
         shell: bash
@@ -72,11 +95,13 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
       - name: Verify host before mutation
+        if: ${{ steps.freshness.outputs.deploy_allowed == 'true' }}
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: ssh -o BatchMode=yes "${DEPLOY_HOST}" 'echo partizan-remote-ok'
 
       - name: Deploy, migrate and smoke Partizan
+        if: ${{ steps.freshness.outputs.deploy_allowed == 'true' }}
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
@@ -103,7 +128,7 @@ jobs:
           fi
 
       - name: Open or update production deploy incident
-        if: ${{ failure() }}
+        if: ${{ failure() && steps.freshness.outputs.deploy_allowed == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
@@ -142,7 +167,7 @@ jobs:
           fi
 
       - name: Close recovered production deploy incident
-        if: ${{ success() }}
+        if: ${{ success() && steps.freshness.outputs.deploy_allowed == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
