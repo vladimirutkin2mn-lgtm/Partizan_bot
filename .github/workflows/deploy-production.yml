@@ -100,6 +100,20 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: ssh -o BatchMode=yes "${DEPLOY_HOST}" 'echo partizan-remote-ok'
 
+      - name: Ensure shared-host Caddy route
+        if: ${{ steps.freshness.outputs.deploy_allowed == 'true' }}
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          PARTIZAN_PUBLIC_URL: ${{ secrets.PARTIZAN_PUBLIC_URL }}
+          PARTIZAN_MANAGED_EDGE: ${{ vars.PARTIZAN_MANAGED_EDGE || 'true' }}
+        shell: bash
+        run: |
+          if [[ "${PARTIZAN_MANAGED_EDGE}" == "false" && -n "${PARTIZAN_PUBLIC_URL}" ]]; then
+            bash tools/ensure_shared_host_caddy_route.sh
+          else
+            echo "shared-host Caddy route repair not required"
+          fi
+
       - name: Deploy, migrate and smoke Partizan
         if: ${{ steps.freshness.outputs.deploy_allowed == 'true' }}
         env:
