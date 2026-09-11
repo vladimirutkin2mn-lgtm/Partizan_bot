@@ -47,10 +47,17 @@ def test_shared_host_route_repair_is_guarded_and_rollback_safe() -> None:
     assert repair_marker in workflow
     assert workflow.index(repair_marker) < workflow.index(deploy_marker)
     assert '[[ "${PARTIZAN_MANAGED_EDGE}" == "false"' in workflow
+    assert "DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}" in workflow
     assert "bash tools/ensure_shared_host_caddy_route.sh" in workflow
     assert "partizanlabs.com" in repair
     assert 'upstream="partizan-api:8000"' in repair
     assert "expected exactly one published 443 container" in repair
+    assert "docker network inspect" in repair
+    assert "docker network connect" in repair
+    assert "docker network disconnect" in repair
+    assert "docker-compose.shared-host.yml" in repair
+    assert "Partizan API is not attached to configured edge network" in repair
+    assert "proxy attached to Partizan edge network" in repair
     assert "test -r /etc/caddy/Caddyfile && test -w /etc/caddy/Caddyfile" in repair
     assert "existing Caddyfile is invalid; refusing mutation" in repair
     assert 'wget -q -O /dev/null -T 5 "http://$1/health/live"' in repair
@@ -58,6 +65,7 @@ def test_shared_host_route_repair_is_guarded_and_rollback_safe() -> None:
     assert "reverse_proxy %s" in repair
     assert "caddy validate" in repair
     assert "caddy reload" in repair
+    assert "rollback_network_if_added()" in repair
     assert "rollback()" in repair
     assert '--resolve "${host}:443:127.0.0.1"' in repair
     assert "route restored and local TLS health verified" in repair
@@ -72,10 +80,11 @@ def test_shared_host_route_repair_is_guarded_and_rollback_safe() -> None:
     assert all(command not in repair for command in forbidden_broad_mutations)
 
     forbidden_disclosures = (
-        ".env.prod",
         "cat /etc/caddy/Caddyfile",
         "docker inspect",
         "printenv",
+        'echo "${edge_network}"',
+        'echo "${DEPLOY_PATH}"',
     )
     assert all(value not in repair for value in forbidden_disclosures)
 
