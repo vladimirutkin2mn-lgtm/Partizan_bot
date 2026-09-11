@@ -58,3 +58,20 @@ def test_real_community_research_runner_is_bounded_and_has_no_publish_surface() 
         "participants",
     )
     assert all(token not in runner for token in forbidden)
+
+
+def test_real_community_research_requires_prior_customer_research_consent() -> None:
+    runner = Path("tools/run_community_research_acceptance.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "CUSTOMER_PROJECT_NAMESPACE" in runner
+    assert 'project.get("understanding_confirmed") is not True' in runner
+    assert 'project.get("deleted_at")' in runner
+    assert 'preview.get("free_research_status")' in runner
+    assert '"FOUND"' in runner
+    assert '"NEEDS_MORE_RESEARCH"' in runner
+    assert '"UNAVAILABLE"' in runner
+    assert 'source="CONFIRMED_CUSTOMER_PREVIEW_RESEARCH"' in runner
+    assert "NO_ELIGIBLE_CONFIRMED_RESEARCH_CONTEXT" in runner
+    assert "existing_map: AudienceDistributionMapView | None" in runner
