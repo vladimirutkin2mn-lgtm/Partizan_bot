@@ -37,6 +37,49 @@ def test_deploy_refuses_stale_release_before_production_mutation() -> None:
     assert workflow.count("steps.freshness.outputs.deploy_allowed == 'true'") >= 7
 
 
+def test_shared_host_route_repair_is_guarded_and_rollback_safe() -> None:
+    workflow = _text(".github/workflows/deploy-production.yml")
+    repair = _text("tools/ensure_shared_host_caddy_route.sh")
+
+    repair_marker = "- name: Ensure shared-host Caddy route"
+    deploy_marker = "- name: Deploy, migrate and smoke Partizan"
+
+    assert repair_marker in workflow
+    assert workflow.index(repair_marker) < workflow.index(deploy_marker)
+    assert '[[ "${PARTIZAN_MANAGED_EDGE}" == "false"' in workflow
+    assert "bash tools/ensure_shared_host_caddy_route.sh" in workflow
+    assert "partizanlabs.com" in repair
+    assert 'upstream="partizan-api:8000"' in repair
+    assert "expected exactly one published 443 container" in repair
+    assert "test -r /etc/caddy/Caddyfile && test -w /etc/caddy/Caddyfile" in repair
+    assert "existing Caddyfile is invalid; refusing mutation" in repair
+    assert 'wget -q -O /dev/null -T 5 "http://$1/health/live"' in repair
+    assert "BEGIN PARTIZAN MANAGED ROUTE" in repair
+    assert "reverse_proxy %s" in repair
+    assert "caddy validate" in repair
+    assert "caddy reload" in repair
+    assert "rollback()" in repair
+    assert '--resolve "${host}:443:127.0.0.1"' in repair
+    assert "route restored and local TLS health verified" in repair
+
+    forbidden_broad_mutations = (
+        "docker restart",
+        "docker compose restart",
+        "systemctl restart",
+        "systemctl reload",
+        "rm -rf /etc/caddy",
+    )
+    assert all(command not in repair for command in forbidden_broad_mutations)
+
+    forbidden_disclosures = (
+        ".env.prod",
+        "cat /etc/caddy/Caddyfile",
+        "docker inspect",
+        "printenv",
+    )
+    assert all(value not in repair for value in forbidden_disclosures)
+
+
 def test_deploy_propagates_and_verifies_exact_release_sha() -> None:
     workflow = _text(".github/workflows/deploy-production.yml")
     deploy = _text("tools/deploy_prod_remote.sh")
