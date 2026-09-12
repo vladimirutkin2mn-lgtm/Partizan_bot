@@ -1,5 +1,5 @@
-from fastapi.testclient import TestClient
 import pytest
+from fastapi.testclient import TestClient
 
 import app.customer_channel_routes as customer_channel_routes_module
 from app.customer_account import customer_account_service
