@@ -252,7 +252,7 @@
       const currentProjectId = () => new URLSearchParams(window.location.search).get('project');
       const money = (value) => `$${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
       const ratio = (value) => value == null ? '—' : `${Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 })}×`;
-      const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+      const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>'\"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '\"': '&quot;' }[char]));
       const statusLabel = (status) => ({ RESERVED: 'Reserved', FULFILLED: 'Fulfilled', RELEASED: 'Released', CANCELLED: 'Cancelled' }[status] || status || 'Unknown');
       const ownershipLabel = (ownership) => ({ PARTIZAN_MANAGED: 'Partizan managed', PARTNER_MANAGED: 'Partner managed' }[ownership] || ownership || 'Managed');
       const dateLabel = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : null;
@@ -311,6 +311,28 @@
         node.textContent = `Could not load this customer-safe result: ${reason}`;
       };
 
+      const renderLearning = (data) => {
+        const overview = data?.autopilot;
+        const experimentsNode = document.getElementById('experiments');
+        const decisionsNode = document.getElementById('decisions');
+        if (!overview || !experimentsNode || !decisionsNode) return;
+        const experiments = [...(overview.running_experiments || []), ...(overview.waiting_experiments || [])];
+        experimentsNode.innerHTML = experiments.length
+          ? experiments.slice(0, 8).map((item) => `<div><strong>${escapeHtml(item.platform)} · ${escapeHtml(item.action_type)}</strong><span>${escapeHtml(item.status)}${item.budget_cap == null ? '' : ` · ${money(item.budget_cap)}`}</span></div>`).join('')
+          : '<div><strong>No test yet</strong><span>Partizan will create the first eligible test after research and launch prerequisites are complete.</span></div>';
+        const decisions = overview.recent_decisions || [];
+        decisionsNode.innerHTML = decisions.length
+          ? decisions.slice(0, 8).map((item) => `<div><strong>${escapeHtml(item.decision || item.outcome)}</strong><span>${escapeHtml((item.reasons || [])[0] || item.kind)}</span></div>`).join('')
+          : '<div><strong>Waiting for the first signal</strong><span>Acquisition and learning decisions will appear here.</span></div>';
+      };
+
+      const refreshLearning = async () => {
+        const projectId = currentProjectId();
+        if (!projectId) return;
+        const data = await getJson(`/customer/workspace/${encodeURIComponent(projectId)}`);
+        renderLearning(data);
+      };
+
       const refresh = async (force = false) => {
         const projectId = currentProjectId();
         if (!projectId || loading || (!force && loadedProjectId === projectId)) return;
@@ -346,7 +368,10 @@
           });
           if (!changed) return;
           window.clearTimeout(refreshTimer);
-          refreshTimer = window.setTimeout(() => refresh(true), 0);
+          refreshTimer = window.setTimeout(() => {
+            refresh(true).catch(() => {});
+            refreshLearning().catch(() => {});
+          }, 0);
         });
         communityObserver.observe(communityActionSource, { childList: true, subtree: true });
       }
