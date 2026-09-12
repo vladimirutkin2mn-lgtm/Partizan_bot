@@ -159,6 +159,7 @@
   let refreshQueued = false;
   let workspaceSnapshot = null;
   let channelSnapshot = [];
+  let startingMove = null;
 
   const syncProjectId = (candidate = null) => {
     projectId = candidate || new URLSearchParams(window.location.search).get('project');
@@ -177,7 +178,7 @@
     });
     let payload = {};
     try { payload = await response.json(); } catch (_) { payload = {}; }
-    if (!response.ok) throw new Error(payload.detail || `Request failed (${response.status})`);
+    if (!response.ok) throw new Error((payload && payload.detail) || `Request failed (${response.status})`);
     return payload;
   };
 
@@ -231,6 +232,50 @@
     return 'Start with this channel in research mode. Execution remains separately controlled in Channels.';
   };
 
+  const moveSourceLabel = (move) => ({
+    PREVIEW_RESEARCH: 'Free research evidence',
+    FULL_RESEARCH: 'Full research evidence',
+    SELECTED_CHANNEL: 'Research gap',
+  })[move && move.source] || 'Next recommendation';
+
+  const renderStartingMove = (selected) => {
+    if (!selected) {
+      return `<div class="activation-action activation-action-primary">
+        <div><span class="eyebrow">First channel</span><strong>Choose one starting channel</strong></div>
+        <p class="note">Choosing a channel does not allow execution, connect an account, or authorize spend.</p>
+      </div>`;
+    }
+    if (!startingMove || startingMove.platform !== selected.platform) {
+      return `<div class="activation-action activation-action-primary">
+        <div><span class="eyebrow">Next recommendation</span><strong>Updating the first move for ${escapeHtml(selected.label)}…</strong></div>
+        <p class="note">Partizan only shows a concrete move when it can tie that move to source evidence.</p>
+      </div>`;
+    }
+
+    const sourceUrl = startingMove.url
+      || (Array.isArray(startingMove.provenance) ? startingMove.provenance[0]?.url : null);
+    const sourceLink = startingMove.state === 'READY' && sourceUrl
+      ? `<a class="button button-secondary" href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">Open researched opportunity ↗</a>`
+      : '';
+    const researchButton = startingMove.state === 'NEEDS_RESEARCH'
+      ? '<button id="channel-choice-research" class="button button-secondary" type="button">Open research →</button>'
+      : '';
+    const stateLabel = startingMove.state === 'READY' ? 'Evidence ready' : 'More research needed';
+
+    return `<div class="activation-action activation-action-primary">
+      <div>
+        <span class="eyebrow">${escapeHtml(moveSourceLabel(startingMove))}</span>
+        <strong>${escapeHtml(startingMove.title)}</strong>
+        <span class="status-pill">${escapeHtml(stateLabel)}</span>
+      </div>
+      <p>${escapeHtml(startingMove.rationale)}</p>
+      <p class="note"><strong>Next:</strong> ${escapeHtml(startingMove.recommended_action)}</p>
+      <p class="note"><strong>Watch:</strong> ${escapeHtml(startingMove.signal_to_watch)}</p>
+      <p class="note">${escapeHtml(startingMove.execution_requirement)}</p>
+      <div>${sourceLink}${researchButton}</div>
+    </div>`;
+  };
+
   const renderChoice = () => {
     const card = ensureChoiceCard();
     const activation = $('activation-card');
@@ -277,10 +322,7 @@
         <li><span class="activation-index">2</span><div><strong>Find where customers are</strong><small>Public-web research found concrete evidence before spend.</small></div><span class="activation-step-state">Done</span></li>
         <li><span class="activation-index">3</span><div><strong>Choose where to start</strong><small>This is a focus choice, not execution permission.</small></div><span class="activation-step-state">${selected ? 'Done' : 'Now'}</span></li>
       </ol>
-      <div class="activation-action activation-action-primary">
-        <div><span class="eyebrow">First channel</span><strong>${selected ? escapeHtml(selected.label) : 'Choose one starting channel'}</strong></div>
-        <p class="note">Choosing a channel does not allow execution, connect an account, or authorize spend.</p>
-      </div>
+      ${renderStartingMove(selected)}
       ${choices}
       <div class="activation-action">
         <div><span class="eyebrow">Execution stays separate</span><button id="channel-choice-controls" class="button button-secondary" type="button">Review channel controls →</button></div>
@@ -299,6 +341,9 @@
             `/customer/workspace/${encodeURIComponent(projectId)}/channel-selection`,
             { method: 'PUT', body: JSON.stringify({ platform }) },
           );
+          startingMove = await requestJson(
+            `/customer/workspace/${encodeURIComponent(projectId)}/starting-move`,
+          );
           renderChoice();
         } catch (error) {
           button.disabled = false;
@@ -307,6 +352,10 @@
           if (note) note.textContent = error.message || 'Could not save the starting channel.';
         }
       });
+    });
+
+    $('channel-choice-research')?.addEventListener('click', () => {
+      document.querySelector('.tab-button[data-tab="activity"]')?.click();
     });
 
     $('channel-choice-controls')?.addEventListener('click', () => {
@@ -323,9 +372,10 @@
     }
     loading = true;
     try {
-      [workspaceSnapshot, channelSnapshot] = await Promise.all([
+      [workspaceSnapshot, channelSnapshot, startingMove] = await Promise.all([
         requestJson(`/customer/workspace/${encodeURIComponent(projectId)}`),
         requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/channels`),
+        requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move`),
       ]);
       renderChoice();
     } catch (_) {

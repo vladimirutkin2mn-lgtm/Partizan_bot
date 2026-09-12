@@ -32,6 +32,21 @@ def test_research_can_recommend_but_only_customer_click_persists_selection() -> 
     assert "channelSnapshot = await requestJson(" in js
 
 
+def test_selected_channel_move_is_evidence_backed_or_explicitly_needs_research() -> None:
+    js = _channel_choice_module()
+
+    assert "/starting-move" in js
+    assert "startingMove.state === 'READY'" in js
+    assert "startingMove.state === 'NEEDS_RESEARCH'" in js
+    assert "Open researched opportunity ↗" in js
+    assert "Partizan only shows a concrete move when it can tie that move to source evidence." in js
+    assert "channel-choice-research" in js
+    assert "recommended_action" in js
+    assert "signal_to_watch" in js
+    assert "execution_requirement" in js
+    assert "startingMove = await requestJson(" in js
+
+
 def test_off_channels_are_not_selectable_and_real_activity_ends_choice_flow() -> None:
     js = _channel_choice_module()
 
@@ -52,6 +67,7 @@ def test_channel_choice_follows_canonical_workspace_fanout_without_mutating_chan
     assert "loadChoice(true).catch(() => {})" in js
     assert "refreshQueued" in js
     assert "/channels" in js
+    assert "/starting-move" in js
     assert "method: 'POST'" not in js
     assert "method: 'DELETE'" not in js
     assert "/autopilot" not in js
