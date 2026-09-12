@@ -22,8 +22,8 @@
     .auth-new{margin:24px 0 0;padding-top:20px;border-top:1px solid var(--line);text-align:center;color:var(--muted);font-size:11px;line-height:1.5}
     .auth-new a{display:inline-block;margin-left:5px;color:var(--soft);font-weight:700;text-decoration:none}
     .auth-new a:hover{color:var(--accent)}
-    .customer-results-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:18px}.customer-results-block{padding:15px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.018)}.customer-results-block h3{margin:0 0 5px;font-size:13px}.customer-results-block>p{margin:0 0 12px;color:var(--muted);font-size:10px;line-height:1.55}.customer-economics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.customer-economics-grid div,.managed-assignment{padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.12)}.customer-economics-grid span,.managed-assignment span{display:block;color:var(--muted);font-size:9px}.customer-economics-grid strong{display:block;margin-top:3px;font-size:13px}.managed-assignment-list{display:grid;gap:8px}.managed-assignment-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.managed-assignment strong{font-size:11px}.managed-assignment-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}.managed-assignment-meta span{padding:3px 6px;border:1px solid var(--line);border-radius:999px}.managed-assignment-costs{display:flex;gap:12px;margin-top:9px}.managed-assignment-costs b{font-size:10px}.managed-assignment a{display:inline-block;margin-top:9px;font-size:10px;color:var(--accent);text-decoration:none}.customer-results-empty{color:var(--muted);font-size:10px;line-height:1.55}.customer-results-error{color:var(--warn);font-size:10px;line-height:1.55}
-    @media(max-width:700px){.auth-login{min-height:calc(100vh - 88px);padding:28px 0 56px}.auth-card{padding:26px 22px;border-radius:20px}.auth-card h1{font-size:34px}.auth-card .lede{margin-bottom:22px}.customer-results-grid{grid-template-columns:1fr}.customer-economics-grid{grid-template-columns:1fr 1fr}}
+    .customer-results-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:18px}.customer-results-block{padding:15px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.018)}.customer-results-block h3{margin:0 0 5px;font-size:13px}.customer-results-block>p{margin:0 0 12px;color:var(--muted);font-size:10px;line-height:1.55}.customer-economics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.customer-economics-grid div,.managed-assignment,.customer-learning-card{padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.12)}.customer-economics-grid span,.managed-assignment span,.customer-learning-card span{display:block;color:var(--muted);font-size:9px}.customer-economics-grid strong{display:block;margin-top:3px;font-size:13px}.managed-assignment-list,.customer-learning-list{display:grid;gap:8px}.managed-assignment-head,.customer-learning-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.managed-assignment strong,.customer-learning-card strong{font-size:11px}.managed-assignment-meta,.customer-learning-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}.managed-assignment-meta span,.customer-learning-meta span{padding:3px 6px;border:1px solid var(--line);border-radius:999px}.managed-assignment-costs{display:flex;gap:12px;margin-top:9px}.managed-assignment-costs b{font-size:10px}.managed-assignment a,.customer-learning-card a{display:inline-block;margin-top:9px;font-size:10px;color:var(--accent);text-decoration:none}.customer-learning-block{grid-column:1/-1}.customer-learning-card b{font-size:10px;color:var(--accent)}.customer-learning-card p{font-size:10px;line-height:1.55;color:var(--soft);margin:9px 0 0}.customer-learning-card .learning-context{margin-top:4px}.customer-results-empty{color:var(--muted);font-size:10px;line-height:1.55}.customer-results-error{color:var(--warn);font-size:10px;line-height:1.55}
+    @media(max-width:700px){.auth-login{min-height:calc(100vh - 88px);padding:28px 0 56px}.auth-card{padding:26px 22px;border-radius:20px}.auth-card h1{font-size:34px}.auth-card .lede{margin-bottom:22px}.customer-results-grid{grid-template-columns:1fr}.customer-economics-grid{grid-template-columns:1fr 1fr}.customer-learning-block{grid-column:auto}}
   </style>
 </head>
 <body>
@@ -180,10 +180,11 @@
         </section>
 
         <section id="distribution-results-card" class="panel customer-results-card">
-          <div class="section-head"><div><span class="eyebrow">Distribution results</span><h2>Economics & managed delivery</h2><p class="section-copy">Only customer-facing observed economics and managed-service outcomes are shown here. Internal operating costs and publisher identities stay private.</p></div><span id="distribution-results-state" class="status-pill">Read only</span></div>
+          <div class="section-head"><div><span class="eyebrow">Distribution results</span><h2>Economics, learning & managed delivery</h2><p class="section-copy">Only customer-facing observed economics, learning signals and managed-service outcomes are shown here. Internal operating costs and publisher identities stay private.</p></div><span id="distribution-results-state" class="status-pill">Read only</span></div>
           <div class="customer-results-grid">
             <div class="customer-results-block"><h3>Observed customer economics</h3><p>Research, execution and distribution spend that counts toward your acquisition economics.</p><div id="customer-economics" class="customer-results-empty">Open Activity to load observed economics.</div></div>
             <div class="customer-results-block"><h3>Partizan managed delivery</h3><p>Assignments fulfilled through Partizan-managed or partner-managed inventory, without exposing internal publisher details.</p><div id="managed-delivery" class="customer-results-empty">No managed delivery loaded yet.</div></div>
+            <div class="customer-results-block customer-learning-block"><h3>What Partizan learned</h3><p>Observed signals from the exact experiment and the Growth Manager decision they produced. No synthetic attribution is added here.</p><div id="customer-learning" class="customer-results-empty">No observed learning loaded yet.</div></div>
           </div>
         </section>
       </section>
@@ -244,8 +245,9 @@
       const workspace = document.getElementById('workspace');
       const economicsNode = document.getElementById('customer-economics');
       const managedNode = document.getElementById('managed-delivery');
+      const learningNode = document.getElementById('customer-learning');
       const stateNode = document.getElementById('distribution-results-state');
-      if (!workspace || !economicsNode || !managedNode || !stateNode) return;
+      if (!workspace || !economicsNode || !managedNode || !learningNode || !stateNode) return;
 
       let loading = false;
       let loadedProjectId = null;
@@ -255,6 +257,8 @@
       const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
       const statusLabel = (status) => ({ RESERVED: 'Reserved', FULFILLED: 'Fulfilled', RELEASED: 'Released', CANCELLED: 'Cancelled' }[status] || status || 'Unknown');
       const ownershipLabel = (ownership) => ({ PARTIZAN_MANAGED: 'Partizan managed', PARTNER_MANAGED: 'Partner managed' }[ownership] || ownership || 'Managed');
+      const decisionLabel = (decision) => ({ SCALE: 'Scale next', CONTINUE: 'Keep testing', MODIFY: 'Change the approach', STOP: 'Stop this pattern' }[decision] || decision || 'Decision pending');
+      const readable = (value) => String(value || '').replaceAll('_', ' ').toLowerCase();
       const dateLabel = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : null;
 
       const getJson = async (path) => {
@@ -306,6 +310,25 @@
         }).join('');
       };
 
+      const renderLearning = (data) => {
+        const rows = Array.isArray(data?.entries) ? data.entries : [];
+        if (!rows.length) {
+          learningNode.className = 'customer-results-empty';
+          learningNode.textContent = 'No observed experiment has produced a Growth Manager learning decision yet.';
+          return;
+        }
+        learningNode.className = 'customer-learning-list';
+        learningNode.innerHTML = rows.map((item) => {
+          const context = [item.platform, readable(item.publisher_mode), readable(item.action_type)].filter(Boolean).join(' · ');
+          const basis = Array.isArray(item.observed_basis) ? item.observed_basis.join(' ') : '';
+          const observedAt = dateLabel(item.created_at);
+          const resultLink = item.opportunity_url
+            ? `<a href="${escapeHtml(item.opportunity_url)}" target="_blank" rel="noopener noreferrer">Open opportunity ↗</a>`
+            : '';
+          return `<article class="customer-learning-card"><div class="customer-learning-head"><div><span>${escapeHtml(context)}</span><strong>${escapeHtml(item.opportunity_title || 'Observed opportunity')}</strong></div><b>${escapeHtml(decisionLabel(item.decision))}</b></div><p>${escapeHtml(basis || 'Observed experiment data informed this decision.')}</p><div class="customer-learning-meta"><span>Experiment ${escapeHtml(String(item.experiment_id || '').slice(0, 8))}</span>${observedAt ? `<span>${escapeHtml(observedAt)}</span>` : ''}${item.replies ? `<span>${Number(item.replies)} replies</span>` : ''}${item.removals ? `<span>${Number(item.removals)} removals</span>` : ''}${item.paid_users ? `<span>${Number(item.paid_users)} paid</span>` : ''}${item.observed_cac == null ? '' : `<span>CAC ${money(item.observed_cac)}</span>`}</div>${resultLink}</article>`;
+        }).join('');
+      };
+
       const renderFailure = (node, reason) => {
         node.className = 'customer-results-error';
         node.textContent = `Could not load this customer-safe result: ${reason}`;
@@ -316,17 +339,20 @@
         if (!projectId || loading || (!force && loadedProjectId === projectId)) return;
         loading = true;
         stateNode.textContent = 'Loading';
-        const [economics, managed] = await Promise.allSettled([
+        const [economics, managed, learning] = await Promise.allSettled([
           getJson(`/customer/workspace/${projectId}/distribution-economics`),
           getJson(`/customer/workspace/${projectId}/managed-distribution/assignments`),
+          getJson(`/customer/workspace/${projectId}/distribution-learning`),
         ]);
         if (economics.status === 'fulfilled') renderEconomics(economics.value);
         else renderFailure(economicsNode, economics.reason.message);
         if (managed.status === 'fulfilled') renderManaged(managed.value);
         else renderFailure(managedNode, managed.reason.message);
+        if (learning.status === 'fulfilled') renderLearning(learning.value);
+        else renderFailure(learningNode, learning.reason.message);
         loadedProjectId = projectId;
         loading = false;
-        stateNode.textContent = economics.status === 'fulfilled' && managed.status === 'fulfilled' ? 'Observed' : 'Partial';
+        stateNode.textContent = economics.status === 'fulfilled' && managed.status === 'fulfilled' && learning.status === 'fulfilled' ? 'Observed' : 'Partial';
       };
 
       document.querySelector('.tab-button[data-tab="activity"]')?.addEventListener('click', () => refresh(true));
