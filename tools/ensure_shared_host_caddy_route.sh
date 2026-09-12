@@ -89,7 +89,7 @@ network_members="$(docker network inspect "${edge_network}" \
 api_connected_by_repair=false
 if ! printf '%s\n' "${network_members}" | grep -Fxq "${api_container_id}"; then
   if ! docker network connect --alias partizan-api "${edge_network}" "${api_container_id}"; then
-    echo "shared Caddy route repair: unable to connect Partizan API to configured edge network" >&2
+    echo "shared Caddy route repair: Partizan API is not attached to configured edge network and automatic attachment failed" >&2
     exit 1
   fi
   api_connected_by_repair=true
