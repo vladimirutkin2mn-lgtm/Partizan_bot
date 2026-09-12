@@ -17,8 +17,10 @@ def test_customer_workspace_exposes_project_scoped_distribution_results() -> Non
     assert 'id="distribution-results-card"' in html
     assert 'id="customer-economics"' in html
     assert 'id="managed-delivery"' in html
+    assert 'id="customer-learning"' in html
     assert "/customer/workspace/${projectId}/distribution-economics" in html
     assert "/customer/workspace/${projectId}/managed-distribution/assignments" in html
+    assert "/customer/workspace/${projectId}/distribution-learning" in html
     assert "Customer cost" in html
     assert "Research fee" in html
     assert "Execution fee" in html
@@ -26,6 +28,9 @@ def test_customer_workspace_exposes_project_scoped_distribution_results() -> Non
     assert "Management fee" in html
     assert "Paid customers" in html
     assert "ROAS" in html
+    assert "What Partizan learned" in html
+    assert "Scale next" in html
+    assert "Stop this pattern" in html
 
 
 def test_customer_workspace_managed_results_stay_read_only_and_customer_safe() -> None:
@@ -47,6 +52,19 @@ def test_customer_workspace_managed_results_stay_read_only_and_customer_safe() -
     assert "Internal operating costs and publisher identities stay private." in html
     assert "Open delivered result" in html
     assert "credentials: 'same-origin'" in html
+
+
+def test_customer_workspace_learning_uses_observed_exact_experiment_chain() -> None:
+    html = _workspace_html()
+
+    assert "No synthetic attribution is added here." in html
+    assert "item.experiment_id" in html
+    assert "item.observed_basis" in html
+    assert "item.replies" in html
+    assert "item.removals" in html
+    assert "item.observed_cac" in html
+    assert "item.decision" in html
+    assert "Open opportunity" in html
 
 
 def test_customer_workspace_results_do_not_mutate_distribution_execution() -> None:
