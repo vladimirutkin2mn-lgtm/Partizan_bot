@@ -96,7 +96,10 @@ class CustomerStartingMoveService:
             signal_to_watch="The first measurable acquisition signal tied to this exact opportunity.",
             execution_requirement=(
                 opportunity.execution_requirement
-                or "Research is not execution permission. Channel access and spend remain separately controlled."
+                or (
+                    "Research is not execution permission. "
+                    "Channel access and spend remain separately controlled."
+                )
             ),
             url=opportunity.url,
             provenance=opportunity.provenance,
