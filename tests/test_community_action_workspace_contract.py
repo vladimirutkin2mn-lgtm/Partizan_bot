@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 WORKSPACE_CHANNELS = Path("app/web/workspace.channels.v1.js")
 RESULTS = Path("app/web/results.v1.js")
 
