@@ -258,6 +258,10 @@
       const statusLabel = (status) => ({ RESERVED: 'Reserved', FULFILLED: 'Fulfilled', RELEASED: 'Released', CANCELLED: 'Cancelled' }[status] || status || 'Unknown');
       const ownershipLabel = (ownership) => ({ PARTIZAN_MANAGED: 'Partizan managed', PARTNER_MANAGED: 'Partner managed' }[ownership] || ownership || 'Managed');
       const dateLabel = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : null;
+      const setText = (id, value) => {
+        const node = document.getElementById(id);
+        if (node) node.textContent = value;
+      };
 
       const getJson = async (path) => {
         const response = await fetch(path, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
@@ -328,11 +332,50 @@
           : '<div><strong>Waiting for the first signal</strong><span>Acquisition and learning decisions will appear here.</span></div>';
       };
 
+      const renderOverviewSnapshot = (data) => {
+        const overview = data?.autopilot;
+        const balance = overview?.growth_balance;
+        if (!overview || !balance) return;
+        setText('metric-balance', money(balance.available_usd));
+        setText('metric-spend', money(balance.acquisition_spend_usd));
+        setText('metric-customers', String(overview.paid_customers || 0));
+        setText('metric-cac', overview.cac_usd == null ? '—' : money(overview.cac_usd));
+        setText('metric-revenue', money(overview.revenue_usd));
+        setText('metric-fee', money(balance.management_fee_usd));
+        setText('metric-fee-note', `${balance.management_fee_pct}% of actual spend`);
+        setText('balance-available', money(balance.available_usd));
+        setText('balance-capacity', money(balance.remaining_acquisition_capacity_usd));
+        setText('balance-used', money(balance.used_usd));
+
+        const workState = document.getElementById('work-state');
+        if (workState) {
+          workState.textContent = overview.autopilot_status === 'ACTIVE' ? 'Working' : (overview.autopilot_status === 'PAUSED' ? 'Paused' : 'Preparing');
+          workState.classList.toggle('good', overview.autopilot_status === 'ACTIVE');
+        }
+        const currentWork = document.getElementById('current-work');
+        if (!currentWork) return;
+        const work = [];
+        (overview.running_experiments || []).slice(0, 4).forEach((item) => work.push({
+          title: `${item.platform} · ${item.action_type}`,
+          detail: `${item.status}${item.budget_cap == null ? '' : ` · cap ${money(item.budget_cap)}`}`,
+        }));
+        (overview.waiting_experiments || []).slice(0, 4).forEach((item) => work.push({
+          title: `${item.platform} · ${item.action_type}`,
+          detail: `${item.status}${item.budget_cap == null ? '' : ` · cap ${money(item.budget_cap)}`}`,
+        }));
+        if (!work.length) work.push({
+          title: overview.product_id ? 'Comparing the next acquisition paths' : 'Waiting for market research',
+          detail: balance.funded_usd > 0 ? 'Partizan will surface the next eligible test here.' : 'Partizan keeps researching before spend.',
+        });
+        currentWork.innerHTML = work.map((item) => `<div><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail)}</span></div>`).join('');
+      };
+
       const refreshLearning = async () => {
         const projectId = currentProjectId();
         if (!projectId) return;
         const data = await getJson(`/customer/workspace/${encodeURIComponent(projectId)}`);
         renderLearning(data);
+        renderOverviewSnapshot(data);
       };
 
       const refresh = async (force = false) => {
