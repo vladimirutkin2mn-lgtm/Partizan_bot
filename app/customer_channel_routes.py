@@ -23,6 +23,7 @@ from app.customer_funnel import (
     customer_funnel_service,
 )
 from app.distribution_analytics_service import distribution_analytics_service
+from app.distribution_execution_service import distribution_execution_service
 from app.telegram_client_governance import (
     TelegramAutomationAuthorizationRequest,
     TelegramAutomationView,
@@ -58,8 +59,11 @@ class CustomerCommunityActionView(BaseModel):
     removals: int = 0
 
 
-class TelegramCustomerPublishRequest(TelegramPublishRequest):
+class TelegramCustomerPublishRequest(BaseModel):
     confirm_publish: bool = False
+    retry: bool = False
+    expected_target_url: str | None = None
+    expected_content_text: str | None = None
 
 
 def _session_cookie(
@@ -324,12 +328,23 @@ async def publish_customer_telegram_action(
     customer_token = _project_token(session_token, project_id)
     if not payload.confirm_publish:
         raise HTTPException(status_code=409, detail="Explicit publish confirmation is required")
+    action = distribution_execution_service.get_action(action_id)
+    if (
+        payload.expected_target_url is None
+        or payload.expected_content_text is None
+        or payload.expected_target_url != str(action.target_url or "")
+        or payload.expected_content_text != str(action.content_text or "")
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Reviewed Telegram action changed; refresh and review it again",
+        )
     try:
         return await customer_telegram_client_publish_service.publish(
             project_id,
             customer_token,
             action_id,
-            payload,
+            TelegramPublishRequest(retry=payload.retry),
         )
     except CustomerTelegramClientPublishError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
