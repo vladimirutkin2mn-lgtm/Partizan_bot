@@ -369,6 +369,24 @@ def test_research_readiness_alone_still_cannot_enable_client_owned_publish() -> 
     assert telegram["connected"] is False
 
 
+def test_customer_publish_requires_explicit_confirmation() -> None:
+    transport = FakeTelegramClientTransport()
+    _enable_client_publish(transport)
+    client, preview = _registered_client()
+    _connect(client, preview.project_id)
+    product_id, action_id = _product_and_action()
+    _bind_project_to_product(preview.project_id, product_id)
+    _select_client_owned(client, preview.project_id)
+
+    response = client.post(
+        f"/customer/workspace/{preview.project_id}/telegram/actions/{action_id}/publish",
+        json={},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Explicit publish confirmation is required"
+    assert transport.publish_calls == []
+
+
 def test_publish_requires_explicit_action_approval() -> None:
     transport = FakeTelegramClientTransport()
     _enable_client_publish(transport)
@@ -380,7 +398,7 @@ def test_publish_requires_explicit_action_approval() -> None:
 
     response = client.post(
         f"/customer/workspace/{preview.project_id}/telegram/actions/{action_id}/publish",
-        json={},
+        json={"confirm_publish": True},
     )
     assert response.status_code == 409
     assert "APPROVED" in response.json()["detail"]
@@ -398,7 +416,7 @@ def test_approved_client_owned_publish_records_remote_receipt_without_session_se
 
     published = client.post(
         f"/customer/workspace/{preview.project_id}/telegram/actions/{action_id}/publish",
-        json={"retry": False},
+        json={"confirm_publish": True},
     )
     assert published.status_code == 200
     payload = published.json()
@@ -429,7 +447,7 @@ def test_provider_restriction_is_recorded_and_action_stays_approved() -> None:
 
     response = client.post(
         f"/customer/workspace/{preview.project_id}/telegram/actions/{action_id}/publish",
-        json={},
+        json={"confirm_publish": True},
     )
     assert response.status_code == 200
     assert response.json()["outcome"] == "FAILED"
