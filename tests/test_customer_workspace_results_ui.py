@@ -58,3 +58,13 @@ def test_customer_workspace_results_do_not_mutate_distribution_execution() -> No
     assert "method: 'DELETE'" not in html
     assert "/fulfill" not in html
     assert "/release" not in html
+
+
+def test_customer_workspace_results_refresh_after_community_action_changes() -> None:
+    html = _workspace_html()
+
+    assert "communityActionSource" in html
+    assert "community-action-inbox" in html
+    assert "communityObserver.observe" in html
+    assert "refresh(true)" in html
+    assert "childList: true, subtree: true" in html
