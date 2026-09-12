@@ -258,10 +258,6 @@
       const statusLabel = (status) => ({ RESERVED: 'Reserved', FULFILLED: 'Fulfilled', RELEASED: 'Released', CANCELLED: 'Cancelled' }[status] || status || 'Unknown');
       const ownershipLabel = (ownership) => ({ PARTIZAN_MANAGED: 'Partizan managed', PARTNER_MANAGED: 'Partner managed' }[ownership] || ownership || 'Managed');
       const dateLabel = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : null;
-      const setText = (id, value) => {
-        const node = document.getElementById(id);
-        if (node) node.textContent = value;
-      };
 
       const getJson = async (path) => {
         const response = await fetch(path, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
@@ -317,67 +313,6 @@
         node.textContent = `Could not load this customer-safe result: ${reason}`;
       };
 
-      const renderLearning = (data) => {
-        const overview = data?.autopilot;
-        const experimentsNode = document.getElementById('experiments');
-        const decisionsNode = document.getElementById('decisions');
-        if (!overview || !experimentsNode || !decisionsNode) return;
-        const experiments = [...(overview.running_experiments || []), ...(overview.waiting_experiments || [])];
-        experimentsNode.innerHTML = experiments.length
-          ? experiments.slice(0, 8).map((item) => `<div><strong>${escapeHtml(item.platform)} · ${escapeHtml(item.action_type)}</strong><span>${escapeHtml(item.status)}${item.budget_cap == null ? '' : ` · ${money(item.budget_cap)}`}</span></div>`).join('')
-          : '<div><strong>No test yet</strong><span>Partizan will create the first eligible test after research and launch prerequisites are complete.</span></div>';
-        const decisions = overview.recent_decisions || [];
-        decisionsNode.innerHTML = decisions.length
-          ? decisions.slice(0, 8).map((item) => `<div><strong>${escapeHtml(item.decision || item.outcome)}</strong><span>${escapeHtml((item.reasons || [])[0] || item.kind)}</span></div>`).join('')
-          : '<div><strong>Waiting for the first signal</strong><span>Acquisition and learning decisions will appear here.</span></div>';
-      };
-
-      const renderOverviewSnapshot = (data) => {
-        const overview = data?.autopilot;
-        const balance = overview?.growth_balance;
-        if (!overview || !balance) return;
-        setText('metric-balance', money(balance.available_usd));
-        setText('metric-spend', money(balance.acquisition_spend_usd));
-        setText('metric-customers', String(overview.paid_customers || 0));
-        setText('metric-cac', overview.cac_usd == null ? '—' : money(overview.cac_usd));
-        setText('metric-revenue', money(overview.revenue_usd));
-        setText('metric-fee', money(balance.management_fee_usd));
-        setText('metric-fee-note', `${balance.management_fee_pct}% of actual spend`);
-        setText('balance-available', money(balance.available_usd));
-        setText('balance-capacity', money(balance.remaining_acquisition_capacity_usd));
-        setText('balance-used', money(balance.used_usd));
-
-        const workState = document.getElementById('work-state');
-        if (workState) {
-          workState.textContent = overview.autopilot_status === 'ACTIVE' ? 'Working' : (overview.autopilot_status === 'PAUSED' ? 'Paused' : 'Preparing');
-          workState.classList.toggle('good', overview.autopilot_status === 'ACTIVE');
-        }
-        const currentWork = document.getElementById('current-work');
-        if (!currentWork) return;
-        const work = [];
-        (overview.running_experiments || []).slice(0, 4).forEach((item) => work.push({
-          title: `${item.platform} · ${item.action_type}`,
-          detail: `${item.status}${item.budget_cap == null ? '' : ` · cap ${money(item.budget_cap)}`}`,
-        }));
-        (overview.waiting_experiments || []).slice(0, 4).forEach((item) => work.push({
-          title: `${item.platform} · ${item.action_type}`,
-          detail: `${item.status}${item.budget_cap == null ? '' : ` · cap ${money(item.budget_cap)}`}`,
-        }));
-        if (!work.length) work.push({
-          title: overview.product_id ? 'Comparing the next acquisition paths' : 'Waiting for market research',
-          detail: balance.funded_usd > 0 ? 'Partizan will surface the next eligible test here.' : 'Partizan keeps researching before spend.',
-        });
-        currentWork.innerHTML = work.map((item) => `<div><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.detail)}</span></div>`).join('');
-      };
-
-      const refreshLearning = async () => {
-        const projectId = currentProjectId();
-        if (!projectId) return;
-        const data = await getJson(`/customer/workspace/${encodeURIComponent(projectId)}`);
-        renderLearning(data);
-        renderOverviewSnapshot(data);
-      };
-
       const refresh = async (force = false) => {
         const projectId = currentProjectId();
         if (!projectId || loading || (!force && loadedProjectId === projectId)) return;
@@ -397,31 +332,9 @@
       };
 
       document.querySelector('.tab-button[data-tab="activity"]')?.addEventListener('click', () => refresh(true));
-      const observer = new MutationObserver(() => {
-        if (!workspace.classList.contains('hidden')) refresh();
+      window.addEventListener('partizan:workspace-ready', () => {
+        refresh(true).catch(() => {});
       });
-      observer.observe(workspace, { attributes: true, attributeFilter: ['class'] });
-
-      const communityActionSource = document.getElementById('experiments')?.parentElement;
-      if (communityActionSource) {
-        let refreshTimer = null;
-        const communityObserver = new MutationObserver((mutations) => {
-          const changed = mutations.some((mutation) => {
-            const target = mutation.target.nodeType === Node.ELEMENT_NODE ? mutation.target : mutation.target.parentElement;
-            if (target?.closest?.('#community-action-inbox')) return true;
-            return Array.from(mutation.addedNodes).some((node) => node.nodeType === Node.ELEMENT_NODE && (node.id === 'community-action-inbox' || node.querySelector?.('#community-action-inbox')));
-          });
-          if (!changed) return;
-          window.clearTimeout(refreshTimer);
-          refreshTimer = window.setTimeout(() => {
-            refresh(true).catch(() => {});
-            refreshLearning().catch(() => {});
-          }, 0);
-        });
-        communityObserver.observe(communityActionSource, { childList: true, subtree: true });
-      }
-
-      if (!workspace.classList.contains('hidden')) refresh();
     })();
   </script>
 </body>

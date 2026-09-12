@@ -1,37 +1,23 @@
-from fastapi.testclient import TestClient
+from pathlib import Path
 
-from app.main import app
-
-client = TestClient(app)
-
-
-def test_customer_workspace_refreshes_overview_metrics_after_community_changes() -> None:
-    response = client.get("/workspace")
-    assert response.status_code == 200
-    html = response.text
-
-    assert "const renderOverviewSnapshot = (data) =>" in html
-    assert "renderOverviewSnapshot(data);" in html
-    assert "balance.acquisition_spend_usd" in html
-    assert "overview.paid_customers" in html
-    assert "overview.cac_usd" in html
-    assert "overview.revenue_usd" in html
-    assert "balance.management_fee_usd" in html
-    assert "overview.running_experiments" in html
-    assert "overview.waiting_experiments" in html
-    assert "current-work" in html
-    assert "work-state" in html
+WORKSPACE_HTML = Path("app/web/workspace.v1.html").read_text(encoding="utf-8")
+WORKSPACE_JS = Path("app/web/workspace.v1.js").read_text(encoding="utf-8")
 
 
-def test_overview_refresh_remains_customer_read_only() -> None:
-    response = client.get("/workspace")
-    assert response.status_code == 200
-    html = response.text
-    overview_block = html.split("const renderOverviewSnapshot = (data) =>", 1)[1]
-    overview_block = overview_block.split("const refreshLearning = async", 1)[0]
+def test_customer_workspace_canonical_renderer_owns_overview_metrics() -> None:
+    block = WORKSPACE_JS.split("const renderWorkspace = (data) =>", 1)[1]
+    block = block.split("const loadWorkspace = async () =>", 1)[0]
 
-    assert "method: 'POST'" not in overview_block
-    assert "method: 'PUT'" not in overview_block
-    assert "method: 'DELETE'" not in overview_block
-    assert "/publish" not in overview_block
-    assert "/observe" not in overview_block
+    assert "balance.acquisition_spend_usd" in block
+    assert "overview.paid_customers" in block
+    assert "overview.cac_usd" in block
+    assert "overview.revenue_usd" in block
+    assert "balance.management_fee_usd" in block
+    assert "$('current-work')" not in block
+    assert "renderActivity(overview);" in block
+    assert "$('work-state').textContent" in block
+
+
+def test_overview_does_not_have_a_second_snapshot_renderer() -> None:
+    assert "const renderOverviewSnapshot = (data) =>" not in WORKSPACE_HTML
+    assert "renderOverviewSnapshot(data);" not in WORKSPACE_HTML

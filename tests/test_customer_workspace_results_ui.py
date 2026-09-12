@@ -60,11 +60,10 @@ def test_customer_workspace_results_do_not_mutate_distribution_execution() -> No
     assert "/release" not in html
 
 
-def test_customer_workspace_results_refresh_after_community_action_changes() -> None:
+def test_customer_workspace_results_refresh_from_canonical_workspace_ready() -> None:
     html = _workspace_html()
 
-    assert "communityActionSource" in html
-    assert "community-action-inbox" in html
-    assert "communityObserver.observe" in html
-    assert "refresh(true)" in html
-    assert "childList: true, subtree: true" in html
+    assert "window.addEventListener('partizan:workspace-ready'" in html
+    assert "refresh(true).catch(() => {})" in html
+    assert "const communityObserver = new MutationObserver" not in html
+    assert "communityObserver.observe" not in html
