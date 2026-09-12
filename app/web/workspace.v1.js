@@ -527,32 +527,10 @@
 
   const refreshWorkspaceWithoutResearch = async () => loadWorkspace();
 
-  const installCommunityWorkspaceRefresh = () => {
-    const communityActionSource = $('experiments')?.parentElement;
-    if (!communityActionSource) return;
-    let communityActionSignature = null;
-    let refreshTimer = null;
-    const observer = new MutationObserver((mutations) => {
-      const changed = mutations.some((mutation) => {
-        const target = mutation.target.nodeType === Node.ELEMENT_NODE
-          ? mutation.target
-          : mutation.target.parentElement;
-        return Boolean(target?.closest?.('#community-action-inbox'));
-      });
-      if (!changed) return;
-      const inbox = $('community-action-inbox');
-      if (!inbox) return;
-      const nextSignature = inbox.innerHTML;
-      if (nextSignature === communityActionSignature) return;
-      communityActionSignature = nextSignature;
-      window.clearTimeout(refreshTimer);
-      refreshTimer = window.setTimeout(() => {
-        refreshWorkspaceWithoutResearch().catch((error) => showNotice(error.message, true));
-      }, 0);
-    });
-    observer.observe(communityActionSource, { childList: true, subtree: true });
-  };
-  installCommunityWorkspaceRefresh();
+  window.addEventListener('partizan:community-action-updated', (event) => {
+    if (event.detail?.projectId && event.detail.projectId !== projectId) return;
+    refreshWorkspaceWithoutResearch().catch((error) => showNotice(error.message, true));
+  });
 
   const surfaceLabels = {
     EXECUTION_PLATFORM: 'Execution platform',
