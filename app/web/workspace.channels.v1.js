@@ -69,6 +69,12 @@
     window.setTimeout(() => notice.classList.add('hidden'), 4400);
   };
 
+  const notifyCommunityActionUpdated = (projectId, actionId, operation) => {
+    window.dispatchEvent(new CustomEvent('partizan:community-action-updated', {
+      detail: { projectId, actionId, operation },
+    }));
+  };
+
   const ensureStyles = () => {
     if ($('community-channel-styles')) return;
     const style = document.createElement('style');
@@ -398,6 +404,7 @@
       closeCommunityActionModal();
       showNotice(receipt?.outcome === 'EXECUTED' ? 'Approved community action published. Observation is now available.' : `Publish returned ${receipt?.outcome || 'a provider result'}.`);
       await refreshCommunityActions();
+      notifyCommunityActionUpdated(projectId, action.action_id, 'publish');
     } catch (error) {
       showNotice(error.message, true);
       button.disabled = false;
@@ -413,6 +420,7 @@
       const observation = await api(`/customer/workspace/${encodeURIComponent(projectId)}/${action.platform.toLowerCase()}/actions/${encodeURIComponent(action.action_id)}/observe`, { method: 'POST' });
       showNotice(`Observation checked: ${observation?.status || observation?.outcome || 'recorded'}.`);
       await refreshCommunityActions();
+      notifyCommunityActionUpdated(projectId, action.action_id, 'observe');
     } catch (error) {
       showNotice(error.message, true);
       button.disabled = false;
