@@ -248,8 +248,12 @@
       if (!workspace || !economicsNode || !managedNode || !stateNode) return;
 
       let loading = false;
+      let queuedForceRefresh = false;
       let loadedProjectId = null;
       const currentProjectId = () => new URLSearchParams(window.location.search).get('project');
+      const redditConnectedOnLoad = new URLSearchParams(window.location.search).get('reddit') === 'connected';
+      const redditProjectIdOnLoad = currentProjectId();
+      const nativeFetch = window.fetch.bind(window);
       const money = (value) => `$${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
       const ratio = (value) => value == null ? '—' : `${Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 })}×`;
       const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => (
@@ -258,6 +262,59 @@
       const statusLabel = (status) => ({ RESERVED: 'Reserved', FULFILLED: 'Fulfilled', RELEASED: 'Released', CANCELLED: 'Cancelled' }[status] || status || 'Unknown');
       const ownershipLabel = (ownership) => ({ PARTIZAN_MANAGED: 'Partizan managed', PARTNER_MANAGED: 'Partner managed' }[ownership] || ownership || 'Managed');
       const dateLabel = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : null;
+
+      const notifyWorkspaceStateUpdated = (projectId, operation) => {
+        if (!projectId) return;
+        const detail = { projectId, operation };
+        window.dispatchEvent(new CustomEvent('partizan:workspace-state-updated', { detail }));
+        window.dispatchEvent(new CustomEvent('partizan:community-action-updated', { detail }));
+      };
+
+      const persistentMutation = (input, options) => {
+        const request = input instanceof Request ? input : null;
+        const method = String(options?.method || request?.method || 'GET').toUpperCase();
+        let url;
+        try {
+          url = new URL(request?.url || String(input), window.location.origin);
+        } catch (_) {
+          return null;
+        }
+        if (url.origin !== window.location.origin) return null;
+        const match = url.pathname.match(/^\/customer\/workspace\/([^/]+)\/(.+)$/);
+        if (!match) return null;
+        const projectId = decodeURIComponent(match[1]);
+        const tail = match[2];
+        if (method === 'PUT' && tail === 'channels') return { projectId, operation: 'channel-settings' };
+        if (method === 'DELETE' && ['telegram/connection', 'reddit/connection'].includes(tail)) {
+          return { projectId, operation: `${tail.split('/')[0]}-disconnect` };
+        }
+        if (method === 'POST' && tail === 'telegram/connection/confirm') {
+          return { projectId, operation: 'telegram-connect', requiresActiveConnection: true };
+        }
+        return null;
+      };
+
+      window.fetch = async (input, options = {}) => {
+        const mutation = persistentMutation(input, options);
+        const response = await nativeFetch(input, options);
+        if (!mutation || !response.ok) return response;
+        if (!mutation.requiresActiveConnection) {
+          notifyWorkspaceStateUpdated(mutation.projectId, mutation.operation);
+          return response;
+        }
+        response.clone().json().then((payload) => {
+          if (payload?.status === 'ACTIVE') {
+            notifyWorkspaceStateUpdated(mutation.projectId, mutation.operation);
+          }
+        }).catch(() => {});
+        return response;
+      };
+
+      if (redditConnectedOnLoad && redditProjectIdOnLoad) {
+        window.addEventListener('DOMContentLoaded', () => {
+          notifyWorkspaceStateUpdated(redditProjectIdOnLoad, 'reddit-connect');
+        }, { once: true });
+      }
 
       const getJson = async (path) => {
         const response = await fetch(path, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
@@ -315,20 +372,31 @@
 
       const refresh = async (force = false) => {
         const projectId = currentProjectId();
-        if (!projectId || loading || (!force && loadedProjectId === projectId)) return;
+        if (!projectId || (!force && loadedProjectId === projectId)) return;
+        if (loading) {
+          if (force) queuedForceRefresh = true;
+          return;
+        }
         loading = true;
         stateNode.textContent = 'Loading';
-        const [economics, managed] = await Promise.allSettled([
-          getJson(`/customer/workspace/${projectId}/distribution-economics`),
-          getJson(`/customer/workspace/${projectId}/managed-distribution/assignments`),
-        ]);
-        if (economics.status === 'fulfilled') renderEconomics(economics.value);
-        else renderFailure(economicsNode, economics.reason.message);
-        if (managed.status === 'fulfilled') renderManaged(managed.value);
-        else renderFailure(managedNode, managed.reason.message);
-        loadedProjectId = projectId;
-        loading = false;
-        stateNode.textContent = economics.status === 'fulfilled' && managed.status === 'fulfilled' ? 'Observed' : 'Partial';
+        try {
+          const [economics, managed] = await Promise.allSettled([
+            getJson(`/customer/workspace/${projectId}/distribution-economics`),
+            getJson(`/customer/workspace/${projectId}/managed-distribution/assignments`),
+          ]);
+          if (economics.status === 'fulfilled') renderEconomics(economics.value);
+          else renderFailure(economicsNode, economics.reason.message);
+          if (managed.status === 'fulfilled') renderManaged(managed.value);
+          else renderFailure(managedNode, managed.reason.message);
+          loadedProjectId = projectId;
+          stateNode.textContent = economics.status === 'fulfilled' && managed.status === 'fulfilled' ? 'Observed' : 'Partial';
+        } finally {
+          loading = false;
+          if (queuedForceRefresh) {
+            queuedForceRefresh = false;
+            window.queueMicrotask(() => refresh(true).catch(() => {}));
+          }
+        }
       };
 
       document.querySelector('.tab-button[data-tab="activity"]')?.addEventListener('click', () => refresh(true));
