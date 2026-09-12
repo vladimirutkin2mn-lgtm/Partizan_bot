@@ -5,7 +5,7 @@ import app.customer_channel_routes as customer_channel_routes_module
 from app.customer_account import customer_account_service
 from app.customer_channels import customer_channel_service
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE, customer_funnel_service
-from app.customer_schemas import CustomerPreviewRequest
+from app.customer_schemas import CustomerPreviewRequest, CustomerPreviewResponse
 from app.growth_balance import growth_balance_service
 from app.main import app
 from app.runtime_store import get_runtime_store
@@ -24,7 +24,7 @@ def reset_customer_channel_selection_state():
         customer_channel_service._settings.meta_oauth_public_ready = previous_meta_public_ready
 
 
-def _registered_client() -> tuple[TestClient, object]:
+def _registered_client() -> tuple[TestClient, CustomerPreviewResponse]:
     client = TestClient(app)
     preview = customer_funnel_service.create_preview(
         CustomerPreviewRequest(
@@ -48,16 +48,14 @@ def _registered_client() -> tuple[TestClient, object]:
     return client, preview
 
 
-def _stored_project(preview: object) -> dict:
-    project_id = getattr(preview, "project_id")
-    project = get_runtime_store().get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
+def _stored_project(preview: CustomerPreviewResponse) -> dict:
+    project = get_runtime_store().get(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id))
     assert project is not None
     return project
 
 
-def _save_project(preview: object, project: dict) -> None:
-    project_id = getattr(preview, "project_id")
-    get_runtime_store().put(CUSTOMER_PROJECT_NAMESPACE, str(project_id), project)
+def _save_project(preview: CustomerPreviewResponse, project: dict) -> None:
+    get_runtime_store().put(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id), project)
 
 
 def _reddit_preview_opportunity(*, url: str = "https://www.reddit.com/r/freelance/") -> dict:
