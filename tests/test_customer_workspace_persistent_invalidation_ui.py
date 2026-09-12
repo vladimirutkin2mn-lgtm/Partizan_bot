@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 WORKSPACE_HTML = Path("app/web/workspace.v1.html").read_text(encoding="utf-8")
 WORKSPACE_JS = Path("app/web/workspace.v1.js").read_text(encoding="utf-8")
 
