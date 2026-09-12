@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 LEARNING_JS = Path("app/web/workspace.learning.v1.js").read_text(encoding="utf-8")
 WEB_ROUTES = Path("app/web_routes.py").read_text(encoding="utf-8")
 
