@@ -45,7 +45,7 @@ def test_customer_distribution_learning_is_project_scoped_and_safe(monkeypatch) 
                     opportunity_id=opportunity_id,
                     distribution_identity_id=uuid4(),
                     publisher_mode=PublisherMode.CLIENT_OWNED,
-                    action_type=DistributionActionType.COMMENT_REPLY,
+                    action_type=DistributionActionType.REPLY,
                     action="STOP",
                     observed_cac=24.5,
                     paid_users=2,
@@ -78,7 +78,7 @@ def test_customer_distribution_learning_is_project_scoped_and_safe(monkeypatch) 
     assert entry["platform"] == "REDDIT"
     assert entry["opportunity_title"] == "r/startups discussion"
     assert entry["publisher_mode"] == "CLIENT_OWNED"
-    assert entry["action_type"] == "COMMENT_REPLY"
+    assert entry["action_type"] == "REPLY"
     assert entry["decision"] == "STOP"
     assert entry["replies"] == 3
     assert entry["removals"] == 1
