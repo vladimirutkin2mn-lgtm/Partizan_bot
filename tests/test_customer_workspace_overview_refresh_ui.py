@@ -27,7 +27,8 @@ def test_overview_refresh_remains_customer_read_only() -> None:
     response = client.get("/workspace")
     assert response.status_code == 200
     html = response.text
-    overview_block = html.split("const renderOverviewSnapshot = (data) =>", 1)[1].split("const refreshLearning = async", 1)[0]
+    overview_block = html.split("const renderOverviewSnapshot = (data) =>", 1)[1]
+    overview_block = overview_block.split("const refreshLearning = async", 1)[0]
 
     assert "method: 'POST'" not in overview_block
     assert "method: 'PUT'" not in overview_block
