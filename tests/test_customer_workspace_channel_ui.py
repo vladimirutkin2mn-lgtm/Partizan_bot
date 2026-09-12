@@ -20,25 +20,53 @@ def _channel_javascript() -> str:
     return response.text
 
 
-def test_overview_channels_use_simple_toggles_and_real_meta_connection_state() -> None:
+def test_channels_render_backend_publisher_modes_and_capabilities() -> None:
+    javascript = _channel_javascript()
+
+    assert "channel.publisher_modes" in javascript
+    assert "channel.capabilities" in javascript
+    assert "channel.publisher_mode" in javascript
+    assert "MANUAL" in javascript
+    assert "CLIENT_OWNED" in javascript
+    assert "PARTIZAN_MANAGED" in javascript
+    assert "I'll do it myself" in javascript
+    assert "Use my account" in javascript
+    assert "Let Partizan handle it" in javascript
+    assert "item.available ? '' : ' disabled'" in javascript
+    assert 'class="channel-publisher-select"' in javascript
+    assert "updateChannel(platform, { publisher_mode })" in javascript
+
+
+def test_channels_expose_customer_owned_telegram_and_reddit_connections() -> None:
+    javascript = _channel_javascript()
+
+    assert "/telegram/connection/start" in javascript
+    assert "/telegram/connection/confirm" in javascript
+    assert "challenge_id: telegramChallenge.challenge_id" in javascript
+    assert "PASSWORD_REQUIRED" in javascript
+    assert "/reddit/connect" in javascript
+    assert "payload.authorization_url" in javascript
+    assert "data-disconnect-channel" in javascript
+    assert "Publishing still requires an approved action" in javascript
+
+
+def test_community_activation_routes_to_execution_choice_without_publishing() -> None:
+    javascript = _channel_javascript()
+
+    assert "platformFromOpportunity" in javascript
+    assert "opportunity.surface !== 'COMMUNITY'" in javascript
+    assert "hostname === 't.me'" in javascript
+    assert "hostname === 'reddit.com'" in javascript
+    assert "Choose how to execute this" in javascript
+    assert "focusChannel(platform)" in javascript
+    assert "/actions/" not in javascript
+    assert "/publish" not in javascript
+
+
+def test_channel_enablement_is_separate_from_execution_mode() -> None:
     javascript = _channel_javascript()
 
     assert "channel.mode !== 'OFF'" in javascript
-    assert "channel.execution_ready ? 'AUTO' : 'RESEARCH_ONLY'" in javascript
-    assert "Paid execution ready" in javascript
-    assert "Paid execution supported" not in javascript
-    assert "channel.execution_blocker" in javascript
-    assert "channel.platform === 'INSTAGRAM' && !channel.connected" in javascript
-    assert 'data-channel-connect="INSTAGRAM"' in javascript
-    assert 'class="channel-toggle"' in javascript
+    assert "channel.publisher_mode !== 'MANUAL' && canPublish(channel)" in javascript
     assert "mode = toggle.checked ? toggle.dataset.onMode : 'OFF'" in javascript
-
-
-def test_manage_channel_view_is_detailed_and_read_only() -> None:
-    javascript = _channel_javascript()
-
-    assert "Channel details" in javascript
-    assert "Compare connection status, spend and results by channel" in javascript
-    assert "Channel details are read-only here" in javascript
-    assert "channel-detail-status" in javascript
-    assert "channel-mode-select" not in javascript
+    assert "Connecting an account grants access only" in javascript
