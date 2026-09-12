@@ -23,7 +23,6 @@ from app.customer_funnel import (
     customer_funnel_service,
 )
 from app.distribution_analytics_service import distribution_analytics_service
-from app.distribution_execution_service import distribution_execution_service
 from app.telegram_client_governance import (
     TelegramAutomationAuthorizationRequest,
     TelegramAutomationView,
@@ -87,30 +86,7 @@ def _project_token(session_token: str | None, project_id: UUID) -> str:
         raise HTTPException(status_code=403, detail="This project does not belong to this account") from exc
 
 
-@router.get(
-    "/customer/workspace/{project_id}/channels",
-    response_model=list[CustomerChannelView],
-)
-def get_customer_channel_controls(
-    project_id: UUID,
-    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
-) -> list[CustomerChannelView]:
-    customer_token = _project_token(session_token, project_id)
-    try:
-        return customer_channel_service.list(project_id, customer_token)
-    except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
-@router.get(
-    "/customer/workspace/{project_id}/community-actions",
-    response_model=list[CustomerCommunityActionView],
-)
-def get_customer_community_actions(
-    project_id: UUID,
-    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
-) -> list[CustomerCommunityActionView]:
-    customer_token = _project_token(session_token, project_id)
+def _community_actions(project_id: UUID, customer_token: str) -> list[CustomerCommunityActionView]:
     try:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
     except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
@@ -145,6 +121,33 @@ def get_customer_community_actions(
             )
         )
     return result
+
+
+@router.get(
+    "/customer/workspace/{project_id}/channels",
+    response_model=list[CustomerChannelView],
+)
+def get_customer_channel_controls(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> list[CustomerChannelView]:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return customer_channel_service.list(project_id, customer_token)
+    except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/community-actions",
+    response_model=list[CustomerCommunityActionView],
+)
+def get_customer_community_actions(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> list[CustomerCommunityActionView]:
+    customer_token = _project_token(session_token, project_id)
+    return _community_actions(project_id, customer_token)
 
 
 @router.put(
@@ -328,12 +331,16 @@ async def publish_customer_telegram_action(
     customer_token = _project_token(session_token, project_id)
     if not payload.confirm_publish:
         raise HTTPException(status_code=409, detail="Explicit publish confirmation is required")
-    action = distribution_execution_service.get_action(action_id)
+    reviewed = next(
+        (item for item in _community_actions(project_id, customer_token) if item.action_id == action_id),
+        None,
+    )
     if (
-        payload.expected_target_url is None
+        reviewed is None
+        or payload.expected_target_url is None
         or payload.expected_content_text is None
-        or payload.expected_target_url != str(action.target_url or "")
-        or payload.expected_content_text != str(action.content_text or "")
+        or payload.expected_target_url != str(reviewed.target_url or "")
+        or payload.expected_content_text != str(reviewed.content_text or "")
     ):
         raise HTTPException(
             status_code=409,
