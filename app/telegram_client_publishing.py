@@ -4,20 +4,13 @@ import asyncio
 import hashlib
 import json
 import re
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Protocol
-from urllib.parse import urlsplit
+from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, HttpUrl, SecretStr, field_validator
-from telethon import TelegramClient
-from telethon.errors import SessionPasswordNeededError
-from telethon.sessions import StringSession
-from telethon.tl import types as telegram_types
 
-from app.channel_execution import PublisherMode
 from app.config import Settings, get_settings
 from app.customer_funnel import customer_funnel_service
 from app.distribution_execution_schemas import DistributionActionExecutionRequest
@@ -26,14 +19,34 @@ from app.distribution_types import (
     DistributionActionStatus,
     DistributionActionType,
     DistributionPlatform,
+    PublisherMode,
 )
-from app.provider_secret_store import (
-    TELEGRAM_LOGIN_SECRET_PREFIX,
-    TELEGRAM_SESSION_SECRET_PREFIX,
-    ProviderSecretStore,
-    provider_secret_store,
-)
+from app.provider_secret_store import ProviderSecretStore, provider_secret_store
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+
+try:
+    from telethon import TelegramClient
+    from telethon.errors import (
+        ChannelPrivateError,
+        ChatAdminRequiredError,
+        ChatWriteForbiddenError,
+        FloodWaitError,
+        PhoneCodeExpiredError,
+        PhoneCodeInvalidError,
+        SessionPasswordNeededError,
+        SlowModeWaitError,
+        UserBannedInChannelError,
+    )
+    from telethon.sessions import StringSession
+    from telethon.tl.types import Channel
+except ImportError:  # pragma: no cover - readiness blocks the unavailable provider.
+    TelegramClient = None
+    StringSession = None
+    Channel = None
+    ChannelPrivateError = ChatAdminRequiredError = ChatWriteForbiddenError = Exception
+    FloodWaitError = PhoneCodeExpiredError = PhoneCodeInvalidError = Exception
+    SessionPasswordNeededError = SlowModeWaitError = UserBannedInChannelError = Exception
+
 
 CUSTOMER_TELEGRAM_LOGIN_NAMESPACE = "customer_telegram_login"
 CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE = "customer_telegram_connection"
@@ -121,6 +134,8 @@ class TelegramLoginConfirmRequest(BaseModel):
 
 class TelegramPublishRequest(BaseModel):
     retry: bool = False
+    expected_target_url: str | None = None
+    expected_content_text: str | None = None
 
 
 class TelegramLoginChallengeView(BaseModel):
@@ -163,8 +178,13 @@ class TelegramLoginStartResult(BaseModel):
 
 class TelegramLoginCompleteResult(BaseModel):
     session: str
-    password_required: bool = False
     identity: TelegramClientIdentity | None = None
+    password_required: bool = False
+
+
+class TelegramClientTarget(BaseModel):
+    username: str
+    reply_to_message_id: int | None = None
 
 
 class TelegramPublishResult(BaseModel):
@@ -174,14 +194,9 @@ class TelegramPublishResult(BaseModel):
     executed_url: HttpUrl
 
 
-@dataclass(frozen=True)
-class TelegramPublishTarget:
-    username: str
-    reply_to_message_id: int | None
-
-
-class TelegramClientPublishTransport(Protocol):
-    async def begin_login(self, phone_number: str) -> TelegramLoginStartResult: ...
+class TelegramClientTransport:
+    async def begin_login(self, phone_number: str) -> TelegramLoginStartResult:
+        raise NotImplementedError
 
     async def complete_login(
         self,
@@ -191,23 +206,36 @@ class TelegramClientPublishTransport(Protocol):
         phone_code_hash: str,
         code: str,
         password: str | None,
-    ) -> TelegramLoginCompleteResult: ...
+    ) -> TelegramLoginCompleteResult:
+        raise NotImplementedError
 
     async def publish(
         self,
         *,
         session: str,
-        target: TelegramPublishTarget,
+        target: TelegramClientTarget,
         action_type: DistributionActionType,
         text: str,
-    ) -> TelegramPublishResult: ...
+    ) -> TelegramPublishResult:
+        raise NotImplementedError
 
 
-class TelethonClientPublishTransport:
-    """Telethon user-session transport with no join, invite, participant or DM operations."""
-
+class TelethonTelegramClientTransport(TelegramClientTransport):
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
+
+    def _client(self, session: str | None = None):
+        if TelegramClient is None or StringSession is None:
+            raise TelegramClientPublishTransportError("TELETHON_NOT_INSTALLED")
+        api_hash = self._settings.telegram_client_publish_api_hash
+        api_id = self._settings.telegram_client_publish_api_id
+        if api_hash is None or api_id is None:
+            raise TelegramClientPublishTransportError("TELEGRAM_APP_CREDENTIALS_MISSING")
+        return TelegramClient(
+            StringSession(session or ""),
+            api_id,
+            api_hash.get_secret_value(),
+        )
 
     async def begin_login(self, phone_number: str) -> TelegramLoginStartResult:
         client = self._client()
@@ -216,10 +244,10 @@ class TelethonClientPublishTransport:
             sent = await client.send_code_request(phone_number)
             return TelegramLoginStartResult(
                 session=client.session.save(),
-                phone_code_hash=str(sent.phone_code_hash),
+                phone_code_hash=sent.phone_code_hash,
             )
-        except Exception as exc:
-            raise self._safe_error(exc, "LOGIN_START_FAILED") from None
+        except FloodWaitError as exc:
+            raise TelegramClientPublishTransportError("FLOOD_WAIT") from exc
         finally:
             await client.disconnect()
 
@@ -250,23 +278,28 @@ class TelethonClientPublishTransport:
                         )
                     await client.sign_in(password=password)
             me = await client.get_me()
-            if me is None or not getattr(me, "id", None):
-                raise TelegramClientPublishTransportError("IDENTITY_NOT_AVAILABLE")
-            first_name = str(getattr(me, "first_name", "") or "").strip()
-            last_name = str(getattr(me, "last_name", "") or "").strip()
-            display_name = " ".join(part for part in (first_name, last_name) if part) or None
             return TelegramLoginCompleteResult(
                 session=client.session.save(),
                 identity=TelegramClientIdentity(
                     user_id=int(me.id),
-                    username=(str(me.username) if getattr(me, "username", None) else None),
-                    display_name=display_name,
+                    username=getattr(me, "username", None),
+                    display_name=" ".join(
+                        item
+                        for item in [
+                            getattr(me, "first_name", None),
+                            getattr(me, "last_name", None),
+                        ]
+                        if item
+                    )
+                    or None,
                 ),
             )
-        except TelegramClientPublishTransportError:
-            raise
-        except Exception as exc:
-            raise self._safe_error(exc, "LOGIN_CONFIRM_FAILED") from None
+        except PhoneCodeInvalidError as exc:
+            raise TelegramClientPublishTransportError("PHONE_CODE_INVALID") from exc
+        except PhoneCodeExpiredError as exc:
+            raise TelegramClientPublishTransportError("PHONE_CODE_EXPIRED") from exc
+        except FloodWaitError as exc:
+            raise TelegramClientPublishTransportError("FLOOD_WAIT") from exc
         finally:
             await client.disconnect()
 
@@ -274,7 +307,7 @@ class TelethonClientPublishTransport:
         self,
         *,
         session: str,
-        target: TelegramPublishTarget,
+        target: TelegramClientTarget,
         action_type: DistributionActionType,
         text: str,
     ) -> TelegramPublishResult:
@@ -282,56 +315,56 @@ class TelethonClientPublishTransport:
         try:
             await client.connect()
             if not await client.is_user_authorized():
-                raise TelegramClientPublishTransportError("SESSION_NOT_AUTHORIZED")
-            entity = await client.get_entity(f"@{target.username}")
-            if not isinstance(entity, telegram_types.Channel):
-                raise TelegramClientPublishTransportError("COMMUNITY_TARGET_REQUIRED")
+                raise TelegramClientPublishTransportError("SESSION_UNAUTHORISED")
+            entity = await client.get_entity(target.username)
+            if Channel is None or not isinstance(entity, Channel):
+                raise TelegramClientPublishTransportError("TARGET_NOT_CHANNEL")
             message = await client.send_message(
                 entity,
                 text,
                 reply_to=target.reply_to_message_id,
             )
-            published_at = message.date
-            if published_at.tzinfo is None:
-                published_at = published_at.replace(tzinfo=UTC)
+            peer_id = int(getattr(entity, "id", 0))
+            message_id = int(getattr(message, "id", 0))
+            if not peer_id or not message_id:
+                raise TelegramClientPublishTransportError("MISSING_REMOTE_RECEIPT")
             return TelegramPublishResult(
-                peer_id=int(entity.id),
-                message_id=int(message.id),
-                published_at=published_at,
-                executed_url=f"https://t.me/{target.username}/{message.id}",
+                peer_id=peer_id,
+                message_id=message_id,
+                published_at=datetime.now(UTC),
+                executed_url=f"https://t.me/{target.username}/{message_id}",
             )
         except TelegramClientPublishTransportError:
             raise
+        except (ChatWriteForbiddenError, UserBannedInChannelError) as exc:
+            raise TelegramClientPublishTransportError(
+                "WRITE_FORBIDDEN",
+                restriction_signal="WRITE_RESTRICTED",
+            ) from exc
+        except ChatAdminRequiredError as exc:
+            raise TelegramClientPublishTransportError(
+                "ADMIN_REQUIRED",
+                restriction_signal="ADMIN_REQUIRED",
+            ) from exc
+        except ChannelPrivateError as exc:
+            raise TelegramClientPublishTransportError(
+                "CHANNEL_PRIVATE",
+                restriction_signal="CHANNEL_PRIVATE",
+            ) from exc
+        except SlowModeWaitError as exc:
+            raise TelegramClientPublishTransportError(
+                "SLOW_MODE",
+                restriction_signal="SLOW_MODE",
+            ) from exc
+        except FloodWaitError as exc:
+            raise TelegramClientPublishTransportError(
+                "FLOOD_WAIT",
+                restriction_signal="RATE_LIMITED",
+            ) from exc
         except Exception as exc:
-            raise self._safe_error(exc, "PUBLISH_FAILED") from None
+            raise TelegramClientPublishTransportError(type(exc).__name__.upper()) from exc
         finally:
             await client.disconnect()
-
-    def _client(self, session: str = "") -> TelegramClient:
-        api_id = self._settings.telegram_client_publish_api_id
-        api_hash = self._settings.telegram_client_publish_api_hash
-        if api_id is None or api_hash is None:
-            raise TelegramClientPublishTransportError("CLIENT_PUBLISH_API_NOT_CONFIGURED")
-        return TelegramClient(
-            StringSession(session),
-            api_id,
-            api_hash.get_secret_value(),
-        )
-
-    def _safe_error(self, exc: Exception, fallback: str) -> TelegramClientPublishTransportError:
-        name = type(exc).__name__
-        mapping = {
-            "ChatWriteForbiddenError": ("WRITE_FORBIDDEN", "WRITE_RESTRICTED"),
-            "UserBannedInChannelError": ("ACCOUNT_BANNED_IN_COMMUNITY", "ACCOUNT_RESTRICTED"),
-            "SlowModeWaitError": ("SLOW_MODE", "SLOW_MODE"),
-            "FloodWaitError": ("RATE_LIMITED", None),
-            "ChannelPrivateError": ("COMMUNITY_NOT_ACCESSIBLE", "COMMUNITY_RESTRICTED"),
-            "PhoneCodeInvalidError": ("LOGIN_CODE_INVALID", None),
-            "PhoneCodeExpiredError": ("LOGIN_CODE_EXPIRED", None),
-            "PasswordHashInvalidError": ("TWO_FACTOR_PASSWORD_INVALID", None),
-        }
-        code, restriction = mapping.get(name, (fallback, None))
-        return TelegramClientPublishTransportError(code, restriction_signal=restriction)
 
 
 class CustomerTelegramClientPublishService:
@@ -341,12 +374,12 @@ class CustomerTelegramClientPublishService:
         store: RuntimeStateStore | None = None,
         settings: Settings | None = None,
         secret_store: ProviderSecretStore | None = None,
-        transport: TelegramClientPublishTransport | None = None,
+        transport: TelegramClientTransport | None = None,
     ) -> None:
         self._store = store or get_runtime_store()
         self._settings = settings or get_settings()
         self._secret_store = secret_store or provider_secret_store
-        self._transport = transport or TelethonClientPublishTransport(self._settings)
+        self._transport = transport or TelethonTelegramClientTransport(self._settings)
         self._publish_lock = asyncio.Lock()
 
     def readiness_blocker(self) -> str | None:
@@ -358,7 +391,7 @@ class CustomerTelegramClientPublishService:
             self._settings.telegram_client_publish_api_id is None
             or self._settings.telegram_client_publish_api_hash is None
         ):
-            return "Telegram client-owned publishing API credentials are not configured"
+            return "Telegram client publishing app credentials are not configured"
         if self._settings.provider_secret_encryption_key is None:
             return "Encrypted provider secret storage is not configured"
         return None
@@ -372,11 +405,7 @@ class CustomerTelegramClientPublishService:
         customer_funnel_service.get_project_payload(project_id, customer_token)
         self._require_ready()
         result = await self._transport.begin_login(payload.phone_number)
-        now = datetime.now(UTC)
-        challenge_id = uuid4()
-        secret_reference = self._secret_store.create_reference(
-            prefix=TELEGRAM_LOGIN_SECRET_PREFIX
-        )
+        secret_reference = self._secret_store.create_reference(prefix="telegram-login")
         self._secret_store.put(
             secret_reference,
             json.dumps(
@@ -387,6 +416,8 @@ class CustomerTelegramClientPublishService:
                 }
             ),
         )
+        challenge_id = uuid4()
+        now = datetime.now(UTC)
         record = {
             "challenge_id": str(challenge_id),
             "project_id": str(project_id),
@@ -532,6 +563,16 @@ class CustomerTelegramClientPublishService:
         if str(project.get("product_id") or "") != str(experiment.product_id):
             raise CustomerTelegramClientPublishError(
                 "Telegram action does not belong to this customer project"
+            )
+        if (
+            payload.expected_target_url is not None
+            and payload.expected_target_url != str(action.target_url or "")
+        ) or (
+            payload.expected_content_text is not None
+            and payload.expected_content_text != str(action.content_text or "")
+        ):
+            raise CustomerTelegramClientPublishError(
+                "Reviewed Telegram action changed; refresh and review it again"
             )
 
         existing = self.get_receipt(action_id)
@@ -681,119 +722,123 @@ class CustomerTelegramClientPublishService:
 
     def _login_record(self, project_id: UUID, challenge_id: UUID) -> dict:
         record = self._store.get(CUSTOMER_TELEGRAM_LOGIN_NAMESPACE, str(challenge_id))
-        if record is None or str(record.get("project_id")) != str(project_id):
+        if record is None or str(record.get("project_id") or "") != str(project_id):
             raise CustomerTelegramClientPublishError("Telegram login challenge is invalid")
         return record
 
     def _delete_login(self, record: dict) -> None:
-        reference = str(record.get("secret_reference") or "")
-        if reference:
-            self._secret_store.delete(reference)
         challenge_id = str(record.get("challenge_id") or "")
+        secret_reference = str(record.get("secret_reference") or "")
         if challenge_id:
             self._store.delete(CUSTOMER_TELEGRAM_LOGIN_NAMESPACE, challenge_id)
+        if secret_reference:
+            self._secret_store.delete(secret_reference)
 
     def _connection_view(self, record: dict) -> TelegramConnectionView:
         return TelegramConnectionView(
-            status=TelegramConnectionStatus(str(record["status"])),
-            telegram_user_id=int(record["telegram_user_id"]),
+            status=TelegramConnectionStatus(str(record.get("status") or "DISCONNECTED")),
+            telegram_user_id=(
+                int(record["telegram_user_id"])
+                if record.get("telegram_user_id") is not None
+                else None
+            ),
             username=(str(record["username"]) if record.get("username") else None),
-            display_name=(str(record["display_name"]) if record.get("display_name") else None),
-            connected_at=datetime.fromisoformat(str(record["connected_at"])),
-            last_verified_at=datetime.fromisoformat(str(record["last_verified_at"])),
+            display_name=(
+                str(record["display_name"])
+                if record.get("display_name")
+                else None
+            ),
+            connected_at=(
+                datetime.fromisoformat(str(record["connected_at"]))
+                if record.get("connected_at")
+                else None
+            ),
+            last_verified_at=(
+                datetime.fromisoformat(str(record["last_verified_at"]))
+                if record.get("last_verified_at")
+                else None
+            ),
         )
 
     def _parse_target(
         self,
         action_type: DistributionActionType,
-        raw_url: str,
-    ) -> TelegramPublishTarget:
-        parts = urlsplit(raw_url)
-        if parts.scheme != "https" or parts.netloc.lower() not in {"t.me", "www.t.me"}:
+        target_url: str,
+    ) -> TelegramClientTarget:
+        parsed = urlparse(target_url)
+        if parsed.scheme != "https" or parsed.netloc.lower() not in {"t.me", "telegram.me"}:
             raise CustomerTelegramClientPublishError(
-                "Telegram client publishing accepts only public https://t.me targets"
+                "Telegram client publishing requires a canonical public t.me target"
             )
-        path = [part for part in parts.path.split("/") if part]
-        if not path or path[0].startswith("+") or path[0].lower() == "joinchat":
-            raise CustomerTelegramClientPublishError("Private Telegram invite targets are not supported")
-        username = path[0]
-        if not _USERNAME_PATTERN.fullmatch(username):
-            raise CustomerTelegramClientPublishError("Telegram public target username is invalid")
-        if action_type == DistributionActionType.STANDALONE_POST:
-            if len(path) != 1:
+        path = [part for part in parsed.path.split("/") if part]
+        if not path or not _USERNAME_PATTERN.fullmatch(path[0]):
+            raise CustomerTelegramClientPublishError("Telegram target username is invalid")
+        reply_to_message_id: int | None = None
+        if action_type in {DistributionActionType.COMMENT, DistributionActionType.REPLY}:
+            if len(path) < 2 or not path[1].isdigit():
                 raise CustomerTelegramClientPublishError(
-                    "Telegram standalone posts require a community URL, not a message URL"
+                    "Telegram reply/comment requires an exact message URL"
                 )
-            return TelegramPublishTarget(username=username, reply_to_message_id=None)
-        if len(path) != 2 or not path[1].isdigit() or int(path[1]) <= 0:
-            raise CustomerTelegramClientPublishError(
-                "Telegram comments/replies require a concrete public message URL"
-            )
-        return TelegramPublishTarget(username=username, reply_to_message_id=int(path[1]))
+            reply_to_message_id = int(path[1])
+        return TelegramClientTarget(
+            username=path[0],
+            reply_to_message_id=reply_to_message_id,
+        )
 
-    def _fingerprint(self, target: TelegramPublishTarget, text: str) -> str:
-        normalized = " ".join(text.casefold().split())
-        material = f"{target.username.casefold()}:{target.reply_to_message_id}:{normalized}"
-        return hashlib.sha256(material.encode("utf-8")).hexdigest()
+    @staticmethod
+    def _fingerprint(target: TelegramClientTarget, text: str) -> str:
+        payload = f"{target.username}\n{target.reply_to_message_id or ''}\n{text}".encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
 
     def _enforce_publish_guard(self, project_id: UUID, fingerprint: str) -> None:
         now = datetime.now(UTC)
-        record = self._store.get(CUSTOMER_TELEGRAM_PUBLISH_GUARD_NAMESPACE, str(project_id)) or {}
-        history = [
-            item
-            for item in record.get("history", [])
-            if self._history_time(item) >= now - _DAILY_WINDOW
-        ]
+        records = []
+        for record in self._store.list_namespace(CUSTOMER_TELEGRAM_PUBLISH_GUARD_NAMESPACE):
+            if str(record.get("project_id") or "") != str(project_id):
+                continue
+            try:
+                created_at = self._as_utc(datetime.fromisoformat(str(record["created_at"])))
+            except (KeyError, ValueError):
+                continue
+            records.append((record, created_at))
         if any(
-            item.get("fingerprint") == fingerprint
-            and self._history_time(item) >= now - _DUPLICATE_WINDOW
-            for item in history
+            str(record.get("fingerprint") or "") == fingerprint
+            and created_at >= now - _DUPLICATE_WINDOW
+            for record, created_at in records
         ):
             raise CustomerTelegramClientPublishError(
                 "Duplicate Telegram content to the same target is blocked for 24 hours"
             )
-        if history and max(self._history_time(item) for item in history) > now - _MIN_PUBLISH_INTERVAL:
+        recent = [created_at for _, created_at in records if created_at >= now - _DAILY_WINDOW]
+        if len(recent) >= _MAX_PUBLISHES_PER_DAY:
+            raise CustomerTelegramClientPublishError("Telegram daily publish limit reached")
+        if recent and max(recent) > now - _MIN_PUBLISH_INTERVAL:
             raise CustomerTelegramClientPublishError(
-                "Telegram client-owned publishing is limited to one confirmed publish per minute"
-            )
-        if len(history) >= _MAX_PUBLISHES_PER_DAY:
-            raise CustomerTelegramClientPublishError(
-                f"Telegram client-owned publishing is limited to {_MAX_PUBLISHES_PER_DAY} publishes per day"
+                "Telegram client publishing allows at most one confirmed publish per minute"
             )
 
     def _record_publish(self, project_id: UUID, fingerprint: str) -> None:
         now = datetime.now(UTC)
-        record = self._store.get(CUSTOMER_TELEGRAM_PUBLISH_GUARD_NAMESPACE, str(project_id)) or {}
-        history = [
-            item
-            for item in record.get("history", [])
-            if self._history_time(item) >= now - _DAILY_WINDOW
-        ]
-        history.append({"fingerprint": fingerprint, "published_at": now.isoformat()})
+        key = str(uuid4())
         self._store.put(
             CUSTOMER_TELEGRAM_PUBLISH_GUARD_NAMESPACE,
-            str(project_id),
-            {"project_id": str(project_id), "history": history[-_MAX_PUBLISHES_PER_DAY:]},
+            key,
+            {
+                "project_id": str(project_id),
+                "fingerprint": fingerprint,
+                "created_at": now.isoformat(),
+            },
         )
 
-    def _history_time(self, item: dict) -> datetime:
-        try:
-            return self._as_utc(datetime.fromisoformat(str(item["published_at"])))
-        except (KeyError, TypeError, ValueError):
-            return datetime.min.replace(tzinfo=UTC)
+    @staticmethod
+    def _mask_phone(value: str) -> str:
+        return f"{value[:3]}••••{value[-2:]}"
 
-    def _persist_receipt(self, receipt: TelegramClientPublishReceipt) -> None:
-        self._store.put(
-            CUSTOMER_TELEGRAM_PUBLISH_RECEIPT_NAMESPACE,
-            str(receipt.action_id),
-            receipt.model_dump(mode="json"),
-        )
-
-    def _mask_phone(self, phone_number: str) -> str:
-        return f"{phone_number[:2]}{'*' * max(4, len(phone_number) - 6)}{phone_number[-4:]}"
-
-    def _as_utc(self, value: datetime) -> datetime:
-        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+    @staticmethod
+    def _as_utc(value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
 
 customer_telegram_client_publish_service = CustomerTelegramClientPublishService()
