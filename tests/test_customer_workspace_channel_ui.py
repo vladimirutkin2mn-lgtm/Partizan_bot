@@ -52,15 +52,21 @@ def test_channels_expose_customer_owned_telegram_and_reddit_connections() -> Non
 
 def test_community_activation_routes_to_execution_choice_without_publishing() -> None:
     javascript = _channel_javascript()
+    activation_handler = javascript.split(
+        "const handleActivationOpportunity = async (event) => {", 1
+    )[1].split(
+        "document.addEventListener('click', handleActivationOpportunity, true);", 1
+    )[0]
 
     assert "platformFromOpportunity" in javascript
     assert "opportunity.surface !== 'COMMUNITY'" in javascript
     assert "hostname === 't.me'" in javascript
     assert "hostname === 'reddit.com'" in javascript
-    assert "Choose how to execute this" in javascript
-    assert "focusChannel(platform)" in javascript
-    assert "/actions/" not in javascript
-    assert "/publish" not in javascript
+    assert "Choose how to execute this" in activation_handler
+    assert "focusChannel(platform)" in activation_handler
+    assert "/actions/" not in activation_handler
+    assert "/publish" not in activation_handler
+    assert "/observe" not in activation_handler
 
 
 def test_channel_enablement_is_separate_from_execution_mode() -> None:
