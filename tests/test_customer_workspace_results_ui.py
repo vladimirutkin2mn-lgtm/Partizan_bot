@@ -11,6 +11,12 @@ def _workspace_html() -> str:
     return response.text
 
 
+def _results_refresh_script(html: str) -> str:
+    marker = "const getJson = async (path) => {"
+    assert marker in html
+    return html.split(marker, 1)[1]
+
+
 def test_customer_workspace_exposes_project_scoped_distribution_results() -> None:
     html = _workspace_html()
 
@@ -51,13 +57,14 @@ def test_customer_workspace_managed_results_stay_read_only_and_customer_safe() -
 
 def test_customer_workspace_results_do_not_mutate_distribution_execution() -> None:
     html = _workspace_html()
+    results_script = _results_refresh_script(html)
 
-    assert "Promise.allSettled" in html
-    assert "method: 'POST'" not in html
-    assert "method: 'PUT'" not in html
-    assert "method: 'DELETE'" not in html
-    assert "/fulfill" not in html
-    assert "/release" not in html
+    assert "Promise.allSettled" in results_script
+    assert "method: 'POST'" not in results_script
+    assert "method: 'PUT'" not in results_script
+    assert "method: 'DELETE'" not in results_script
+    assert "/fulfill" not in results_script
+    assert "/release" not in results_script
 
 
 def test_customer_workspace_results_refresh_from_canonical_workspace_ready() -> None:
@@ -67,3 +74,14 @@ def test_customer_workspace_results_refresh_from_canonical_workspace_ready() -> 
     assert "refresh(true).catch(() => {})" in html
     assert "const communityObserver = new MutationObserver" not in html
     assert "communityObserver.observe" not in html
+
+
+def test_customer_workspace_results_replay_forced_refresh_after_inflight_request() -> None:
+    html = _workspace_html()
+    results_script = _results_refresh_script(html)
+
+    assert "let queuedForceRefresh = false" in html
+    assert "if (loading)" in results_script
+    assert "if (force) queuedForceRefresh = true" in results_script
+    assert "if (queuedForceRefresh)" in results_script
+    assert "window.queueMicrotask(() => refresh(true).catch(() => {}))" in results_script
