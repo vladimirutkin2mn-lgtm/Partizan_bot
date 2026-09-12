@@ -530,6 +530,7 @@
   const installCommunityWorkspaceRefresh = () => {
     const communityActionSource = $('experiments')?.parentElement;
     if (!communityActionSource) return;
+    let communityActionSignature = null;
     let refreshTimer = null;
     const observer = new MutationObserver((mutations) => {
       const changed = mutations.some((mutation) => {
@@ -539,6 +540,11 @@
         return Boolean(target?.closest?.('#community-action-inbox'));
       });
       if (!changed) return;
+      const inbox = $('community-action-inbox');
+      if (!inbox) return;
+      const nextSignature = inbox.innerHTML;
+      if (nextSignature === communityActionSignature) return;
+      communityActionSignature = nextSignature;
       window.clearTimeout(refreshTimer);
       refreshTimer = window.setTimeout(() => {
         refreshWorkspaceWithoutResearch().catch((error) => showNotice(error.message, true));
