@@ -527,6 +527,27 @@
 
   const refreshWorkspaceWithoutResearch = async () => loadWorkspace();
 
+  const installCommunityWorkspaceRefresh = () => {
+    const communityActionSource = $('experiments')?.parentElement;
+    if (!communityActionSource) return;
+    let refreshTimer = null;
+    const observer = new MutationObserver((mutations) => {
+      const changed = mutations.some((mutation) => {
+        const target = mutation.target.nodeType === Node.ELEMENT_NODE
+          ? mutation.target
+          : mutation.target.parentElement;
+        return Boolean(target?.closest?.('#community-action-inbox'));
+      });
+      if (!changed) return;
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshWorkspaceWithoutResearch().catch((error) => showNotice(error.message, true));
+      }, 0);
+    });
+    observer.observe(communityActionSource, { childList: true, subtree: true });
+  };
+  installCommunityWorkspaceRefresh();
+
   const surfaceLabels = {
     EXECUTION_PLATFORM: 'Execution platform',
     CREATOR: 'Creator / influencer',
