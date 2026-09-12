@@ -4,6 +4,10 @@ LEARNING_JS = Path("app/web/workspace.learning.v1.js").read_text(encoding="utf-8
 WEB_ROUTES = Path("app/web_routes.py").read_text(encoding="utf-8")
 
 
+def _distribution_learning_module() -> str:
+    return LEARNING_JS.split("})();\n\n(() => {", maxsplit=1)[0]
+
+
 def test_workspace_serves_distribution_learning_as_a_versioned_secondary_asset() -> None:
     assert '"workspace.learning.v1.js": "text/javascript; charset=utf-8"' in WEB_ROUTES
     assert "_WORKSPACE_LEARNING_SCRIPT" in WEB_ROUTES
@@ -12,7 +16,7 @@ def test_workspace_serves_distribution_learning_as_a_versioned_secondary_asset()
 
 
 def test_distribution_learning_renders_customer_safe_observed_decisions() -> None:
-    js = LEARNING_JS
+    js = _distribution_learning_module()
 
     assert "distribution-learning-card" in js
     assert "Why Partizan changed course" in js
@@ -28,7 +32,7 @@ def test_distribution_learning_renders_customer_safe_observed_decisions() -> Non
 
 
 def test_distribution_learning_uses_canonical_workspace_fanout_and_get_only_refresh() -> None:
-    js = LEARNING_JS
+    js = _distribution_learning_module()
 
     assert "window.addEventListener('partizan:workspace-ready'" in js
     assert "/distribution-learning" in js
