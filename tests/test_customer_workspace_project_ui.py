@@ -83,7 +83,7 @@ def test_meta_connect_ui_fails_closed_when_customer_oauth_is_unavailable() -> No
     assert "!channel.autonomous_execution_available" in js
     assert "Meta customer connection is temporarily unavailable" in js
     assert "Meta activation pending" in js
-    assert "Partizan is finishing Meta app activation for customer access." in js
+    assert "meta.execution_blocker" in js
     assert "syncMetaSettingsControl(channels)" in js
 
 
