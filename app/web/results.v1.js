@@ -8,6 +8,11 @@
     REDDIT: "Reddit",
     TIKTOK: "TikTok",
   };
+  const PUBLISHER_MODE_LABELS = {
+    MANUAL: "Manual",
+    CLIENT_OWNED: "Customer account",
+    PARTIZAN_MANAGED: "Partizan managed",
+  };
   const DECISION_LABELS = {
     SCALE: "SCALE · масштабировать",
     CONTINUE: "CONTINUE · продолжить",
@@ -114,7 +119,7 @@
 
       const experimentsBlock = blockShell(
         "Эксперименты",
-        "Каждая карточка — один реально подготовленный DistributionExperiment и его наблюдаемая экономика.",
+        "Каждая карточка — один реально подготовленный DistributionExperiment, способ публикации, community context и наблюдаемая экономика.",
       );
       const experimentList = node("div", "results-experiment-list");
       experimentList.id = "results-experiment-list";
@@ -309,6 +314,8 @@
       compactMetric("Paid", row.paid_users),
       compactMetric("CAC", formatMoney(row.cac)),
       compactMetric("ROAS", formatRatio(row.roas)),
+      compactMetric("Replies", number(row.replies)),
+      compactMetric("Removals", number(row.removals)),
     );
     card.append(head, metrics);
     return card;
@@ -337,13 +344,14 @@
     const title = node("div", "result-experiment-title");
     title.append(
       node("strong", "", item.play.opportunity_title || item.play.tactic_id),
-      node("small", "", `${PLATFORM_LABELS[item.play.platform] || item.play.platform} · ${item.play.tactic_id}`),
+      node("small", "", `${PLATFORM_LABELS[item.play.platform] || item.play.platform} · ${item.action.action_type} · ${item.play.tactic_id}`),
     );
     const chips = node("div", "result-chip-row");
     chips.append(
       chip(item.experiment.status),
       chip(item.play.tactic_class),
       chip(item.action.status),
+      chip(PUBLISHER_MODE_LABELS[item.publisher_mode] || item.publisher_mode),
     );
     head.append(title, chips);
 
@@ -358,6 +366,8 @@
       compactMetric("CAC", formatMoney(metrics.cac)),
       compactMetric("Выручка", formatMoney(metrics.revenue)),
       compactMetric("ROAS", formatRatio(metrics.roas)),
+      compactMetric("Replies", number(item.replies)),
+      compactMetric("Removals", number(item.removals)),
       compactMetric("Visit→Signup", formatPercent(metrics.visit_to_signup_rate)),
       compactMetric("Signup→Paid", formatPercent(metrics.signup_to_paid_rate)),
       compactMetric("Transactions", number(metrics.transactions)),
@@ -368,11 +378,15 @@
     funnel.append(
       node("span", "", `${item.event_count || 0} событий`),
       node("span", "", `Attribution: ${item.experiment.attribution_level}`),
+      node("span", "", `Publisher: ${PUBLISHER_MODE_LABELS[item.publisher_mode] || item.publisher_mode}`),
       node("span", "", `Action: ${item.action.action_type}`),
+      node("span", "", `Community: ${item.play.opportunity_title || item.play.opportunity_id}`),
+      node("span", "", `Replies: ${number(item.replies)} · Removals: ${number(item.removals)}`),
     );
 
+    const target = node("div", "experiment-tracking", item.action.target_url ? `Target / thread: ${item.action.target_url}` : "Target / thread не сохранён");
     const tracking = node("div", "experiment-tracking", item.experiment.tracking_url || "Tracking URL отсутствует");
-    card.append(head, metricGrid, funnel, tracking);
+    card.append(head, metricGrid, funnel, target, tracking);
 
     const decision = decisions.get(item.experiment.id);
     const memory = latestLearningFor(item.experiment.id);

@@ -30,6 +30,9 @@ from app.telegram_client_publishing import (
     customer_telegram_client_publish_service,
 )
 
+APPROVED_TARGET = "https://t.me/relationship_group"
+APPROVED_CONTENT = "A useful relationship reflection for the group."
+
 
 class FakeTelegramClientTransport:
     def __init__(self) -> None:
@@ -253,8 +256,8 @@ def _product_and_action(*, approve: bool = True) -> tuple[str, str]:
         f"/v1/products/{product_id}/distribution-plays/{play['id']}/actions/prepare",
         json={
             "destination_url": "https://example.com/oracle",
-            "target_url": "https://t.me/relationship_group",
-            "content_text": "A useful relationship reflection for the group.",
+            "target_url": APPROVED_TARGET,
+            "content_text": APPROVED_CONTENT,
         },
     )
     assert prepared.status_code == 200
@@ -278,6 +281,14 @@ def _select_client_owned(client: TestClient, project_id) -> None:
         json={"channels": [{"platform": "TELEGRAM", "publisher_mode": "CLIENT_OWNED"}]},
     )
     assert response.status_code == 200
+
+
+def _confirmed_publish_payload() -> dict:
+    return {
+        "confirm_publish": True,
+        "expected_target_url": APPROVED_TARGET,
+        "expected_content_text": APPROVED_CONTENT,
+    }
 
 
 def test_client_owned_telegram_connection_is_fail_closed_by_default() -> None:
@@ -369,6 +380,74 @@ def test_research_readiness_alone_still_cannot_enable_client_owned_publish() -> 
     assert telegram["connected"] is False
 
 
+def test_customer_community_action_feed_is_project_scoped_and_secret_safe() -> None:
+    transport = FakeTelegramClientTransport()
+    _enable_client_publish(transport)
+    client, preview = _registered_client()
+    _connect(client, preview.project_id)
+    product_id, action_id = _product_and_action()
+    _bind_project_to_product(preview.project_id, product_id)
+
+    response = client.get(f"/customer/workspace/{preview.project_id}/community-actions")
+    assert response.status_code == 200
+    items = response.json()
+    assert len(items) == 1
+    assert items[0]["action_id"] == action_id
+    assert items[0]["platform"] == "TELEGRAM"
+    assert items[0]["action_status"] == "APPROVED"
+    assert items[0]["target_url"] == APPROVED_TARGET
+    assert items[0]["content_text"] == APPROVED_CONTENT
+    assert items[0]["replies"] == 0
+    assert items[0]["removals"] == 0
+    for forbidden in (
+        "authorised-customer-session-secret",
+        "app-api-hash-secret",
+        "secret_reference",
+        "operational_metadata",
+    ):
+        assert forbidden not in response.text
+
+
+def test_customer_publish_requires_explicit_confirmation() -> None:
+    transport = FakeTelegramClientTransport()
+    _enable_client_publish(transport)
+    client, preview = _registered_client()
+    _connect(client, preview.project_id)
+    product_id, action_id = _product_and_action()
+    _bind_project_to_product(preview.project_id, product_id)
+    _select_client_owned(client, preview.project_id)
+
+    response = client.post(
+        f"/customer/workspace/{preview.project_id}/telegram/actions/{action_id}/publish",
+        json={},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Explicit publish confirmation is required"
+    assert transport.publish_calls == []
+
+
+def test_customer_publish_rejects_stale_review_snapshot() -> None:
+    transport = FakeTelegramClientTransport()
+    _enable_client_publish(transport)
+    client, preview = _registered_client()
+    _connect(client, preview.project_id)
+    product_id, action_id = _product_and_action()
+    _bind_project_to_product(preview.project_id, product_id)
+    _select_client_owned(client, preview.project_id)
+
+    response = client.post(
+        f"/customer/workspace/{preview.project_id}/telegram/actions/{action_id}/publish",
+        json={
+            "confirm_publish": True,
+            "expected_target_url": APPROVED_TARGET,
+            "expected_content_text": "Different reviewed content",
+        },
+    )
+    assert response.status_code == 409
+    assert "refresh and review" in response.json()["detail"]
+    assert transport.publish_calls == []
+
+
 def test_publish_requires_explicit_action_approval() -> None:
     transport = FakeTelegramClientTransport()
     _enable_client_publish(transport)
@@ -380,7 +459,7 @@ def test_publish_requires_explicit_action_approval() -> None:
 
     response = client.post(
         f"/customer/workspace/{preview.project_id}/telegram/actions/{action_id}/publish",
-        json={},
+        json=_confirmed_publish_payload(),
     )
     assert response.status_code == 409
     assert "APPROVED" in response.json()["detail"]
@@ -398,7 +477,7 @@ def test_approved_client_owned_publish_records_remote_receipt_without_session_se
 
     published = client.post(
         f"/customer/workspace/{preview.project_id}/telegram/actions/{action_id}/publish",
-        json={"retry": False},
+        json=_confirmed_publish_payload(),
     )
     assert published.status_code == 200
     payload = published.json()
@@ -429,7 +508,7 @@ def test_provider_restriction_is_recorded_and_action_stays_approved() -> None:
 
     response = client.post(
         f"/customer/workspace/{preview.project_id}/telegram/actions/{action_id}/publish",
-        json={},
+        json=_confirmed_publish_payload(),
     )
     assert response.status_code == 200
     assert response.json()["outcome"] == "FAILED"
