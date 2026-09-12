@@ -12,6 +12,9 @@ def test_community_inbox_changes_refresh_the_canonical_workspace_snapshot() -> N
     assert "#community-action-inbox" in block
     assert "refreshWorkspaceWithoutResearch().catch" in block
     assert "observer.observe(communityActionSource, { childList: true, subtree: true });" in block
+    assert "let communityActionSignature = null;" in block
+    assert "if (nextSignature === communityActionSignature) return;" in block
+    assert "communityActionSignature = nextSignature;" in block
     assert "method: 'POST'" not in block
     assert "method: 'PUT'" not in block
     assert "method: 'DELETE'" not in block
