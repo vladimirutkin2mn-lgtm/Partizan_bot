@@ -186,6 +186,10 @@ class CustomerChannelService:
                 publisher_modes[item.platform] = item.publisher_mode
             if item.mode is not None:
                 preferences[item.platform] = item.mode
+        selected_platform = self._selected_platform(project)
+        if selected_platform is not None and preferences[selected_platform] == "OFF":
+            project.pop(SELECTED_ACQUISITION_CHANNEL_KEY, None)
+            project.pop("acquisition_channel_selected_at", None)
         project[CHANNEL_PREFERENCES_KEY] = {
             platform.value: mode for platform, mode in preferences.items()
         }
