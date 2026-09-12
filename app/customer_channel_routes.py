@@ -4,6 +4,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException
+from pydantic import BaseModel
 
 from app.customer_account import (
     CUSTOMER_ACCOUNT_SESSION_COOKIE,
@@ -21,6 +22,7 @@ from app.customer_funnel import (
     CustomerProjectNotFoundError,
     customer_funnel_service,
 )
+from app.distribution_analytics_service import distribution_analytics_service
 from app.telegram_client_governance import (
     TelegramAutomationAuthorizationRequest,
     TelegramAutomationView,
@@ -39,6 +41,25 @@ from app.telegram_client_publishing import (
 )
 
 router = APIRouter(tags=["customer-channels"])
+
+
+class CustomerCommunityActionView(BaseModel):
+    action_id: UUID
+    experiment_id: UUID
+    platform: str
+    action_type: str
+    action_status: str
+    experiment_status: str
+    publisher_mode: str
+    opportunity_title: str
+    target_url: str | None = None
+    content_text: str | None = None
+    replies: int = 0
+    removals: int = 0
+
+
+class TelegramCustomerPublishRequest(TelegramPublishRequest):
+    confirm_publish: bool = False
 
 
 def _session_cookie(
@@ -75,6 +96,51 @@ def get_customer_channel_controls(
         return customer_channel_service.list(project_id, customer_token)
     except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/community-actions",
+    response_model=list[CustomerCommunityActionView],
+)
+def get_customer_community_actions(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> list[CustomerCommunityActionView]:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        project = customer_funnel_service.get_project_payload(project_id, customer_token)
+    except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    product_id_raw = project.get("product_id")
+    if not product_id_raw:
+        return []
+    try:
+        analytics = distribution_analytics_service.product_analytics(UUID(str(product_id_raw)))
+    except (KeyError, ValueError):
+        return []
+
+    result: list[CustomerCommunityActionView] = []
+    for item in analytics.experiments:
+        platform = item.action.platform.value
+        if platform not in {"TELEGRAM", "REDDIT"}:
+            continue
+        result.append(
+            CustomerCommunityActionView(
+                action_id=item.action.id,
+                experiment_id=item.experiment.id,
+                platform=platform,
+                action_type=item.action.action_type.value,
+                action_status=item.action.status.value,
+                experiment_status=item.experiment.status.value,
+                publisher_mode=item.publisher_mode.value,
+                opportunity_title=item.play.opportunity_title,
+                target_url=(str(item.action.target_url) if item.action.target_url else None),
+                content_text=item.action.content_text,
+                replies=item.replies,
+                removals=item.removals,
+            )
+        )
+    return result
 
 
 @router.put(
@@ -252,10 +318,12 @@ def revoke_customer_telegram_automation(
 async def publish_customer_telegram_action(
     project_id: UUID,
     action_id: UUID,
-    payload: TelegramPublishRequest,
+    payload: TelegramCustomerPublishRequest,
     session_token: Annotated[str | None, Depends(_session_cookie)] = None,
 ) -> TelegramClientPublishReceipt:
     customer_token = _project_token(session_token, project_id)
+    if not payload.confirm_publish:
+        raise HTTPException(status_code=409, detail="Explicit publish confirmation is required")
     try:
         return await customer_telegram_client_publish_service.publish(
             project_id,
