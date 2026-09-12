@@ -33,6 +33,10 @@ class CustomerChannelPreferencesUpdateRequest(BaseModel):
         return self
 
 
+class CustomerChannelSelectionRequest(BaseModel):
+    platform: DistributionPlatform
+
+
 class CustomerChannelCapabilityView(BaseModel):
     capability: ChannelCapability
     ready: bool
@@ -49,6 +53,7 @@ class CustomerChannelView(BaseModel):
     platform: DistributionPlatform
     label: str
     mode: CustomerChannelMode
+    selected: bool = False
     publisher_mode: PublisherMode = PublisherMode.MANUAL
     publisher_modes: list[CustomerPublisherModeView] = Field(default_factory=list)
     capabilities: list[CustomerChannelCapabilityView] = Field(default_factory=list)

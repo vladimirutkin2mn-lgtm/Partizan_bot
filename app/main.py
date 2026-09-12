@@ -7,6 +7,7 @@ from app.config import get_settings
 from app.customer_account_routes import router as customer_account_router
 from app.customer_autoresearch_routes import router as customer_autoresearch_router
 from app.customer_channel_routes import router as customer_channel_router
+from app.customer_channel_selection_routes import router as customer_channel_selection_router
 from app.customer_economics_routes import router as customer_economics_router
 from app.customer_learning_routes import router as customer_learning_router
 from app.customer_project_routes import router as customer_project_router
@@ -46,6 +47,7 @@ app.include_router(customer_router)
 app.include_router(customer_account_router)
 app.include_router(customer_project_router)
 app.include_router(customer_channel_router)
+app.include_router(customer_channel_selection_router)
 app.include_router(customer_economics_router)
 app.include_router(customer_learning_router)
 app.include_router(customer_managed_distribution_router)

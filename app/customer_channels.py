@@ -24,6 +24,7 @@ from app.telegram_client_publishing import customer_telegram_client_publish_serv
 
 CHANNEL_PREFERENCES_KEY = "channel_preferences"
 CHANNEL_PUBLISHER_MODES_KEY = "channel_publisher_modes"
+SELECTED_ACQUISITION_CHANNEL_KEY = "selected_acquisition_channel"
 STAGED_META_CONNECTION_KEY = "meta_connection_staged"
 
 CHANNEL_LABELS: dict[DistributionPlatform, str] = {
@@ -67,6 +68,7 @@ class CustomerChannelService:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         preferences = self._preferences(project)
         publisher_modes = self._publisher_modes(project)
+        selected_platform = self._selected_platform(project)
         metrics = self._metrics_by_platform(project)
         meta_connected = self._meta_connected(project)
         telegram_connected = customer_telegram_client_publish_service.is_connected(project_id)
@@ -93,6 +95,7 @@ class CustomerChannelService:
                     platform=platform,
                     label=CHANNEL_LABELS[platform],
                     mode=preferences[platform],
+                    selected=platform == selected_platform,
                     publisher_mode=publisher_modes[platform],
                     publisher_modes=self._publisher_mode_options(platform),
                     capabilities=self._capabilities(
@@ -121,6 +124,23 @@ class CustomerChannelService:
                 )
             )
         return rows
+
+    def select(
+        self,
+        project_id: UUID,
+        customer_token: str,
+        platform: DistributionPlatform,
+    ) -> list[CustomerChannelView]:
+        project = customer_funnel_service.get_project_payload(project_id, customer_token)
+        preferences = self._preferences(project)
+        if preferences[platform] == "OFF":
+            raise ValueError(
+                f"{CHANNEL_LABELS[platform]} is turned off. Turn it back on before selecting it."
+            )
+        project[SELECTED_ACQUISITION_CHANNEL_KEY] = platform.value
+        project["acquisition_channel_selected_at"] = datetime.now(UTC).isoformat()
+        self._persist(project)
+        return self.list(project_id, customer_token)
 
     def update(
         self,
@@ -166,6 +186,10 @@ class CustomerChannelService:
                 publisher_modes[item.platform] = item.publisher_mode
             if item.mode is not None:
                 preferences[item.platform] = item.mode
+        selected_platform = self._selected_platform(project)
+        if selected_platform is not None and preferences[selected_platform] == "OFF":
+            project.pop(SELECTED_ACQUISITION_CHANNEL_KEY, None)
+            project.pop("acquisition_channel_selected_at", None)
         project[CHANNEL_PREFERENCES_KEY] = {
             platform.value: mode for platform, mode in preferences.items()
         }
@@ -225,6 +249,16 @@ class CustomerChannelService:
                 else:
                     result[platform] = mode
         return result
+
+    @staticmethod
+    def _selected_platform(project: dict) -> DistributionPlatform | None:
+        raw = project.get(SELECTED_ACQUISITION_CHANNEL_KEY)
+        if raw is None:
+            return None
+        try:
+            return DistributionPlatform(str(raw).strip().upper())
+        except ValueError:
+            return None
 
     def _publisher_modes(self, project: dict) -> dict[DistributionPlatform, PublisherMode]:
         raw = project.get(CHANNEL_PUBLISHER_MODES_KEY)
