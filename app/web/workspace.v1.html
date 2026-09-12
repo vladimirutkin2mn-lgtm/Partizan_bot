@@ -22,7 +22,8 @@
     .auth-new{margin:24px 0 0;padding-top:20px;border-top:1px solid var(--line);text-align:center;color:var(--muted);font-size:11px;line-height:1.5}
     .auth-new a{display:inline-block;margin-left:5px;color:var(--soft);font-weight:700;text-decoration:none}
     .auth-new a:hover{color:var(--accent)}
-    @media(max-width:700px){.auth-login{min-height:calc(100vh - 88px);padding:28px 0 56px}.auth-card{padding:26px 22px;border-radius:20px}.auth-card h1{font-size:34px}.auth-card .lede{margin-bottom:22px}}
+    .customer-results-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:18px}.customer-results-block{padding:15px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.018)}.customer-results-block h3{margin:0 0 5px;font-size:13px}.customer-results-block>p{margin:0 0 12px;color:var(--muted);font-size:10px;line-height:1.55}.customer-economics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.customer-economics-grid div,.managed-assignment{padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.12)}.customer-economics-grid span,.managed-assignment span{display:block;color:var(--muted);font-size:9px}.customer-economics-grid strong{display:block;margin-top:3px;font-size:13px}.managed-assignment-list{display:grid;gap:8px}.managed-assignment-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.managed-assignment strong{font-size:11px}.managed-assignment-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}.managed-assignment-meta span{padding:3px 6px;border:1px solid var(--line);border-radius:999px}.managed-assignment-costs{display:flex;gap:12px;margin-top:9px}.managed-assignment-costs b{font-size:10px}.managed-assignment a{display:inline-block;margin-top:9px;font-size:10px;color:var(--accent);text-decoration:none}.customer-results-empty{color:var(--muted);font-size:10px;line-height:1.55}.customer-results-error{color:var(--warn);font-size:10px;line-height:1.55}
+    @media(max-width:700px){.auth-login{min-height:calc(100vh - 88px);padding:28px 0 56px}.auth-card{padding:26px 22px;border-radius:20px}.auth-card h1{font-size:34px}.auth-card .lede{margin-bottom:22px}.customer-results-grid{grid-template-columns:1fr}.customer-economics-grid{grid-template-columns:1fr 1fr}}
   </style>
 </head>
 <body>
@@ -177,6 +178,14 @@
           <div class="section-head"><div><span class="eyebrow">Tests & decisions</span><h2>Learning history</h2></div></div>
           <div class="history-grid"><div><h3>Tests</h3><div id="experiments" class="activity-list"></div></div><div><h3>Recent decisions</h3><div id="decisions" class="activity-list"></div></div></div>
         </section>
+
+        <section id="distribution-results-card" class="panel customer-results-card">
+          <div class="section-head"><div><span class="eyebrow">Distribution results</span><h2>Economics & managed delivery</h2><p class="section-copy">Only customer-facing observed economics and managed-service outcomes are shown here. Internal operating costs and publisher identities stay private.</p></div><span id="distribution-results-state" class="status-pill">Read only</span></div>
+          <div class="customer-results-grid">
+            <div class="customer-results-block"><h3>Observed customer economics</h3><p>Research, execution and distribution spend that counts toward your acquisition economics.</p><div id="customer-economics" class="customer-results-empty">Open Activity to load observed economics.</div></div>
+            <div class="customer-results-block"><h3>Partizan managed delivery</h3><p>Assignments fulfilled through Partizan-managed or partner-managed inventory, without exposing internal publisher details.</p><div id="managed-delivery" class="customer-results-empty">No managed delivery loaded yet.</div></div>
+          </div>
+        </section>
       </section>
 
       <section class="tab-panel hidden" data-tab-panel="settings">
@@ -230,5 +239,103 @@
     <nav aria-label="Legal links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/security">Security</a><a href="/contact">Contact</a></nav>
   </footer>
   <script src="/workspace/assets/workspace.v1.js" defer></script>
+  <script>
+    (() => {
+      const workspace = document.getElementById('workspace');
+      const economicsNode = document.getElementById('customer-economics');
+      const managedNode = document.getElementById('managed-delivery');
+      const stateNode = document.getElementById('distribution-results-state');
+      if (!workspace || !economicsNode || !managedNode || !stateNode) return;
+
+      let loading = false;
+      let loadedProjectId = null;
+      const currentProjectId = () => new URLSearchParams(window.location.search).get('project');
+      const money = (value) => `$${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+      const ratio = (value) => value == null ? '—' : `${Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 })}×`;
+      const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+      const statusLabel = (status) => ({ RESERVED: 'Reserved', FULFILLED: 'Fulfilled', RELEASED: 'Released', CANCELLED: 'Cancelled' }[status] || status || 'Unknown');
+      const ownershipLabel = (ownership) => ({ PARTIZAN_MANAGED: 'Partizan managed', PARTNER_MANAGED: 'Partner managed' }[ownership] || ownership || 'Managed');
+      const dateLabel = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : null;
+
+      const getJson = async (path) => {
+        const response = await fetch(path, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+        let payload = null;
+        try { payload = await response.json(); } catch (_) { payload = null; }
+        if (!response.ok) {
+          const detail = payload && payload.detail ? payload.detail : `Request failed (${response.status})`;
+          throw new Error(String(detail));
+        }
+        return payload;
+      };
+
+      const renderEconomics = (data) => {
+        if (!data || !data.costs) {
+          economicsNode.className = 'customer-results-empty';
+          economicsNode.textContent = 'No observed distribution economics yet.';
+          return;
+        }
+        const costs = data.costs;
+        economicsNode.className = 'customer-economics-grid';
+        economicsNode.innerHTML = [
+          ['Customer cost', money(costs.total)],
+          ['Research fee', money(costs.research_fee)],
+          ['Execution fee', money(costs.execution_fee)],
+          ['Distribution spend', money(costs.distribution_spend)],
+          ['Paid customers', Number(data.paid_users || 0).toLocaleString()],
+          ['Revenue', money(data.revenue)],
+          ['CAC', data.cac == null ? '—' : money(data.cac)],
+          ['ROAS', ratio(data.roas)],
+        ].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join('');
+      };
+
+      const renderManaged = (assignments) => {
+        const rows = Array.isArray(assignments) ? assignments : [];
+        if (!rows.length) {
+          managedNode.className = 'customer-results-empty';
+          managedNode.textContent = 'No managed assignments yet. They will appear here only after Partizan reserves an eligible managed delivery.';
+          return;
+        }
+        managedNode.className = 'managed-assignment-list';
+        managedNode.innerHTML = rows.map((item) => {
+          const cost = item.cost || {};
+          const fulfilled = dateLabel(item.fulfilled_at);
+          const resultLink = item.executed_url
+            ? `<a href="${escapeHtml(item.executed_url)}" target="_blank" rel="noopener noreferrer">Open delivered result ↗</a>`
+            : '';
+          return `<article class="managed-assignment"><div class="managed-assignment-head"><div><span>${escapeHtml(item.service_label || 'Partizan Managed Distribution')}</span><strong>${escapeHtml(item.platform || 'Managed delivery')}</strong></div><b>${escapeHtml(statusLabel(item.status))}</b></div><div class="managed-assignment-meta"><span>${escapeHtml(ownershipLabel(item.ownership))}</span>${fulfilled ? `<span>${escapeHtml(fulfilled)}</span>` : ''}</div><div class="managed-assignment-costs"><div><span>Distribution spend</span><b>${money(cost.distribution_spend_usd)}</b></div><div><span>Management fee</span><b>${money(cost.management_fee_usd)}</b></div></div>${resultLink}</article>`;
+        }).join('');
+      };
+
+      const renderFailure = (node, reason) => {
+        node.className = 'customer-results-error';
+        node.textContent = `Could not load this customer-safe result: ${reason}`;
+      };
+
+      const refresh = async (force = false) => {
+        const projectId = currentProjectId();
+        if (!projectId || loading || (!force && loadedProjectId === projectId)) return;
+        loading = true;
+        stateNode.textContent = 'Loading';
+        const [economics, managed] = await Promise.allSettled([
+          getJson(`/customer/workspace/${projectId}/distribution-economics`),
+          getJson(`/customer/workspace/${projectId}/managed-distribution/assignments`),
+        ]);
+        if (economics.status === 'fulfilled') renderEconomics(economics.value);
+        else renderFailure(economicsNode, economics.reason.message);
+        if (managed.status === 'fulfilled') renderManaged(managed.value);
+        else renderFailure(managedNode, managed.reason.message);
+        loadedProjectId = projectId;
+        loading = false;
+        stateNode.textContent = economics.status === 'fulfilled' && managed.status === 'fulfilled' ? 'Observed' : 'Partial';
+      };
+
+      document.querySelector('.tab-button[data-tab="activity"]')?.addEventListener('click', () => refresh(true));
+      const observer = new MutationObserver(() => {
+        if (!workspace.classList.contains('hidden')) refresh();
+      });
+      observer.observe(workspace, { attributes: true, attributeFilter: ['class'] });
+      if (!workspace.classList.contains('hidden')) refresh();
+    })();
+  </script>
 </body>
 </html>
