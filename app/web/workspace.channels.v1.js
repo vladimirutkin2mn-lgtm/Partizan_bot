@@ -132,6 +132,26 @@
     return `<label class="channel-toggle-control"><input class="channel-toggle" type="checkbox" data-platform="${escapeHtml(channel.platform)}" data-on-mode="${escapeHtml(enabledMode(channel))}" aria-label="${escapeHtml(channel.label)} enabled"${checked}><span class="channel-toggle-track" aria-hidden="true"></span><span class="channel-toggle-label">${label}</span></label>`;
   };
 
+  const syncMetaSettingsControl = (channels) => {
+    const meta = channels.find((channel) => channel.platform === 'INSTAGRAM');
+    const button = $('meta-connect');
+    const detail = $('meta-detail');
+    if (!meta || !button || meta.connected) return;
+    if (!meta.autonomous_execution_available) {
+      button.dataset.partizanMetaUnavailable = 'true';
+      button.disabled = true;
+      button.textContent = 'Meta activation pending';
+      if (detail) detail.textContent = meta.execution_blocker || 'Meta customer connection is temporarily unavailable';
+      return;
+    }
+    if (button.dataset.partizanMetaUnavailable === 'true') {
+      delete button.dataset.partizanMetaUnavailable;
+      button.disabled = false;
+      button.textContent = 'Connect Meta →';
+      if (detail) detail.textContent = 'No account access yet.';
+    }
+  };
+
   const modeOptions = (channel) => {
     const returned = channel.publisher_modes || [];
     const modes = returned.length ? returned : [{ mode: channel.publisher_mode || 'MANUAL', available: true, blocker: null }];
@@ -272,6 +292,7 @@
     try {
       renderOverview(channels);
       renderDetails(channels);
+      syncMetaSettingsControl(channels);
       polishDetailsCopy();
     } finally {
       syncing = false;
