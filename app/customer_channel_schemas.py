@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 from app.channel_execution import ChannelCapability, PublisherMode
+from app.customer_schemas import CustomerResearchEvidenceView
 from app.distribution_types import DistributionPlatform
 
 CustomerChannelMode = Literal["AUTO", "RESEARCH_ONLY", "OFF"]
@@ -35,6 +36,20 @@ class CustomerChannelPreferencesUpdateRequest(BaseModel):
 
 class CustomerChannelSelectionRequest(BaseModel):
     platform: DistributionPlatform
+
+
+class CustomerStartingMoveView(BaseModel):
+    platform: DistributionPlatform
+    channel_label: str
+    state: Literal["READY", "NEEDS_RESEARCH"]
+    source: Literal["FULL_RESEARCH", "PREVIEW_RESEARCH", "SELECTED_CHANNEL"]
+    title: str
+    rationale: str
+    recommended_action: str
+    signal_to_watch: str
+    execution_requirement: str
+    url: HttpUrl | None = None
+    provenance: list[CustomerResearchEvidenceView] = Field(default_factory=list)
 
 
 class CustomerChannelCapabilityView(BaseModel):
