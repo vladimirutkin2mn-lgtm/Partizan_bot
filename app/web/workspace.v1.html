@@ -252,7 +252,9 @@
       const currentProjectId = () => new URLSearchParams(window.location.search).get('project');
       const money = (value) => `$${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
       const ratio = (value) => value == null ? '—' : `${Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 })}×`;
-      const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>'\"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '\"': '&quot;' }[char]));
+      const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => (
+        char === '&' ? '&amp;' : char === '<' ? '&lt;' : char === '>' ? '&gt;' : char === "'" ? '&#39;' : '&quot;'
+      ));
       const statusLabel = (status) => ({ RESERVED: 'Reserved', FULFILLED: 'Fulfilled', RELEASED: 'Released', CANCELLED: 'Cancelled' }[status] || status || 'Unknown');
       const ownershipLabel = (ownership) => ({ PARTIZAN_MANAGED: 'Partizan managed', PARTNER_MANAGED: 'Partner managed' }[ownership] || ownership || 'Managed');
       const dateLabel = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : null;
