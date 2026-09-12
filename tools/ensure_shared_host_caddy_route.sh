@@ -86,14 +86,24 @@ fi
 
 network_members="$(docker network inspect "${edge_network}" \
   --format '{{range $id, $_ := .Containers}}{{$id}}{{"\n"}}{{end}}')"
+api_connected_by_repair=false
 if ! printf '%s\n' "${network_members}" | grep -Fxq "${api_container_id}"; then
-  echo "shared Caddy route repair: Partizan API is not attached to configured edge network" >&2
-  exit 1
+  if ! docker network connect --alias partizan-api "${edge_network}" "${api_container_id}"; then
+    echo "shared Caddy route repair: unable to connect Partizan API to configured edge network" >&2
+    exit 1
+  fi
+  api_connected_by_repair=true
+  echo "shared Caddy route repair: Partizan API attached to configured edge network"
+  network_members="$(docker network inspect "${edge_network}" \
+    --format '{{range $id, $_ := .Containers}}{{$id}}{{"\n"}}{{end}}')"
 fi
 
 connected_by_repair=false
 if ! printf '%s\n' "${network_members}" | grep -Fxq "${tls_container_id}"; then
   if ! docker network connect "${edge_network}" "${tls_container_id}"; then
+    if [[ "${api_connected_by_repair}" == "true" ]]; then
+      docker network disconnect "${edge_network}" "${api_container_id}" >/dev/null 2>&1 || true
+    fi
     echo "shared Caddy route repair: unable to connect proxy to Partizan edge network" >&2
     exit 1
   fi
@@ -104,6 +114,9 @@ fi
 rollback_network_if_added() {
   if [[ "${connected_by_repair}" == "true" ]]; then
     docker network disconnect "${edge_network}" "${tls_container_id}" >/dev/null 2>&1 || true
+  fi
+  if [[ "${api_connected_by_repair}" == "true" ]]; then
+    docker network disconnect "${edge_network}" "${api_container_id}" >/dev/null 2>&1 || true
   fi
 }
 
