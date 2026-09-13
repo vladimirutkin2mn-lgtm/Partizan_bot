@@ -56,18 +56,33 @@
     const card = ensureCard();
     if (!card || !preparedAction) return;
     const confirmed = Boolean(
-      executionRequest.status === 'PUBLISH_CONFIRMED'
+      (executionRequest.status === 'PUBLISH_CONFIRMED' || executionRequest.status === 'OPERATOR_APPROVED')
       && preparedAction.customer_publish_confirmed
     );
+    const approved = Boolean(
+      executionRequest.status === 'OPERATOR_APPROVED'
+      || preparedAction.action_status === 'APPROVED'
+      || preparedAction.operator_approval_required === false
+    );
     const confirmationTime = requestedAt(preparedAction.customer_publish_confirmed_at);
+    const approvalTime = requestedAt(preparedAction.operator_approved_at || executionRequest.operator_approved_at);
     const title = preparedAction.draft_title
       ? `<div><span class="eyebrow">Title</span><strong>${escapeHtml(preparedAction.draft_title)}</strong></div>`
       : '';
+    const headline = approved
+      ? 'Operator approved this exact action.'
+      : confirmed
+        ? 'You confirmed this exact action.'
+        : 'Review the exact action before confirming.';
+    const status = approved ? 'Operator approved' : confirmed ? 'Confirmed' : 'Needs confirmation';
+    const stateNote = approved
+      ? 'The exact action is APPROVED for the separate execution step. Nothing has been published or funded yet.'
+      : 'The action is still PREPARED, operator approval is still required, and nothing has been published or funded.';
 
     card.innerHTML = `
       <div class="activation-head">
-        <div><span class="eyebrow">Prepared action → exact customer review</span><h2>${confirmed ? 'You confirmed this exact action.' : 'Review the exact action before confirming.'}</h2></div>
-        <span class="status-pill ${confirmed ? 'good' : ''}">${confirmed ? 'Confirmed' : 'Needs confirmation'}</span>
+        <div><span class="eyebrow">Prepared action → exact customer review</span><h2>${headline}</h2></div>
+        <span class="status-pill ${(confirmed || approved) ? 'good' : ''}">${status}</span>
       </div>
       <p class="section-copy">This is the exact ${escapeHtml(setup.channel_label)} action prepared from your accepted draft. Confirming records your approval of this exact target and copy for the separate operator approval step; it does not publish anything.</p>
       <div class="activation-action activation-action-primary">
@@ -76,9 +91,10 @@
         ${title}
         <div><span class="eyebrow">Context</span><p>${escapeHtml(preparedAction.context_text)}</p></div>
         <div><span class="eyebrow">Exact content</span><p>${escapeHtml(preparedAction.content_text)}</p></div>
-        <p class="note">The action is still PREPARED, operator approval is still required, and nothing has been published or funded.</p>
+        <p class="note">${stateNote}</p>
         ${confirmed
-          ? `<p class="note">Confirmed${confirmationTime ? ` ${escapeHtml(confirmationTime)}` : ''}. Any changed copy must return through a new customer review.</p>`
+          ? `<p class="note">Confirmed${confirmationTime ? ` ${escapeHtml(confirmationTime)}` : ''}. Any changed copy must return through a new customer review.</p>
+             ${approved ? `<p class="note">Operator approval recorded${approvalTime ? ` ${escapeHtml(approvalTime)}` : ''}. Execution remains a separate protected step.</p>` : ''}`
           : `<div><button id="execution-confirm-submit" class="button button-primary" type="button">Confirm this exact action →</button></div>
              <p id="execution-confirm-note" class="note">Only this click records confirmation. It does not call approve, execute or publishing endpoints.</p>`}
       </div>`;
@@ -132,7 +148,7 @@
     card.classList.remove('hidden');
     if (
       executionRequest
-      && ['ACTION_PREPARED', 'PUBLISH_CONFIRMED'].includes(executionRequest.status)
+      && ['ACTION_PREPARED', 'PUBLISH_CONFIRMED', 'OPERATOR_APPROVED'].includes(executionRequest.status)
     ) {
       renderPrepared(draft, setup, executionRequest, preparedAction);
       return;
@@ -211,7 +227,7 @@
       let preparedAction = null;
       if (
         executionRequest
-        && ['ACTION_PREPARED', 'PUBLISH_CONFIRMED'].includes(executionRequest.status)
+        && ['ACTION_PREPARED', 'PUBLISH_CONFIRMED', 'OPERATOR_APPROVED'].includes(executionRequest.status)
       ) {
         preparedAction = await requestJson(
           `/customer/workspace/${encodedProject}/starting-move/execution-request/prepared-action`,

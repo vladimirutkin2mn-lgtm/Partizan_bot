@@ -12,6 +12,7 @@ from app.customer_channel_schemas import (
     CustomerStartingMoveDraftView,
     CustomerStartingMoveSetupView,
 )
+from app.customer_execution_request_schemas import CustomerExecutionRequestView
 from app.customer_execution_requests import CustomerExecutionRequestService
 from app.distribution_play_schemas import DistributionPlayView
 from app.distribution_schemas import DistributionOpportunityView
@@ -102,6 +103,35 @@ def _opportunity() -> DistributionOpportunityView:
         url=SOURCE_URL,
         relevance_score=92,
         rationale="Exact researched source",
+    )
+
+
+def _operator_approved_request() -> CustomerExecutionRequestView:
+    now = datetime.now(UTC)
+    return CustomerExecutionRequestView(
+        id=UUID("dddddddd-dddd-4ddd-8ddd-dddddddddddd"),
+        project_id=PROJECT_ID,
+        product_id=PRODUCT_ID,
+        platform=DistributionPlatform.REDDIT,
+        publisher_mode=PublisherMode.MANUAL,
+        status="OPERATOR_APPROVED",
+        source_title="Freelancer bookkeeping discussion",
+        source_url=SOURCE_URL,
+        draft_title="Useful bookkeeping reply",
+        context_text="Freelancers are comparing recurring bookkeeping workflow pain.",
+        content_text="Share a useful bookkeeping workflow perspective without a product link.",
+        distribution_play_id=PLAY_ID,
+        opportunity_id=OPPORTUNITY_ID,
+        preparation_ready_at=now,
+        distribution_action_id=UUID("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"),
+        experiment_id=UUID("ffffffff-ffff-4fff-8fff-ffffffffffff"),
+        action_prepared_at=now,
+        customer_publish_confirmed_at=now,
+        customer_publish_confirmation_fingerprint="a" * 64,
+        operator_approved_at=now,
+        execution_allowed=False,
+        customer_publish_confirmation_required=True,
+        requested_at=now,
     )
 
 
@@ -277,15 +307,66 @@ def test_operator_action_prepare_requires_auth_and_explicit_true(monkeypatch) ->
     assert service.get_request(request.id).status == "PREPARATION_READY"
 
 
-def test_preparation_link_remains_non_executing_and_prepare_is_separate() -> None:
+def test_operator_action_approval_requires_auth_and_exact_confirmation(monkeypatch) -> None:
+    approved = _operator_approved_request()
+    calls = []
+    monkeypatch.setattr(
+        route_module,
+        "customer_operator_approval_service",
+        SimpleNamespace(approve=lambda request_id: calls.append(request_id) or approved),
+    )
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        app_env="production",
+        operator_api_key="operator-secret",
+    )
+    client = TestClient(app)
+    path = f"/v1/customer-execution-requests/{approved.id}/approve-action"
+    headers = {"X-Partizan-Operator-Key": "operator-secret"}
+    try:
+        missing_auth = client.post(path, json={"confirm_approval": True})
+        false_confirmation = client.post(
+            path,
+            headers=headers,
+            json={"confirm_approval": False},
+        )
+        injected_action = client.post(
+            path,
+            headers=headers,
+            json={
+                "confirm_approval": True,
+                "distribution_action_id": str(approved.distribution_action_id),
+            },
+        )
+        allowed = client.post(
+            path,
+            headers=headers,
+            json={"confirm_approval": True},
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert missing_auth.status_code == 401
+    assert false_confirmation.status_code == 422
+    assert injected_action.status_code == 422
+    assert allowed.status_code == 200
+    assert allowed.json()["status"] == "OPERATOR_APPROVED"
+    assert allowed.json()["execution_allowed"] is False
+    assert calls == [approved.id]
+
+
+def test_preparation_link_remains_non_executing_and_approval_is_separate() -> None:
     source = Path("app/customer_execution_request_routes.py").read_text(encoding="utf-8")
     link_start = source.index("def link_customer_execution_preparation(")
     prepare_start = source.index("def prepare_customer_execution_action(")
+    approval_start = source.index("def approve_customer_execution_action(")
     link_block = source[link_start:prepare_start]
+    prepare_block = source[prepare_start:approval_start]
 
     assert "distribution_execution_service.prepare" not in link_block
     assert "/prepare-action" in source
-    assert "distribution_execution_service.prepare" in source
-    assert "/approve" not in source
+    assert "distribution_execution_service.prepare" in prepare_block
+    assert "customer_operator_approval_service.approve" not in prepare_block
+    assert "/approve-action" in source
+    assert "customer_operator_approval_service.approve" in source[approval_start:]
     assert "/mark-executed" not in source
     assert "/publish" not in source

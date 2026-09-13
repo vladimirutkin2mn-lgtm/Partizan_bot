@@ -14,6 +14,7 @@ CustomerExecutionRequestStatus = Literal[
     "PREPARATION_READY",
     "ACTION_PREPARED",
     "PUBLISH_CONFIRMED",
+    "OPERATOR_APPROVED",
 ]
 
 
@@ -36,12 +37,18 @@ class CustomerExecutionPublishConfirmationRequest(BaseModel):
     confirm_publish: Literal[True]
 
 
+class CustomerExecutionOperatorApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirm_approval: Literal[True]
+
+
 class CustomerPreparedActionView(BaseModel):
     request_id: UUID
     project_id: UUID
     distribution_action_id: UUID
     platform: DistributionPlatform
-    action_status: Literal["PREPARED"] = "PREPARED"
+    action_status: Literal["PREPARED", "APPROVED"] = "PREPARED"
     source_title: str = Field(min_length=1, max_length=500)
     source_url: HttpUrl
     target_url: HttpUrl
@@ -50,8 +57,9 @@ class CustomerPreparedActionView(BaseModel):
     content_text: str = Field(min_length=10, max_length=12000)
     customer_publish_confirmed: bool = False
     customer_publish_confirmed_at: datetime | None = None
+    operator_approved_at: datetime | None = None
     execution_allowed: Literal[False] = False
-    operator_approval_required: Literal[True] = True
+    operator_approval_required: bool = True
     published: Literal[False] = False
 
 
@@ -79,6 +87,7 @@ class CustomerExecutionRequestView(BaseModel):
         min_length=64,
         max_length=64,
     )
+    operator_approved_at: datetime | None = None
     execution_allowed: Literal[False] = False
     customer_publish_confirmation_required: Literal[True] = True
     requested_at: datetime

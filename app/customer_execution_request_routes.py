@@ -14,6 +14,7 @@ from app.customer_account import (
 from app.customer_channels import customer_channel_service
 from app.customer_execution_request_schemas import (
     CustomerExecutionActionPrepareRequest,
+    CustomerExecutionOperatorApprovalRequest,
     CustomerExecutionPreparationLinkRequest,
     CustomerExecutionPublishConfirmationRequest,
     CustomerExecutionRequestCreate,
@@ -26,6 +27,7 @@ from app.customer_funnel import (
     CustomerProjectNotFoundError,
     customer_funnel_service,
 )
+from app.customer_operator_approval import customer_operator_approval_service
 from app.customer_publish_confirmation import customer_publish_confirmation_service
 from app.customer_starting_move_draft import customer_starting_move_draft_service
 from app.customer_starting_move_setup import customer_starting_move_setup_service
@@ -242,6 +244,25 @@ def prepare_customer_execution_action(
                 "Execution request, product, DistributionPlay, opportunity, "
                 "or prepared DistributionAction not found"
             ),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@operator_router.post(
+    "/customer-execution-requests/{request_id}/approve-action",
+    response_model=CustomerExecutionRequestView,
+)
+def approve_customer_execution_action(
+    request_id: UUID,
+    payload: CustomerExecutionOperatorApprovalRequest,
+) -> CustomerExecutionRequestView:
+    try:
+        return customer_operator_approval_service.approve(request_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Execution request or prepared DistributionAction not found",
         ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
