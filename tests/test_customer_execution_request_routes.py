@@ -242,13 +242,50 @@ def test_operator_preparation_link_requires_auth_and_explicit_true(monkeypatch) 
     assert allowed.json()["customer_publish_confirmation_required"] is True
 
 
-def test_preparation_link_layer_has_no_distribution_execution_dependency() -> None:
-    source = (
-        Path("app/customer_execution_requests.py").read_text(encoding="utf-8")
-        + Path("app/customer_execution_request_routes.py").read_text(encoding="utf-8")
+def test_operator_action_prepare_requires_auth_and_explicit_true(monkeypatch) -> None:
+    service = CustomerExecutionRequestService(MemoryRuntimeStateStore())
+    request = service.request(
+        project={"id": str(PROJECT_ID), "product_id": str(PRODUCT_ID)},
+        draft=_draft(),
+        setup=_setup(),
     )
+    service.link_preparation(
+        request_id=request.id,
+        play=_play(),
+        opportunity=_opportunity(),
+    )
+    monkeypatch.setattr(route_module, "customer_execution_request_service", service)
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        app_env="production",
+        operator_api_key="operator-secret",
+    )
+    client = TestClient(app)
+    path = f"/v1/customer-execution-requests/{request.id}/prepare-action"
+    headers = {"X-Partizan-Operator-Key": "operator-secret"}
+    try:
+        missing_auth = client.post(path, json={"confirm_prepare": True})
+        false_confirmation = client.post(
+            path,
+            headers=headers,
+            json={"confirm_prepare": False},
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
 
-    assert "distribution_execution_service" not in source
-    assert "DistributionExecutionPrepareRequest" not in source
-    assert "distribution_action" not in source
-    assert "distribution_experiment" not in source
+    assert missing_auth.status_code == 401
+    assert false_confirmation.status_code == 422
+    assert service.get_request(request.id).status == "PREPARATION_READY"
+
+
+def test_preparation_link_remains_non_executing_and_prepare_is_separate() -> None:
+    source = Path("app/customer_execution_request_routes.py").read_text(encoding="utf-8")
+    link_start = source.index("def link_customer_execution_preparation(")
+    prepare_start = source.index("def prepare_customer_execution_action(")
+    link_block = source[link_start:prepare_start]
+
+    assert "distribution_execution_service.prepare" not in link_block
+    assert "/prepare-action" in source
+    assert "distribution_execution_service.prepare" in source
+    assert "/approve" not in source
+    assert "/mark-executed" not in source
+    assert "/publish" not in source

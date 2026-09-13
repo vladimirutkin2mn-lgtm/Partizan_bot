@@ -13,6 +13,7 @@ from app.customer_account import (
 )
 from app.customer_channels import customer_channel_service
 from app.customer_execution_request_schemas import (
+    CustomerExecutionActionPrepareRequest,
     CustomerExecutionPreparationLinkRequest,
     CustomerExecutionRequestCreate,
     CustomerExecutionRequestView,
@@ -25,8 +26,12 @@ from app.customer_funnel import (
 )
 from app.customer_starting_move_draft import customer_starting_move_draft_service
 from app.customer_starting_move_setup import customer_starting_move_setup_service
+from app.distribution_execution_schemas import DistributionExecutionPrepareRequest
+from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_service import distribution_play_service
+from app.distribution_types import DistributionActionType
 from app.operator_auth import require_operator
+from app.product_intake import product_intake_service
 
 customer_router = APIRouter(tags=["customer-execution-request"])
 operator_router = APIRouter(
@@ -141,6 +146,68 @@ def link_customer_execution_preparation(
         raise HTTPException(
             status_code=404,
             detail="Execution request, DistributionPlay or opportunity not found",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@operator_router.post(
+    "/customer-execution-requests/{request_id}/prepare-action",
+    response_model=CustomerExecutionRequestView,
+)
+def prepare_customer_execution_action(
+    request_id: UUID,
+    payload: CustomerExecutionActionPrepareRequest,
+) -> CustomerExecutionRequestView:
+    try:
+        request = customer_execution_request_service.get_request(request_id)
+        if request.distribution_play_id is None or request.opportunity_id is None:
+            raise ValueError("Link a validated DistributionPlay before preparing an action.")
+
+        play = distribution_play_service.find(request.product_id, request.distribution_play_id)
+        opportunity = audience_intelligence_service.find_opportunity(play.opportunity_id)
+        customer_execution_request_service.validate_linked_preparation(
+            request=request,
+            play=play,
+            opportunity=opportunity,
+        )
+        if play.action_type == DistributionActionType.PAID_CAMPAIGN:
+            raise ValueError("Customer execution requests cannot prepare paid campaigns.")
+        if play.action_type == DistributionActionType.OUTREACH_EMAIL:
+            raise ValueError("Customer execution requests cannot prepare outreach email actions.")
+
+        if request.status == "ACTION_PREPARED":
+            if request.distribution_action_id is None:
+                raise ValueError("Prepared execution request is missing its DistributionAction id.")
+            plan = distribution_execution_service.get_plan(request.distribution_action_id)
+            return customer_execution_request_service.mark_action_prepared(
+                request_id=request.id,
+                plan=plan,
+            )
+
+        product = product_intake_service.get_product(request.product_id)
+        plan = distribution_execution_service.prepare(
+            product,
+            play,
+            DistributionExecutionPrepareRequest(
+                target_url=request.source_url,
+                title=request.draft_title,
+                context_text=request.context_text,
+                content_text=request.content_text,
+            ),
+            customer_execution_request_id=request.id,
+        )
+        return customer_execution_request_service.mark_action_prepared(
+            request_id=request.id,
+            plan=plan,
+        )
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Execution request, product, DistributionPlay, opportunity, "
+                "or prepared DistributionAction not found"
+            ),
         ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
