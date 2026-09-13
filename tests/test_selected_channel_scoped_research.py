@@ -79,36 +79,39 @@ def _product() -> ProductProfileView:
 
 
 def _icp_result() -> ICPGenerationResponse:
-    icp = ICPView(
-        id=uuid4(),
-        product_id=PRODUCT_ID,
-        rank=1,
-        title="Independent consultants",
-        description="Independent professionals managing their own business admin.",
-        pain="manual bookkeeping tax admin",
-        desired_outcome="simple accurate books with less admin",
-        trigger="tax deadline or growing client volume",
-        willingness_to_pay="Pays for software that saves admin time",
-        alternatives=["spreadsheet", "accountant"],
-        message_hook="Spend less time on bookkeeping",
-        score=91,
-        score_breakdown=ICPScoreBreakdownView(
-            pain_intensity=8,
-            purchase_intent=8,
-            willingness_to_pay=8,
-            ease_of_targeting=8,
-            market_size=8,
-            competitive_headroom=7,
-            speed_of_validation=8,
-        ),
-        score_explanation="Strong fit",
-        rationale=["Clear pain"],
-    )
+    icps = [
+        ICPView(
+            id=uuid4(),
+            product_id=PRODUCT_ID,
+            rank=rank,
+            title=f"Independent consultants {rank}",
+            description="Independent professionals managing their own business admin.",
+            pain="manual bookkeeping tax admin",
+            desired_outcome="simple accurate books with less admin",
+            trigger="tax deadline or growing client volume",
+            willingness_to_pay="Pays for software that saves admin time",
+            alternatives=["spreadsheet", "accountant"],
+            message_hook="Spend less time on bookkeeping",
+            score=92 - rank,
+            score_breakdown=ICPScoreBreakdownView(
+                pain_intensity=8,
+                purchase_intent=8,
+                willingness_to_pay=8,
+                ease_of_targeting=8,
+                market_size=8,
+                competitive_headroom=7,
+                speed_of_validation=8,
+            ),
+            score_explanation="Strong fit",
+            rationale=["Clear pain"],
+        )
+        for rank in range(1, 11)
+    ]
     return ICPGenerationResponse(
         product_id=PRODUCT_ID,
-        generated_count=1,
-        ranked_count=1,
-        icps=[icp],
+        generated_count=10,
+        ranked_count=10,
+        icps=icps,
     )
 
 
