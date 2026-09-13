@@ -14,6 +14,7 @@ from app.customer_account import (
 from app.customer_channel_schemas import (
     CustomerChannelSelectionRequest,
     CustomerChannelView,
+    CustomerStartingMoveDraftView,
     CustomerStartingMoveView,
 )
 from app.customer_channels import customer_channel_service
@@ -23,6 +24,7 @@ from app.customer_funnel import (
     customer_funnel_service,
 )
 from app.customer_starting_move import customer_starting_move_service
+from app.customer_starting_move_draft import customer_starting_move_draft_service
 
 router = APIRouter(tags=["customer-channel-selection"])
 
@@ -75,6 +77,35 @@ async def research_customer_starting_move(
         return await customer_starting_move_service.research(project)
     except PreviewResearchUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/starting-move/draft",
+    response_model=CustomerStartingMoveDraftView | None,
+)
+def get_customer_starting_move_draft(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> CustomerStartingMoveDraftView | None:
+    customer_token = _project_token(session_token, project_id)
+    project = customer_funnel_service.get_project_payload(project_id, customer_token)
+    return customer_starting_move_draft_service.view(project)
+
+
+@router.post(
+    "/customer/workspace/{project_id}/starting-move/draft",
+    response_model=CustomerStartingMoveDraftView,
+)
+async def prepare_customer_starting_move_draft(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> CustomerStartingMoveDraftView:
+    customer_token = _project_token(session_token, project_id)
+    project = customer_funnel_service.get_project_payload(project_id, customer_token)
+    try:
+        return await customer_starting_move_draft_service.prepare(project)
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
