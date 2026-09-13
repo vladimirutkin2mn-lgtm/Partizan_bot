@@ -3,16 +3,13 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, HTTPException, status
 from sqlalchemy import text
 
+from app import customer_execution_request_routes
 from app.config import get_settings
 from app.customer_account_routes import router as customer_account_router
 from app.customer_autoresearch_routes import router as customer_autoresearch_router
 from app.customer_channel_routes import router as customer_channel_router
 from app.customer_channel_selection_routes import router as customer_channel_selection_router
 from app.customer_economics_routes import router as customer_economics_router
-from app.customer_execution_request_routes import (
-    customer_router as customer_execution_request_router,
-    operator_router as customer_execution_request_operator_router,
-)
 from app.customer_learning_routes import router as customer_learning_router
 from app.customer_project_routes import router as customer_project_router
 from app.customer_reddit_routes import router as customer_reddit_router
@@ -52,7 +49,7 @@ app.include_router(customer_account_router)
 app.include_router(customer_project_router)
 app.include_router(customer_channel_router)
 app.include_router(customer_channel_selection_router)
-app.include_router(customer_execution_request_router)
+app.include_router(customer_execution_request_routes.customer_router)
 app.include_router(customer_economics_router)
 app.include_router(customer_learning_router)
 app.include_router(customer_managed_distribution_router)
@@ -62,7 +59,7 @@ app.include_router(growth_balance_rail_router)
 app.include_router(growth_autoresearch_router)
 app.include_router(distribution_router)
 app.include_router(distribution_play_router)
-app.include_router(customer_execution_request_operator_router)
+app.include_router(customer_execution_request_routes.operator_router)
 
 
 @app.get("/health", tags=["system"])
