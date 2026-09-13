@@ -160,6 +160,7 @@
   let workspaceSnapshot = null;
   let channelSnapshot = [];
   let startingMove = null;
+  let startingMoveDraft = null;
 
   const syncProjectId = (candidate = null) => {
     projectId = candidate || new URLSearchParams(window.location.search).get('project');
@@ -261,6 +262,18 @@
     const researchButton = startingMove.state === 'NEEDS_RESEARCH'
       ? `<button id="channel-choice-research" class="button button-secondary" type="button">Research ${escapeHtml(selected.label)} now →</button>`
       : '';
+    const draftButton = startingMove.state === 'READY'
+      ? `<button id="channel-choice-draft" class="button button-secondary" type="button">${startingMoveDraft ? 'Refresh review draft' : 'Prepare review draft'} →</button>`
+      : '';
+    const draft = startingMoveDraft && startingMoveDraft.platform === selected.platform
+      ? `<div class="activation-action">
+        <div><span class="eyebrow">Review-only test draft</span><strong>${escapeHtml(startingMoveDraft.title || 'First test draft')}</strong><span class="status-pill">Review only</span></div>
+        <p>${escapeHtml(startingMoveDraft.content_text)}</p>
+        <p class="note"><strong>Why this draft:</strong> ${escapeHtml(startingMoveDraft.rationale)}</p>
+        <p class="note"><strong>Watch:</strong> ${escapeHtml(startingMoveDraft.signal_to_watch)}</p>
+        <p class="note">${escapeHtml(startingMoveDraft.execution_requirement)}</p>
+      </div>`
+      : '';
     const stateLabel = startingMove.state === 'READY' ? 'Evidence ready' : 'More research needed';
 
     return `<div class="activation-action activation-action-primary">
@@ -273,7 +286,8 @@
       <p class="note"><strong>Next:</strong> ${escapeHtml(startingMove.recommended_action)}</p>
       <p class="note"><strong>Watch:</strong> ${escapeHtml(startingMove.signal_to_watch)}</p>
       <p class="note">${escapeHtml(startingMove.execution_requirement)}</p>
-      <div>${sourceLink}${researchButton}</div>
+      <div>${sourceLink}${researchButton}${draftButton}</div>
+      ${draft}
     </div>`;
   };
 
@@ -342,9 +356,10 @@
             `/customer/workspace/${encodeURIComponent(projectId)}/channel-selection`,
             { method: 'PUT', body: JSON.stringify({ platform }) },
           );
-          startingMove = await requestJson(
-            `/customer/workspace/${encodeURIComponent(projectId)}/starting-move`,
-          );
+          [startingMove, startingMoveDraft] = await Promise.all([
+            requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move`),
+            requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft`),
+          ]);
           renderChoice();
         } catch (error) {
           button.disabled = false;
@@ -366,12 +381,35 @@
           `/customer/workspace/${encodeURIComponent(projectId)}/starting-move/research`,
           { method: 'POST' },
         );
+        startingMoveDraft = await requestJson(
+          `/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft`,
+        );
         renderChoice();
       } catch (error) {
         button.disabled = false;
         button.textContent = original;
         const note = card.querySelector('.activation-action-primary .note');
         if (note) note.textContent = error.message || 'Selected-channel research is unavailable.';
+      }
+    });
+
+    $('channel-choice-draft')?.addEventListener('click', async () => {
+      const button = $('channel-choice-draft');
+      if (!button) return;
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Preparing review draft…';
+      try {
+        startingMoveDraft = await requestJson(
+          `/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft`,
+          { method: 'POST' },
+        );
+        renderChoice();
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = original;
+        const note = card.querySelector('.activation-action-primary .note');
+        if (note) note.textContent = error.message || 'Could not prepare the review draft.';
       }
     });
 
@@ -389,10 +427,11 @@
     }
     loading = true;
     try {
-      [workspaceSnapshot, channelSnapshot, startingMove] = await Promise.all([
+      [workspaceSnapshot, channelSnapshot, startingMove, startingMoveDraft] = await Promise.all([
         requestJson(`/customer/workspace/${encodeURIComponent(projectId)}`),
         requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/channels`),
         requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move`),
+        requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft`),
       ]);
       renderChoice();
     } catch (_) {
