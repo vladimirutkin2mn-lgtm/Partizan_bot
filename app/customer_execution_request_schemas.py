@@ -6,8 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl
 
-from app.channel_execution import PublisherMode
-from app.distribution_types import DistributionPlatform
+from app import channel_execution, distribution_types
 
 
 CustomerExecutionRequestStatus = Literal["REQUESTED"]
@@ -21,8 +20,8 @@ class CustomerExecutionRequestView(BaseModel):
     id: UUID
     project_id: UUID
     product_id: UUID
-    platform: DistributionPlatform
-    publisher_mode: PublisherMode
+    platform: distribution_types.DistributionPlatform
+    publisher_mode: channel_execution.PublisherMode
     status: CustomerExecutionRequestStatus = "REQUESTED"
     source_title: str = Field(min_length=1, max_length=500)
     source_url: HttpUrl
