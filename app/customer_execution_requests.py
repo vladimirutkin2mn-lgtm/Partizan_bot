@@ -8,9 +8,13 @@ from app.customer_channel_schemas import (
     CustomerStartingMoveSetupView,
 )
 from app.customer_execution_request_schemas import CustomerExecutionRequestView
-from app.distribution_execution_schemas import DistributionExecutionPlanView
+from app.distribution_execution_schemas import (
+    DistributionExecutionPlanView,
+    DistributionExperimentStatus,
+)
 from app.distribution_play_schemas import DistributionPlayStatus, DistributionPlayView
 from app.distribution_schemas import DistributionOpportunityView
+from app.distribution_types import DistributionActionStatus
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 CUSTOMER_EXECUTION_REQUEST_NAMESPACE = "customer_execution_request"
@@ -34,6 +38,8 @@ class CustomerExecutionRequestService:
             if row.project_id == UUID(str(project["id"]))
             and row.platform == draft.platform
             and str(row.source_url) == str(draft.source_url)
+            and row.draft_title == draft.title
+            and row.context_text == draft.context_text
             and row.content_text == draft.content_text
         ]
         if not rows:
@@ -134,6 +140,10 @@ class CustomerExecutionRequestService:
             raise ValueError("Linked DistributionPlay does not match the execution request.")
         if request.opportunity_id != opportunity.id:
             raise ValueError("Linked opportunity does not match the execution request.")
+        if request.context_text is None:
+            raise ValueError(
+                "Execution request does not contain exact accepted context; create a fresh customer request."
+            )
         self._validate_domain_match(request=request, play=play, opportunity=opportunity)
 
     def mark_action_prepared(
@@ -145,40 +155,16 @@ class CustomerExecutionRequestService:
         request = self.get_request(request_id)
         if request.status == "ACTION_PREPARED":
             if (
-                request.distribution_action_id == plan.action.id
-                and request.experiment_id == plan.experiment.id
+                request.distribution_action_id != plan.action.id
+                or request.experiment_id != plan.experiment.id
             ):
-                return request
-            raise ValueError("Execution request is already linked to a different prepared action.")
+                raise ValueError("Execution request is already linked to a different prepared action.")
+            self._validate_prepared_plan(request=request, plan=plan)
+            return request
         if request.status != "PREPARATION_READY":
             raise ValueError("Execution request must be PREPARATION_READY before action preparation.")
-        if request.distribution_play_id != plan.experiment.distribution_play_id:
-            raise ValueError("Prepared action does not belong to the linked DistributionPlay.")
-        if request.opportunity_id != plan.experiment.opportunity_id:
-            raise ValueError("Prepared action does not belong to the linked opportunity.")
-        if plan.action.opportunity_id != request.opportunity_id:
-            raise ValueError("Prepared action opportunity does not match the customer request.")
-        if plan.action.content_text != request.content_text:
-            raise ValueError("Prepared action content must exactly match the accepted customer draft.")
-        if request.context_text is not None and (
-            plan.action.content_payload.get("context_text") != request.context_text
-        ):
-            raise ValueError("Prepared action context must exactly match the accepted customer draft.")
-        expected_title = request.draft_title.strip() if request.draft_title else None
-        actual_title = plan.action.content_payload.get("title")
-        if actual_title != expected_title:
-            raise ValueError("Prepared action title must exactly match the accepted customer draft.")
-        if str(plan.action.target_url or "") != str(request.source_url):
-            raise ValueError("Prepared action target must match the customer research source.")
 
-        metadata = plan.action.operational_metadata
-        if metadata.get("customer_execution_request_id") != str(request.id):
-            raise ValueError("Prepared action is not bound to this customer execution request.")
-        if metadata.get("customer_exact_content_locked") is not True:
-            raise ValueError("Prepared customer action must keep exact accepted content locked.")
-        if metadata.get("customer_publish_confirmation_required") is not True:
-            raise ValueError("Prepared customer action must require final customer confirmation.")
-
+        self._validate_prepared_plan(request=request, plan=plan)
         updated = request.model_copy(
             update={
                 "status": "ACTION_PREPARED",
@@ -218,6 +204,51 @@ class CustomerExecutionRequestService:
             raise ValueError("Opportunity platform does not match the customer request.")
         if opportunity.url is None or str(opportunity.url) != str(request.source_url):
             raise ValueError("DistributionPlay opportunity does not match the customer research source.")
+
+    def _validate_prepared_plan(
+        self,
+        *,
+        request: CustomerExecutionRequestView,
+        plan: DistributionExecutionPlanView,
+    ) -> None:
+        if request.context_text is None:
+            raise ValueError(
+                "Execution request does not contain exact accepted context; create a fresh customer request."
+            )
+        if plan.action.status != DistributionActionStatus.PREPARED:
+            raise ValueError("Customer execution request must link only to a PREPARED action.")
+        if plan.experiment.status != DistributionExperimentStatus.DRAFT:
+            raise ValueError("Customer execution request must link only to a DRAFT experiment.")
+        if plan.action.experiment_id != plan.experiment.id:
+            raise ValueError("Prepared action and experiment do not belong to the same execution plan.")
+        if request.distribution_play_id != plan.experiment.distribution_play_id:
+            raise ValueError("Prepared action does not belong to the linked DistributionPlay.")
+        if request.opportunity_id != plan.experiment.opportunity_id:
+            raise ValueError("Prepared action does not belong to the linked opportunity.")
+        if plan.action.opportunity_id != request.opportunity_id:
+            raise ValueError("Prepared action opportunity does not match the customer request.")
+        if plan.action.platform != request.platform:
+            raise ValueError("Prepared action platform does not match the customer request.")
+        if plan.action.content_text != request.content_text:
+            raise ValueError("Prepared action content must exactly match the accepted customer draft.")
+        if plan.action.content_payload.get("context_text") != request.context_text:
+            raise ValueError("Prepared action context must exactly match the accepted customer draft.")
+        expected_title = request.draft_title.strip() if request.draft_title else None
+        actual_title = plan.action.content_payload.get("title")
+        if actual_title != expected_title:
+            raise ValueError("Prepared action title must exactly match the accepted customer draft.")
+        if str(plan.action.target_url or "") != str(request.source_url):
+            raise ValueError("Prepared action target must match the customer research source.")
+
+        metadata = plan.action.operational_metadata
+        if metadata.get("customer_execution_request_id") != str(request.id):
+            raise ValueError("Prepared action is not bound to this customer execution request.")
+        if metadata.get("customer_exact_content_locked") is not True:
+            raise ValueError("Prepared customer action must keep exact accepted content locked.")
+        if metadata.get("customer_publish_confirmation_required") is not True:
+            raise ValueError("Prepared customer action must require final customer confirmation.")
+        if metadata.get("customer_publish_confirmed_at"):
+            raise ValueError("Newly prepared customer action cannot already be publish-confirmed.")
 
     def _persist(self, request: CustomerExecutionRequestView) -> None:
         self._store.put(
