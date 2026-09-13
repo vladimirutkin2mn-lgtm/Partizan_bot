@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException
 
+from app.audience_intelligence_service import audience_intelligence_service
 from app.customer_account import (
     CUSTOMER_ACCOUNT_SESSION_COOKIE,
     CustomerAccountAuthenticationError,
@@ -12,6 +13,7 @@ from app.customer_account import (
 )
 from app.customer_channels import customer_channel_service
 from app.customer_execution_request_schemas import (
+    CustomerExecutionPreparationLinkRequest,
     CustomerExecutionRequestCreate,
     CustomerExecutionRequestView,
 )
@@ -23,6 +25,7 @@ from app.customer_funnel import (
 )
 from app.customer_starting_move_draft import customer_starting_move_draft_service
 from app.customer_starting_move_setup import customer_starting_move_setup_service
+from app.distribution_play_service import distribution_play_service
 from app.operator_auth import require_operator
 
 customer_router = APIRouter(tags=["customer-execution-request"])
@@ -115,3 +118,29 @@ def request_customer_execution_preparation(
 )
 def list_customer_execution_requests() -> list[CustomerExecutionRequestView]:
     return customer_execution_request_service.list_requests()
+
+
+@operator_router.post(
+    "/customer-execution-requests/{request_id}/preparation-link",
+    response_model=CustomerExecutionRequestView,
+)
+def link_customer_execution_preparation(
+    request_id: UUID,
+    payload: CustomerExecutionPreparationLinkRequest,
+) -> CustomerExecutionRequestView:
+    try:
+        request = customer_execution_request_service.get_request(request_id)
+        play = distribution_play_service.find(request.product_id, payload.distribution_play_id)
+        opportunity = audience_intelligence_service.find_opportunity(play.opportunity_id)
+        return customer_execution_request_service.link_preparation(
+            request_id=request_id,
+            play=play,
+            opportunity=opportunity,
+        )
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Execution request, DistributionPlay or opportunity not found",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
