@@ -1,4 +1,6 @@
 from datetime import UTC, datetime
+from pathlib import Path
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
@@ -11,12 +13,18 @@ from app.customer_channel_schemas import (
     CustomerStartingMoveSetupView,
 )
 from app.customer_execution_requests import CustomerExecutionRequestService
+from app.distribution_play_schemas import DistributionPlayView
+from app.distribution_schemas import DistributionOpportunityView
 from app.distribution_types import DistributionPlatform
 from app.main import app
 from app.runtime_store import MemoryRuntimeStateStore
 
 PROJECT_ID = UUID("88888888-8888-4888-8888-888888888888")
 PRODUCT_ID = UUID("99999999-9999-4999-8999-999999999999")
+ICP_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+OPPORTUNITY_ID = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+PLAY_ID = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
+SOURCE_URL = "https://www.reddit.com/r/freelance/comments/example/thread/"
 
 
 def _draft() -> CustomerStartingMoveDraftView:
@@ -26,7 +34,7 @@ def _draft() -> CustomerStartingMoveDraftView:
         channel_label="Reddit",
         review_status="ACCEPTED",
         source_title="Freelancer bookkeeping discussion",
-        source_url="https://www.reddit.com/r/freelance/comments/example/thread/",
+        source_url=SOURCE_URL,
         title="Useful bookkeeping reply",
         context_text="Freelancers are comparing recurring bookkeeping workflow pain.",
         content_text="Share a useful bookkeeping workflow perspective without a product link.",
@@ -50,6 +58,50 @@ def _setup() -> CustomerStartingMoveSetupView:
         connected=False,
         execution_allowed=False,
         next_step="Manual handoff is ready.",
+    )
+
+
+def _play() -> DistributionPlayView:
+    return DistributionPlayView(
+        id=PLAY_ID,
+        product_id=PRODUCT_ID,
+        icp_id=ICP_ID,
+        opportunity_id=OPPORTUNITY_ID,
+        platform=DistributionPlatform.REDDIT,
+        opportunity_kind="SUBREDDIT",
+        opportunity_title="Freelancer bookkeeping discussion",
+        tactic_id="community_helpful_reply",
+        tactic_class="COMMUNITY",
+        action_type="REPLY",
+        automation_level="ASSISTED",
+        attribution_level="ACTION",
+        identity_required=False,
+        community_policy_required=False,
+        status="READY",
+        blockers=[],
+        hypothesis="A useful bookkeeping reply will generate qualified downstream interest.",
+        execution_steps=["Read the thread context", "Prepare a useful native reply"],
+        success_metric="Qualified downstream interest",
+        estimated_cost_min=0,
+        estimated_cost_max=0,
+        effort_hours=0.5,
+        time_to_signal_days=3,
+        priority_score=80,
+        rationale=["Matches researched customer pain"],
+    )
+
+
+def _opportunity() -> DistributionOpportunityView:
+    return DistributionOpportunityView(
+        id=OPPORTUNITY_ID,
+        icp_id=ICP_ID,
+        platform=DistributionPlatform.REDDIT,
+        kind="SUBREDDIT",
+        canonical_key="reddit:r/freelance:bookkeeping",
+        title="Freelancer bookkeeping discussion",
+        url=SOURCE_URL,
+        relevance_score=92,
+        rationale="Exact researched source",
     )
 
 
@@ -133,3 +185,70 @@ def test_operator_queue_requires_operator_auth(monkeypatch) -> None:
     assert allowed.status_code == 200
     assert len(allowed.json()) == 1
     assert allowed.json()[0]["execution_allowed"] is False
+
+
+def test_operator_preparation_link_requires_auth_and_explicit_true(monkeypatch) -> None:
+    service = CustomerExecutionRequestService(MemoryRuntimeStateStore())
+    request = service.request(
+        project={"id": str(PROJECT_ID), "product_id": str(PRODUCT_ID)},
+        draft=_draft(),
+        setup=_setup(),
+    )
+    play = _play()
+    opportunity = _opportunity()
+    monkeypatch.setattr(route_module, "customer_execution_request_service", service)
+    monkeypatch.setattr(
+        route_module,
+        "distribution_play_service",
+        SimpleNamespace(find=lambda _product_id, _play_id: play),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "audience_intelligence_service",
+        SimpleNamespace(find_opportunity=lambda _opportunity_id: opportunity),
+    )
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        app_env="production",
+        operator_api_key="operator-secret",
+    )
+    client = TestClient(app)
+    path = f"/v1/customer-execution-requests/{request.id}/preparation-link"
+    headers = {"X-Partizan-Operator-Key": "operator-secret"}
+    try:
+        missing_auth = client.post(
+            path,
+            json={"distribution_play_id": str(PLAY_ID), "confirm_link": True},
+        )
+        false_confirmation = client.post(
+            path,
+            headers=headers,
+            json={"distribution_play_id": str(PLAY_ID), "confirm_link": False},
+        )
+        allowed = client.post(
+            path,
+            headers=headers,
+            json={"distribution_play_id": str(PLAY_ID), "confirm_link": True},
+        )
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert missing_auth.status_code == 401
+    assert false_confirmation.status_code == 422
+    assert allowed.status_code == 200
+    assert allowed.json()["status"] == "PREPARATION_READY"
+    assert allowed.json()["distribution_play_id"] == str(PLAY_ID)
+    assert allowed.json()["opportunity_id"] == str(OPPORTUNITY_ID)
+    assert allowed.json()["execution_allowed"] is False
+    assert allowed.json()["customer_publish_confirmation_required"] is True
+
+
+def test_preparation_link_layer_has_no_distribution_execution_dependency() -> None:
+    source = (
+        Path("app/customer_execution_requests.py").read_text(encoding="utf-8")
+        + Path("app/customer_execution_request_routes.py").read_text(encoding="utf-8")
+    )
+
+    assert "distribution_execution_service" not in source
+    assert "DistributionExecutionPrepareRequest" not in source
+    assert "distribution_action" not in source
+    assert "distribution_experiment" not in source

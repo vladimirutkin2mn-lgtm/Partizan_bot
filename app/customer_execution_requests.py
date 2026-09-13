@@ -8,6 +8,8 @@ from app.customer_channel_schemas import (
     CustomerStartingMoveSetupView,
 )
 from app.customer_execution_request_schemas import CustomerExecutionRequestView
+from app.distribution_play_schemas import DistributionPlayStatus, DistributionPlayView
+from app.distribution_schemas import DistributionOpportunityView
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 CUSTOMER_EXECUTION_REQUEST_NAMESPACE = "customer_execution_request"
@@ -73,12 +75,55 @@ class CustomerExecutionRequestService:
             customer_publish_confirmation_required=True,
             requested_at=datetime.now(UTC),
         )
-        self._store.put(
-            CUSTOMER_EXECUTION_REQUEST_NAMESPACE,
-            str(request.id),
-            request.model_dump(mode="json"),
-        )
+        self._persist(request)
         return request
+
+    def get_request(self, request_id: UUID) -> CustomerExecutionRequestView:
+        payload = self._store.get(CUSTOMER_EXECUTION_REQUEST_NAMESPACE, str(request_id))
+        if payload is None:
+            raise KeyError(request_id)
+        return CustomerExecutionRequestView.model_validate(payload)
+
+    def link_preparation(
+        self,
+        *,
+        request_id: UUID,
+        play: DistributionPlayView,
+        opportunity: DistributionOpportunityView,
+    ) -> CustomerExecutionRequestView:
+        request = self.get_request(request_id)
+        if request.status == "PREPARATION_READY":
+            if (
+                request.distribution_play_id == play.id
+                and request.opportunity_id == opportunity.id
+            ):
+                return request
+            raise ValueError("Execution request is already linked to a different preparation play.")
+        if request.status != "REQUESTED":
+            raise ValueError("Only REQUESTED execution requests can be linked for preparation.")
+        if play.status != DistributionPlayStatus.READY:
+            raise ValueError("Only a READY DistributionPlay can be linked for preparation.")
+        if play.product_id != request.product_id:
+            raise ValueError("DistributionPlay does not belong to the requested product.")
+        if play.platform != request.platform:
+            raise ValueError("DistributionPlay platform does not match the customer request.")
+        if play.opportunity_id != opportunity.id:
+            raise ValueError("DistributionPlay opportunity does not match the validated opportunity.")
+        if opportunity.platform != request.platform:
+            raise ValueError("Opportunity platform does not match the customer request.")
+        if opportunity.url is None or str(opportunity.url) != str(request.source_url):
+            raise ValueError("DistributionPlay opportunity does not match the customer research source.")
+
+        updated = request.model_copy(
+            update={
+                "status": "PREPARATION_READY",
+                "distribution_play_id": play.id,
+                "opportunity_id": opportunity.id,
+                "preparation_ready_at": datetime.now(UTC),
+            }
+        )
+        self._persist(updated)
+        return updated
 
     def list_requests(self) -> list[CustomerExecutionRequestView]:
         rows: list[CustomerExecutionRequestView] = []
@@ -88,6 +133,13 @@ class CustomerExecutionRequestService:
             except ValueError:
                 continue
         return sorted(rows, key=lambda row: (row.requested_at, str(row.id)))
+
+    def _persist(self, request: CustomerExecutionRequestView) -> None:
+        self._store.put(
+            CUSTOMER_EXECUTION_REQUEST_NAMESPACE,
+            str(request.id),
+            request.model_dump(mode="json"),
+        )
 
     def reset(self) -> None:
         if self._store.ephemeral:
