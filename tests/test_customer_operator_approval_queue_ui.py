@@ -30,7 +30,7 @@ def test_operator_shell_exposes_request_bound_customer_approval_queue() -> None:
         'createFact("Locked target", request.source_url, { url: true })',
         'createExactBlock("Exact context", request.context_text)',
         'createExactBlock("Exact content", request.content_text)',
-        "Execution remains separate",
+        "Execution is still separate.",
     ):
         assert contract in js
 
