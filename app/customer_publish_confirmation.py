@@ -43,7 +43,11 @@ class CustomerPublishConfirmationService:
         draft: CustomerStartingMoveDraftView | None,
     ) -> CustomerPreparedActionView:
         request, plan = self._current_plan(project=project, draft=draft)
-        self._validate_exact(request=request, plan=plan)
+        self._validate_exact(
+            request=request,
+            plan=plan,
+            allow_approved=request.status in {"PUBLISH_CONFIRMED", "OPERATOR_APPROVED"},
+        )
         self._validate_confirmation_consistency(
             request=request,
             metadata=plan.action.operational_metadata,
@@ -57,13 +61,17 @@ class CustomerPublishConfirmationService:
         draft: CustomerStartingMoveDraftView | None,
     ) -> CustomerPreparedActionView:
         request, plan = self._current_plan(project=project, draft=draft)
-        self._validate_exact(request=request, plan=plan)
+        self._validate_exact(
+            request=request,
+            plan=plan,
+            allow_approved=request.status in {"PUBLISH_CONFIRMED", "OPERATOR_APPROVED"},
+        )
         fingerprint = self._fingerprint(request=request, plan=plan)
         metadata = dict(plan.action.operational_metadata)
         existing_fingerprint = metadata.get("customer_publish_confirmation_fingerprint")
         existing_confirmed_at = metadata.get("customer_publish_confirmed_at")
 
-        if request.status == "PUBLISH_CONFIRMED":
+        if request.status in {"PUBLISH_CONFIRMED", "OPERATOR_APPROVED"}:
             if request.customer_publish_confirmation_fingerprint != fingerprint:
                 raise ValueError(
                     "Confirmed action fingerprint no longer matches the exact customer action."
@@ -73,6 +81,8 @@ class CustomerPublishConfirmationService:
             if existing_fingerprint or existing_confirmed_at:
                 self._validate_confirmation_consistency(request=request, metadata=metadata)
             else:
+                if request.status == "OPERATOR_APPROVED":
+                    raise ValueError("Approved action is missing its durable customer confirmation stamp.")
                 self._persist_action_stamp(
                     plan=plan,
                     fingerprint=fingerprint,
@@ -115,7 +125,7 @@ class CustomerPublishConfirmationService:
         request = self._request_service.view(project=project, draft=draft)
         if request is None:
             raise ValueError("Request preparation for the current accepted draft first.")
-        if request.status not in {"ACTION_PREPARED", "PUBLISH_CONFIRMED"}:
+        if request.status not in {"ACTION_PREPARED", "PUBLISH_CONFIRMED", "OPERATOR_APPROVED"}:
             raise ValueError("The requested action has not been prepared for customer confirmation yet.")
         if request.distribution_action_id is None or request.experiment_id is None:
             raise ValueError("Prepared execution request is missing its action or experiment id.")
@@ -125,13 +135,27 @@ class CustomerPublishConfirmationService:
             raise ValueError("Prepared customer action could not be found.") from exc
         return request, plan
 
-    def _validate_exact(self, *, request: CustomerExecutionRequestView, plan) -> None:
+    def _validate_exact(
+        self,
+        *,
+        request: CustomerExecutionRequestView,
+        plan,
+        allow_approved: bool = False,
+    ) -> None:
         action = plan.action
         experiment = plan.experiment
-        if action.status != DistributionActionStatus.PREPARED:
-            raise ValueError("Customer confirmation only accepts a PREPARED action.")
-        if experiment.status != DistributionExperimentStatus.DRAFT:
-            raise ValueError("Customer confirmation requires the experiment to remain DRAFT.")
+        prepared_pair = (
+            action.status == DistributionActionStatus.PREPARED
+            and experiment.status == DistributionExperimentStatus.DRAFT
+        )
+        approved_pair = (
+            action.status == DistributionActionStatus.APPROVED
+            and experiment.status == DistributionExperimentStatus.APPROVED
+        )
+        if not prepared_pair and not (allow_approved and approved_pair):
+            raise ValueError(
+                "Customer confirmation requires a PREPARED/DRAFT action or an already APPROVED pair."
+            )
         if request.distribution_action_id != action.id:
             raise ValueError("Prepared action does not match the customer execution request.")
         if request.experiment_id != experiment.id or action.experiment_id != experiment.id:
@@ -179,7 +203,7 @@ class CustomerPublishConfirmationService:
                     "Prepared action has a confirmation stamp without a durable customer record."
                 )
             return
-        if request.status != "PUBLISH_CONFIRMED":
+        if request.status not in {"PUBLISH_CONFIRMED", "OPERATOR_APPROVED"}:
             raise ValueError("Customer action is not in a confirmable state.")
         if (
             request.customer_publish_confirmed_at is None
@@ -232,12 +256,17 @@ class CustomerPublishConfirmationService:
         plan.action.operational_metadata.update(metadata)
 
     def _to_view(self, *, request: CustomerExecutionRequestView, plan) -> CustomerPreparedActionView:
-        confirmed = request.status == "PUBLISH_CONFIRMED"
+        confirmed = request.status in {"PUBLISH_CONFIRMED", "OPERATOR_APPROVED"}
+        approved = (
+            plan.action.status == DistributionActionStatus.APPROVED
+            and plan.experiment.status == DistributionExperimentStatus.APPROVED
+        )
         return CustomerPreparedActionView(
             request_id=request.id,
             project_id=request.project_id,
             distribution_action_id=plan.action.id,
             platform=request.platform,
+            action_status=plan.action.status.value,
             source_title=request.source_title,
             source_url=request.source_url,
             target_url=plan.action.target_url,
@@ -248,8 +277,9 @@ class CustomerPublishConfirmationService:
             customer_publish_confirmed_at=(
                 request.customer_publish_confirmed_at if confirmed else None
             ),
+            operator_approved_at=request.operator_approved_at,
             execution_allowed=False,
-            operator_approval_required=True,
+            operator_approval_required=not approved,
             published=False,
         )
 
