@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl, model_validator
 
@@ -55,6 +57,24 @@ class CustomerStartingMoveView(BaseModel):
     execution_requirement: str
     url: HttpUrl | None = None
     provenance: list[CustomerResearchEvidenceView] = Field(default_factory=list)
+
+
+class CustomerStartingMoveDraftView(BaseModel):
+    project_id: UUID
+    platform: DistributionPlatform
+    channel_label: str
+    state: Literal["REVIEW_ONLY"] = "REVIEW_ONLY"
+    source_title: str
+    source_url: HttpUrl
+    title: str | None = None
+    context_text: str = Field(min_length=10, max_length=8000)
+    content_text: str = Field(min_length=10, max_length=12000)
+    rationale: str = Field(min_length=5, max_length=2000)
+    signal_to_watch: str
+    execution_allowed: Literal[False] = False
+    execution_requirement: str
+    provenance: list[CustomerResearchEvidenceView] = Field(default_factory=list)
+    created_at: datetime
 
 
 class CustomerChannelCapabilityView(BaseModel):
