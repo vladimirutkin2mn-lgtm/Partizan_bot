@@ -161,6 +161,7 @@
   let channelSnapshot = [];
   let startingMove = null;
   let startingMoveDraft = null;
+  let startingMoveSetup = null;
 
   const syncProjectId = (candidate = null) => {
     projectId = candidate || new URLSearchParams(window.location.search).get('project');
@@ -246,6 +247,34 @@
     REJECTED: 'Rejected',
   })[draft && draft.review_status] || 'Review only';
 
+  const setupStateLabel = (setup) => ({
+    READY_FOR_HANDOFF: 'Ready for handoff',
+    NEEDS_SETUP: 'Setup needed',
+    UNAVAILABLE: 'Automation unavailable',
+  })[setup && setup.state] || 'Setup';
+
+  const setupStepStateLabel = (value) => ({
+    READY: 'Ready',
+    NEEDS_ACTION: 'Needs action',
+    UNAVAILABLE: 'Unavailable',
+  })[value] || value || 'Status';
+
+  const renderSetup = (selected) => {
+    if (!startingMoveSetup || startingMoveSetup.platform !== selected.platform) return '';
+    const steps = Array.isArray(startingMoveSetup.steps) ? startingMoveSetup.steps : [];
+    const stepRows = steps.map((step) => `<div class="activation-action">
+      <div><span class="eyebrow">${escapeHtml(step.title)}</span><span class="status-pill">${escapeHtml(setupStepStateLabel(step.state))}</span></div>
+      <p class="note">${escapeHtml(step.detail)}</p>
+    </div>`).join('');
+    return `<div class="activation-action activation-action-primary">
+      <div><span class="eyebrow">Accepted draft → setup</span><strong>${escapeHtml(startingMoveSetup.channel_label)} setup plan</strong><span class="status-pill">${escapeHtml(setupStateLabel(startingMoveSetup))}</span></div>
+      <p class="note">${escapeHtml(startingMoveSetup.next_step)}</p>
+      <p class="note"><strong>Execution permission:</strong> Not granted by this plan.</p>
+      ${stepRows}
+      <div><button id="starting-move-setup-controls" class="button button-secondary" type="button">Open Channels →</button></div>
+    </div>`;
+  };
+
   const renderDraft = (selected) => {
     if (!startingMoveDraft || startingMoveDraft.platform !== selected.platform) return '';
     const reviewable = startingMoveDraft.review_status === 'DRAFT';
@@ -259,6 +288,7 @@
           <button id="channel-choice-draft-reject" class="button button-secondary" type="button">Reject draft</button>
         </div>`
       : `<p>${escapeHtml(startingMoveDraft.content_text)}</p>`;
+    const setup = startingMoveDraft.review_status === 'ACCEPTED' ? renderSetup(selected) : '';
     return `<div class="activation-action">
       <div><span class="eyebrow">Review-only test draft</span><strong>${escapeHtml(startingMoveDraft.title || 'First test draft')}</strong><span class="status-pill">${escapeHtml(draftReviewLabel(startingMoveDraft))}</span></div>
       ${content}
@@ -266,7 +296,7 @@
       <p class="note"><strong>Watch:</strong> ${escapeHtml(startingMoveDraft.signal_to_watch)}</p>
       <p class="note">${escapeHtml(startingMoveDraft.execution_requirement)}</p>
       <p class="note">${source}</p>
-    </div>`;
+    </div>${setup}`;
   };
 
   const renderStartingMove = (selected) => {
@@ -377,9 +407,10 @@
             `/customer/workspace/${encodeURIComponent(projectId)}/channel-selection`,
             { method: 'PUT', body: JSON.stringify({ platform }) },
           );
-          [startingMove, startingMoveDraft] = await Promise.all([
+          [startingMove, startingMoveDraft, startingMoveSetup] = await Promise.all([
             requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move`),
             requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft`),
+            requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move/setup`),
           ]);
           renderChoice();
         } catch (error) {
@@ -402,9 +433,10 @@
           `/customer/workspace/${encodeURIComponent(projectId)}/starting-move/research`,
           { method: 'POST' },
         );
-        startingMoveDraft = await requestJson(
-          `/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft`,
-        );
+        [startingMoveDraft, startingMoveSetup] = await Promise.all([
+          requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft`),
+          requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move/setup`),
+        ]);
         renderChoice();
       } catch (error) {
         button.disabled = false;
@@ -425,6 +457,7 @@
           `/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft`,
           { method: 'POST' },
         );
+        startingMoveSetup = null;
         renderChoice();
       } catch (error) {
         button.disabled = false;
@@ -469,6 +502,9 @@
           `/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft/accept`,
           { method: 'POST' },
         );
+        startingMoveSetup = await requestJson(
+          `/customer/workspace/${encodeURIComponent(projectId)}/starting-move/setup`,
+        );
         renderChoice();
       } catch (error) {
         button.disabled = false;
@@ -488,6 +524,7 @@
           `/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft/reject`,
           { method: 'POST' },
         );
+        startingMoveSetup = null;
         renderChoice();
       } catch (error) {
         button.disabled = false;
@@ -497,9 +534,11 @@
       }
     });
 
-    $('channel-choice-controls')?.addEventListener('click', () => {
+    const openChannelControls = () => {
       document.querySelector('.tab-button[data-tab="channels"]')?.click();
-    });
+    };
+    $('channel-choice-controls')?.addEventListener('click', openChannelControls);
+    $('starting-move-setup-controls')?.addEventListener('click', openChannelControls);
   };
 
   const loadChoice = async (force = false) => {
@@ -511,11 +550,12 @@
     }
     loading = true;
     try {
-      [workspaceSnapshot, channelSnapshot, startingMove, startingMoveDraft] = await Promise.all([
+      [workspaceSnapshot, channelSnapshot, startingMove, startingMoveDraft, startingMoveSetup] = await Promise.all([
         requestJson(`/customer/workspace/${encodeURIComponent(projectId)}`),
         requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/channels`),
         requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move`),
         requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft`),
+        requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move/setup`),
       ]);
       renderChoice();
     } catch (_) {

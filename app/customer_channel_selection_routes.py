@@ -16,6 +16,7 @@ from app.customer_channel_schemas import (
     CustomerChannelView,
     CustomerStartingMoveDraftEditRequest,
     CustomerStartingMoveDraftView,
+    CustomerStartingMoveSetupView,
     CustomerStartingMoveView,
 )
 from app.customer_channels import customer_channel_service
@@ -26,6 +27,7 @@ from app.customer_funnel import (
 )
 from app.customer_starting_move import customer_starting_move_service
 from app.customer_starting_move_draft import customer_starting_move_draft_service
+from app.customer_starting_move_setup import customer_starting_move_setup_service
 
 router = APIRouter(tags=["customer-channel-selection"])
 
@@ -154,6 +156,26 @@ def reject_customer_starting_move_draft(
         return customer_starting_move_draft_service.reject(project)
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/starting-move/setup",
+    response_model=CustomerStartingMoveSetupView | None,
+)
+def get_customer_starting_move_setup(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> CustomerStartingMoveSetupView | None:
+    customer_token = _project_token(session_token, project_id)
+    project = customer_funnel_service.get_project_payload(project_id, customer_token)
+    draft = customer_starting_move_draft_service.view(project)
+    channels = customer_channel_service.list(project_id, customer_token)
+    selected = next((channel for channel in channels if channel.selected), None)
+    return customer_starting_move_setup_service.view(
+        project_id=project_id,
+        draft=draft,
+        channel=selected,
+    )
 
 
 @router.put(
