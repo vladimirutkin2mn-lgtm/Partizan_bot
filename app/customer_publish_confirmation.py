@@ -14,13 +14,13 @@ from app.customer_execution_requests import (
     CustomerExecutionRequestService,
     customer_execution_request_service,
 )
+from app.distribution_execution_schemas import DistributionExperimentStatus
 from app.distribution_execution_service import (
     DISTRIBUTION_ACTION_NAMESPACE,
     InMemoryDistributionExecutionService,
     distribution_execution_service,
 )
 from app.distribution_types import DistributionActionStatus
-from app.distribution_execution_schemas import DistributionExperimentStatus
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 
@@ -44,7 +44,10 @@ class CustomerPublishConfirmationService:
     ) -> CustomerPreparedActionView:
         request, plan = self._current_plan(project=project, draft=draft)
         self._validate_exact(request=request, plan=plan)
-        self._validate_confirmation_consistency(request=request, metadata=plan.action.operational_metadata)
+        self._validate_confirmation_consistency(
+            request=request,
+            metadata=plan.action.operational_metadata,
+        )
         return self._to_view(request=request, plan=plan)
 
     def confirm(
@@ -57,15 +60,26 @@ class CustomerPublishConfirmationService:
         self._validate_exact(request=request, plan=plan)
         fingerprint = self._fingerprint(request=request, plan=plan)
         metadata = dict(plan.action.operational_metadata)
-
-        if request.status == "PUBLISH_CONFIRMED":
-            self._validate_confirmation_consistency(request=request, metadata=metadata)
-            if request.customer_publish_confirmation_fingerprint != fingerprint:
-                raise ValueError("Confirmed action fingerprint no longer matches the exact customer action.")
-            return self._to_view(request=request, plan=plan)
-
         existing_fingerprint = metadata.get("customer_publish_confirmation_fingerprint")
         existing_confirmed_at = metadata.get("customer_publish_confirmed_at")
+
+        if request.status == "PUBLISH_CONFIRMED":
+            if request.customer_publish_confirmation_fingerprint != fingerprint:
+                raise ValueError(
+                    "Confirmed action fingerprint no longer matches the exact customer action."
+                )
+            if request.customer_publish_confirmed_at is None:
+                raise ValueError("Customer confirmation record is missing its timestamp.")
+            if existing_fingerprint or existing_confirmed_at:
+                self._validate_confirmation_consistency(request=request, metadata=metadata)
+            else:
+                self._persist_action_stamp(
+                    plan=plan,
+                    fingerprint=fingerprint,
+                    confirmed_at=request.customer_publish_confirmed_at,
+                )
+            return self._to_view(request=request, plan=plan)
+
         if existing_fingerprint or existing_confirmed_at:
             if not existing_fingerprint or not existing_confirmed_at:
                 raise ValueError("Prepared action contains an incomplete customer confirmation stamp.")
@@ -74,23 +88,9 @@ class CustomerPublishConfirmationService:
             confirmed_at = self._parse_confirmed_at(existing_confirmed_at)
         else:
             confirmed_at = datetime.now(UTC)
-            metadata.update(
-                {
-                    "customer_publish_confirmed_at": confirmed_at.isoformat(),
-                    "customer_publish_confirmation_fingerprint": fingerprint,
-                }
-            )
-            updated_action = plan.action.model_copy(update={"operational_metadata": metadata})
-            self._store.put(
-                DISTRIBUTION_ACTION_NAMESPACE,
-                str(updated_action.id),
-                updated_action.model_dump(mode="json"),
-            )
-            # The global execution service caches actions. Update the cached model in place only
-            # after persistence succeeds so the existing approval guard sees the same durable stamp.
-            plan.action.operational_metadata.clear()
-            plan.action.operational_metadata.update(metadata)
 
+        # Persist the customer record first. Until the action stamp below is durable, the
+        # execution service approval guard remains locked and therefore fails closed.
         updated_request = request.model_copy(
             update={
                 "status": "PUBLISH_CONFIRMED",
@@ -103,6 +103,12 @@ class CustomerPublishConfirmationService:
             str(updated_request.id),
             updated_request.model_dump(mode="json"),
         )
+        if not existing_fingerprint:
+            self._persist_action_stamp(
+                plan=plan,
+                fingerprint=fingerprint,
+                confirmed_at=confirmed_at,
+            )
         return self._to_view(request=updated_request, plan=plan)
 
     def _current_plan(self, *, project: dict, draft: CustomerStartingMoveDraftView | None):
@@ -132,7 +138,10 @@ class CustomerPublishConfirmationService:
             raise ValueError("Prepared action and experiment do not match the customer execution request.")
         if request.distribution_play_id != experiment.distribution_play_id:
             raise ValueError("Prepared action does not belong to the linked DistributionPlay.")
-        if request.opportunity_id != experiment.opportunity_id or action.opportunity_id != request.opportunity_id:
+        if (
+            request.opportunity_id != experiment.opportunity_id
+            or action.opportunity_id != request.opportunity_id
+        ):
             raise ValueError("Prepared action opportunity does not match the customer request.")
         if action.platform != request.platform:
             raise ValueError("Prepared action platform does not match the customer request.")
@@ -156,16 +165,26 @@ class CustomerPublishConfirmationService:
         if metadata.get("customer_publish_confirmation_required") is not True:
             raise ValueError("Prepared customer action must require final customer confirmation.")
 
-    def _validate_confirmation_consistency(self, *, request: CustomerExecutionRequestView, metadata: dict) -> None:
+    def _validate_confirmation_consistency(
+        self,
+        *,
+        request: CustomerExecutionRequestView,
+        metadata: dict,
+    ) -> None:
         metadata_fingerprint = metadata.get("customer_publish_confirmation_fingerprint")
         metadata_confirmed_at = metadata.get("customer_publish_confirmed_at")
         if request.status == "ACTION_PREPARED":
-            if bool(metadata_fingerprint) != bool(metadata_confirmed_at):
-                raise ValueError("Prepared action contains an incomplete customer confirmation stamp.")
+            if metadata_fingerprint or metadata_confirmed_at:
+                raise ValueError(
+                    "Prepared action has a confirmation stamp without a durable customer record."
+                )
             return
         if request.status != "PUBLISH_CONFIRMED":
             raise ValueError("Customer action is not in a confirmable state.")
-        if request.customer_publish_confirmed_at is None or not request.customer_publish_confirmation_fingerprint:
+        if (
+            request.customer_publish_confirmed_at is None
+            or not request.customer_publish_confirmation_fingerprint
+        ):
             raise ValueError("Customer confirmation record is incomplete.")
         if metadata_fingerprint != request.customer_publish_confirmation_fingerprint:
             raise ValueError("Customer confirmation fingerprint does not match the prepared action.")
@@ -192,6 +211,25 @@ class CustomerPublishConfirmationService:
             separators=(",", ":"),
         )
         return sha256(canonical.encode("utf-8")).hexdigest()
+
+    def _persist_action_stamp(self, *, plan, fingerprint: str, confirmed_at: datetime) -> None:
+        metadata = dict(plan.action.operational_metadata)
+        metadata.update(
+            {
+                "customer_publish_confirmed_at": confirmed_at.isoformat(),
+                "customer_publish_confirmation_fingerprint": fingerprint,
+            }
+        )
+        updated_action = plan.action.model_copy(update={"operational_metadata": metadata})
+        self._store.put(
+            DISTRIBUTION_ACTION_NAMESPACE,
+            str(updated_action.id),
+            updated_action.model_dump(mode="json"),
+        )
+        # The execution service caches actions. Change the cached model only after the
+        # durable write succeeds so its approval guard observes the same persisted stamp.
+        plan.action.operational_metadata.clear()
+        plan.action.operational_metadata.update(metadata)
 
     def _to_view(self, *, request: CustomerExecutionRequestView, plan) -> CustomerPreparedActionView:
         confirmed = request.status == "PUBLISH_CONFIRMED"
@@ -223,7 +261,9 @@ class CustomerPublishConfirmationService:
             try:
                 parsed = datetime.fromisoformat(str(value))
             except ValueError as exc:
-                raise ValueError("Prepared action has an invalid customer confirmation timestamp.") from exc
+                raise ValueError(
+                    "Prepared action has an invalid customer confirmation timestamp."
+                ) from exc
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=UTC)
         return parsed
