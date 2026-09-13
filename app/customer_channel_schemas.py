@@ -12,6 +12,8 @@ from app.distribution_types import DistributionPlatform
 
 CustomerChannelMode = Literal["AUTO", "RESEARCH_ONLY", "OFF"]
 CustomerStartingMoveDraftReviewStatus = Literal["DRAFT", "ACCEPTED", "REJECTED"]
+CustomerStartingMoveSetupState = Literal["READY_FOR_HANDOFF", "NEEDS_SETUP", "UNAVAILABLE"]
+CustomerStartingMoveSetupStepState = Literal["READY", "NEEDS_ACTION", "UNAVAILABLE"]
 
 
 class CustomerChannelPreferenceInput(BaseModel):
@@ -83,6 +85,27 @@ class CustomerStartingMoveDraftView(BaseModel):
     provenance: list[CustomerResearchEvidenceView] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime | None = None
+
+
+class CustomerStartingMoveSetupStepView(BaseModel):
+    key: Literal["REVIEW", "PUBLISHER", "CONNECTION", "PUBLISH", "MEASURE"]
+    state: CustomerStartingMoveSetupStepState
+    title: str
+    detail: str
+
+
+class CustomerStartingMoveSetupView(BaseModel):
+    project_id: UUID
+    platform: DistributionPlatform
+    channel_label: str
+    state: CustomerStartingMoveSetupState
+    review_status: Literal["ACCEPTED"] = "ACCEPTED"
+    channel_mode: CustomerChannelMode
+    publisher_mode: PublisherMode
+    connected: bool | None = None
+    steps: list[CustomerStartingMoveSetupStepView] = Field(default_factory=list)
+    execution_allowed: Literal[False] = False
+    next_step: str
 
 
 class CustomerChannelCapabilityView(BaseModel):
