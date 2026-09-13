@@ -169,10 +169,8 @@ def get_customer_starting_move_setup(
     customer_token = _project_token(session_token, project_id)
     project = customer_funnel_service.get_project_payload(project_id, customer_token)
     draft = customer_starting_move_draft_service.view(project)
-    selected = next(
-        (channel for channel in customer_channel_service.list(project_id, customer_token) if channel.selected),
-        None,
-    )
+    channels = customer_channel_service.list(project_id, customer_token)
+    selected = next((channel for channel in channels if channel.selected), None)
     return customer_starting_move_setup_service.view(
         project_id=project_id,
         draft=draft,
