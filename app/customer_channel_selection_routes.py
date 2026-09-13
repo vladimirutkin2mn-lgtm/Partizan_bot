@@ -14,6 +14,7 @@ from app.customer_account import (
 from app.customer_channel_schemas import (
     CustomerChannelSelectionRequest,
     CustomerChannelView,
+    CustomerStartingMoveDraftEditRequest,
     CustomerStartingMoveDraftView,
     CustomerStartingMoveView,
 )
@@ -50,6 +51,11 @@ def _project_token(session_token: str | None, project_id: UUID) -> str:
         raise HTTPException(status_code=403, detail="This project does not belong to this account") from exc
 
 
+def _project(session_token: str | None, project_id: UUID) -> dict:
+    customer_token = _project_token(session_token, project_id)
+    return customer_funnel_service.get_project_payload(project_id, customer_token)
+
+
 @router.get(
     "/customer/workspace/{project_id}/starting-move",
     response_model=CustomerStartingMoveView | None,
@@ -58,9 +64,7 @@ def get_customer_starting_move(
     project_id: UUID,
     session_token: Annotated[str | None, Depends(_session_cookie)] = None,
 ) -> CustomerStartingMoveView | None:
-    customer_token = _project_token(session_token, project_id)
-    project = customer_funnel_service.get_project_payload(project_id, customer_token)
-    return customer_starting_move_service.view(project)
+    return customer_starting_move_service.view(_project(session_token, project_id))
 
 
 @router.post(
@@ -71,8 +75,7 @@ async def research_customer_starting_move(
     project_id: UUID,
     session_token: Annotated[str | None, Depends(_session_cookie)] = None,
 ) -> CustomerStartingMoveView:
-    customer_token = _project_token(session_token, project_id)
-    project = customer_funnel_service.get_project_payload(project_id, customer_token)
+    project = _project(session_token, project_id)
     try:
         return await customer_starting_move_service.research(project)
     except PreviewResearchUnavailableError as exc:
@@ -89,9 +92,7 @@ def get_customer_starting_move_draft(
     project_id: UUID,
     session_token: Annotated[str | None, Depends(_session_cookie)] = None,
 ) -> CustomerStartingMoveDraftView | None:
-    customer_token = _project_token(session_token, project_id)
-    project = customer_funnel_service.get_project_payload(project_id, customer_token)
-    return customer_starting_move_draft_service.view(project)
+    return customer_starting_move_draft_service.view(_project(session_token, project_id))
 
 
 @router.post(
@@ -102,10 +103,55 @@ async def prepare_customer_starting_move_draft(
     project_id: UUID,
     session_token: Annotated[str | None, Depends(_session_cookie)] = None,
 ) -> CustomerStartingMoveDraftView:
-    customer_token = _project_token(session_token, project_id)
-    project = customer_funnel_service.get_project_payload(project_id, customer_token)
+    project = _project(session_token, project_id)
     try:
         return await customer_starting_move_draft_service.prepare(project)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.patch(
+    "/customer/workspace/{project_id}/starting-move/draft",
+    response_model=CustomerStartingMoveDraftView,
+)
+def edit_customer_starting_move_draft(
+    project_id: UUID,
+    payload: CustomerStartingMoveDraftEditRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> CustomerStartingMoveDraftView:
+    project = _project(session_token, project_id)
+    try:
+        return customer_starting_move_draft_service.edit(project, payload)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/starting-move/draft/accept",
+    response_model=CustomerStartingMoveDraftView,
+)
+def accept_customer_starting_move_draft(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> CustomerStartingMoveDraftView:
+    project = _project(session_token, project_id)
+    try:
+        return customer_starting_move_draft_service.accept(project)
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/starting-move/draft/reject",
+    response_model=CustomerStartingMoveDraftView,
+)
+def reject_customer_starting_move_draft(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> CustomerStartingMoveDraftView:
+    project = _project(session_token, project_id)
+    try:
+        return customer_starting_move_draft_service.reject(project)
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
