@@ -27,7 +27,6 @@ from app.distribution_execution_service import (
     DISTRIBUTION_ACTION_NAMESPACE,
     DISTRIBUTION_EXPERIMENT_NAMESPACE,
 )
-from app.distribution_types import DistributionPlatform
 from app.growth_balance import growth_balance_service
 from app.main import app
 from app.models import ProductProfileStatus
@@ -144,7 +143,7 @@ def _scoped_opportunity() -> BroadResearchOpportunityView:
     )
 
 
-async def _make_ready_move(client: TestClient, preview: object, monkeypatch) -> dict:
+def _make_ready_move(client: TestClient, preview: object, monkeypatch) -> dict:
     _attach_product(preview)
     selected = client.put(
         f"/customer/workspace/{preview.project_id}/channel-selection",
@@ -212,12 +211,11 @@ def test_review_draft_requires_ready_evidence() -> None:
     assert "Research the selected channel" in response.json()["detail"]
 
 
-@pytest.mark.asyncio
-async def test_review_draft_uses_server_selection_and_creates_no_execution_state(
+def test_review_draft_uses_server_selection_and_creates_no_execution_state(
     monkeypatch,
 ) -> None:
     client, preview = _registered_client()
-    await _make_ready_move(client, preview, monkeypatch)
+    _make_ready_move(client, preview, monkeypatch)
     monkeypatch.setattr(
         customer_starting_move_draft_module.product_intake_service,
         "get_product",
