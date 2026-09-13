@@ -4,6 +4,7 @@ from uuid import UUID
 
 from app.channel_execution import ChannelCapability, PublisherMode
 from app.customer_channel_schemas import (
+    CustomerChannelCapabilityView,
     CustomerChannelView,
     CustomerStartingMoveDraftView,
     CustomerStartingMoveSetupStepView,
@@ -144,7 +145,7 @@ class CustomerStartingMoveSetupService:
     @staticmethod
     def _publish_step(
         channel: CustomerChannelView,
-        publish: object | None,
+        publish: CustomerChannelCapabilityView | None,
     ) -> CustomerStartingMoveSetupStepView:
         if channel.publisher_mode == PublisherMode.MANUAL:
             return CustomerStartingMoveSetupStepView(
@@ -156,7 +157,7 @@ class CustomerStartingMoveSetupService:
                     "customer without granting Partizan publish permission."
                 ),
             )
-        if publish is not None and getattr(publish, "ready", False):
+        if publish is not None and publish.ready:
             return CustomerStartingMoveSetupStepView(
                 key="PUBLISH",
                 state="READY",
@@ -166,7 +167,7 @@ class CustomerStartingMoveSetupService:
                     "approve or execute a distribution action."
                 ),
             )
-        blocker = getattr(publish, "blocker", None)
+        blocker = publish.blocker if publish is not None else None
         state = "NEEDS_ACTION" if channel.connected is False else "UNAVAILABLE"
         return CustomerStartingMoveSetupStepView(
             key="PUBLISH",
@@ -176,15 +177,17 @@ class CustomerStartingMoveSetupService:
         )
 
     @staticmethod
-    def _measure_step(measure: object | None) -> CustomerStartingMoveSetupStepView:
-        if measure is not None and getattr(measure, "ready", False):
+    def _measure_step(
+        measure: CustomerChannelCapabilityView | None,
+    ) -> CustomerStartingMoveSetupStepView:
+        if measure is not None and measure.ready:
             return CustomerStartingMoveSetupStepView(
                 key="MEASURE",
                 state="READY",
                 title="Outcome measurement",
                 detail="The channel has a supported outcome-measurement path.",
             )
-        blocker = getattr(measure, "blocker", None)
+        blocker = measure.blocker if measure is not None else None
         return CustomerStartingMoveSetupStepView(
             key="MEASURE",
             state="UNAVAILABLE",
