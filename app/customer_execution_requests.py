@@ -176,6 +176,45 @@ class CustomerExecutionRequestService:
         self._persist(updated)
         return updated
 
+    def mark_operator_approved(
+        self,
+        *,
+        request_id: UUID,
+        plan: DistributionExecutionPlanView,
+    ) -> CustomerExecutionRequestView:
+        request = self.get_request(request_id)
+        if request.distribution_action_id != plan.action.id:
+            raise ValueError("Approved action does not match the customer execution request.")
+        if request.experiment_id != plan.experiment.id:
+            raise ValueError("Approved experiment does not match the customer execution request.")
+        if plan.action.status != DistributionActionStatus.APPROVED:
+            raise ValueError("Customer execution action must be APPROVED before recording operator approval.")
+        if plan.experiment.status != DistributionExperimentStatus.APPROVED:
+            raise ValueError(
+                "Customer execution experiment must be APPROVED before recording operator approval."
+            )
+
+        if request.status == "OPERATOR_APPROVED":
+            if request.operator_approved_at is None:
+                raise ValueError("Operator-approved request is missing its approval timestamp.")
+            return request
+        if request.status != "PUBLISH_CONFIRMED":
+            raise ValueError("Customer publish confirmation is required before operator approval.")
+        if (
+            request.customer_publish_confirmed_at is None
+            or not request.customer_publish_confirmation_fingerprint
+        ):
+            raise ValueError("Customer publish confirmation record is incomplete.")
+
+        updated = request.model_copy(
+            update={
+                "status": "OPERATOR_APPROVED",
+                "operator_approved_at": datetime.now(UTC),
+            }
+        )
+        self._persist(updated)
+        return updated
+
     def list_requests(self) -> list[CustomerExecutionRequestView]:
         rows: list[CustomerExecutionRequestView] = []
         for payload in self._store.list_namespace(CUSTOMER_EXECUTION_REQUEST_NAMESPACE):
