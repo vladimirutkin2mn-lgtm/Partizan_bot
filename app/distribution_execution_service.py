@@ -103,6 +103,8 @@ class InMemoryDistributionExecutionService:
         product: ProductProfileView,
         play: DistributionPlayView,
         payload: DistributionExecutionPrepareRequest,
+        *,
+        customer_execution_request_id: UUID | None = None,
     ) -> DistributionExecutionPlanView:
         if play.status != DistributionPlayStatus.READY:
             raise ValueError("Only READY DistributionPlay objects can be prepared")
@@ -143,6 +145,23 @@ class InMemoryDistributionExecutionService:
         if payload.title is not None:
             content_payload["title"] = payload.title.strip()
 
+        operational_metadata = {
+            "distribution_play_id": str(play.id),
+            "tactic_id": play.tactic_id,
+            "tactic_class": play.tactic_class.value,
+            "destination_url": destination_url,
+            "referral_token": referral_token,
+            "operator_confirmation_required": True,
+        }
+        if customer_execution_request_id is not None:
+            operational_metadata.update(
+                {
+                    "customer_execution_request_id": str(customer_execution_request_id),
+                    "customer_exact_content_locked": True,
+                    "customer_publish_confirmation_required": True,
+                }
+            )
+
         action = DistributionActionView(
             id=action_id,
             platform=play.platform,
@@ -158,14 +177,7 @@ class InMemoryDistributionExecutionService:
             content_text=payload.content_text,
             content_payload=content_payload,
             tracking_url=tracking_url,
-            operational_metadata={
-                "distribution_play_id": str(play.id),
-                "tactic_id": play.tactic_id,
-                "tactic_class": play.tactic_class.value,
-                "destination_url": destination_url,
-                "referral_token": referral_token,
-                "operator_confirmation_required": True,
-            },
+            operational_metadata=operational_metadata,
         )
         experiment = DistributionExperimentView(
             id=experiment_id,
@@ -192,6 +204,10 @@ class InMemoryDistributionExecutionService:
         action = self.get_action(action_id)
         if action.status != DistributionActionStatus.PREPARED:
             raise ValueError("Only PREPARED DistributionAction objects can be edited")
+        if action.operational_metadata.get("customer_exact_content_locked") is True:
+            raise ValueError(
+                "Customer-requested action content is locked until the customer reviews a new draft"
+            )
 
         content_payload = dict(action.content_payload)
         if payload.context_text is not None:
@@ -224,6 +240,7 @@ class InMemoryDistributionExecutionService:
         action = self.get_action(action_id)
         if action.status != DistributionActionStatus.PREPARED:
             raise ValueError("Only PREPARED DistributionAction objects can be approved")
+        self._require_customer_publish_confirmation(action)
         experiment = self.get_experiment(action.experiment_id)
         play_id = UUID(str(action.operational_metadata["distribution_play_id"]))
         play = self._find_play(experiment.product_id, play_id)
@@ -260,6 +277,7 @@ class InMemoryDistributionExecutionService:
             raise ValueError("Dedicated outreach approval only accepts OUTREACH_EMAIL actions")
         if action.status != DistributionActionStatus.PREPARED:
             raise ValueError("Only PREPARED outreach actions can be approved")
+        self._require_customer_publish_confirmation(action)
         if not str(action.content_text or "").strip():
             raise ValueError("Outreach email requires exact drafted content before approval")
         experiment = self.get_experiment(action.experiment_id)
@@ -504,6 +522,16 @@ class InMemoryDistributionExecutionService:
         if slot_route and play.attribution_level.value in {"PROFILE", "CAMPAIGN"}:
             return slot_route
         return destination_url
+
+    def _require_customer_publish_confirmation(self, action: DistributionActionView) -> None:
+        metadata = action.operational_metadata
+        if (
+            metadata.get("customer_publish_confirmation_required") is True
+            and not metadata.get("customer_publish_confirmed_at")
+        ):
+            raise ValueError(
+                "Customer publish confirmation is required before this prepared action can be approved"
+            )
 
     def _validate_action_ready_for_approval(self, action: DistributionActionView) -> None:
         if action.action_type in {
