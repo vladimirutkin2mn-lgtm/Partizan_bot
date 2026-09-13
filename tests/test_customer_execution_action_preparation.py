@@ -240,7 +240,7 @@ def test_customer_prepared_action_cannot_be_edited_or_approved_before_confirmati
             plan.action.id,
             DistributionActionEditRequest(content_text="Operator changed the accepted copy."),
         )
-    with pytest.raises(ValueError, match="customer publish confirmation"):
+    with pytest.raises(ValueError, match="Customer publish confirmation"):
         execution_service.approve(plan.action.id)
 
     stored = execution_service.get_plan(plan.action.id)
