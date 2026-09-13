@@ -234,6 +234,7 @@
 
   const moveSourceLabel = (move) => ({
     PREVIEW_RESEARCH: 'Free research evidence',
+    CHANNEL_RESEARCH: 'Selected-channel research',
     FULL_RESEARCH: 'Full research evidence',
     SELECTED_CHANNEL: 'Research gap',
   })[move && move.source] || 'Next recommendation';
@@ -258,7 +259,7 @@
       ? `<a class="button button-secondary" href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">Open researched opportunity ↗</a>`
       : '';
     const researchButton = startingMove.state === 'NEEDS_RESEARCH'
-      ? '<button id="channel-choice-research" class="button button-secondary" type="button">Open research →</button>'
+      ? `<button id="channel-choice-research" class="button button-secondary" type="button">Research ${escapeHtml(selected.label)} now →</button>`
       : '';
     const stateLabel = startingMove.state === 'READY' ? 'Evidence ready' : 'More research needed';
 
@@ -354,8 +355,24 @@
       });
     });
 
-    $('channel-choice-research')?.addEventListener('click', () => {
-      document.querySelector('.tab-button[data-tab="activity"]')?.click();
+    $('channel-choice-research')?.addEventListener('click', async () => {
+      const button = $('channel-choice-research');
+      if (!button) return;
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Researching selected channel…';
+      try {
+        startingMove = await requestJson(
+          `/customer/workspace/${encodeURIComponent(projectId)}/starting-move/research`,
+          { method: 'POST' },
+        );
+        renderChoice();
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = original;
+        const note = card.querySelector('.activation-action-primary .note');
+        if (note) note.textContent = error.message || 'Selected-channel research is unavailable.';
+      }
     });
 
     $('channel-choice-controls')?.addEventListener('click', () => {
