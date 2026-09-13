@@ -26,7 +26,8 @@ def test_customer_prepare_boundary_creates_only_locked_prepared_state() -> None:
 def test_customer_prepared_action_is_content_locked_and_approval_gated() -> None:
     assert '"customer_exact_content_locked": True' in EXECUTION
     assert '"customer_publish_confirmation_required": True' in EXECUTION
-    assert "_require_customer_edit_unlocked(action)" in EXECUTION
+    assert 'action.operational_metadata.get("customer_exact_content_locked") is True' in EXECUTION
+    assert "Customer-requested action content is locked" in EXECUTION
     assert "_require_customer_publish_confirmation(action)" in EXECUTION
     assert "customer_publish_confirmed_at" in EXECUTION
 
