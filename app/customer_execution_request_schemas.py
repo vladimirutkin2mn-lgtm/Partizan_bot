@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 from app.channel_execution import PublisherMode
 from app.distribution_types import DistributionPlatform
@@ -13,6 +13,7 @@ CustomerExecutionRequestStatus = Literal[
     "REQUESTED",
     "PREPARATION_READY",
     "ACTION_PREPARED",
+    "PUBLISH_CONFIRMED",
 ]
 
 
@@ -27,6 +28,31 @@ class CustomerExecutionPreparationLinkRequest(BaseModel):
 
 class CustomerExecutionActionPrepareRequest(BaseModel):
     confirm_prepare: Literal[True]
+
+
+class CustomerExecutionPublishConfirmationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirm_publish: Literal[True]
+
+
+class CustomerPreparedActionView(BaseModel):
+    request_id: UUID
+    project_id: UUID
+    distribution_action_id: UUID
+    platform: DistributionPlatform
+    action_status: Literal["PREPARED"] = "PREPARED"
+    source_title: str = Field(min_length=1, max_length=500)
+    source_url: HttpUrl
+    target_url: HttpUrl
+    draft_title: str | None = Field(default=None, max_length=300)
+    context_text: str = Field(min_length=1, max_length=8000)
+    content_text: str = Field(min_length=10, max_length=12000)
+    customer_publish_confirmed: bool = False
+    customer_publish_confirmed_at: datetime | None = None
+    execution_allowed: Literal[False] = False
+    operator_approval_required: Literal[True] = True
+    published: Literal[False] = False
 
 
 class CustomerExecutionRequestView(BaseModel):
@@ -47,6 +73,12 @@ class CustomerExecutionRequestView(BaseModel):
     distribution_action_id: UUID | None = None
     experiment_id: UUID | None = None
     action_prepared_at: datetime | None = None
+    customer_publish_confirmed_at: datetime | None = None
+    customer_publish_confirmation_fingerprint: str | None = Field(
+        default=None,
+        min_length=64,
+        max_length=64,
+    )
     execution_allowed: Literal[False] = False
     customer_publish_confirmation_required: Literal[True] = True
     requested_at: datetime
