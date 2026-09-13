@@ -14,6 +14,7 @@ CustomerExecutionRequestStatus = Literal[
     "PREPARATION_READY",
     "ACTION_PREPARED",
     "PUBLISH_CONFIRMED",
+    "OPERATOR_APPROVED",
 ]
 
 
@@ -34,6 +35,12 @@ class CustomerExecutionPublishConfirmationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     confirm_publish: Literal[True]
+
+
+class CustomerExecutionOperatorApprovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirm_approval: Literal[True]
 
 
 class CustomerPreparedActionView(BaseModel):
@@ -79,6 +86,7 @@ class CustomerExecutionRequestView(BaseModel):
         min_length=64,
         max_length=64,
     )
+    operator_approved_at: datetime | None = None
     execution_allowed: Literal[False] = False
     customer_publish_confirmation_required: Literal[True] = True
     requested_at: datetime
