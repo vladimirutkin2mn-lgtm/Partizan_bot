@@ -4,10 +4,12 @@ import asyncio
 import hashlib
 from dataclasses import dataclass
 from enum import StrEnum
+from urllib.parse import urlparse
 from uuid import UUID, uuid5
 
 from pydantic import BaseModel, Field
 
+from app.distribution_types import DistributionPlatform
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ICPGenerationResponse, ICPView, ProductProfileView
 from app.search import (
@@ -118,6 +120,37 @@ _SURFACE_EXECUTION = {
     ),
 }
 
+_PLATFORM_RESEARCH = {
+    DistributionPlatform.REDDIT: (
+        ResearchSurface.COMMUNITY,
+        "PUBLIC_COMMUNITY",
+        SourceClass.COMMUNITY,
+        "Reddit communities discussions site:reddit.com",
+        ("reddit.com",),
+    ),
+    DistributionPlatform.TELEGRAM: (
+        ResearchSurface.COMMUNITY,
+        "PUBLIC_COMMUNITY",
+        SourceClass.COMMUNITY,
+        "Telegram channels communities discussions site:t.me",
+        ("t.me", "telegram.me"),
+    ),
+    DistributionPlatform.INSTAGRAM: (
+        ResearchSurface.CREATOR,
+        "CREATOR_PROFILE",
+        SourceClass.CREATOR,
+        "Instagram creators audiences content site:instagram.com",
+        ("instagram.com",),
+    ),
+    DistributionPlatform.TIKTOK: (
+        ResearchSurface.CREATOR,
+        "CREATOR_PROFILE",
+        SourceClass.CREATOR,
+        "TikTok creators audiences content site:tiktok.com",
+        ("tiktok.com",),
+    ),
+}
+
 
 class BroadResearchService:
     """Discover public-web growth surfaces without creating execution permissions."""
@@ -188,6 +221,43 @@ class BroadResearchService:
                 "Public-web research is temporarily unavailable."
             )
         return None
+
+    async def discover_platform_preview(
+        self,
+        product: ProductProfileView,
+        icp_result: ICPGenerationResponse,
+        platform: DistributionPlatform,
+    ) -> BroadResearchOpportunityView | None:
+        """Research only the selected customer channel using real public-web evidence."""
+        if not icp_result.icps:
+            return None
+        provider = self._search_provider or get_search_provider()
+        if isinstance(provider, MockSearchProvider):
+            raise PreviewResearchUnavailableError("Public-web research is not configured.")
+
+        surface, kind, source_class, suffix, allowed_hosts = _PLATFORM_RESEARCH[platform]
+        icp = icp_result.icps[0]
+        query = self._query(
+            surface,
+            kind,
+            icp,
+            source_class,
+            f"{self._context(product, icp)} {suffix}",
+        )
+        try:
+            hits = await provider.search(query.discovery_query, limit=3)
+        except Exception as exc:
+            raise PreviewResearchUnavailableError(
+                "Selected-channel public-web research is temporarily unavailable."
+            ) from exc
+
+        matching_hits = [
+            hit for hit in hits if self._host_matches(hit.url, allowed_hosts)
+        ]
+        if not matching_hits:
+            return None
+        return self._hit_opportunity(product, query, matching_hits[0])
+
     async def discover(
         self,
         product: ProductProfileView,
@@ -301,7 +371,10 @@ class BroadResearchService:
             surface=surface,
             kind=kind,
             icp=icp,
-            discovery_query=DiscoveryQuery(source_class=source_class, query=" ".join(text.split())[:800]),
+            discovery_query=DiscoveryQuery(
+                source_class=source_class,
+                query=" ".join(text.split())[:800],
+            ),
         )
 
     @staticmethod
@@ -369,7 +442,10 @@ class BroadResearchService:
 
     @staticmethod
     def _score(icp: ICPView, evidence_count: int) -> float:
-        return round(min(100.0, 45.0 + icp.score * 0.45 + min(evidence_count, 3) * 3.0), 1)
+        return round(
+            min(100.0, 45.0 + icp.score * 0.45 + min(evidence_count, 3) * 3.0),
+            1,
+        )
 
     @staticmethod
     def _rationale(surface: ResearchSurface, icp: ICPView) -> str:
@@ -394,6 +470,14 @@ class BroadResearchService:
             ),
         }
         return f"{descriptions[surface]} Target segment: {icp.title}."[:1200]
+
+    @staticmethod
+    def _host_matches(url: str, allowed_hosts: tuple[str, ...]) -> bool:
+        try:
+            host = (urlparse(url).hostname or "").lower().rstrip(".")
+        except ValueError:
+            return False
+        return any(host == allowed or host.endswith(f".{allowed}") for allowed in allowed_hosts)
 
     @staticmethod
     def _id(product_id: UUID, surface: ResearchSurface, value: str) -> UUID:
