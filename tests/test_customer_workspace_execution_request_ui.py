@@ -13,7 +13,7 @@ def test_execution_request_ui_waits_for_accepted_ready_handoff() -> None:
 def test_execution_request_is_created_only_by_explicit_customer_click() -> None:
     assert "Request one prepared action →" in JS
     assert "execution-request-submit" in JS
-    assert "button.addEventListener('click', async () =>" in JS
+    assert "$('execution-request-submit')?.addEventListener('click', async () =>" in JS
     assert "/starting-move/execution-request" in JS
     assert "{ method: 'POST', body: JSON.stringify({ confirm_request: true }) }" in JS
     assert JS.count("method: 'POST'") == 1
