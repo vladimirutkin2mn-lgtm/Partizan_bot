@@ -15,8 +15,10 @@ from app.customer_channels import customer_channel_service
 from app.customer_execution_request_schemas import (
     CustomerExecutionActionPrepareRequest,
     CustomerExecutionPreparationLinkRequest,
+    CustomerExecutionPublishConfirmationRequest,
     CustomerExecutionRequestCreate,
     CustomerExecutionRequestView,
+    CustomerPreparedActionView,
 )
 from app.customer_execution_requests import customer_execution_request_service
 from app.customer_funnel import (
@@ -24,6 +26,7 @@ from app.customer_funnel import (
     CustomerProjectNotFoundError,
     customer_funnel_service,
 )
+from app.customer_publish_confirmation import customer_publish_confirmation_service
 from app.customer_starting_move_draft import customer_starting_move_draft_service
 from app.customer_starting_move_setup import customer_starting_move_setup_service
 from app.distribution_execution_schemas import DistributionExecutionPrepareRequest
@@ -113,6 +116,37 @@ def request_customer_execution_preparation(
             draft=draft,
             setup=setup,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@customer_router.get(
+    "/customer/workspace/{project_id}/starting-move/execution-request/prepared-action",
+    response_model=CustomerPreparedActionView,
+)
+def get_customer_prepared_action(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> CustomerPreparedActionView:
+    project, draft, _ = _request_context(session_token, project_id)
+    try:
+        return customer_publish_confirmation_service.view(project=project, draft=draft)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@customer_router.post(
+    "/customer/workspace/{project_id}/starting-move/execution-request/confirmation",
+    response_model=CustomerPreparedActionView,
+)
+def confirm_customer_prepared_action(
+    project_id: UUID,
+    payload: CustomerExecutionPublishConfirmationRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> CustomerPreparedActionView:
+    project, draft, _ = _request_context(session_token, project_id)
+    try:
+        return customer_publish_confirmation_service.confirm(project=project, draft=draft)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
