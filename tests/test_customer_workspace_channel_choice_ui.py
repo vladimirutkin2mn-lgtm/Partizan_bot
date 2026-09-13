@@ -54,13 +54,31 @@ def test_research_gap_can_trigger_only_scoped_research_not_execution() -> None:
 
     assert "/starting-move/research" in js
     assert "{ method: 'POST' }" in js
-    assert js.count("method: 'POST'") == 1
+    assert js.count("method: 'POST'") == 2
     assert "Researching selected channel…" in js
     assert "/autopilot" not in js
     assert "/connection" not in js
     assert "/publish" not in js
     assert "confirm_autonomous_spend" not in js
     assert "method: 'DELETE'" not in js
+
+
+def test_ready_move_can_prepare_review_only_draft_without_execution_calls() -> None:
+    js = _channel_choice_module()
+
+    assert "let startingMoveDraft = null;" in js
+    assert "channel-choice-draft" in js
+    assert "Prepare review draft" in js
+    assert "/starting-move/draft" in js
+    assert "Preparing review draft…" in js
+    assert "Review-only test draft" in js
+    assert "Review only" in js
+    assert "startingMoveDraft.execution_requirement" in js
+    assert "/actions/auto-prepare" not in js
+    assert "/approve" not in js
+    assert "/execute" not in js
+    assert "/publish" not in js
+    assert "/connection" not in js
 
 
 def test_off_channels_are_not_selectable_and_real_activity_ends_choice_flow() -> None:
@@ -84,6 +102,7 @@ def test_channel_choice_follows_canonical_workspace_fanout_without_mutating_chan
     assert "refreshQueued" in js
     assert "/channels" in js
     assert "/starting-move" in js
+    assert "/starting-move/draft" in js
     assert "method: 'DELETE'" not in js
     assert "/autopilot" not in js
     assert "confirm_autonomous_spend" not in js
