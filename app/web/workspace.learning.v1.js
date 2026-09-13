@@ -240,6 +240,35 @@
     SELECTED_CHANNEL: 'Research gap',
   })[move && move.source] || 'Next recommendation';
 
+  const draftReviewLabel = (draft) => ({
+    DRAFT: 'Needs your review',
+    ACCEPTED: 'Accepted for next setup step',
+    REJECTED: 'Rejected',
+  })[draft && draft.review_status] || 'Review only';
+
+  const renderDraft = (selected) => {
+    if (!startingMoveDraft || startingMoveDraft.platform !== selected.platform) return '';
+    const reviewable = startingMoveDraft.review_status === 'DRAFT';
+    const source = `<a href="${escapeHtml(startingMoveDraft.source_url)}" target="_blank" rel="noopener noreferrer">Source evidence ↗</a>`;
+    const content = reviewable
+      ? `<label><span class="eyebrow">Draft title</span><input id="starting-move-draft-title" type="text" maxlength="300" value="${escapeHtml(startingMoveDraft.title || '')}"></label>
+        <label><span class="eyebrow">Draft content</span><textarea id="starting-move-draft-content" rows="7" maxlength="12000">${escapeHtml(startingMoveDraft.content_text)}</textarea></label>
+        <div>
+          <button id="channel-choice-draft-save" class="button button-secondary" type="button">Save changes</button>
+          <button id="channel-choice-draft-accept" class="button button-primary" type="button">Accept for next setup step →</button>
+          <button id="channel-choice-draft-reject" class="button button-secondary" type="button">Reject draft</button>
+        </div>`
+      : `<p>${escapeHtml(startingMoveDraft.content_text)}</p>`;
+    return `<div class="activation-action">
+      <div><span class="eyebrow">Review-only test draft</span><strong>${escapeHtml(startingMoveDraft.title || 'First test draft')}</strong><span class="status-pill">${escapeHtml(draftReviewLabel(startingMoveDraft))}</span></div>
+      ${content}
+      <p class="note"><strong>Why this draft:</strong> ${escapeHtml(startingMoveDraft.rationale)}</p>
+      <p class="note"><strong>Watch:</strong> ${escapeHtml(startingMoveDraft.signal_to_watch)}</p>
+      <p class="note">${escapeHtml(startingMoveDraft.execution_requirement)}</p>
+      <p class="note">${source}</p>
+    </div>`;
+  };
+
   const renderStartingMove = (selected) => {
     if (!selected) {
       return `<div class="activation-action activation-action-primary">
@@ -263,16 +292,8 @@
       ? `<button id="channel-choice-research" class="button button-secondary" type="button">Research ${escapeHtml(selected.label)} now →</button>`
       : '';
     const draftButton = startingMove.state === 'READY'
+      && (!startingMoveDraft || startingMoveDraft.review_status === 'DRAFT')
       ? `<button id="channel-choice-draft" class="button button-secondary" type="button">${startingMoveDraft ? 'Refresh review draft' : 'Prepare review draft'} →</button>`
-      : '';
-    const draft = startingMoveDraft && startingMoveDraft.platform === selected.platform
-      ? `<div class="activation-action">
-        <div><span class="eyebrow">Review-only test draft</span><strong>${escapeHtml(startingMoveDraft.title || 'First test draft')}</strong><span class="status-pill">Review only</span></div>
-        <p>${escapeHtml(startingMoveDraft.content_text)}</p>
-        <p class="note"><strong>Why this draft:</strong> ${escapeHtml(startingMoveDraft.rationale)}</p>
-        <p class="note"><strong>Watch:</strong> ${escapeHtml(startingMoveDraft.signal_to_watch)}</p>
-        <p class="note">${escapeHtml(startingMoveDraft.execution_requirement)}</p>
-      </div>`
       : '';
     const stateLabel = startingMove.state === 'READY' ? 'Evidence ready' : 'More research needed';
 
@@ -287,7 +308,7 @@
       <p class="note"><strong>Watch:</strong> ${escapeHtml(startingMove.signal_to_watch)}</p>
       <p class="note">${escapeHtml(startingMove.execution_requirement)}</p>
       <div>${sourceLink}${researchButton}${draftButton}</div>
-      ${draft}
+      ${renderDraft(selected)}
     </div>`;
   };
 
@@ -410,6 +431,69 @@
         button.textContent = original;
         const note = card.querySelector('.activation-action-primary .note');
         if (note) note.textContent = error.message || 'Could not prepare the review draft.';
+      }
+    });
+
+    $('channel-choice-draft-save')?.addEventListener('click', async () => {
+      const button = $('channel-choice-draft-save');
+      const content = $('starting-move-draft-content');
+      const title = $('starting-move-draft-title');
+      if (!button || !content) return;
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Saving…';
+      try {
+        startingMoveDraft = await requestJson(
+          `/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft`,
+          {
+            method: 'PATCH',
+            body: JSON.stringify({ title: title?.value || null, content_text: content.value }),
+          },
+        );
+        renderChoice();
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = original;
+        const note = card.querySelector('.activation-action-primary .note');
+        if (note) note.textContent = error.message || 'Could not save the review draft.';
+      }
+    });
+
+    $('channel-choice-draft-accept')?.addEventListener('click', async () => {
+      const button = $('channel-choice-draft-accept');
+      if (!button) return;
+      button.disabled = true;
+      button.textContent = 'Accepting…';
+      try {
+        startingMoveDraft = await requestJson(
+          `/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft/accept`,
+          { method: 'POST' },
+        );
+        renderChoice();
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Accept for next setup step →';
+        const note = card.querySelector('.activation-action-primary .note');
+        if (note) note.textContent = error.message || 'Could not accept the review draft.';
+      }
+    });
+
+    $('channel-choice-draft-reject')?.addEventListener('click', async () => {
+      const button = $('channel-choice-draft-reject');
+      if (!button) return;
+      button.disabled = true;
+      button.textContent = 'Rejecting…';
+      try {
+        startingMoveDraft = await requestJson(
+          `/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft/reject`,
+          { method: 'POST' },
+        );
+        renderChoice();
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Reject draft';
+        const note = card.querySelector('.activation-action-primary .note');
+        if (note) note.textContent = error.message || 'Could not reject the review draft.';
       }
     });
 

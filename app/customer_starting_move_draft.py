@@ -9,6 +9,8 @@ from app.action_drafting import (
     SelectedActionTarget,
 )
 from app.customer_channel_schemas import (
+    CustomerStartingMoveDraftEditRequest,
+    CustomerStartingMoveDraftReviewStatus,
     CustomerStartingMoveDraftView,
     CustomerStartingMoveView,
 )
@@ -148,10 +150,12 @@ class CustomerStartingMoveDraftService:
             source=f"customer_starting_move:{move.source.lower()}",
         )
         content = await self._composer.compose(product=product, move=move, target=target)
+        now = datetime.now(UTC)
         draft = CustomerStartingMoveDraftView(
             project_id=UUID(str(project["id"])),
             platform=move.platform,
             channel_label=move.channel_label,
+            review_status="DRAFT",
             source_title=move.title,
             source_url=source_url,
             title=content.title,
@@ -165,14 +169,86 @@ class CustomerStartingMoveDraftService:
                 "separately controlled."
             ),
             provenance=move.provenance,
-            created_at=datetime.now(UTC),
+            created_at=now,
+            updated_at=now,
         )
+        self._persist(project, move, draft)
+        return draft
+
+    def edit(
+        self,
+        project: dict,
+        payload: CustomerStartingMoveDraftEditRequest,
+    ) -> CustomerStartingMoveDraftView:
+        move, draft = self._reviewable(project)
+        title = payload.title.strip() if payload.title is not None else None
+        content_text = payload.content_text.strip()
+        if len(content_text) < 10:
+            raise ValueError("Review draft content must contain at least 10 characters")
+        updated = draft.model_copy(
+            update={
+                "title": title or None,
+                "content_text": content_text,
+                "updated_at": datetime.now(UTC),
+            }
+        )
+        self._persist(project, move, updated)
+        return updated
+
+    def accept(self, project: dict) -> CustomerStartingMoveDraftView:
+        return self._decide(project, "ACCEPTED")
+
+    def reject(self, project: dict) -> CustomerStartingMoveDraftView:
+        return self._decide(project, "REJECTED")
+
+    def _decide(
+        self,
+        project: dict,
+        status: CustomerStartingMoveDraftReviewStatus,
+    ) -> CustomerStartingMoveDraftView:
+        move, draft = self._reviewable(project)
+        requirement = (
+            "Accepted for the customer's next setup step only. Nothing has been approved for "
+            "publishing, account access or acquisition spend."
+            if status == "ACCEPTED"
+            else "Rejected by the customer. Nothing has been approved, published or funded."
+        )
+        updated = draft.model_copy(
+            update={
+                "review_status": status,
+                "execution_allowed": False,
+                "execution_requirement": requirement,
+                "updated_at": datetime.now(UTC),
+            }
+        )
+        self._persist(project, move, updated)
+        return updated
+
+    def _reviewable(
+        self,
+        project: dict,
+    ) -> tuple[CustomerStartingMoveView, CustomerStartingMoveDraftView]:
+        move = customer_starting_move_service.view(project)
+        if move is None or move.state != "READY":
+            raise ValueError("A research-backed starting move is required before draft review.")
+        draft = self.view(project)
+        if draft is None:
+            raise ValueError("Prepare a review draft before reviewing it.")
+        if draft.review_status != "DRAFT":
+            raise ValueError("Only a DRAFT starting-move review can be changed or decided.")
+        return move, draft
+
+    def _persist(
+        self,
+        project: dict,
+        move: CustomerStartingMoveView,
+        draft: CustomerStartingMoveDraftView,
+    ) -> None:
         self._store.put(
             CUSTOMER_STARTING_MOVE_DRAFT_NAMESPACE,
             self._draft_key(project, move),
             draft.model_dump(mode="json"),
         )
-        return draft
 
     def reset(self) -> None:
         if self._store.ephemeral:

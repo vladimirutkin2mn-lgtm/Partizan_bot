@@ -11,6 +11,7 @@ from app.customer_schemas import CustomerResearchEvidenceView
 from app.distribution_types import DistributionPlatform
 
 CustomerChannelMode = Literal["AUTO", "RESEARCH_ONLY", "OFF"]
+CustomerStartingMoveDraftReviewStatus = Literal["DRAFT", "ACCEPTED", "REJECTED"]
 
 
 class CustomerChannelPreferenceInput(BaseModel):
@@ -59,11 +60,17 @@ class CustomerStartingMoveView(BaseModel):
     provenance: list[CustomerResearchEvidenceView] = Field(default_factory=list)
 
 
+class CustomerStartingMoveDraftEditRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=300)
+    content_text: str = Field(min_length=10, max_length=12000)
+
+
 class CustomerStartingMoveDraftView(BaseModel):
     project_id: UUID
     platform: DistributionPlatform
     channel_label: str
     state: Literal["REVIEW_ONLY"] = "REVIEW_ONLY"
+    review_status: CustomerStartingMoveDraftReviewStatus = "DRAFT"
     source_title: str
     source_url: HttpUrl
     title: str | None = None
@@ -75,6 +82,7 @@ class CustomerStartingMoveDraftView(BaseModel):
     execution_requirement: str
     provenance: list[CustomerResearchEvidenceView] = Field(default_factory=list)
     created_at: datetime
+    updated_at: datetime | None = None
 
 
 class CustomerChannelCapabilityView(BaseModel):

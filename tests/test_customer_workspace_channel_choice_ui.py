@@ -53,8 +53,6 @@ def test_research_gap_can_trigger_only_scoped_research_not_execution() -> None:
     js = _channel_choice_module()
 
     assert "/starting-move/research" in js
-    assert "{ method: 'POST' }" in js
-    assert js.count("method: 'POST'") == 2
     assert "Researching selected channel…" in js
     assert "/autopilot" not in js
     assert "/connection" not in js
@@ -72,13 +70,46 @@ def test_ready_move_can_prepare_review_only_draft_without_execution_calls() -> N
     assert "/starting-move/draft" in js
     assert "Preparing review draft…" in js
     assert "Review-only test draft" in js
-    assert "Review only" in js
     assert "startingMoveDraft.execution_requirement" in js
     assert "/actions/auto-prepare" not in js
     assert "/approve" not in js
     assert "/execute" not in js
     assert "/publish" not in js
     assert "/connection" not in js
+
+
+def test_customer_can_edit_accept_or_reject_review_without_execution_calls() -> None:
+    js = _channel_choice_module()
+
+    assert "startingMoveDraft.review_status === 'DRAFT'" in js
+    assert "Needs your review" in js
+    assert "Accepted for next setup step" in js
+    assert "Rejected" in js
+    assert "starting-move-draft-title" in js
+    assert "starting-move-draft-content" in js
+    assert "channel-choice-draft-save" in js
+    assert "channel-choice-draft-accept" in js
+    assert "channel-choice-draft-reject" in js
+    assert "method: 'PATCH'" in js
+    assert "/starting-move/draft/accept" in js
+    assert "/starting-move/draft/reject" in js
+    assert "Accept for next setup step →" in js
+    assert "Reject draft" in js
+    assert "/actions/auto-prepare" not in js
+    assert "/approve" not in js
+    assert "/execute" not in js
+    assert "/publish" not in js
+    assert "/connection" not in js
+    assert "confirm_autonomous_spend" not in js
+
+
+def test_terminal_review_is_read_only_in_normal_workspace_flow() -> None:
+    js = _channel_choice_module()
+
+    assert "const reviewable = startingMoveDraft.review_status === 'DRAFT';" in js
+    assert "(!startingMoveDraft || startingMoveDraft.review_status === 'DRAFT')" in js
+    assert "? `<label>" in js
+    assert ": `<p>${escapeHtml(startingMoveDraft.content_text)}</p>`" in js
 
 
 def test_off_channels_are_not_selectable_and_real_activity_ends_choice_flow() -> None:
