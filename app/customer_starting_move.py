@@ -1,17 +1,37 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from urllib.parse import urlparse
+from uuid import UUID
 
+from app.broad_research import BroadResearchService, broad_research_service
 from app.customer_channel_schemas import CustomerStartingMoveView
 from app.customer_channels import (
     CHANNEL_LABELS,
     SELECTED_ACQUISITION_CHANNEL_KEY,
 )
-from app.customer_schemas import CustomerFreeOpportunityView, CustomerOpportunityView
+from app.customer_schemas import (
+    CustomerFreeOpportunityView,
+    CustomerOpportunityView,
+    CustomerResearchEvidenceView,
+)
 from app.distribution_types import DistributionPlatform
+from app.icp_service import icp_service
+from app.product_intake import product_intake_service
+from app.runtime_store import RuntimeStateStore, get_runtime_store
+
+CUSTOMER_STARTING_MOVE_RESEARCH_NAMESPACE = "customer_starting_move_research"
 
 
 class CustomerStartingMoveService:
+    def __init__(
+        self,
+        store: RuntimeStateStore | None = None,
+        broad_research: BroadResearchService | None = None,
+    ) -> None:
+        self._store = store or get_runtime_store()
+        self._broad_research = broad_research or broad_research_service
+
     def view(self, project: dict) -> CustomerStartingMoveView | None:
         platform = self._selected_platform(project)
         if platform is None:
@@ -21,31 +41,102 @@ class CustomerStartingMoveService:
         if full_research is not None:
             return full_research
 
+        scoped_research = self._scoped_research_move(project, platform)
+        if scoped_research is not None:
+            return scoped_research
+
         preview = self._preview_move(project, platform)
         if preview is not None:
             return preview
 
+        return self._needs_research_move(project, platform)
+
+    async def research(self, project: dict) -> CustomerStartingMoveView:
+        platform = self._selected_platform(project)
+        if platform is None:
+            raise ValueError("Choose a starting channel before requesting channel research.")
+
+        current = self.view(project)
+        if current is not None and current.state == "READY":
+            return current
+
+        product_id_raw = project.get("product_id")
+        if not product_id_raw:
+            raise ValueError("Review the product understanding before researching this channel.")
+        product_id = UUID(str(product_id_raw))
+        try:
+            product = product_intake_service.get_product(product_id)
+        except KeyError as exc:
+            raise ValueError(
+                "Review the product understanding before researching this channel."
+            ) from exc
+        try:
+            icp_result = icp_service.get(product_id)
+        except KeyError:
+            icp_result = await icp_service.generate(product)
+
+        opportunity = await self._broad_research.discover_platform_preview(
+            product,
+            icp_result,
+            platform,
+        )
+        key = self._research_key(project, platform)
+        searched_at = datetime.now(UTC).isoformat()
+        if opportunity is None:
+            self._store.put(
+                CUSTOMER_STARTING_MOVE_RESEARCH_NAMESPACE,
+                key,
+                {
+                    "status": "NO_MATCH",
+                    "platform": platform.value,
+                    "searched_at": searched_at,
+                },
+            )
+            return self._needs_research_move(project, platform, searched=True)
+
         label = CHANNEL_LABELS[platform]
-        return CustomerStartingMoveView(
+        move = CustomerStartingMoveView(
             platform=platform,
             channel_label=label,
-            state="NEEDS_RESEARCH",
-            source="SELECTED_CHANNEL",
-            title=f"Research {label} before taking action",
-            rationale=(
-                f"You chose {label} as the starting focus, but Partizan does not yet have "
-                "a channel-specific opportunity backed by source evidence."
-            ),
+            state="READY",
+            source="CHANNEL_RESEARCH",
+            title=opportunity.title,
+            rationale=opportunity.rationale,
             recommended_action=(
-                f"Continue research for {label} until Partizan has a concrete opportunity. "
-                "Do not connect an account or fund a test just to force a move."
+                f"Open this researched {label} opportunity, verify the audience context, "
+                "and prepare the first channel-native test around this exact evidence. "
+                "Do not publish or spend until the separate execution controls are configured."
             ),
-            signal_to_watch="A concrete channel-specific opportunity with source evidence.",
-            execution_requirement=(
-                "Research only. No execution permission, account connection or acquisition spend "
-                "is required to close this evidence gap."
+            signal_to_watch=(
+                "The first measurable acquisition signal tied to this exact researched opportunity."
             ),
+            execution_requirement=opportunity.execution_requirement,
+            url=opportunity.url,
+            provenance=[
+                CustomerResearchEvidenceView(
+                    query=item.query,
+                    title=item.title,
+                    url=item.url,
+                    snippet=item.snippet,
+                )
+                for item in opportunity.provenance
+            ],
         )
+        self._store.put(
+            CUSTOMER_STARTING_MOVE_RESEARCH_NAMESPACE,
+            key,
+            {
+                "status": "FOUND",
+                "platform": platform.value,
+                "searched_at": searched_at,
+                "move": move.model_dump(mode="json"),
+            },
+        )
+        return move
+
+    def reset(self) -> None:
+        if self._store.ephemeral:
+            self._store.clear_namespace(CUSTOMER_STARTING_MOVE_RESEARCH_NAMESPACE)
 
     def _full_research_move(
         self,
@@ -97,13 +188,35 @@ class CustomerStartingMoveService:
             execution_requirement=(
                 opportunity.execution_requirement
                 or (
-                    "Research is not execution permission. "
-                    "Channel access and spend remain separately controlled."
+                    "Research is not execution permission. Channel access and spend remain "
+                    "separately controlled."
                 )
             ),
             url=opportunity.url,
             provenance=opportunity.provenance,
         )
+
+    def _scoped_research_move(
+        self,
+        project: dict,
+        platform: DistributionPlatform,
+    ) -> CustomerStartingMoveView | None:
+        payload = self._store.get(
+            CUSTOMER_STARTING_MOVE_RESEARCH_NAMESPACE,
+            self._research_key(project, platform),
+        )
+        if not isinstance(payload, dict) or payload.get("status") != "FOUND":
+            return None
+        raw_move = payload.get("move")
+        if not isinstance(raw_move, dict):
+            return None
+        try:
+            move = CustomerStartingMoveView.model_validate(raw_move)
+        except ValueError:
+            return None
+        if move.platform != platform or move.state != "READY":
+            return None
+        return move
 
     def _preview_move(
         self,
@@ -135,6 +248,55 @@ class CustomerStartingMoveService:
             execution_requirement=opportunity.execution_requirement,
             url=opportunity.url,
             provenance=opportunity.provenance,
+        )
+
+    def _needs_research_move(
+        self,
+        project: dict,
+        platform: DistributionPlatform,
+        *,
+        searched: bool = False,
+    ) -> CustomerStartingMoveView:
+        if not searched:
+            payload = self._store.get(
+                CUSTOMER_STARTING_MOVE_RESEARCH_NAMESPACE,
+                self._research_key(project, platform),
+            )
+            searched = isinstance(payload, dict) and payload.get("status") == "NO_MATCH"
+        label = CHANNEL_LABELS[platform]
+        if searched:
+            title = f"No strong {label} opportunity found yet"
+            rationale = (
+                f"Partizan searched {label} for this product and audience, but no source evidence "
+                "cleared the bar for a concrete first move."
+            )
+            recommended_action = (
+                f"Keep {label} as the research focus and retry when there is stronger public "
+                "evidence. Do not connect an account or fund a test just to force a move."
+            )
+        else:
+            title = f"Research {label} before taking action"
+            rationale = (
+                f"You chose {label} as the starting focus, but Partizan does not yet have "
+                "a channel-specific opportunity backed by source evidence."
+            )
+            recommended_action = (
+                f"Research {label} until Partizan has a concrete opportunity. "
+                "Do not connect an account or fund a test just to force a move."
+            )
+        return CustomerStartingMoveView(
+            platform=platform,
+            channel_label=label,
+            state="NEEDS_RESEARCH",
+            source="SELECTED_CHANNEL",
+            title=title,
+            rationale=rationale,
+            recommended_action=recommended_action,
+            signal_to_watch="A concrete channel-specific opportunity with source evidence.",
+            execution_requirement=(
+                "Research only. No execution permission, account connection or acquisition spend "
+                "is required to close this evidence gap."
+            ),
         )
 
     @classmethod
@@ -183,6 +345,10 @@ class CustomerStartingMoveService:
             return DistributionPlatform(str(raw).strip().upper())
         except ValueError:
             return None
+
+    @staticmethod
+    def _research_key(project: dict, platform: DistributionPlatform) -> str:
+        return f"{project['id']}:{platform.value}"
 
 
 customer_starting_move_service = CustomerStartingMoveService()

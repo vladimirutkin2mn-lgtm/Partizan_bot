@@ -42,7 +42,12 @@ class CustomerStartingMoveView(BaseModel):
     platform: DistributionPlatform
     channel_label: str
     state: Literal["READY", "NEEDS_RESEARCH"]
-    source: Literal["FULL_RESEARCH", "PREVIEW_RESEARCH", "SELECTED_CHANNEL"]
+    source: Literal[
+        "FULL_RESEARCH",
+        "CHANNEL_RESEARCH",
+        "PREVIEW_RESEARCH",
+        "SELECTED_CHANNEL",
+    ]
     title: str
     rationale: str
     recommended_action: str

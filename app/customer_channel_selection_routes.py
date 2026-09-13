@@ -5,6 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException
 
+from app.broad_research import PreviewResearchUnavailableError
 from app.customer_account import (
     CUSTOMER_ACCOUNT_SESSION_COOKIE,
     CustomerAccountAuthenticationError,
@@ -56,10 +57,25 @@ def get_customer_starting_move(
     session_token: Annotated[str | None, Depends(_session_cookie)] = None,
 ) -> CustomerStartingMoveView | None:
     customer_token = _project_token(session_token, project_id)
+    project = customer_funnel_service.get_project_payload(project_id, customer_token)
+    return customer_starting_move_service.view(project)
+
+
+@router.post(
+    "/customer/workspace/{project_id}/starting-move/research",
+    response_model=CustomerStartingMoveView,
+)
+async def research_customer_starting_move(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> CustomerStartingMoveView:
+    customer_token = _project_token(session_token, project_id)
+    project = customer_funnel_service.get_project_payload(project_id, customer_token)
     try:
-        project = customer_funnel_service.get_project_payload(project_id, customer_token)
-        return customer_starting_move_service.view(project)
-    except (CustomerProjectNotFoundError, CustomerProjectAccessError, ValueError) as exc:
+        return await customer_starting_move_service.research(project)
+    except PreviewResearchUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 

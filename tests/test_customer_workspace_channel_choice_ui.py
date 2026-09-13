@@ -41,10 +41,26 @@ def test_selected_channel_move_is_evidence_backed_or_explicitly_needs_research()
     assert "Open researched opportunity ↗" in js
     assert "Partizan only shows a concrete move when it can tie that move to source evidence." in js
     assert "channel-choice-research" in js
+    assert "Research ${escapeHtml(selected.label)} now →" in js
     assert "recommended_action" in js
     assert "signal_to_watch" in js
     assert "execution_requirement" in js
     assert "startingMove = await requestJson(" in js
+    assert "CHANNEL_RESEARCH: 'Selected-channel research'" in js
+
+
+def test_research_gap_can_trigger_only_scoped_research_not_execution() -> None:
+    js = _channel_choice_module()
+
+    assert "/starting-move/research" in js
+    assert "{ method: 'POST' }" in js
+    assert js.count("method: 'POST'") == 1
+    assert "Researching selected channel…" in js
+    assert "/autopilot" not in js
+    assert "/connection" not in js
+    assert "/publish" not in js
+    assert "confirm_autonomous_spend" not in js
+    assert "method: 'DELETE'" not in js
 
 
 def test_off_channels_are_not_selectable_and_real_activity_ends_choice_flow() -> None:
@@ -68,7 +84,6 @@ def test_channel_choice_follows_canonical_workspace_fanout_without_mutating_chan
     assert "refreshQueued" in js
     assert "/channels" in js
     assert "/starting-move" in js
-    assert "method: 'POST'" not in js
     assert "method: 'DELETE'" not in js
     assert "/autopilot" not in js
     assert "confirm_autonomous_spend" not in js
