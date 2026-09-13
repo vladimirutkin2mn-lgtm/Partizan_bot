@@ -178,6 +178,18 @@ def _make_ready_move(client: TestClient, preview: object, monkeypatch) -> dict:
     return researched.json()
 
 
+def _prepare_draft(client: TestClient, preview: object, monkeypatch) -> dict:
+    _make_ready_move(client, preview, monkeypatch)
+    monkeypatch.setattr(
+        customer_starting_move_draft_module.product_intake_service,
+        "get_product",
+        lambda _product_id: _product(),
+    )
+    response = client.post(f"/customer/workspace/{preview.project_id}/starting-move/draft")
+    assert response.status_code == 200
+    return response.json()
+
+
 def test_review_draft_requires_customer_session() -> None:
     preview = customer_funnel_service.create_preview(
         CustomerPreviewRequest(
@@ -235,6 +247,7 @@ def test_review_draft_uses_server_selection_and_creates_no_execution_state(
     assert response.status_code == 200
     draft = response.json()
     assert draft["state"] == "REVIEW_ONLY"
+    assert draft["review_status"] == "DRAFT"
     assert draft["platform"] == "REDDIT"
     assert draft["source_url"] == "https://www.reddit.com/r/freelance/"
     assert draft["source_title"] == "Freelancer bookkeeping discussion"
@@ -255,3 +268,71 @@ def test_review_draft_uses_server_selection_and_creates_no_execution_state(
     cached = client.get(f"/customer/workspace/{preview.project_id}/starting-move/draft")
     assert cached.status_code == 200
     assert cached.json() == draft
+
+
+def test_customer_can_edit_and_decide_review_without_creating_execution_state(
+    monkeypatch,
+) -> None:
+    client, preview = _registered_client()
+    _prepare_draft(client, preview, monkeypatch)
+    store = get_runtime_store()
+    project_before = store.get(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id))
+
+    edited = client.patch(
+        f"/customer/workspace/{preview.project_id}/starting-move/draft",
+        json={
+            "title": "A useful bookkeeping workflow question",
+            "content_text": (
+                "Before choosing another bookkeeping tool, which recurring admin task costs "
+                "freelancers the most time each month?"
+            ),
+        },
+    )
+
+    assert edited.status_code == 200
+    assert edited.json()["review_status"] == "DRAFT"
+    assert edited.json()["title"] == "A useful bookkeeping workflow question"
+    assert "costs freelancers" in edited.json()["content_text"]
+    assert edited.json()["execution_allowed"] is False
+
+    accepted = client.post(
+        f"/customer/workspace/{preview.project_id}/starting-move/draft/accept"
+    )
+
+    assert accepted.status_code == 200
+    accepted_draft = accepted.json()
+    assert accepted_draft["review_status"] == "ACCEPTED"
+    assert accepted_draft["execution_allowed"] is False
+    assert "Nothing has been approved" in accepted_draft["execution_requirement"]
+    assert "costs freelancers" in accepted_draft["content_text"]
+
+    edit_after_accept = client.patch(
+        f"/customer/workspace/{preview.project_id}/starting-move/draft",
+        json={"content_text": "This must stay frozen after the customer review decision."},
+    )
+    reject_after_accept = client.post(
+        f"/customer/workspace/{preview.project_id}/starting-move/draft/reject"
+    )
+    assert edit_after_accept.status_code == 409
+    assert reject_after_accept.status_code == 409
+
+    assert store.list_namespace(DISTRIBUTION_ACTION_NAMESPACE) == []
+    assert store.list_namespace(DISTRIBUTION_EXPERIMENT_NAMESPACE) == []
+    assert store.get(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id)) == project_before
+
+
+def test_customer_can_reject_fresh_review_without_creating_execution_state(monkeypatch) -> None:
+    client, preview = _registered_client()
+    _prepare_draft(client, preview, monkeypatch)
+
+    rejected = client.post(
+        f"/customer/workspace/{preview.project_id}/starting-move/draft/reject"
+    )
+
+    assert rejected.status_code == 200
+    draft = rejected.json()
+    assert draft["review_status"] == "REJECTED"
+    assert draft["execution_allowed"] is False
+    assert "Nothing has been approved" in draft["execution_requirement"]
+    assert get_runtime_store().list_namespace(DISTRIBUTION_ACTION_NAMESPACE) == []
+    assert get_runtime_store().list_namespace(DISTRIBUTION_EXPERIMENT_NAMESPACE) == []
