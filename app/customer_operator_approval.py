@@ -5,6 +5,7 @@ from datetime import datetime
 from hashlib import sha256
 from uuid import UUID
 
+from app.customer_execution_boundary import customer_execution_request_scope
 from app.customer_execution_request_schemas import CustomerExecutionRequestView
 from app.customer_execution_requests import (
     CustomerExecutionRequestService,
@@ -51,7 +52,8 @@ class CustomerOperatorApprovalService:
             action_status == DistributionActionStatus.PREPARED
             and experiment_status == DistributionExperimentStatus.DRAFT
         ):
-            approved_plan = self._execution_service.approve(plan.action.id)
+            with customer_execution_request_scope(request.id):
+                approved_plan = self._execution_service.approve(plan.action.id)
         elif (
             action_status == DistributionActionStatus.APPROVED
             and experiment_status == DistributionExperimentStatus.APPROVED
