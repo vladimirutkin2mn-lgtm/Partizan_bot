@@ -14,7 +14,10 @@ _customer_execution_request_scope: ContextVar[str | None] = ContextVar(
 
 
 def customer_execution_request_id(action: DistributionActionView) -> str | None:
-    value = action.operational_metadata.get("customer_execution_request_id")
+    metadata = getattr(action, "operational_metadata", None)
+    if not isinstance(metadata, dict):
+        return None
+    value = metadata.get("customer_execution_request_id")
     if value is None:
         return None
     normalized = str(value).strip()
@@ -28,6 +31,15 @@ def require_customer_bound_mutation_scope(
     bound_request_id = customer_execution_request_id(action)
     if bound_request_id is None:
         return
+    metadata = getattr(action, "operational_metadata", {})
+    if (
+        operation in {"approval", "outreach approval"}
+        and metadata.get("customer_publish_confirmation_required") is True
+        and not metadata.get("customer_publish_confirmed_at")
+    ):
+        raise ValueError(
+            "Customer publish confirmation is required before this prepared action can be approved"
+        )
     if _customer_execution_request_scope.get() != bound_request_id:
         raise ValueError(
             f"Customer-bound action {operation} requires the dedicated customer execution request flow"
