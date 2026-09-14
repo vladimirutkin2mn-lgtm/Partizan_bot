@@ -13,6 +13,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, HttpUrl
 
 from app.creative_assets import CreativeReadinessStatus, creative_asset_service
+from app.customer_execution_boundary import require_customer_bound_mutation_scope
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_schemas import (
     DistributionActionExecutionRequest,
@@ -761,6 +762,7 @@ class DistributionExecutionAdapterService:
         payload: DistributionAdapterExecuteRequest,
     ) -> DistributionAdapterExecutionView:
         action = distribution_execution_service.get_action(action_id)
+        require_customer_bound_mutation_scope(action, "execution")
 
         existing = self.get_receipt(action_id)
         if existing is not None and not payload.retry:
