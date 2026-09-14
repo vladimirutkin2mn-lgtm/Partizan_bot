@@ -7,6 +7,8 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field
 
 from app.creative_assets import CreativeAssetSource, creative_asset_service
+from app.customer_execution_boundary import customer_execution_request_id
+from app.distribution_execution_service import distribution_execution_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.tiktok_owned_publishing import (
     TikTokCreatorPublishPreflightService,
@@ -87,6 +89,7 @@ class TikTokPublishAuthorizationService:
         action_id: UUID,
         payload: TikTokPublishAuthorizationCreateRequest,
     ) -> TikTokPublishAuthorizationView:
+        self._validate_customer_bound_title(action_id, payload.title)
         preflight = self._preflight_service.get_latest(action_id, require_fresh=True)
         if preflight.id != payload.preflight_id:
             raise ValueError(
@@ -233,6 +236,22 @@ class TikTokPublishAuthorizationService:
         )
         self._persist(updated)
         return updated
+
+    def _validate_customer_bound_title(self, action_id: UUID, title: str) -> None:
+        try:
+            action = distribution_execution_service.get_action(action_id)
+        except KeyError:
+            # Some isolated/legacy publishing paths construct TikTok dependencies without
+            # registering a DistributionAction. Those paths cannot be customer-bound.
+            return
+        if customer_execution_request_id(action) is None:
+            return
+        raw_expected_title = action.content_payload.get("title")
+        expected_title = "" if raw_expected_title is None else str(raw_expected_title)
+        if title != expected_title:
+            raise ValueError(
+                "TikTok publish authorization title must exactly match the customer-confirmed action"
+            )
 
     def _validate_title(self, value: str) -> None:
         utf16_units = len(value.encode("utf-16-le")) // 2
