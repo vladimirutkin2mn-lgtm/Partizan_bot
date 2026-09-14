@@ -37,6 +37,7 @@ class CustomerExecutionPublishConfirmationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     confirm_publish: Literal[True]
+    creative_asset_id: UUID | None = None
 
 
 class CustomerExecutionOperatorApprovalRequest(BaseModel):
@@ -72,6 +73,12 @@ class CustomerPreparedActionView(BaseModel):
     draft_title: str | None = Field(default=None, max_length=300)
     context_text: str = Field(min_length=1, max_length=8000)
     content_text: str = Field(min_length=10, max_length=12000)
+    creative_asset_id: UUID | None = None
+    creative_asset_url: HttpUrl | None = None
+    creative_brief_fingerprint: str | None = Field(
+        default=None,
+        pattern=r"^[a-f0-9]{64}$",
+    )
     customer_publish_confirmed: bool = False
     customer_publish_confirmed_at: datetime | None = None
     operator_approved_at: datetime | None = None
@@ -103,6 +110,12 @@ class CustomerExecutionRequestView(BaseModel):
         default=None,
         min_length=64,
         max_length=64,
+    )
+    confirmed_creative_asset_id: UUID | None = None
+    confirmed_creative_asset_url: HttpUrl | None = None
+    confirmed_creative_brief_fingerprint: str | None = Field(
+        default=None,
+        pattern=r"^[a-f0-9]{64}$",
     )
     operator_approved_at: datetime | None = None
     execution_allowed: Literal[False] = False
