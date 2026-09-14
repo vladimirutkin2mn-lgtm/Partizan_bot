@@ -39,7 +39,7 @@ class CustomerOperatorApprovalService:
             raise ValueError("Customer execution request is missing its prepared action or experiment.")
 
         plan = self._execution_service.get_plan(request.distribution_action_id)
-        self._validate_exact_confirmation(request=request, plan=plan)
+        self.validate_exact_confirmation(request=request, plan=plan)
 
         if request.status == "OPERATOR_APPROVED":
             self._require_approved_pair(plan)
@@ -69,7 +69,7 @@ class CustomerOperatorApprovalService:
             plan=approved_plan,
         )
 
-    def _validate_exact_confirmation(
+    def validate_exact_confirmation(
         self,
         *,
         request: CustomerExecutionRequestView,
