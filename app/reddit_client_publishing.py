@@ -13,16 +13,16 @@ _BaseCustomerRedditClientPublishService = _impl.CustomerRedditClientPublishServi
 class CustomerRedditClientPublishService(_BaseCustomerRedditClientPublishService):
     async def publish(
         self,
-        project_id: UUID,
+        project_id: _impl.UUID,
         customer_token: str,
-        action_id: UUID,
-        payload: RedditPublishRequest,
-    ) -> RedditClientPublishReceipt:
-        action = distribution_execution_service.get_action(action_id)
+        action_id: _impl.UUID,
+        payload: _impl.RedditPublishRequest,
+    ) -> _impl.RedditClientPublishReceipt:
+        action = _impl.distribution_execution_service.get_action(action_id)
         try:
             require_customer_bound_mutation_scope(action, "Reddit client publish")
         except ValueError as exc:
-            raise CustomerRedditClientPublishError(str(exc)) from exc
+            raise _impl.CustomerRedditClientPublishError(str(exc)) from exc
         return await super().publish(project_id, customer_token, action_id, payload)
 
 
