@@ -11,7 +11,9 @@ from app.tiktok_paid_provider import TikTokPaidProviderConnectionView
 
 
 class TikTokMarketingApiError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, ambiguous: bool = False) -> None:
+        super().__init__(message)
+        self.ambiguous = ambiguous
 
 
 class TikTokCampaignState(BaseModel):
@@ -187,7 +189,10 @@ class HttpxTikTokMarketingApiClient:
         ad_ids = data.get("ad_ids")
         if isinstance(ad_ids, list) and ad_ids:
             return str(ad_ids[0])
-        raise TikTokMarketingApiError("TikTok ad create response did not include an ad id")
+        raise TikTokMarketingApiError(
+            "TikTok ad create response did not include an ad id",
+            ambiguous=True,
+        )
 
     def set_campaign_status(
         self,
@@ -364,8 +369,11 @@ class HttpxTikTokMarketingApiClient:
                 timeout=self._timeout_seconds,
             )
         except httpx.HTTPError as exc:
-            raise TikTokMarketingApiError("TikTok Marketing API request failed") from exc
-        return self._response_data(response)
+            raise TikTokMarketingApiError(
+                "TikTok Marketing API request failed",
+                ambiguous=True,
+            ) from exc
+        return self._response_data(response, mutation=True)
 
     def _get(
         self,
@@ -384,16 +392,20 @@ class HttpxTikTokMarketingApiClient:
             )
         except httpx.HTTPError as exc:
             raise TikTokMarketingApiError("TikTok Marketing API request failed") from exc
-        return self._response_data(response)
+        return self._response_data(response, mutation=False)
 
-    def _response_data(self, response: httpx.Response) -> dict:
+    def _response_data(self, response: httpx.Response, *, mutation: bool) -> dict:
         try:
             body = response.json()
         except ValueError as exc:
-            raise TikTokMarketingApiError("TikTok Marketing API returned invalid JSON") from exc
+            raise TikTokMarketingApiError(
+                "TikTok Marketing API returned invalid JSON",
+                ambiguous=mutation,
+            ) from exc
         if response.status_code >= 400:
             raise TikTokMarketingApiError(
-                f"TikTok Marketing API HTTP {response.status_code}: {self._message(body)}"
+                f"TikTok Marketing API HTTP {response.status_code}: {self._message(body)}",
+                ambiguous=mutation and response.status_code >= 500,
             )
         if not isinstance(body, dict) or body.get("code") not in (0, "0", None):
             raise TikTokMarketingApiError(
@@ -403,13 +415,19 @@ class HttpxTikTokMarketingApiClient:
         if data is None:
             return {}
         if not isinstance(data, dict):
-            raise TikTokMarketingApiError("TikTok Marketing API response data is invalid")
+            raise TikTokMarketingApiError(
+                "TikTok Marketing API response data is invalid",
+                ambiguous=mutation,
+            )
         return data
 
     def _identifier(self, data: dict, key: str) -> str:
         value = data.get(key)
         if value is None or str(value).strip() == "":
-            raise TikTokMarketingApiError(f"TikTok response did not include {key}")
+            raise TikTokMarketingApiError(
+                f"TikTok response did not include {key}",
+                ambiguous=True,
+            )
         return str(value)
 
     def _float_metric(self, metrics: dict, key: str) -> float:
