@@ -11,6 +11,10 @@ from app.creative_assets import (
     CreativeReadinessStatus,
     creative_asset_service,
 )
+from app.customer_creative_binding import (
+    CustomerCreativeBindingService,
+    customer_creative_binding_service,
+)
 from app.customer_execution_boundary import customer_execution_request_scope
 from app.customer_execution_request_schemas import CustomerExecutionRequestView
 from app.customer_execution_requests import (
@@ -35,10 +39,14 @@ class CustomerOperatorApprovalService:
         request_service: CustomerExecutionRequestService | None = None,
         execution_service: InMemoryDistributionExecutionService | None = None,
         creative_service: CreativeAssetService | None = None,
+        creative_binding_service: CustomerCreativeBindingService | None = None,
     ) -> None:
         self._request_service = request_service or customer_execution_request_service
         self._execution_service = execution_service or distribution_execution_service
         self._creative_service = creative_service or creative_asset_service
+        self._creative_binding_service = (
+            creative_binding_service or customer_creative_binding_service
+        )
 
     def approve(self, request_id: UUID) -> CustomerExecutionRequestView:
         request = self._request_service.get_request(request_id)
@@ -153,6 +161,8 @@ class CustomerOperatorApprovalService:
             request.confirmed_creative_asset_id is None
             or request.confirmed_creative_asset_url is None
             or not request.confirmed_creative_brief_fingerprint
+            or request.confirmed_creative_blob_id is None
+            or not request.confirmed_creative_sha256
         ):
             raise ValueError("Customer-confirmed video binding is incomplete.")
         metadata = plan.action.operational_metadata
@@ -169,6 +179,12 @@ class CustomerOperatorApprovalService:
             != request.confirmed_creative_brief_fingerprint
         ):
             raise ValueError("Customer-confirmed creative brief does not match the action stamp.")
+        if metadata.get("customer_confirmed_creative_blob_id") != str(
+            request.confirmed_creative_blob_id
+        ):
+            raise ValueError("Customer-confirmed creative blob does not match the action stamp.")
+        if metadata.get("customer_confirmed_creative_sha256") != request.confirmed_creative_sha256:
+            raise ValueError("Customer-confirmed creative bytes do not match the action stamp.")
         try:
             asset = self._creative_service.get_asset(request.confirmed_creative_asset_id)
         except KeyError as exc:
@@ -179,6 +195,13 @@ class CustomerOperatorApprovalService:
             raise ValueError("Customer-confirmed video URL no longer matches the reviewed asset.")
         if asset.brief_fingerprint != request.confirmed_creative_brief_fingerprint:
             raise ValueError("Customer-confirmed video brief no longer matches the reviewed asset.")
+
+        binding = self._creative_binding_service.validate_exact_video(asset)
+        if binding.blob_id != request.confirmed_creative_blob_id:
+            raise ValueError("Customer-confirmed video blob no longer matches the review.")
+        if binding.sha256 != request.confirmed_creative_sha256:
+            raise ValueError("Customer-confirmed video bytes no longer match the review.")
+
         readiness = self._creative_service.readiness(plan.action.id)
         if (
             readiness.status != CreativeReadinessStatus.READY
@@ -205,11 +228,14 @@ class CustomerOperatorApprovalService:
             "content_text": plan.action.content_text,
         }
         if creative is not None:
+            binding = self._creative_binding_service.validate_exact_video(creative)
             payload.update(
                 {
                     "creative_asset_id": str(creative.id),
                     "creative_asset_url": str(creative.public_url),
                     "creative_brief_fingerprint": creative.brief_fingerprint,
+                    "creative_blob_id": str(binding.blob_id),
+                    "creative_sha256": binding.sha256,
                 }
             )
         canonical = json.dumps(
