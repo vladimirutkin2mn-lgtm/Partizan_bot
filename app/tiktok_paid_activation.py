@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
+from app.customer_execution_boundary import require_customer_bound_mutation_scope
 from app.distribution_execution_schemas import DistributionActionExecutionRequest
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_types import DistributionActionStatus, DistributionPlatform
@@ -79,6 +80,7 @@ class TikTokPaidActivationService:
         if not payload.confirm_spend:
             raise ValueError("confirm_spend=true is required to authorize paid activation")
         action = distribution_execution_service.get_action(action_id)
+        require_customer_bound_mutation_scope(action, "paid activation authorization")
         if action.status != DistributionActionStatus.APPROVED:
             raise ValueError("Only APPROVED paid actions can receive activation authorization")
         if action.platform != DistributionPlatform.TIKTOK:
@@ -113,6 +115,7 @@ class TikTokPaidActivationService:
         payload: TikTokPaidActivationRequest,
     ) -> DistributionAdapterExecutionView:
         action = distribution_execution_service.get_action(action_id)
+        require_customer_bound_mutation_scope(action, "paid activation")
         if action.status != DistributionActionStatus.APPROVED:
             raise ValueError("Only APPROVED paid actions can be activated")
         authorization = self._get_authorization(payload.authorization_id)
