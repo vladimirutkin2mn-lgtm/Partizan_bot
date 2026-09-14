@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 
 from app.audience_intelligence_service import audience_intelligence_service
 from app.config import get_settings
+from app.customer_execution_boundary import require_customer_bound_mutation_scope
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_schemas import (
     DistributionActionEditRequest,
@@ -208,6 +209,7 @@ class InMemoryDistributionExecutionService:
             raise ValueError(
                 "Customer-requested action content is locked until the customer reviews a new draft"
             )
+        require_customer_bound_mutation_scope(action, "editing")
 
         content_payload = dict(action.content_payload)
         if payload.context_text is not None:
@@ -238,6 +240,7 @@ class InMemoryDistributionExecutionService:
 
     def approve(self, action_id: UUID) -> DistributionExecutionPlanView:
         action = self.get_action(action_id)
+        require_customer_bound_mutation_scope(action, "approval")
         if action.status != DistributionActionStatus.PREPARED:
             raise ValueError("Only PREPARED DistributionAction objects can be approved")
         self._require_customer_publish_confirmation(action)
@@ -250,7 +253,9 @@ class InMemoryDistributionExecutionService:
 
         identity = None
         if action.distribution_identity_id is not None:
-            identity = distribution_control_plane_service.get_identity(action.distribution_identity_id)
+            identity = distribution_control_plane_service.get_identity(
+                action.distribution_identity_id
+            )
         policy = None
         if play.community_policy_required:
             try:
@@ -273,6 +278,7 @@ class InMemoryDistributionExecutionService:
 
     def approve_outreach(self, action_id: UUID) -> DistributionExecutionPlanView:
         action = self.get_action(action_id)
+        require_customer_bound_mutation_scope(action, "outreach approval")
         if action.action_type != DistributionActionType.OUTREACH_EMAIL:
             raise ValueError("Dedicated outreach approval only accepts OUTREACH_EMAIL actions")
         if action.status != DistributionActionStatus.PREPARED:
@@ -309,6 +315,7 @@ class InMemoryDistributionExecutionService:
 
     def skip(self, action_id: UUID) -> DistributionExecutionPlanView:
         action = self.get_action(action_id)
+        require_customer_bound_mutation_scope(action, "skip")
         if action.status not in {
             DistributionActionStatus.PREPARED,
             DistributionActionStatus.APPROVED,
@@ -334,6 +341,7 @@ class InMemoryDistributionExecutionService:
         payload: DistributionActionExecutionRequest,
     ) -> DistributionExecutionPlanView:
         action = self.get_action(action_id)
+        require_customer_bound_mutation_scope(action, "completion")
         if action.status != DistributionActionStatus.APPROVED:
             raise ValueError("Action must be APPROVED before it can be marked executed")
         experiment = self.get_experiment(action.experiment_id)

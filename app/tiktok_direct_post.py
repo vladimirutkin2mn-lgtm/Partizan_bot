@@ -11,7 +11,9 @@ import httpx
 from pydantic import BaseModel, Field
 
 from app.creative_assets import creative_asset_service
+from app.customer_execution_boundary import require_customer_bound_mutation_scope
 from app.distribution_control_plane_service import distribution_control_plane_service
+from app.distribution_execution_service import distribution_execution_service
 from app.distribution_types import DistributionIdentityStatus
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.tiktok_owned_publishing import EnvironmentSecretResolver, SecretResolver
@@ -186,6 +188,13 @@ class TikTokDirectPostService:
         self._store = store or get_runtime_store()
 
     def submit(self, action_id: UUID) -> TikTokDirectPostAttemptView:
+        try:
+            action = distribution_execution_service.get_action(action_id)
+        except KeyError:
+            action = None
+        if action is not None:
+            require_customer_bound_mutation_scope(action, "TikTok Direct Post")
+
         existing = self._get_latest_raw(action_id)
         if existing is not None and existing.status in {
             TikTokDirectPostAttemptStatus.SUBMITTED,
@@ -204,10 +213,7 @@ class TikTokDirectPostService:
             return reconciled
 
         current_authorization = self._authorization_service.get_current(action_id)
-        if (
-            existing is not None
-            and existing.authorization_id == current_authorization.id
-        ):
+        if existing is not None and existing.authorization_id == current_authorization.id:
             return existing
         authorization = self._authorization_service.get_current(
             action_id,
