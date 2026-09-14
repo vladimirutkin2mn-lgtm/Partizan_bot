@@ -304,6 +304,16 @@ class CreativeAssetService:
         asset = self.get_asset(asset_id)
         if asset.status == CreativeAssetStatus.RETIRED:
             return asset
+        try:
+            action = distribution_execution_service.get_action(asset.action_id)
+        except KeyError:
+            action = None
+        if action is not None:
+            bound_id = action.operational_metadata.get("customer_confirmed_creative_asset_id")
+            if bound_id and str(bound_id) == str(asset.id):
+                raise ValueError(
+                    "Customer-confirmed creative asset cannot be retired after exact review"
+                )
         updated = asset.model_copy(
             update={
                 "status": CreativeAssetStatus.RETIRED,
@@ -318,7 +328,67 @@ class CreativeAssetService:
         return updated
 
     def readiness(self, action_id: UUID) -> CreativeReadinessView:
+        action = distribution_execution_service.get_action(action_id)
         brief = self.ensure_brief(action_id)
+        bound_asset_id = action.operational_metadata.get("customer_confirmed_creative_asset_id")
+        if bound_asset_id:
+            try:
+                bound = self.get_asset(UUID(str(bound_asset_id)))
+            except (KeyError, ValueError):
+                return CreativeReadinessView(
+                    action_id=action_id,
+                    brief=brief,
+                    status=CreativeReadinessStatus.BLOCKED,
+                    selected_asset=None,
+                    reasons=["Customer-confirmed creative asset is missing or invalid."],
+                )
+            expected_fingerprint = action.operational_metadata.get(
+                "customer_confirmed_creative_brief_fingerprint"
+            )
+            if (
+                bound.action_id != action.id
+                or bound.brief_fingerprint != brief.fingerprint
+                or expected_fingerprint != brief.fingerprint
+                or bound.media_type != brief.media_type
+                or bound.purpose != brief.purpose
+                or bound.platform != brief.platform
+                or bound.status != CreativeAssetStatus.READY
+            ):
+                return CreativeReadinessView(
+                    action_id=action_id,
+                    brief=brief,
+                    status=CreativeReadinessStatus.BLOCKED,
+                    selected_asset=None,
+                    reasons=[
+                        "Customer-confirmed creative asset no longer matches the exact reviewed action."
+                    ],
+                )
+            expected_url = action.operational_metadata.get("customer_confirmed_creative_asset_url")
+            if expected_url and str(bound.public_url or "") != str(expected_url):
+                return CreativeReadinessView(
+                    action_id=action_id,
+                    brief=brief,
+                    status=CreativeReadinessStatus.BLOCKED,
+                    selected_asset=None,
+                    reasons=["Customer-confirmed creative URL no longer matches the reviewed asset."],
+                )
+            provider_reasons = self._provider_readiness_reasons(brief, bound)
+            if provider_reasons:
+                return CreativeReadinessView(
+                    action_id=action_id,
+                    brief=brief,
+                    status=CreativeReadinessStatus.BLOCKED,
+                    selected_asset=None,
+                    reasons=provider_reasons,
+                )
+            return CreativeReadinessView(
+                action_id=action_id,
+                brief=brief,
+                status=CreativeReadinessStatus.READY,
+                selected_asset=bound,
+                reasons=["The exact customer-confirmed CreativeAsset is provider-ready."],
+            )
+
         candidates = [
             asset
             for asset in self.list_assets(brief.product_id)
