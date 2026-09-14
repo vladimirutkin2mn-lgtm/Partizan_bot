@@ -22,7 +22,11 @@ class CustomerCreativeBindingService:
         public_base_url: str | None = None,
     ) -> None:
         self._blob_store = blob_store or creative_blob_store
-        configured = public_base_url if public_base_url is not None else get_settings().partizan_public_base_url
+        configured = (
+            public_base_url
+            if public_base_url is not None
+            else get_settings().partizan_public_base_url
+        )
         self._public_base_url = configured.rstrip("/") if configured else None
 
     def validate_exact_video(self, asset: CreativeAssetView) -> CustomerCreativeBlobBinding:
@@ -58,7 +62,9 @@ class CustomerCreativeBindingService:
         try:
             blob, _ = self._blob_store.get(blob_id)
         except (KeyError, ValueError) as exc:
-            raise ValueError("Exact customer video blob is missing or failed integrity validation.") from exc
+            raise ValueError(
+                "Exact customer video blob is missing or failed integrity validation."
+            ) from exc
         if blob.mime_type != "video/mp4" or asset.mime_type != "video/mp4":
             raise ValueError("Exact customer video must be a validated video/mp4 blob.")
         if blob.sha256 != raw_sha256:
