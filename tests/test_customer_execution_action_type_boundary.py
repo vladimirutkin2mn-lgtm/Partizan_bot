@@ -3,6 +3,7 @@ from uuid import UUID
 
 import pytest
 
+import app.creative_provider_finalization as creative_provider_finalization_module
 from app.customer_execution_boundary import (
     customer_execution_request_scope,
     require_customer_bound_mutation_scope,
@@ -10,6 +11,7 @@ from app.customer_execution_boundary import (
 from app.distribution_types import DistributionActionType
 
 REQUEST_ID = UUID("11111111-1111-4111-8111-111111111111")
+ACTION_ID = UUID("33333333-3333-4333-8333-333333333333")
 
 
 def _action(action_type: DistributionActionType, *, confirmed: bool = True):
@@ -65,3 +67,25 @@ def test_supported_customer_action_still_uses_matching_request_scope() -> None:
 
     with customer_execution_request_scope(REQUEST_ID):
         require_customer_bound_mutation_scope(action, "execution")
+
+
+def test_tiktok_creative_finalization_blocks_customer_paid_before_asset_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    action = _action(DistributionActionType.PAID_CAMPAIGN)
+    monkeypatch.setattr(
+        creative_provider_finalization_module.distribution_execution_service,
+        "get_action",
+        lambda action_id: action,
+    )
+    asset_service = SimpleNamespace(
+        readiness=lambda action_id: pytest.fail(
+            "creative readiness must not run for a customer-bound paid action"
+        )
+    )
+    finalizer = creative_provider_finalization_module.TikTokVideoCreativeFinalizer(
+        asset_service=asset_service,
+    )
+
+    with pytest.raises(ValueError, match="cannot mutate PAID_CAMPAIGN actions"):
+        finalizer.finalize(ACTION_ID)
