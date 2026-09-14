@@ -279,7 +279,7 @@ class GrowthBalanceAuthorizationReservationService:
             return
         lock_key = int.from_bytes(
             hashlib.sha256(
-                f"partizan:growth-balance-authorization:{project_id}".encode("utf-8")
+                f"partizan:growth-balance-authorization:{project_id}".encode()
             ).digest()[:8],
             byteorder="big",
             signed=True,
