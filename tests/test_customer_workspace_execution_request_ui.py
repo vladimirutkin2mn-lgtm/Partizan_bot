@@ -31,8 +31,8 @@ def test_prepared_action_requires_a_second_exact_customer_confirmation() -> None
     assert "Confirm this exact action →" in JS
     assert "execution-confirm-submit" in JS
     assert "/starting-move/execution-request/confirmation" in JS
-    assert "{ method: 'POST', body: JSON.stringify({ confirm_publish: true }) }" in JS
     assert "confirm_publish: true" in JS
+    assert "creative_asset_id: preparedAction.creative_asset_id || null" in JS
     assert JS.count("method: 'POST'") == 2
 
 
@@ -60,9 +60,16 @@ def test_requested_and_linked_states_are_read_only_and_visible_after_refresh() -
     assert "partizan:workspace-state-updated" in JS
 
 
+def test_customer_can_review_the_exact_video_bound_to_confirmation() -> None:
+    assert '<video controls preload="metadata"' in JS
+    assert "preparedAction.creative_asset_url" in JS
+    assert "Open the exact video" in JS
+    assert "creative_asset_id: preparedAction.creative_asset_id || null" in JS
+
+
 def test_confirmed_action_is_read_only_and_does_not_claim_publication() -> None:
     assert "You confirmed this exact action." in JS
     assert "preparedAction.customer_publish_confirmed" in JS
     assert "The action is still PREPARED" in JS
     assert "nothing has been published or funded" in JS
-    assert "Any changed copy must return through a new customer review." in JS
+    assert "Any changed copy or confirmed video must return through a new customer review." in JS
