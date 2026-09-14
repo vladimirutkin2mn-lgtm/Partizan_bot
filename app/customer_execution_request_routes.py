@@ -151,7 +151,11 @@ def confirm_customer_prepared_action(
 ) -> CustomerPreparedActionView:
     project, draft, _ = _request_context(session_token, project_id)
     try:
-        return customer_publish_confirmation_service.confirm(project=project, draft=draft)
+        return customer_publish_confirmation_service.confirm(
+            project=project,
+            draft=draft,
+            creative_asset_id=payload.creative_asset_id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
