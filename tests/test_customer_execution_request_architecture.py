@@ -5,6 +5,8 @@ ROUTES = Path("app/customer_execution_request_routes.py").read_text(encoding="ut
 SCHEMAS = Path("app/customer_execution_request_schemas.py").read_text(encoding="utf-8")
 EXECUTION = Path("app/distribution_execution_service.py").read_text(encoding="utf-8")
 APPROVAL = Path("app/customer_operator_approval.py").read_text(encoding="utf-8")
+OPERATOR_EXECUTION = Path("app/customer_operator_execution.py").read_text(encoding="utf-8")
+GENERIC_ROUTES = Path("app/distribution_execution_routes.py").read_text(encoding="utf-8")
 
 
 def test_customer_prepare_boundary_creates_only_locked_prepared_state() -> None:
@@ -48,7 +50,8 @@ def test_customer_request_and_prepare_are_explicit_operator_separated_actions() 
 
 def test_operator_approval_is_a_separate_confirmed_non_execution_boundary() -> None:
     approval_start = ROUTES.index("def approve_customer_execution_action(")
-    approval_block = ROUTES[approval_start:]
+    execution_state_start = ROUTES.index("def get_customer_operator_execution(")
+    approval_block = ROUTES[approval_start:execution_state_start]
 
     assert "/customer-execution-requests/{request_id}/approve-action" in ROUTES
     assert "confirm_approval: Literal[True]" in SCHEMAS
@@ -62,3 +65,27 @@ def test_operator_approval_is_a_separate_confirmed_non_execution_boundary() -> N
     assert "mark_executed" not in APPROVAL
     assert '"status": "OPERATOR_APPROVED"' in SERVICE
     assert "execution_allowed=False" in SERVICE
+
+
+def test_operator_execution_is_separate_request_bound_one_shot_boundary() -> None:
+    assert "/customer-execution-requests/{request_id}/execution" in ROUTES
+    assert "/customer-execution-requests/{request_id}/execute-action" in ROUTES
+    assert "confirm_execution: Literal[True]" in SCHEMAS
+    assert "retry_allowed: Literal[False]" in SCHEMAS
+    assert "customer_operator_execution_service.execute(request_id)" in ROUTES
+    assert 'request.status != "OPERATOR_APPROVED"' in OPERATOR_EXECUTION
+    assert "validate_exact_confirmation" in OPERATOR_EXECUTION
+    assert "customer_publish_confirmation_fingerprint" in APPROVAL
+    assert "DistributionAdapterExecuteRequest(retry=False)" in OPERATOR_EXECUTION
+    assert "if receipt is not None:" in OPERATOR_EXECUTION
+    assert "mark_executed" in OPERATOR_EXECUTION
+    assert "retry=True" not in OPERATOR_EXECUTION
+
+
+def test_generic_distribution_mutations_reject_customer_bound_actions() -> None:
+    assert "def _reject_customer_bound_action" in GENERIC_ROUTES
+    assert 'operational_metadata.get("customer_execution_request_id")' in GENERIC_ROUTES
+    assert '_reject_customer_bound_action(action_id, "approval")' in GENERIC_ROUTES
+    assert '_reject_customer_bound_action(action_id, "execution")' in GENERIC_ROUTES
+    assert '_reject_customer_bound_action(action_id, "skip")' in GENERIC_ROUTES
+    assert '_reject_customer_bound_action(action_id, "completion")' in GENERIC_ROUTES
