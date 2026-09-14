@@ -12,6 +12,7 @@ from app.main import app
 PROJECT_ID = UUID("77777777-7777-4777-8777-777777777777")
 REQUEST_ID = UUID("88888888-8888-4888-8888-888888888888")
 ACTION_ID = UUID("99999999-9999-4999-8999-999999999999")
+CREATIVE_ASSET_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 SOURCE_URL = "https://www.reddit.com/r/freelance/comments/example/thread/"
 
 
@@ -92,4 +93,37 @@ def test_confirmation_endpoint_returns_only_prepared_non_published_action(monkey
     assert payload["operator_approval_required"] is True
     assert payload["published"] is False
     assert len(calls) == 1
-    assert set(calls[0]) == {"project", "draft"}
+    assert set(calls[0]) == {"project", "draft", "creative_asset_id"}
+    assert calls[0]["creative_asset_id"] is None
+
+
+def test_confirmation_endpoint_forwards_exact_reviewed_creative_asset_id(monkeypatch) -> None:
+    prepared = _prepared(confirmed=True)
+    calls = []
+    monkeypatch.setattr(
+        route_module,
+        "_request_context",
+        lambda _session, _project_id: ({"id": str(PROJECT_ID)}, object(), None),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "customer_publish_confirmation_service",
+        SimpleNamespace(
+            confirm=lambda **kwargs: calls.append(kwargs) or prepared,
+            view=lambda **_kwargs: prepared,
+        ),
+    )
+    client = TestClient(app)
+    path = f"/customer/workspace/{PROJECT_ID}/starting-move/execution-request/confirmation"
+
+    response = client.post(
+        path,
+        json={
+            "confirm_publish": True,
+            "creative_asset_id": str(CREATIVE_ASSET_ID),
+        },
+    )
+
+    assert response.status_code == 200
+    assert len(calls) == 1
+    assert calls[0]["creative_asset_id"] == CREATIVE_ASSET_ID
