@@ -188,8 +188,12 @@ class TikTokDirectPostService:
         self._store = store or get_runtime_store()
 
     def submit(self, action_id: UUID) -> TikTokDirectPostAttemptView:
-        action = distribution_execution_service.get_action(action_id)
-        require_customer_bound_mutation_scope(action, "TikTok Direct Post")
+        try:
+            action = distribution_execution_service.get_action(action_id)
+        except KeyError:
+            action = None
+        if action is not None:
+            require_customer_bound_mutation_scope(action, "TikTok Direct Post")
 
         existing = self._get_latest_raw(action_id)
         if existing is not None and existing.status in {
