@@ -152,9 +152,15 @@ class CustomerPublishConfirmationService:
             action.status == DistributionActionStatus.APPROVED
             and experiment.status == DistributionExperimentStatus.APPROVED
         )
-        if not prepared_pair and not (allow_approved and approved_pair):
+        executed_pair = (
+            action.status == DistributionActionStatus.EXECUTED
+            and experiment.status == DistributionExperimentStatus.RUNNING
+        )
+        if not prepared_pair and not (
+            allow_approved and (approved_pair or executed_pair)
+        ):
             raise ValueError(
-                "Customer confirmation requires a PREPARED/DRAFT action or an already APPROVED pair."
+                "Customer confirmation requires PREPARED/DRAFT, APPROVED/APPROVED, or EXECUTED/RUNNING state."
             )
         if request.distribution_action_id != action.id:
             raise ValueError("Prepared action does not match the customer execution request.")
@@ -261,6 +267,10 @@ class CustomerPublishConfirmationService:
             plan.action.status == DistributionActionStatus.APPROVED
             and plan.experiment.status == DistributionExperimentStatus.APPROVED
         )
+        executed = (
+            plan.action.status == DistributionActionStatus.EXECUTED
+            and plan.experiment.status == DistributionExperimentStatus.RUNNING
+        )
         return CustomerPreparedActionView(
             request_id=request.id,
             project_id=request.project_id,
@@ -279,8 +289,8 @@ class CustomerPublishConfirmationService:
             ),
             operator_approved_at=request.operator_approved_at,
             execution_allowed=False,
-            operator_approval_required=not approved,
-            published=False,
+            operator_approval_required=not (approved or executed),
+            published=executed,
         )
 
     @staticmethod
