@@ -65,7 +65,7 @@ class CustomerPreparedActionView(BaseModel):
     project_id: UUID
     distribution_action_id: UUID
     platform: DistributionPlatform
-    action_status: Literal["PREPARED", "APPROVED"] = "PREPARED"
+    action_status: Literal["PREPARED", "APPROVED", "EXECUTED"] = "PREPARED"
     source_title: str = Field(min_length=1, max_length=500)
     source_url: HttpUrl
     target_url: HttpUrl
@@ -77,7 +77,7 @@ class CustomerPreparedActionView(BaseModel):
     operator_approved_at: datetime | None = None
     execution_allowed: Literal[False] = False
     operator_approval_required: bool = True
-    published: Literal[False] = False
+    published: bool = False
 
 
 class CustomerExecutionRequestView(BaseModel):
