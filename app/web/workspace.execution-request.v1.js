@@ -74,6 +74,13 @@
     const title = preparedAction.draft_title
       ? `<div><span class="eyebrow">Title</span><strong>${escapeHtml(preparedAction.draft_title)}</strong></div>`
       : '';
+    const creative = preparedAction.creative_asset_url
+      ? `<div>
+           <span class="eyebrow">Exact video</span>
+           <video controls preload="metadata" src="${escapeHtml(preparedAction.creative_asset_url)}"></video>
+           <p class="note"><a href="${escapeHtml(preparedAction.creative_asset_url)}" target="_blank" rel="noopener">Open the exact video →</a></p>
+         </div>`
+      : '';
     const headline = executed
       ? 'This exact action has been executed.'
       : approved
@@ -93,16 +100,17 @@
         <div><span class="eyebrow">Prepared action → exact customer review</span><h2>${headline}</h2></div>
         <span class="status-pill ${(confirmed || approved || executed) ? 'good' : ''}">${status}</span>
       </div>
-      <p class="section-copy">This is the exact ${escapeHtml(setup.channel_label)} action prepared from your accepted draft. Confirming records your approval of this exact target and copy for the separate operator approval step; it does not publish anything.</p>
+      <p class="section-copy">This is the exact ${escapeHtml(setup.channel_label)} action prepared from your accepted draft. Confirming records your approval of this exact target, copy${preparedAction.creative_asset_url ? ' and video' : ''} for the separate operator approval step; it does not publish anything.</p>
       <div class="activation-action activation-action-primary">
         <div><span class="eyebrow">Source evidence</span><a href="${escapeHtml(preparedAction.source_url)}" target="_blank" rel="noopener">${escapeHtml(preparedAction.source_title)}</a></div>
         <div><span class="eyebrow">Exact target</span><a href="${escapeHtml(preparedAction.target_url)}" target="_blank" rel="noopener">${escapeHtml(preparedAction.target_url)}</a></div>
         ${title}
         <div><span class="eyebrow">Context</span><p>${escapeHtml(preparedAction.context_text)}</p></div>
         <div><span class="eyebrow">Exact content</span><p>${escapeHtml(preparedAction.content_text)}</p></div>
+        ${creative}
         <p class="note">${stateNote}</p>
         ${confirmed
-          ? `<p class="note">Confirmed${confirmationTime ? ` ${escapeHtml(confirmationTime)}` : ''}. Any changed copy must return through a new customer review.</p>
+          ? `<p class="note">Confirmed${confirmationTime ? ` ${escapeHtml(confirmationTime)}` : ''}. Any changed copy or confirmed video must return through a new customer review.</p>
              ${approved ? `<p class="note">Operator approval recorded${approvalTime ? ` ${escapeHtml(approvalTime)}` : ''}. ${executed ? 'Execution status is shown read-only above.' : 'Execution remains a separate protected step.'}</p>` : ''}`
           : `<div><button id="execution-confirm-submit" class="button button-primary" type="button">Confirm this exact action →</button></div>
              <p id="execution-confirm-note" class="note">Only this click records confirmation. It does not call approve, execute or publishing endpoints.</p>`}
@@ -120,7 +128,13 @@
       try {
         const confirmedAction = await requestJson(
           `/customer/workspace/${encodeURIComponent(projectId)}/starting-move/execution-request/confirmation`,
-          { method: 'POST', body: JSON.stringify({ confirm_publish: true }) },
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              confirm_publish: true,
+              creative_asset_id: preparedAction.creative_asset_id || null,
+            }),
+          },
         );
         renderPrepared(
           draft,
