@@ -285,6 +285,32 @@ def test_creative_readiness_pins_confirmed_asset_instead_of_newer_candidate(
     assert readiness.selected_asset.id == ASSET_A_ID
 
 
+def test_confirmed_creative_asset_cannot_be_retired(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asset_a = _asset(ASSET_A_ID, VIDEO_A)
+    action = _plan().action.model_copy(
+        update={
+            "operational_metadata": {
+                **_plan().action.operational_metadata,
+                "customer_confirmed_creative_asset_id": str(ASSET_A_ID),
+                "customer_confirmed_creative_asset_url": VIDEO_A,
+                "customer_confirmed_creative_brief_fingerprint": FINGERPRINT,
+            }
+        }
+    )
+    service = CreativeAssetService(MemoryRuntimeStateStore())
+    monkeypatch.setattr(service, "get_asset", lambda asset_id: asset_a)
+    monkeypatch.setattr(
+        creative_assets_module,
+        "distribution_execution_service",
+        SimpleNamespace(get_action=lambda action_id: action),
+    )
+
+    with pytest.raises(ValueError, match="cannot be retired after exact review"):
+        service.retire(ASSET_A_ID)
+
+
 def test_customer_ui_posts_the_reviewed_video_asset_id() -> None:
     source = Path("app/web/workspace.execution-request.v1.js").read_text()
 
