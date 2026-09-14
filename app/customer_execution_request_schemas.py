@@ -7,7 +7,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 from app.channel_execution import PublisherMode
-from app.distribution_types import DistributionPlatform
+from app.distribution_execution_schemas import DistributionExperimentStatus
+from app.distribution_types import DistributionActionStatus, DistributionPlatform
+from app.execution_adapters import ExecutionAdapterReceipt
 
 CustomerExecutionRequestStatus = Literal[
     "REQUESTED",
@@ -41,6 +43,21 @@ class CustomerExecutionOperatorApprovalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     confirm_approval: Literal[True]
+
+
+class CustomerExecutionOperatorExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirm_execution: Literal[True]
+
+
+class CustomerOperatorExecutionView(BaseModel):
+    request_id: UUID
+    distribution_action_id: UUID
+    action_status: DistributionActionStatus
+    experiment_status: DistributionExperimentStatus
+    receipt: ExecutionAdapterReceipt | None = None
+    retry_allowed: Literal[False] = False
 
 
 class CustomerPreparedActionView(BaseModel):
