@@ -13,16 +13,16 @@ _BaseCustomerTelegramClientPublishService = _impl.CustomerTelegramClientPublishS
 class CustomerTelegramClientPublishService(_BaseCustomerTelegramClientPublishService):
     async def publish(
         self,
-        project_id: UUID,
+        project_id: _impl.UUID,
         customer_token: str,
-        action_id: UUID,
-        payload: TelegramPublishRequest,
-    ) -> TelegramClientPublishReceipt:
-        action = distribution_execution_service.get_action(action_id)
+        action_id: _impl.UUID,
+        payload: _impl.TelegramPublishRequest,
+    ) -> _impl.TelegramClientPublishReceipt:
+        action = _impl.distribution_execution_service.get_action(action_id)
         try:
             require_customer_bound_mutation_scope(action, "Telegram client publish")
         except ValueError as exc:
-            raise CustomerTelegramClientPublishError(str(exc)) from exc
+            raise _impl.CustomerTelegramClientPublishError(str(exc)) from exc
         return await super().publish(project_id, customer_token, action_id, payload)
 
 
