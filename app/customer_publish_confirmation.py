@@ -3,7 +3,15 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from hashlib import sha256
+from uuid import UUID
 
+from app.creative_assets import (
+    CreativeAssetService,
+    CreativeAssetStatus,
+    CreativeAssetView,
+    CreativeReadinessStatus,
+    creative_asset_service,
+)
 from app.customer_channel_schemas import CustomerStartingMoveDraftView
 from app.customer_execution_request_schemas import (
     CustomerExecutionRequestView,
@@ -20,7 +28,10 @@ from app.distribution_execution_service import (
     InMemoryDistributionExecutionService,
     distribution_execution_service,
 )
-from app.distribution_types import DistributionActionStatus
+from app.distribution_types import (
+    DistributionActionStatus,
+    DistributionActionType,
+)
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 
@@ -30,10 +41,12 @@ class CustomerPublishConfirmationService:
         *,
         request_service: CustomerExecutionRequestService | None = None,
         execution_service: InMemoryDistributionExecutionService | None = None,
+        creative_service: CreativeAssetService | None = None,
         store: RuntimeStateStore | None = None,
     ) -> None:
         self._request_service = request_service or customer_execution_request_service
         self._execution_service = execution_service or distribution_execution_service
+        self._creative_service = creative_service or creative_asset_service
         self._store = store or get_runtime_store()
 
     def view(
@@ -52,13 +65,21 @@ class CustomerPublishConfirmationService:
             request=request,
             metadata=plan.action.operational_metadata,
         )
-        return self._to_view(request=request, plan=plan)
+        creative = self._creative_for_view(request=request, plan=plan)
+        if request.status in {"PUBLISH_CONFIRMED", "OPERATOR_APPROVED"}:
+            self._validate_creative_metadata(
+                request=request,
+                metadata=plan.action.operational_metadata,
+                creative=creative,
+            )
+        return self._to_view(request=request, plan=plan, creative=creative)
 
     def confirm(
         self,
         *,
         project: dict,
         draft: CustomerStartingMoveDraftView | None,
+        creative_asset_id: UUID | None = None,
     ) -> CustomerPreparedActionView:
         request, plan = self._current_plan(project=project, draft=draft)
         self._validate_exact(
@@ -66,7 +87,12 @@ class CustomerPublishConfirmationService:
             plan=plan,
             allow_approved=request.status in {"PUBLISH_CONFIRMED", "OPERATOR_APPROVED"},
         )
-        fingerprint = self._fingerprint(request=request, plan=plan)
+        creative = self._creative_for_confirmation(
+            request=request,
+            plan=plan,
+            requested_asset_id=creative_asset_id,
+        )
+        fingerprint = self._fingerprint(request=request, plan=plan, creative=creative)
         metadata = dict(plan.action.operational_metadata)
         existing_fingerprint = metadata.get("customer_publish_confirmation_fingerprint")
         existing_confirmed_at = metadata.get("customer_publish_confirmed_at")
@@ -80,6 +106,11 @@ class CustomerPublishConfirmationService:
                 raise ValueError("Customer confirmation record is missing its timestamp.")
             if existing_fingerprint or existing_confirmed_at:
                 self._validate_confirmation_consistency(request=request, metadata=metadata)
+                self._validate_creative_metadata(
+                    request=request,
+                    metadata=metadata,
+                    creative=creative,
+                )
             else:
                 if request.status == "OPERATOR_APPROVED":
                     raise ValueError("Approved action is missing its durable customer confirmation stamp.")
@@ -87,8 +118,9 @@ class CustomerPublishConfirmationService:
                     plan=plan,
                     fingerprint=fingerprint,
                     confirmed_at=request.customer_publish_confirmed_at,
+                    creative=creative,
                 )
-            return self._to_view(request=request, plan=plan)
+            return self._to_view(request=request, plan=plan, creative=creative)
 
         if existing_fingerprint or existing_confirmed_at:
             if not existing_fingerprint or not existing_confirmed_at:
@@ -101,13 +133,20 @@ class CustomerPublishConfirmationService:
 
         # Persist the customer record first. Until the action stamp below is durable, the
         # execution service approval guard remains locked and therefore fails closed.
-        updated_request = request.model_copy(
-            update={
-                "status": "PUBLISH_CONFIRMED",
-                "customer_publish_confirmed_at": confirmed_at,
-                "customer_publish_confirmation_fingerprint": fingerprint,
-            }
-        )
+        request_updates = {
+            "status": "PUBLISH_CONFIRMED",
+            "customer_publish_confirmed_at": confirmed_at,
+            "customer_publish_confirmation_fingerprint": fingerprint,
+        }
+        if creative is not None:
+            request_updates.update(
+                {
+                    "confirmed_creative_asset_id": creative.id,
+                    "confirmed_creative_asset_url": creative.public_url,
+                    "confirmed_creative_brief_fingerprint": creative.brief_fingerprint,
+                }
+            )
+        updated_request = request.model_copy(update=request_updates)
         self._store.put(
             CUSTOMER_EXECUTION_REQUEST_NAMESPACE,
             str(updated_request.id),
@@ -118,8 +157,9 @@ class CustomerPublishConfirmationService:
                 plan=plan,
                 fingerprint=fingerprint,
                 confirmed_at=confirmed_at,
+                creative=creative,
             )
-        return self._to_view(request=updated_request, plan=plan)
+        return self._to_view(request=updated_request, plan=plan, creative=creative)
 
     def _current_plan(self, *, project: dict, draft: CustomerStartingMoveDraftView | None):
         request = self._request_service.view(project=project, draft=draft)
@@ -203,8 +243,16 @@ class CustomerPublishConfirmationService:
     ) -> None:
         metadata_fingerprint = metadata.get("customer_publish_confirmation_fingerprint")
         metadata_confirmed_at = metadata.get("customer_publish_confirmed_at")
+        creative_stamp = any(
+            metadata.get(key)
+            for key in (
+                "customer_confirmed_creative_asset_id",
+                "customer_confirmed_creative_asset_url",
+                "customer_confirmed_creative_brief_fingerprint",
+            )
+        )
         if request.status == "ACTION_PREPARED":
-            if metadata_fingerprint or metadata_confirmed_at:
+            if metadata_fingerprint or metadata_confirmed_at or creative_stamp:
                 raise ValueError(
                     "Prepared action has a confirmation stamp without a durable customer record."
                 )
@@ -224,7 +272,109 @@ class CustomerPublishConfirmationService:
         if metadata_time != request.customer_publish_confirmed_at:
             raise ValueError("Customer confirmation timestamps do not match.")
 
-    def _fingerprint(self, *, request: CustomerExecutionRequestView, plan) -> str:
+    def _creative_for_view(
+        self,
+        *,
+        request: CustomerExecutionRequestView,
+        plan,
+    ) -> CreativeAssetView | None:
+        if plan.action.action_type != DistributionActionType.ORGANIC_VIDEO:
+            return None
+        if request.status in {"PUBLISH_CONFIRMED", "OPERATOR_APPROVED"}:
+            return self._confirmed_creative(request=request, plan=plan)
+        return self._reviewable_creative(plan=plan)
+
+    def _creative_for_confirmation(
+        self,
+        *,
+        request: CustomerExecutionRequestView,
+        plan,
+        requested_asset_id: UUID | None,
+    ) -> CreativeAssetView | None:
+        if plan.action.action_type != DistributionActionType.ORGANIC_VIDEO:
+            if requested_asset_id is not None:
+                raise ValueError("This customer action does not include a confirmable creative asset.")
+            return None
+        if requested_asset_id is None:
+            raise ValueError("Confirm the exact video asset shown in the customer review.")
+        if request.status in {"PUBLISH_CONFIRMED", "OPERATOR_APPROVED"}:
+            creative = self._confirmed_creative(request=request, plan=plan)
+        else:
+            creative = self._reviewable_creative(plan=plan)
+        if creative.id != requested_asset_id:
+            raise ValueError(
+                "Creative asset changed after customer review; refresh and confirm the exact video shown."
+            )
+        return creative
+
+    def _reviewable_creative(self, *, plan) -> CreativeAssetView:
+        readiness = self._creative_service.readiness(plan.action.id)
+        if (
+            readiness.status != CreativeReadinessStatus.READY
+            or readiness.selected_asset is None
+        ):
+            raise ValueError("Exact customer video must be READY before publish confirmation.")
+        asset = readiness.selected_asset
+        if asset.action_id != plan.action.id or asset.status != CreativeAssetStatus.READY:
+            raise ValueError("Reviewable customer video does not match the prepared action.")
+        if asset.public_url is None:
+            raise ValueError("Exact customer video requires a public review URL before confirmation.")
+        return asset
+
+    def _confirmed_creative(
+        self,
+        *,
+        request: CustomerExecutionRequestView,
+        plan,
+    ) -> CreativeAssetView:
+        if (
+            request.confirmed_creative_asset_id is None
+            or request.confirmed_creative_asset_url is None
+            or not request.confirmed_creative_brief_fingerprint
+        ):
+            raise ValueError("Customer-confirmed video binding is incomplete.")
+        try:
+            asset = self._creative_service.get_asset(request.confirmed_creative_asset_id)
+        except KeyError as exc:
+            raise ValueError("Customer-confirmed video asset could not be found.") from exc
+        if asset.action_id != plan.action.id:
+            raise ValueError("Customer-confirmed video no longer belongs to the exact action.")
+        if asset.status != CreativeAssetStatus.READY:
+            raise ValueError("Customer-confirmed video is no longer READY.")
+        if asset.public_url is None or str(asset.public_url) != str(request.confirmed_creative_asset_url):
+            raise ValueError("Customer-confirmed video URL no longer matches the reviewed asset.")
+        if asset.brief_fingerprint != request.confirmed_creative_brief_fingerprint:
+            raise ValueError("Customer-confirmed video brief no longer matches the reviewed asset.")
+        return asset
+
+    def _validate_creative_metadata(
+        self,
+        *,
+        request: CustomerExecutionRequestView,
+        metadata: dict,
+        creative: CreativeAssetView | None,
+    ) -> None:
+        if creative is None:
+            return
+        if metadata.get("customer_confirmed_creative_asset_id") != str(creative.id):
+            raise ValueError("Customer-confirmed creative ID does not match the prepared action.")
+        if metadata.get("customer_confirmed_creative_asset_url") != str(creative.public_url):
+            raise ValueError("Customer-confirmed creative URL does not match the prepared action.")
+        if (
+            metadata.get("customer_confirmed_creative_brief_fingerprint")
+            != creative.brief_fingerprint
+        ):
+            raise ValueError("Customer-confirmed creative brief does not match the prepared action.")
+        if request.confirmed_creative_asset_id != creative.id:
+            raise ValueError("Customer creative record does not match the confirmed asset.")
+
+    def _fingerprint(
+        self,
+        *,
+        request: CustomerExecutionRequestView,
+        plan,
+        creative: CreativeAssetView | None = None,
+    ) -> str:
         payload = {
             "request_id": str(request.id),
             "action_id": str(plan.action.id),
@@ -234,6 +384,14 @@ class CustomerPublishConfirmationService:
             "context_text": plan.action.content_payload.get("context_text"),
             "content_text": plan.action.content_text,
         }
+        if creative is not None:
+            payload.update(
+                {
+                    "creative_asset_id": str(creative.id),
+                    "creative_asset_url": str(creative.public_url),
+                    "creative_brief_fingerprint": creative.brief_fingerprint,
+                }
+            )
         canonical = json.dumps(
             payload,
             ensure_ascii=False,
@@ -242,7 +400,14 @@ class CustomerPublishConfirmationService:
         )
         return sha256(canonical.encode("utf-8")).hexdigest()
 
-    def _persist_action_stamp(self, *, plan, fingerprint: str, confirmed_at: datetime) -> None:
+    def _persist_action_stamp(
+        self,
+        *,
+        plan,
+        fingerprint: str,
+        confirmed_at: datetime,
+        creative: CreativeAssetView | None = None,
+    ) -> None:
         metadata = dict(plan.action.operational_metadata)
         metadata.update(
             {
@@ -250,6 +415,14 @@ class CustomerPublishConfirmationService:
                 "customer_publish_confirmation_fingerprint": fingerprint,
             }
         )
+        if creative is not None:
+            metadata.update(
+                {
+                    "customer_confirmed_creative_asset_id": str(creative.id),
+                    "customer_confirmed_creative_asset_url": str(creative.public_url),
+                    "customer_confirmed_creative_brief_fingerprint": creative.brief_fingerprint,
+                }
+            )
         updated_action = plan.action.model_copy(update={"operational_metadata": metadata})
         self._store.put(
             DISTRIBUTION_ACTION_NAMESPACE,
@@ -261,7 +434,13 @@ class CustomerPublishConfirmationService:
         plan.action.operational_metadata.clear()
         plan.action.operational_metadata.update(metadata)
 
-    def _to_view(self, *, request: CustomerExecutionRequestView, plan) -> CustomerPreparedActionView:
+    def _to_view(
+        self,
+        *,
+        request: CustomerExecutionRequestView,
+        plan,
+        creative: CreativeAssetView | None = None,
+    ) -> CustomerPreparedActionView:
         confirmed = request.status in {"PUBLISH_CONFIRMED", "OPERATOR_APPROVED"}
         approved = (
             plan.action.status == DistributionActionStatus.APPROVED
@@ -283,6 +462,11 @@ class CustomerPublishConfirmationService:
             draft_title=plan.action.content_payload.get("title"),
             context_text=str(plan.action.content_payload.get("context_text") or ""),
             content_text=plan.action.content_text,
+            creative_asset_id=creative.id if creative is not None else None,
+            creative_asset_url=creative.public_url if creative is not None else None,
+            creative_brief_fingerprint=(
+                creative.brief_fingerprint if creative is not None else None
+            ),
             customer_publish_confirmed=confirmed,
             customer_publish_confirmed_at=(
                 request.customer_publish_confirmed_at if confirmed else None
