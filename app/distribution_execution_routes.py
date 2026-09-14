@@ -46,6 +46,14 @@ def _reject_generic_outreach_action(action_id: UUID, operation: str) -> None:
         )
 
 
+def _reject_customer_bound_action(action_id: UUID, operation: str) -> None:
+    action = distribution_execution_service.get_action(action_id)
+    if action.operational_metadata.get("customer_execution_request_id"):
+        raise ValueError(
+            f"Customer-bound action {operation} requires the dedicated customer execution request flow"
+        )
+
+
 def _reject_generic_outreach_play(action_type: DistributionActionType) -> None:
     if action_type == DistributionActionType.OUTREACH_EMAIL:
         raise ValueError(
@@ -162,6 +170,7 @@ async def edit_distribution_action(
 async def approve_distribution_action(action_id: UUID) -> DistributionExecutionPlanView:
     try:
         _reject_generic_outreach_action(action_id, "approval")
+        _reject_customer_bound_action(action_id, "approval")
         return distribution_execution_service.approve(action_id)
     except KeyError as exc:
         raise HTTPException(
@@ -183,6 +192,7 @@ async def execute_distribution_action(
 ) -> DistributionAdapterExecutionView:
     try:
         _reject_generic_outreach_action(action_id, "execution")
+        _reject_customer_bound_action(action_id, "execution")
         action = distribution_execution_service.get_action(action_id)
         audited_paid = (
             action.action_type == DistributionActionType.PAID_CAMPAIGN
@@ -228,6 +238,7 @@ async def execute_distribution_action(
 )
 async def skip_distribution_action(action_id: UUID) -> DistributionExecutionPlanView:
     try:
+        _reject_customer_bound_action(action_id, "skip")
         return distribution_execution_service.skip(action_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="DistributionAction not found") from exc
@@ -246,6 +257,7 @@ async def mark_distribution_action_executed(
 ) -> DistributionExecutionPlanView:
     try:
         _reject_generic_outreach_action(action_id, "completion")
+        _reject_customer_bound_action(action_id, "completion")
         return distribution_execution_service.mark_executed(action_id, payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="DistributionAction not found") from exc
