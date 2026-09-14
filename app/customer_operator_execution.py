@@ -170,7 +170,9 @@ class CustomerOperatorExecutionService:
 
         # TikTok Direct Post is asynchronous. Refreshing execution state may poll the provider's
         # read-only status endpoint, but it must never call Direct Post submission or retry an
-        # existing publication. Only a confirmed PUBLISH_COMPLETE may advance local state.
+        # existing publication. The Direct Post attempt is the durable recovery source when a
+        # process crash left the generic adapter receipt incomplete. Only a confirmed
+        # PUBLISH_COMPLETE may advance local state.
         try:
             with customer_execution_request_scope(request.id):
                 reconciliation = self._tiktok_reconciliation_service.reconcile(
@@ -205,15 +207,10 @@ class CustomerOperatorExecutionService:
     ) -> bool:
         if receipt is None or receipt.provider != "tiktok-content-posting-api":
             return False
-        if receipt.outcome not in {
+        return receipt.outcome in {
             AdapterExecutionOutcome.IN_PROGRESS,
             AdapterExecutionOutcome.ASSISTED,
-        }:
-            return False
-        return bool(
-            receipt.external_reference
-            and receipt.metadata.get("direct_post_attempt_id")
-        )
+        }
 
     def _receipt_from_tiktok_reconciliation(
         self,
