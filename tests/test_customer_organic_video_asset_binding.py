@@ -17,6 +17,7 @@ from app.creative_assets import (
     CreativePurpose,
     CreativeReadinessStatus,
 )
+from app.customer_creative_binding import CustomerCreativeBlobBinding
 from app.customer_execution_request_schemas import CustomerExecutionRequestView
 from app.customer_execution_requests import CUSTOMER_EXECUTION_REQUEST_NAMESPACE
 from app.customer_operator_approval import CustomerOperatorApprovalService
@@ -45,11 +46,15 @@ ACTION_ID = UUID("66666666-6666-4666-8666-666666666666")
 EXPERIMENT_ID = UUID("77777777-7777-4777-8777-777777777777")
 ASSET_A_ID = UUID("88888888-8888-4888-8888-888888888888")
 ASSET_B_ID = UUID("99999999-9999-4999-8999-999999999999")
+BLOB_A_ID = UUID("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+BLOB_B_ID = UUID("cccccccc-cccc-4ccc-8ccc-cccccccccccc")
 BRIEF_ID = UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
 FINGERPRINT = "a" * 64
+SHA_A = "1" * 64
+SHA_B = "2" * 64
 SOURCE_URL = "https://www.tiktok.com/@partizan/video/123456789"
-VIDEO_A = "https://cdn.example.com/customer-video-a.mp4"
-VIDEO_B = "https://cdn.example.com/customer-video-b.mp4"
+VIDEO_A = "https://partizan.example/v1/public/creative-blobs/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+VIDEO_B = "https://partizan.example/v1/public/creative-blobs/cccccccc-cccc-4ccc-8ccc-cccccccccccc"
 CONTEXT = "A researched TikTok content cluster discussing the exact user problem."
 CONTENT = "A concise educational organic video script grounded in the accepted research evidence."
 TITLE = "Exact customer organic video"
@@ -90,8 +95,19 @@ class FakeCreativeService:
         return self.assets[asset_id]
 
 
-def _asset(asset_id: UUID, url: str, *, updated_offset: int = 0) -> CreativeAssetView:
+class FakeCreativeBindingService:
+    def validate_exact_video(self, asset: CreativeAssetView) -> CustomerCreativeBlobBinding:
+        if asset.id == ASSET_A_ID:
+            return CustomerCreativeBlobBinding(blob_id=BLOB_A_ID, sha256=SHA_A)
+        if asset.id == ASSET_B_ID:
+            return CustomerCreativeBlobBinding(blob_id=BLOB_B_ID, sha256=SHA_B)
+        raise ValueError("unexpected creative asset")
+
+
+def _asset(asset_id: UUID, url: str) -> CreativeAssetView:
     now = datetime.now(UTC)
+    blob_id = BLOB_A_ID if asset_id == ASSET_A_ID else BLOB_B_ID
+    content_sha = SHA_A if asset_id == ASSET_A_ID else SHA_B
     return CreativeAssetView(
         id=asset_id,
         product_id=PRODUCT_ID,
@@ -101,12 +117,12 @@ def _asset(asset_id: UUID, url: str, *, updated_offset: int = 0) -> CreativeAsse
         platform=DistributionPlatform.TIKTOK,
         purpose=CreativePurpose.ORGANIC_VIDEO,
         media_type=CreativeMediaType.VIDEO,
-        source=CreativeAssetSource.EXTERNAL_URL,
+        source=CreativeAssetSource.GENERATED,
         status=CreativeAssetStatus.READY,
         public_url=url,
         mime_type="video/mp4",
         duration_seconds=12,
-        provenance={},
+        provenance={"blob_id": str(blob_id), "sha256": content_sha},
         created_at=now,
         updated_at=now,
     )
@@ -173,10 +189,12 @@ def test_confirmation_requires_the_exact_video_id_shown_to_customer() -> None:
     asset_b = _asset(ASSET_B_ID, VIDEO_B)
     store = MemoryRuntimeStateStore()
     creative = FakeCreativeService([asset_a, asset_b], selected=asset_a)
+    binding = FakeCreativeBindingService()
     service = CustomerPublishConfirmationService(
         request_service=FakeRequestService(request),
         execution_service=FakeExecutionService(plan),
         creative_service=creative,
+        creative_binding_service=binding,
         store=store,
     )
 
@@ -197,10 +215,12 @@ def test_confirmation_persists_video_binding_in_request_fingerprint_and_action_s
     asset_a = _asset(ASSET_A_ID, VIDEO_A)
     store = MemoryRuntimeStateStore()
     creative = FakeCreativeService([asset_a], selected=asset_a)
+    binding = FakeCreativeBindingService()
     service = CustomerPublishConfirmationService(
         request_service=FakeRequestService(request),
         execution_service=FakeExecutionService(plan),
         creative_service=creative,
+        creative_binding_service=binding,
         store=store,
     )
 
@@ -215,9 +235,13 @@ def test_confirmation_persists_video_binding_in_request_fingerprint_and_action_s
 
     assert view.creative_asset_id == ASSET_A_ID
     assert str(view.creative_asset_url) == VIDEO_A
+    assert view.creative_blob_id == BLOB_A_ID
+    assert view.creative_sha256 == SHA_A
     assert persisted.confirmed_creative_asset_id == ASSET_A_ID
     assert str(persisted.confirmed_creative_asset_url) == VIDEO_A
     assert persisted.confirmed_creative_brief_fingerprint == FINGERPRINT
+    assert persisted.confirmed_creative_blob_id == BLOB_A_ID
+    assert persisted.confirmed_creative_sha256 == SHA_A
     assert persisted.customer_publish_confirmation_fingerprint
     assert plan.action.operational_metadata["customer_confirmed_creative_asset_id"] == str(
         ASSET_A_ID
@@ -227,15 +251,52 @@ def test_confirmation_persists_video_binding_in_request_fingerprint_and_action_s
         plan.action.operational_metadata["customer_confirmed_creative_brief_fingerprint"]
         == FINGERPRINT
     )
+    assert plan.action.operational_metadata["customer_confirmed_creative_blob_id"] == str(
+        BLOB_A_ID
+    )
+    assert plan.action.operational_metadata["customer_confirmed_creative_sha256"] == SHA_A
 
     approval = CustomerOperatorApprovalService(
         execution_service=FakeExecutionService(plan),
         creative_service=creative,
+        creative_binding_service=binding,
     )
     approval.validate_exact_confirmation(request=persisted, plan=plan)
 
     creative.selected = _asset(ASSET_B_ID, VIDEO_B)
     with pytest.raises(ValueError, match="no longer provider-ready"):
+        approval.validate_exact_confirmation(request=persisted, plan=plan)
+
+
+def test_operator_validation_rejects_changed_customer_video_bytes() -> None:
+    plan = _plan()
+    request = _request()
+    asset_a = _asset(ASSET_A_ID, VIDEO_A)
+    store = MemoryRuntimeStateStore()
+    creative = FakeCreativeService([asset_a], selected=asset_a)
+    binding = FakeCreativeBindingService()
+    confirmation = CustomerPublishConfirmationService(
+        request_service=FakeRequestService(request),
+        execution_service=FakeExecutionService(plan),
+        creative_service=creative,
+        creative_binding_service=binding,
+        store=store,
+    )
+    confirmation.confirm(
+        project={"id": str(PROJECT_ID)},
+        draft=SimpleNamespace(),
+        creative_asset_id=ASSET_A_ID,
+    )
+    persisted = CustomerExecutionRequestView.model_validate(
+        store.get(CUSTOMER_EXECUTION_REQUEST_NAMESPACE, str(REQUEST_ID))
+    ).model_copy(update={"confirmed_creative_sha256": SHA_B})
+
+    approval = CustomerOperatorApprovalService(
+        execution_service=FakeExecutionService(plan),
+        creative_service=creative,
+        creative_binding_service=binding,
+    )
+    with pytest.raises(ValueError, match="bytes do not match the action stamp"):
         approval.validate_exact_confirmation(request=persisted, plan=plan)
 
 
@@ -251,6 +312,8 @@ def test_creative_readiness_pins_confirmed_asset_instead_of_newer_candidate(
                 "customer_confirmed_creative_asset_id": str(ASSET_A_ID),
                 "customer_confirmed_creative_asset_url": VIDEO_A,
                 "customer_confirmed_creative_brief_fingerprint": FINGERPRINT,
+                "customer_confirmed_creative_blob_id": str(BLOB_A_ID),
+                "customer_confirmed_creative_sha256": SHA_A,
             }
         }
     )
@@ -296,6 +359,8 @@ def test_confirmed_creative_asset_cannot_be_retired(
                 "customer_confirmed_creative_asset_id": str(ASSET_A_ID),
                 "customer_confirmed_creative_asset_url": VIDEO_A,
                 "customer_confirmed_creative_brief_fingerprint": FINGERPRINT,
+                "customer_confirmed_creative_blob_id": str(BLOB_A_ID),
+                "customer_confirmed_creative_sha256": SHA_A,
             }
         }
     )
