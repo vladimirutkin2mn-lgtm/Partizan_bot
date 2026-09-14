@@ -195,6 +195,21 @@ def _receipt() -> ExecutionAdapterReceipt:
     )
 
 
+def _incomplete_receipt() -> ExecutionAdapterReceipt:
+    return ExecutionAdapterReceipt(
+        action_id=ACTION_ID,
+        adapter_name="tiktok-permissioned-organic-video",
+        provider="tiktok-content-posting-api",
+        outcome=AdapterExecutionOutcome.IN_PROGRESS,
+        message="Execution adapter attempt started; durable receipt was not finalized.",
+        metadata={
+            "platform": DistributionPlatform.TIKTOK.value,
+            "action_type": DistributionActionType.ORGANIC_VIDEO.value,
+        },
+        created_at=datetime.now(UTC),
+    )
+
+
 def _reconciliation(
     status: TikTokDirectPostReconciliationStatus,
 ) -> TikTokDirectPostReconciliationView:
@@ -202,7 +217,9 @@ def _reconciliation(
         TikTokDirectPostReconciliationStatus.PROCESSING: (
             TikTokProviderPostStatus.PROCESSING_DOWNLOAD
         ),
-        TikTokDirectPostReconciliationStatus.PUBLISHED: TikTokProviderPostStatus.PUBLISH_COMPLETE,
+        TikTokDirectPostReconciliationStatus.PUBLISHED: (
+            TikTokProviderPostStatus.PUBLISH_COMPLETE
+        ),
         TikTokDirectPostReconciliationStatus.FAILED: TikTokProviderPostStatus.FAILED,
     }[status]
     return TikTokDirectPostReconciliationView(
@@ -211,21 +228,29 @@ def _reconciliation(
         provider_publish_id=PUBLISH_ID,
         status=status,
         provider_status=provider_status,
-        fail_reason="provider_publish_failed"
-        if status == TikTokDirectPostReconciliationStatus.FAILED
-        else None,
-        public_post_ids=["741852963"]
-        if status == TikTokDirectPostReconciliationStatus.PUBLISHED
-        else [],
+        fail_reason=(
+            "provider_publish_failed"
+            if status == TikTokDirectPostReconciliationStatus.FAILED
+            else None
+        ),
+        public_post_ids=(
+            ["741852963"]
+            if status == TikTokDirectPostReconciliationStatus.PUBLISHED
+            else []
+        ),
         checked_at=datetime.now(UTC),
     )
 
 
-def _service(status: TikTokDirectPostReconciliationStatus):
+def _service(
+    status: TikTokDirectPostReconciliationStatus,
+    *,
+    receipt: ExecutionAdapterReceipt | None = None,
+):
     request, plan = _approved_state()
     approval = _ApprovalService()
     execution = _ExecutionService(plan)
-    adapter = _AdapterService(_receipt())
+    adapter = _AdapterService(receipt or _receipt())
     reconciliation = _ReconciliationService(_reconciliation(status))
     service = CustomerOperatorExecutionService(
         request_service=_RequestService(request),  # type: ignore[arg-type]
@@ -250,6 +275,25 @@ def test_published_tiktok_receipt_reconciles_local_state_without_provider_retry(
     assert approval.validation_calls == 2
     assert result.action_status == DistributionActionStatus.EXECUTED
     assert result.experiment_status == DistributionExperimentStatus.RUNNING
+    assert result.retry_allowed is False
+    assert result.receipt is not None
+    assert result.receipt.outcome == AdapterExecutionOutcome.EXECUTED
+    assert result.receipt.external_reference == PUBLISH_ID
+    assert result.receipt.metadata["public_post_ids"] == ["741852963"]
+
+
+def test_incomplete_in_progress_receipt_recovers_from_durable_tiktok_attempt() -> None:
+    _, execution, adapter, reconciliation, service = _service(
+        TikTokDirectPostReconciliationStatus.PUBLISHED,
+        receipt=_incomplete_receipt(),
+    )
+
+    result = service.view(REQUEST_ID)
+
+    assert reconciliation.reconcile_calls == [(ACTION_ID, False)]
+    assert adapter.execute_calls == 0
+    assert execution.mark_calls == 1
+    assert result.action_status == DistributionActionStatus.EXECUTED
     assert result.retry_allowed is False
     assert result.receipt is not None
     assert result.receipt.outcome == AdapterExecutionOutcome.EXECUTED
