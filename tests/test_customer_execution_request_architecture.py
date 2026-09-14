@@ -7,6 +7,7 @@ EXECUTION = Path("app/distribution_execution_service.py").read_text(encoding="ut
 APPROVAL = Path("app/customer_operator_approval.py").read_text(encoding="utf-8")
 OPERATOR_EXECUTION = Path("app/customer_operator_execution.py").read_text(encoding="utf-8")
 GENERIC_ROUTES = Path("app/distribution_execution_routes.py").read_text(encoding="utf-8")
+CUSTOMER_WEB = Path("app/web/workspace.execution-request.v1.js").read_text(encoding="utf-8")
 
 
 def test_customer_prepare_boundary_creates_only_locked_prepared_state() -> None:
@@ -89,3 +90,12 @@ def test_generic_distribution_mutations_reject_customer_bound_actions() -> None:
     assert '_reject_customer_bound_action(action_id, "execution")' in GENERIC_ROUTES
     assert '_reject_customer_bound_action(action_id, "skip")' in GENERIC_ROUTES
     assert '_reject_customer_bound_action(action_id, "completion")' in GENERIC_ROUTES
+
+
+def test_customer_browser_remains_read_only_after_operator_execution_support() -> None:
+    assert "/execute-action" not in CUSTOMER_WEB
+    assert "/approve-action" not in CUSTOMER_WEB
+    assert "/distribution-actions/" not in CUSTOMER_WEB
+    assert "confirm_execution" not in CUSTOMER_WEB
+    assert "action_status === 'EXECUTED'" in CUSTOMER_WEB
+    assert "This customer view remains read-only." in CUSTOMER_WEB
