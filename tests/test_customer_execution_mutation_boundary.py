@@ -68,16 +68,25 @@ def test_all_known_customer_execution_bypasses_check_scope_before_mutation() -> 
     assert 'require_customer_bound_mutation_scope(action, "execution")' in adapter_source
 
     tiktok_source = Path("app/tiktok_direct_post.py").read_text()
-    assert 'require_customer_bound_mutation_scope(action, "TikTok Direct Post")' in tiktok_source
-    assert tiktok_source.index('require_customer_bound_mutation_scope(action, "TikTok Direct Post")') < tiktok_source.index("existing = self._get_latest_raw(action_id)")
+    tiktok_guard = 'require_customer_bound_mutation_scope(action, "TikTok Direct Post")'
+    assert tiktok_guard in tiktok_source
+    assert tiktok_source.index(tiktok_guard) < tiktok_source.index(
+        "existing = self._get_latest_raw(action_id)"
+    )
 
     reddit_source = Path("app/reddit_client_publishing.py").read_text()
-    assert 'require_customer_bound_mutation_scope(action, "Reddit client publish")' in reddit_source
-    assert reddit_source.index('require_customer_bound_mutation_scope(action, "Reddit client publish")') < reddit_source.index("return await super().publish")
+    reddit_guard = 'require_customer_bound_mutation_scope(action, "Reddit client publish")'
+    assert reddit_guard in reddit_source
+    assert reddit_source.index(reddit_guard) < reddit_source.index(
+        "return await super().publish"
+    )
 
     telegram_source = Path("app/telegram_client_publishing.py").read_text()
-    assert 'require_customer_bound_mutation_scope(action, "Telegram client publish")' in telegram_source
-    assert telegram_source.index('require_customer_bound_mutation_scope(action, "Telegram client publish")') < telegram_source.index("return await super().publish")
+    telegram_guard = 'require_customer_bound_mutation_scope(action, "Telegram client publish")'
+    assert telegram_guard in telegram_source
+    assert telegram_source.index(telegram_guard) < telegram_source.index(
+        "return await super().publish"
+    )
 
 
 def test_publisher_impl_modules_are_private_implementation_only() -> None:
