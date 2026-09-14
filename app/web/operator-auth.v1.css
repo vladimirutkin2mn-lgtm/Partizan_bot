@@ -163,7 +163,7 @@ body.operator-approval-open {
 }
 
 .operator-approval-card.is-approved {
-  opacity: 0.78;
+  opacity: 0.88;
 }
 
 .operator-approval-card-header {
@@ -207,7 +207,8 @@ body.operator-approval-open {
 
 .operator-approval-fact,
 .operator-approval-exact-block,
-.operator-approval-fingerprint {
+.operator-approval-fingerprint,
+.operator-execution-receipt {
   min-width: 0;
   padding: 11px 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -270,6 +271,37 @@ body.operator-approval-open {
   line-height: 1.5;
 }
 
+.operator-execution-receipt {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 12px;
+}
+
+.operator-execution-receipt p,
+.operator-execution-receipt strong,
+.operator-execution-receipt code {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.operator-execution-receipt p,
+.operator-execution-receipt code {
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.operator-execution-receipt[data-tone="error"] {
+  border-color: rgba(255, 113, 113, 0.28);
+  background: rgba(255, 113, 113, 0.06);
+}
+
+.operator-execution-receipt[data-outcome="EXECUTED"],
+.operator-execution-receipt[data-outcome="STAGED"] {
+  border-color: rgba(162, 255, 0, 0.24);
+  background: rgba(162, 255, 0, 0.05);
+}
+
 .operator-approval-actions {
   justify-content: flex-end;
   padding-top: 14px;
@@ -279,6 +311,10 @@ body.operator-approval-open {
 .operator-approval-complete {
   color: #dfffad;
   font-size: 12px;
+}
+
+.operator-execution-button {
+  min-width: 176px;
 }
 
 @media (max-width: 720px) {

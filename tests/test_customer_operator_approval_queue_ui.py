@@ -5,7 +5,7 @@ from app.main import app
 client = TestClient(app)
 
 
-def test_operator_shell_exposes_request_bound_customer_approval_queue() -> None:
+def test_operator_shell_exposes_request_bound_customer_approval_and_execution_queue() -> None:
     javascript = client.get("/app/assets/operator-auth.v1.js")
     stylesheet = client.get("/app/assets/operator-auth.v1.css")
 
@@ -20,8 +20,11 @@ def test_operator_shell_exposes_request_bound_customer_approval_queue() -> None:
         'trigger.textContent = "Customer approvals"',
         'fetch("/v1/customer-execution-requests")',
         "/approve-action",
+        "/execution`",
+        "/execute-action",
         'method: "POST"',
         "JSON.stringify({ confirm_approval: true })",
+        "JSON.stringify({ confirm_execution: true })",
         'item.status === "PUBLISH_CONFIRMED"',
         'item.status === "OPERATOR_APPROVED"',
         "request.customer_publish_confirmation_fingerprint",
@@ -30,22 +33,26 @@ def test_operator_shell_exposes_request_bound_customer_approval_queue() -> None:
         'createFact("Locked target", request.source_url, { url: true })',
         'createExactBlock("Exact context", request.context_text)',
         'createExactBlock("Exact content", request.content_text)',
-        "Execution is still separate.",
+        'execute.textContent = "Execute exact action"',
+        "This may cause an external provider action. It will not auto-retry.",
+        "Execution attempt recorded · retry disabled",
     ):
         assert contract in js
 
     assert ".operator-approval-drawer" in css
     assert ".operator-approval-card.is-pending" in css
     assert ".operator-approval-fingerprint" in css
+    assert ".operator-execution-receipt" in css
+    assert ".operator-execution-button" in css
 
 
-def test_customer_approval_queue_cannot_edit_or_execute_locked_action() -> None:
+def test_customer_operator_queue_has_no_generic_mutation_or_retry_path() -> None:
     javascript = client.get("/app/assets/operator-auth.v1.js").text
 
     assert "/v1/distribution-actions/" not in javascript
-    assert "/execute" not in javascript
     assert 'method: "PATCH"' not in javascript
     assert 'method: "PUT"' not in javascript
+    assert "retry: true" not in javascript
     assert "localStorage" not in javascript
     assert "sessionStorage" not in javascript
 

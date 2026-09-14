@@ -105,6 +105,35 @@
     return wrap;
   }
 
+  function createExecutionReceipt(execution) {
+    const wrap = document.createElement("div");
+    wrap.className = "operator-execution-receipt";
+    if (execution.error) {
+      wrap.dataset.tone = "error";
+      wrap.append(
+        textNode("span", "operator-approval-fact-label", "Execution blocked"),
+        textNode("p", "", execution.error)
+      );
+      return wrap;
+    }
+    const receipt = execution.receipt;
+    if (!receipt) {
+      wrap.append(
+        textNode("span", "operator-approval-fact-label", "Execution state"),
+        textNode("p", "", "No provider attempt recorded. Execution remains a separate explicit operator action.")
+      );
+      return wrap;
+    }
+    wrap.dataset.outcome = receipt.outcome;
+    wrap.append(
+      textNode("span", "operator-approval-fact-label", "Execution receipt"),
+      textNode("strong", "", `${receipt.outcome} · ${receipt.provider}`),
+      textNode("p", "", receipt.message),
+      textNode("code", "", receipt.external_reference || "No external reference")
+    );
+    return wrap;
+  }
+
   function mountCustomerApprovalQueue(actions) {
     if (!actions || document.getElementById(APPROVAL_QUEUE_ID)) return;
 
@@ -135,7 +164,7 @@
       textNode(
         "p",
         "muted",
-        "Проверяйте только точное действие, уже подтверждённое клиентом. Approval не выполняет и не публикует его."
+        "Approval and execution are separate. Both operate only on the exact customer-confirmed action."
       )
     );
     const close = document.createElement("button");
@@ -170,6 +199,7 @@
     document.body.append(backdrop, drawer);
 
     let requests = [];
+    let executionStates = new Map();
     let loading = false;
 
     function setAlert(message, tone = "error") {
@@ -197,6 +227,23 @@
         });
     }
 
+    async function loadExecutionState(requestId) {
+      const response = await fetch(`/v1/customer-execution-requests/${requestId}/execution`);
+      if (!response.ok) {
+        return { error: await responseDetail(response) };
+      }
+      return response.json();
+    }
+
+    async function hydrateExecutionStates() {
+      const approved = requests.filter((item) => item.status === "OPERATOR_APPROVED");
+      const pairs = await Promise.all(approved.map(async (item) => [
+        String(item.id),
+        await loadExecutionState(item.id),
+      ]));
+      executionStates = new Map(pairs);
+    }
+
     function render() {
       const visible = sortedVisibleRequests();
       const pending = visible.filter((item) => item.status === "PUBLISH_CONFIRMED").length;
@@ -217,6 +264,7 @@
 
       visible.forEach((request) => {
         const pendingApproval = request.status === "PUBLISH_CONFIRMED";
+        const execution = executionStates.get(String(request.id));
         const card = document.createElement("article");
         card.className = `operator-approval-card ${pendingApproval ? "is-pending" : "is-approved"}`;
         card.dataset.requestId = String(request.id);
@@ -259,7 +307,7 @@
         const boundary = textNode(
           "p",
           "operator-approval-boundary",
-          "Backend повторно сверит request/action binding и SHA-256 exact snapshot. Execution остаётся отдельным шагом."
+          "Backend повторно сверит request/action binding и SHA-256 exact snapshot перед approval и перед execution."
         );
 
         const actionsRow = document.createElement("div");
@@ -285,6 +333,7 @@
               if (!response.ok) throw new Error(await responseDetail(response));
               const updated = await response.json();
               requests = requests.map((item) => item.id === updated.id ? updated : item);
+              executionStates.set(String(updated.id), await loadExecutionState(updated.id));
               setAlert("Exact customer-confirmed action approved. Execution is still separate.", "success");
               render();
             } catch (error) {
@@ -294,11 +343,48 @@
             }
           });
           actionsRow.append(approve);
+        } else if (!execution) {
+          actionsRow.append(textNode("strong", "operator-approval-complete", "Loading execution state…"));
+        } else if (execution.error) {
+          actionsRow.append(textNode("strong", "operator-approval-complete", "Execution blocked by binding/state validation"));
+        } else if (execution.receipt) {
+          actionsRow.append(textNode("strong", "operator-approval-complete", "Execution attempt recorded · retry disabled"));
+        } else if (execution.action_status === "APPROVED" && execution.experiment_status === "APPROVED") {
+          const execute = document.createElement("button");
+          execute.className = "button button-primary operator-execution-button";
+          execute.type = "button";
+          execute.textContent = "Execute exact action";
+          execute.addEventListener("click", async () => {
+            if (!window.confirm("Execute exactly this approved customer action now? This may cause an external provider action. It will not auto-retry.")) {
+              return;
+            }
+            execute.disabled = true;
+            execute.textContent = "Executing…";
+            setAlert("");
+            try {
+              const response = await fetch(`/v1/customer-execution-requests/${request.id}/execute-action`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ confirm_execution: true }),
+              });
+              if (!response.ok) throw new Error(await responseDetail(response));
+              executionStates.set(String(request.id), await response.json());
+              setAlert("Execution attempt recorded. This customer-bound endpoint will not auto-retry.", "success");
+              render();
+            } catch (error) {
+              setAlert(`Execution blocked: ${error.message || error}`);
+              execute.disabled = false;
+              execute.textContent = "Execute exact action";
+            }
+          });
+          actionsRow.append(execute);
         } else {
-          actionsRow.append(textNode("strong", "operator-approval-complete", "Operator approved · no execution triggered"));
+          actionsRow.append(textNode("strong", "operator-approval-complete", "Execution state is read-only"));
         }
 
-        card.append(cardHeader, facts, exact, fingerprint, boundary, actionsRow);
+        card.append(cardHeader, facts, exact, fingerprint, boundary);
+        if (!pendingApproval && execution) card.append(createExecutionReceipt(execution));
+        card.append(actionsRow);
         list.append(card);
       });
     }
@@ -320,9 +406,12 @@
         }
         const payload = await response.json();
         requests = Array.isArray(payload) ? payload : [];
+        executionStates = new Map();
+        await hydrateExecutionStates();
         render();
       } catch (error) {
         requests = [];
+        executionStates = new Map();
         render();
         setAlert(`Queue unavailable: ${error.message || error}`);
       } finally {

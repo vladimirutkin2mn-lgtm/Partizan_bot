@@ -7,7 +7,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 from app.channel_execution import PublisherMode
-from app.distribution_types import DistributionPlatform
+from app.distribution_execution_schemas import DistributionExperimentStatus
+from app.distribution_types import DistributionActionStatus, DistributionPlatform
+from app.execution_adapters import ExecutionAdapterReceipt
 
 CustomerExecutionRequestStatus = Literal[
     "REQUESTED",
@@ -43,12 +45,27 @@ class CustomerExecutionOperatorApprovalRequest(BaseModel):
     confirm_approval: Literal[True]
 
 
+class CustomerExecutionOperatorExecuteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirm_execution: Literal[True]
+
+
+class CustomerOperatorExecutionView(BaseModel):
+    request_id: UUID
+    distribution_action_id: UUID
+    action_status: DistributionActionStatus
+    experiment_status: DistributionExperimentStatus
+    receipt: ExecutionAdapterReceipt | None = None
+    retry_allowed: Literal[False] = False
+
+
 class CustomerPreparedActionView(BaseModel):
     request_id: UUID
     project_id: UUID
     distribution_action_id: UUID
     platform: DistributionPlatform
-    action_status: Literal["PREPARED", "APPROVED"] = "PREPARED"
+    action_status: Literal["PREPARED", "APPROVED", "EXECUTED"] = "PREPARED"
     source_title: str = Field(min_length=1, max_length=500)
     source_url: HttpUrl
     target_url: HttpUrl
@@ -60,7 +77,7 @@ class CustomerPreparedActionView(BaseModel):
     operator_approved_at: datetime | None = None
     execution_allowed: Literal[False] = False
     operator_approval_required: bool = True
-    published: Literal[False] = False
+    published: bool = False
 
 
 class CustomerExecutionRequestView(BaseModel):

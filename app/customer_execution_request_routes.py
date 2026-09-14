@@ -15,10 +15,12 @@ from app.customer_channels import customer_channel_service
 from app.customer_execution_request_schemas import (
     CustomerExecutionActionPrepareRequest,
     CustomerExecutionOperatorApprovalRequest,
+    CustomerExecutionOperatorExecuteRequest,
     CustomerExecutionPreparationLinkRequest,
     CustomerExecutionPublishConfirmationRequest,
     CustomerExecutionRequestCreate,
     CustomerExecutionRequestView,
+    CustomerOperatorExecutionView,
     CustomerPreparedActionView,
 )
 from app.customer_execution_requests import customer_execution_request_service
@@ -28,6 +30,7 @@ from app.customer_funnel import (
     customer_funnel_service,
 )
 from app.customer_operator_approval import customer_operator_approval_service
+from app.customer_operator_execution import customer_operator_execution_service
 from app.customer_publish_confirmation import customer_publish_confirmation_service
 from app.customer_starting_move_draft import customer_starting_move_draft_service
 from app.customer_starting_move_setup import customer_starting_move_setup_service
@@ -263,6 +266,41 @@ def approve_customer_execution_action(
         raise HTTPException(
             status_code=404,
             detail="Execution request or prepared DistributionAction not found",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@operator_router.get(
+    "/customer-execution-requests/{request_id}/execution",
+    response_model=CustomerOperatorExecutionView,
+)
+def get_customer_operator_execution(request_id: UUID) -> CustomerOperatorExecutionView:
+    try:
+        return customer_operator_execution_service.view(request_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Execution request, approved action, experiment, or receipt not found",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@operator_router.post(
+    "/customer-execution-requests/{request_id}/execute-action",
+    response_model=CustomerOperatorExecutionView,
+)
+def execute_customer_operator_action(
+    request_id: UUID,
+    payload: CustomerExecutionOperatorExecuteRequest,
+) -> CustomerOperatorExecutionView:
+    try:
+        return customer_operator_execution_service.execute(request_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Execution request, approved action, experiment, or execution dependency not found",
         ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

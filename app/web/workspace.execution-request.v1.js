@@ -59,8 +59,13 @@
       (executionRequest.status === 'PUBLISH_CONFIRMED' || executionRequest.status === 'OPERATOR_APPROVED')
       && preparedAction.customer_publish_confirmed
     );
+    const executed = Boolean(
+      preparedAction.action_status === 'EXECUTED'
+      || preparedAction.published === true
+    );
     const approved = Boolean(
-      executionRequest.status === 'OPERATOR_APPROVED'
+      executed
+      || executionRequest.status === 'OPERATOR_APPROVED'
       || preparedAction.action_status === 'APPROVED'
       || preparedAction.operator_approval_required === false
     );
@@ -69,20 +74,24 @@
     const title = preparedAction.draft_title
       ? `<div><span class="eyebrow">Title</span><strong>${escapeHtml(preparedAction.draft_title)}</strong></div>`
       : '';
-    const headline = approved
-      ? 'Operator approved this exact action.'
-      : confirmed
-        ? 'You confirmed this exact action.'
-        : 'Review the exact action before confirming.';
-    const status = approved ? 'Operator approved' : confirmed ? 'Confirmed' : 'Needs confirmation';
-    const stateNote = approved
-      ? 'The exact action is APPROVED for the separate execution step. Nothing has been published or funded yet.'
-      : 'The action is still PREPARED, operator approval is still required, and nothing has been published or funded.';
+    const headline = executed
+      ? 'This exact action has been executed.'
+      : approved
+        ? 'Operator approved this exact action.'
+        : confirmed
+          ? 'You confirmed this exact action.'
+          : 'Review the exact action before confirming.';
+    const status = executed ? 'Executed' : approved ? 'Operator approved' : confirmed ? 'Confirmed' : 'Needs confirmation';
+    const stateNote = executed
+      ? 'The exact action was executed after your confirmation and separate operator approval. This customer view remains read-only.'
+      : approved
+        ? 'The exact action is APPROVED for the separate execution step. Nothing has been published or funded yet.'
+        : 'The action is still PREPARED, operator approval is still required, and nothing has been published or funded.';
 
     card.innerHTML = `
       <div class="activation-head">
         <div><span class="eyebrow">Prepared action → exact customer review</span><h2>${headline}</h2></div>
-        <span class="status-pill ${(confirmed || approved) ? 'good' : ''}">${status}</span>
+        <span class="status-pill ${(confirmed || approved || executed) ? 'good' : ''}">${status}</span>
       </div>
       <p class="section-copy">This is the exact ${escapeHtml(setup.channel_label)} action prepared from your accepted draft. Confirming records your approval of this exact target and copy for the separate operator approval step; it does not publish anything.</p>
       <div class="activation-action activation-action-primary">
@@ -94,7 +103,7 @@
         <p class="note">${stateNote}</p>
         ${confirmed
           ? `<p class="note">Confirmed${confirmationTime ? ` ${escapeHtml(confirmationTime)}` : ''}. Any changed copy must return through a new customer review.</p>
-             ${approved ? `<p class="note">Operator approval recorded${approvalTime ? ` ${escapeHtml(approvalTime)}` : ''}. Execution remains a separate protected step.</p>` : ''}`
+             ${approved ? `<p class="note">Operator approval recorded${approvalTime ? ` ${escapeHtml(approvalTime)}` : ''}. ${executed ? 'Execution status is shown read-only above.' : 'Execution remains a separate protected step.'}</p>` : ''}`
           : `<div><button id="execution-confirm-submit" class="button button-primary" type="button">Confirm this exact action →</button></div>
              <p id="execution-confirm-note" class="note">Only this click records confirmation. It does not call approve, execute or publishing endpoints.</p>`}
       </div>`;
