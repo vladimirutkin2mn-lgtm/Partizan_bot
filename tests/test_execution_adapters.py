@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from uuid import UUID
 
 import pytest
@@ -12,6 +13,7 @@ from app.execution_adapters import (
     ConfirmedMockExecutionAdapter,
     DistributionAdapterExecuteRequest,
     DistributionExecutionAdapterService,
+    ExecutionAdapterReceipt,
     ExecutionAdapterRegistry,
     distribution_execution_adapter_service,
 )
@@ -207,3 +209,44 @@ def test_confirmed_provider_is_the_only_adapter_path_that_starts_experiment() ->
     stored = recreated.get_receipt(UUID(action_id))
     assert stored is not None
     assert stored.external_reference == result.receipt.external_reference
+
+
+def test_in_progress_receipt_cannot_be_retried_after_an_interrupted_attempt() -> None:
+    product_id = _product()
+    action_id = UUID(_approved_paid_action(product_id, tactic_id="tiktok_ads"))
+
+    class CountingAdapter(ConfirmedMockExecutionAdapter):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def execute(self, action):
+            self.calls += 1
+            return super().execute(action)
+
+    adapter = CountingAdapter()
+    service = DistributionExecutionAdapterService(
+        registry=ExecutionAdapterRegistry([adapter]),
+        store=get_runtime_store(),
+    )
+    interrupted = ExecutionAdapterReceipt(
+        action_id=action_id,
+        adapter_name=adapter.name,
+        provider=adapter.provider,
+        outcome=AdapterExecutionOutcome.IN_PROGRESS,
+        message="Execution adapter attempt started before the worker stopped.",
+        metadata={"platform": "TIKTOK", "action_type": "PAID_CAMPAIGN"},
+        created_at=datetime.now(UTC),
+    )
+    service._persist(interrupted)
+
+    with pytest.raises(ValueError, match="unknown.*reconcile"):
+        service.execute(
+            action_id,
+            DistributionAdapterExecuteRequest(retry=True),
+        )
+
+    assert adapter.calls == 0
+    stored = service.get_receipt(action_id)
+    assert stored is not None
+    assert stored.outcome == AdapterExecutionOutcome.IN_PROGRESS
+    assert distribution_execution_service.get_action(action_id).status.value == "APPROVED"
