@@ -8,6 +8,7 @@ for _name, _value in vars(_impl).items():
         globals()[_name] = _value
 
 _BaseCustomerTelegramClientPublishService = _impl.CustomerTelegramClientPublishService
+_AMBIGUOUS_TELEGRAM_PUBLISH_ERRORS = frozenset({"PUBLISH_FAILED"})
 
 
 class CustomerTelegramClientPublishService(_BaseCustomerTelegramClientPublishService):
@@ -23,7 +24,28 @@ class CustomerTelegramClientPublishService(_BaseCustomerTelegramClientPublishSer
             require_customer_bound_mutation_scope(action, "Telegram client publish")
         except ValueError as exc:
             raise _impl.CustomerTelegramClientPublishError(str(exc)) from exc
+        if payload.retry:
+            existing = self.get_receipt(action_id)
+            if (
+                existing is not None
+                and existing.outcome == _impl.TelegramClientPublishOutcome.FAILED
+                and self._failed_publish_result_is_ambiguous(existing)
+            ):
+                raise _impl.CustomerTelegramClientPublishError(
+                    "The previous Telegram publish result is unknown; reconcile before retrying"
+                )
         return await super().publish(project_id, customer_token, action_id, payload)
+
+    def _failed_publish_result_is_ambiguous(
+        self,
+        receipt: _impl.TelegramClientPublishReceipt,
+    ) -> bool:
+        metadata = receipt.metadata if isinstance(receipt.metadata, dict) else {}
+        error_code = str(metadata.get("error_code") or "").strip()
+        return bool(
+            metadata.get("provider_error_type")
+            or error_code in _AMBIGUOUS_TELEGRAM_PUBLISH_ERRORS
+        )
 
 
 customer_telegram_client_publish_service = CustomerTelegramClientPublishService()
