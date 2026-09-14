@@ -38,6 +38,24 @@ class FakeRailService:
         }
 
 
+class FakeAuthorizationReservationService:
+    def __init__(self) -> None:
+        self.authorizations: list[dict] = []
+        self.transactions: list[dict] = []
+
+    def authorize_request(self, authorization: dict) -> bool:
+        self.authorizations.append(authorization)
+        return True
+
+    def record_authorization(self, authorization: dict) -> bool:
+        self.authorizations.append(authorization)
+        return True
+
+    def record_transaction(self, transaction: dict) -> bool:
+        self.transactions.append(transaction)
+        return True
+
+
 @pytest.fixture(autouse=True)
 def cleanup_overrides() -> None:
     app.dependency_overrides.pop(get_settings, None)
@@ -59,8 +77,8 @@ def _settings() -> Settings:
 def test_signed_issuing_authorization_is_public_and_returns_direct_decision(monkeypatch) -> None:
     import app.growth_balance_rail_routes as routes
 
-    fake = FakeRailService()
-    monkeypatch.setattr(routes, "growth_balance_service", fake)
+    fake = FakeAuthorizationReservationService()
+    monkeypatch.setattr(routes, "growth_balance_authorization_reservation_service", fake)
     monkeypatch.setattr(
         routes.stripe.Webhook,
         "construct_event",
@@ -86,8 +104,8 @@ def test_signed_issuing_authorization_is_public_and_returns_direct_decision(monk
 def test_signed_issuing_transaction_event_is_recorded(monkeypatch) -> None:
     import app.growth_balance_rail_routes as routes
 
-    fake = FakeRailService()
-    monkeypatch.setattr(routes, "growth_balance_service", fake)
+    fake = FakeAuthorizationReservationService()
+    monkeypatch.setattr(routes, "growth_balance_authorization_reservation_service", fake)
     monkeypatch.setattr(
         routes.stripe.Webhook,
         "construct_event",
