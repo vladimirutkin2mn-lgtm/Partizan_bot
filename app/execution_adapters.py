@@ -212,11 +212,16 @@ class TelegramBotExecutionAdapter:
                 adapter_name=self.name,
                 provider=self.provider,
                 outcome=AdapterExecutionOutcome.FAILED,
-                message="Telegram Bot API execution failed; action remains approved for retry.",
+                message=(
+                    "Telegram Bot API execution failed with an unknown remote result; "
+                    "reconcile before any retry."
+                ),
+                requires_operator_confirmation=True,
                 metadata={
                     "platform": action.platform.value,
                     "chat_id": chat_id,
                     "secret_env": token_env,
+                    "provider_result_ambiguous": True,
                 },
                 created_at=datetime.now(UTC),
             )
@@ -228,11 +233,16 @@ class TelegramBotExecutionAdapter:
                 adapter_name=self.name,
                 provider=self.provider,
                 outcome=AdapterExecutionOutcome.FAILED,
-                message="Telegram response did not contain a valid message_id.",
+                message=(
+                    "Telegram response did not contain a valid message_id; remote result is "
+                    "ambiguous and must be reconciled before retry."
+                ),
+                requires_operator_confirmation=True,
                 metadata={
                     "platform": action.platform.value,
                     "chat_id": chat_id,
                     "secret_env": token_env,
+                    "provider_result_ambiguous": True,
                 },
                 created_at=datetime.now(UTC),
             )
@@ -466,6 +476,7 @@ class MetaAdsExecutionAdapter:
                 action,
                 str(exc),
                 partial_provider_ids=provider_ids,
+                provider_result_ambiguous=exc.ambiguous,
             )
 
         metadata = {
@@ -522,16 +533,19 @@ class MetaAdsExecutionAdapter:
         message: str,
         *,
         partial_provider_ids: dict[str, str] | None = None,
+        provider_result_ambiguous: bool = False,
     ) -> ExecutionAdapterReceipt:
+        requires_reconciliation = bool(partial_provider_ids) or provider_result_ambiguous
         return ExecutionAdapterReceipt(
             action_id=action.id,
             adapter_name=self.name,
             provider=self.provider,
             outcome=AdapterExecutionOutcome.FAILED,
             message=message[:2000],
-            requires_operator_confirmation=bool(partial_provider_ids),
+            requires_operator_confirmation=requires_reconciliation,
             metadata={
                 "partial_provider_ids": partial_provider_ids or {},
+                "provider_result_ambiguous": provider_result_ambiguous,
                 "spend_started": False,
             },
             created_at=datetime.now(UTC),
@@ -610,7 +624,12 @@ class TikTokAdsExecutionAdapter:
                 ad_text=ad_text,
             )
         except TikTokMarketingApiError as exc:
-            return self._failed(action, str(exc), partial_provider_ids=provider_ids)
+            return self._failed(
+                action,
+                str(exc),
+                partial_provider_ids=provider_ids,
+                provider_result_ambiguous=exc.ambiguous,
+            )
 
         return ExecutionAdapterReceipt(
             action_id=action.id,
@@ -661,16 +680,19 @@ class TikTokAdsExecutionAdapter:
         message: str,
         *,
         partial_provider_ids: dict[str, str] | None = None,
+        provider_result_ambiguous: bool = False,
     ) -> ExecutionAdapterReceipt:
+        requires_reconciliation = bool(partial_provider_ids) or provider_result_ambiguous
         return ExecutionAdapterReceipt(
             action_id=action.id,
             adapter_name=self.name,
             provider=self.provider,
             outcome=AdapterExecutionOutcome.FAILED,
             message=message[:2000],
-            requires_operator_confirmation=bool(partial_provider_ids),
+            requires_operator_confirmation=requires_reconciliation,
             metadata={
                 "partial_provider_ids": partial_provider_ids or {},
+                "provider_result_ambiguous": provider_result_ambiguous,
                 "spend_started": False,
             },
             created_at=datetime.now(UTC),
@@ -779,10 +801,14 @@ class DistributionExecutionAdapterService:
             existing is not None
             and payload.retry
             and existing.outcome == AdapterExecutionOutcome.FAILED
-            and existing.metadata.get("partial_provider_ids")
+            and (
+                existing.requires_operator_confirmation
+                or existing.metadata.get("partial_provider_ids")
+                or existing.metadata.get("provider_result_ambiguous") is True
+            )
         ):
             raise ValueError(
-                "Provider objects were partially created; reconcile them before retrying execution"
+                "Provider result is incomplete or ambiguous; reconcile it before retrying execution"
             )
 
         if action.status == DistributionActionStatus.EXECUTED:
@@ -820,7 +846,12 @@ class DistributionExecutionAdapterService:
                 adapter_name=adapter.name,
                 provider=adapter.provider,
                 outcome=AdapterExecutionOutcome.FAILED,
-                message="Execution adapter failed without a confirmed external result.",
+                message=(
+                    "Execution adapter failed without a confirmed external result; reconcile "
+                    "provider state before retry."
+                ),
+                requires_operator_confirmation=True,
+                metadata={"provider_result_ambiguous": True},
                 created_at=datetime.now(UTC),
             )
 
