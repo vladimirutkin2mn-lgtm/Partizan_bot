@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from app.customer_execution_boundary import customer_execution_request_scope
 from app.customer_execution_request_schemas import (
     CustomerExecutionRequestView,
     CustomerOperatorExecutionView,
@@ -72,17 +73,18 @@ class CustomerOperatorExecutionService:
                 and plan.action.status == DistributionActionStatus.APPROVED
                 and plan.experiment.status == DistributionExperimentStatus.APPROVED
             ):
-                plan = self._execution_service.mark_executed(
-                    plan.action.id,
-                    DistributionActionExecutionRequest(
-                        external_reference=receipt.external_reference,
-                        executed_url=receipt.executed_url,
-                        notes=(
-                            f"Recovered from durable execution receipt {receipt.adapter_name} "
-                            f"({receipt.provider}) without retrying the provider."
+                with customer_execution_request_scope(request.id):
+                    plan = self._execution_service.mark_executed(
+                        plan.action.id,
+                        DistributionActionExecutionRequest(
+                            external_reference=receipt.external_reference,
+                            executed_url=receipt.executed_url,
+                            notes=(
+                                f"Recovered from durable execution receipt {receipt.adapter_name} "
+                                f"({receipt.provider}) without retrying the provider."
+                            ),
                         ),
-                    ),
-                )
+                    )
                 self._approval_service.validate_exact_confirmation(
                     request=request,
                     plan=plan,
@@ -97,10 +99,11 @@ class CustomerOperatorExecutionService:
             # never trigger another provider mutation.
             return self._to_view(request=request, plan=plan, receipt=None)
 
-        result = self._adapter_service.execute(
-            plan.action.id,
-            DistributionAdapterExecuteRequest(retry=False),
-        )
+        with customer_execution_request_scope(request.id):
+            result = self._adapter_service.execute(
+                plan.action.id,
+                DistributionAdapterExecuteRequest(retry=False),
+            )
         if result.receipt.action_id != plan.action.id:
             raise ValueError("Execution receipt does not match the customer-bound action.")
         if result.plan.action.id != plan.action.id or result.plan.experiment.id != plan.experiment.id:
