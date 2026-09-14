@@ -79,6 +79,8 @@ class CustomerPreparedActionView(BaseModel):
         default=None,
         pattern=r"^[a-f0-9]{64}$",
     )
+    creative_blob_id: UUID | None = None
+    creative_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     customer_publish_confirmed: bool = False
     customer_publish_confirmed_at: datetime | None = None
     operator_approved_at: datetime | None = None
@@ -114,6 +116,11 @@ class CustomerExecutionRequestView(BaseModel):
     confirmed_creative_asset_id: UUID | None = None
     confirmed_creative_asset_url: HttpUrl | None = None
     confirmed_creative_brief_fingerprint: str | None = Field(
+        default=None,
+        pattern=r"^[a-f0-9]{64}$",
+    )
+    confirmed_creative_blob_id: UUID | None = None
+    confirmed_creative_sha256: str | None = Field(
         default=None,
         pattern=r"^[a-f0-9]{64}$",
     )
