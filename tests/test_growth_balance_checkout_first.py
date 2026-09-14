@@ -20,8 +20,8 @@ from app.growth_balance import (
 from app.growth_balance_funding_policy import (
     CheckoutFirstGrowthBalanceSettlementService,
     _install_checkout_first_liquidity_policy,
-    _install_paid_checkout_project_recovery,
 )
+from app.growth_balance_paid_recovery import install_paid_checkout_project_recovery
 from app.runtime_store import MemoryRuntimeStateStore
 
 PROJECT_ID = UUID("22222222-2222-2222-2222-222222222222")
@@ -207,7 +207,7 @@ def test_paid_checkout_replay_repairs_project_state_after_paid_record_crash() ->
         },
     )
     service = GrowthBalanceService(store, settlement_service=settlement)
-    _install_paid_checkout_project_recovery(service)
+    install_paid_checkout_project_recovery(service)
 
     for _ in range(2):
         assert service.credit_paid_checkout(
@@ -256,7 +256,7 @@ def test_paid_checkout_replay_does_not_regress_newer_project_funding_timestamp()
         },
     )
     service = GrowthBalanceService(store, settlement_service=settlement)
-    _install_paid_checkout_project_recovery(service)
+    install_paid_checkout_project_recovery(service)
 
     assert service.credit_paid_checkout(
         PROJECT_ID,
