@@ -7,19 +7,20 @@ import stripe
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from app.autonomy_overview import AutonomyExperimentSummary, autonomy_overview_service
 from app.config import Settings, get_settings
 from app.customer_account import (
     CUSTOMER_ACCOUNT_SESSION_COOKIE,
     CustomerAccountAuthenticationError,
     customer_account_service,
 )
-from app.customer_autopilot import customer_autopilot_service
 from app.customer_billing import BillingConfigurationError, create_growth_balance_checkout
 from app.customer_funnel import (
     CustomerProjectAccessError,
     CustomerProjectNotFoundError,
     customer_funnel_service,
 )
+from app.distribution_analytics_service import distribution_analytics_service
 from app.growth_balance import growth_balance_service
 from app.growth_balance_jit_funding import (
     NextMoveFundingPlan,
@@ -30,8 +31,9 @@ router = APIRouter(tags=["customer-account"])
 
 
 class CustomerNextMoveFundingView(BaseModel):
-    opportunity_title: str
-    recommended_action: str
+    experiment_id: UUID
+    action_id: UUID
+    platform: str
     required_acquisition_usd: float = Field(ge=0)
     remaining_acquisition_capacity_usd: float = Field(ge=0)
     topup_amount_usd: float = Field(ge=0)
@@ -64,30 +66,50 @@ def _project_access(session_token: str | None, project_id: UUID) -> str:
     return customer_token
 
 
-def _funding_plan(project_id: UUID, customer_token: str) -> NextMoveFundingPlan:
-    project_payload = customer_funnel_service.get_project_payload(project_id, customer_token)
+def _funding_plan(
+    project_id: UUID,
+    customer_token: str,
+    experiment_id: UUID,
+) -> tuple[NextMoveFundingPlan, AutonomyExperimentSummary]:
     project = customer_funnel_service.get_project(project_id, customer_token)
-    preview = project_payload.get("preview") or {}
-    opportunity = preview.get("free_opportunity") if isinstance(preview, dict) else None
-    if not isinstance(opportunity, dict):
-        raise ValueError("No concrete researched move is ready for just-in-time funding")
+    if project.product_id is None:
+        raise ValueError("A researched product is required before paid-move funding")
 
-    overview = customer_autopilot_service.overview(project_id, customer_token)
-    balance = overview.growth_balance
-    return growth_balance_jit_funding_service.plan(
-        opportunity=opportunity,
+    autonomy = autonomy_overview_service.get(project.product_id)
+    experiment = next(
+        (
+            item
+            for item in autonomy.waiting_approval
+            if item.experiment_id == experiment_id
+        ),
+        None,
+    )
+    if experiment is None:
+        raise ValueError("Paid experiment is not waiting for execution")
+    if experiment.action_type != "PAID_CAMPAIGN" or experiment.budget_cap is None:
+        raise ValueError("Experiment does not have an executable paid-campaign budget")
+
+    analytics = distribution_analytics_service.product_analytics(project.product_id)
+    balance = growth_balance_service.summary(project_id, analytics.total_spend)
+    plan = growth_balance_jit_funding_service.plan(
+        required_acquisition_usd=float(experiment.budget_cap),
         project_budget_usd=float(project.budget_usd),
         funded_usd=float(balance.funded_usd),
         acquisition_spend_usd=float(balance.acquisition_spend_usd),
         remaining_acquisition_capacity_usd=float(balance.remaining_acquisition_capacity_usd),
         management_fee_pct=int(balance.management_fee_pct),
     )
+    return plan, experiment
 
 
-def _view(plan: NextMoveFundingPlan) -> CustomerNextMoveFundingView:
+def _view(
+    plan: NextMoveFundingPlan,
+    experiment: AutonomyExperimentSummary,
+) -> CustomerNextMoveFundingView:
     return CustomerNextMoveFundingView(
-        opportunity_title=plan.opportunity_title,
-        recommended_action=plan.recommended_action,
+        experiment_id=experiment.experiment_id,
+        action_id=experiment.action_id,
+        platform=experiment.platform,
         required_acquisition_usd=plan.required_acquisition_usd,
         remaining_acquisition_capacity_usd=plan.remaining_acquisition_capacity_usd,
         topup_amount_usd=plan.topup_amount_usd,
@@ -97,38 +119,44 @@ def _view(plan: NextMoveFundingPlan) -> CustomerNextMoveFundingView:
 
 
 @router.get(
-    "/customer/workspace/{project_id}/growth-balance/next-move",
+    "/customer/workspace/{project_id}/growth-balance/experiments/{experiment_id}/funding",
     response_model=CustomerNextMoveFundingView,
 )
 def get_next_move_funding(
     project_id: UUID,
+    experiment_id: UUID,
     session_token: Annotated[str | None, Depends(_session_cookie)] = None,
 ) -> CustomerNextMoveFundingView:
     customer_token = _project_access(session_token, project_id)
     try:
-        return _view(_funding_plan(project_id, customer_token))
+        plan, experiment = _funding_plan(project_id, customer_token, experiment_id)
+        return _view(plan, experiment)
     except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
         raise HTTPException(status_code=404, detail="Customer project not found") from exc
-    except ValueError as exc:
+    except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post(
-    "/customer/workspace/{project_id}/growth-balance/next-move/checkout",
+    "/customer/workspace/{project_id}/growth-balance/experiments/{experiment_id}/funding/checkout",
     response_model=CustomerNextMoveFundingCheckoutResponse,
 )
 def create_next_move_funding_checkout(
     project_id: UUID,
+    experiment_id: UUID,
     request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
     session_token: Annotated[str | None, Depends(_session_cookie)] = None,
 ) -> CustomerNextMoveFundingCheckoutResponse:
     customer_token = _project_access(session_token, project_id)
     try:
-        plan = _funding_plan(project_id, customer_token)
-        view = _view(plan)
+        plan, experiment = _funding_plan(project_id, customer_token, experiment_id)
+        view = _view(plan, experiment)
         if not plan.funding_required:
-            return CustomerNextMoveFundingCheckoutResponse(**view.model_dump(), checkout_url=None)
+            return CustomerNextMoveFundingCheckoutResponse(
+                **view.model_dump(),
+                checkout_url=None,
+            )
 
         generation, stripe_customer_id, amount_cents = growth_balance_service.prepare_checkout(
             project_id,
@@ -157,7 +185,7 @@ def create_next_move_funding_checkout(
         )
     except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
         raise HTTPException(status_code=404, detail="Customer project not found") from exc
-    except ValueError as exc:
+    except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except BillingConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
