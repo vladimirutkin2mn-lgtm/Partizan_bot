@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 _CENT = Decimal("0.01")
 
@@ -34,10 +34,12 @@ class GrowthBalanceJitFundingService:
         required_cents = self._usd_to_cents(
             required_acquisition_usd,
             field="required_acquisition_usd",
+            allow_zero=False,
         )
         project_budget_cents = self._usd_to_cents(
             project_budget_usd,
             field="project_budget_usd",
+            allow_zero=False,
         )
         if required_cents > project_budget_cents:
             raise ValueError("Paid move exceeds the customer test budget")
