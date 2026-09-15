@@ -225,11 +225,13 @@ def test_closed_declined_authorization_clears_any_stale_hold() -> None:
     assert _hold(store, "iauth_1") is None
 
 
-def test_route_uses_reservation_service_for_request_authorization_and_lifecycle_events() -> None:
-    source = open("app/growth_balance_rail_routes.py", encoding="utf-8").read()
+def test_route_preserves_reservation_layer_through_fallback_wrapper() -> None:
+    route_source = open("app/growth_balance_rail_routes.py", encoding="utf-8").read()
+    fallback_source = open("app/growth_balance_issuing_fallback.py", encoding="utf-8").read()
 
-    assert "growth_balance_authorization_reservation_service.authorize_request" in source
-    assert '"issuing_authorization.created"' in source
-    assert '"issuing_authorization.updated"' in source
-    assert "growth_balance_authorization_reservation_service.record_authorization" in source
-    assert "growth_balance_authorization_reservation_service.record_transaction" in source
+    assert "growth_balance_authorization_reservation_service.authorize_request" in route_source
+    assert '"issuing_authorization.created"' in route_source
+    assert '"issuing_authorization.updated"' in route_source
+    assert "growth_balance_issuing_fallback_service.record_authorization" in route_source
+    assert "self._reservations.record_authorization(authorization)" in fallback_source
+    assert "growth_balance_authorization_reservation_service.record_transaction" in route_source
