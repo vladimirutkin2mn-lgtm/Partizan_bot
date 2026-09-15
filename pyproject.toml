@@ -26,6 +26,7 @@ partizan-growth-run = "app.growth_run_cli:main"
 partizan-sandbox-run = "app.growth_sandbox:main"
 partizan-autopilot-dogfood = "app.autopilot_dogfood:main"
 partizan-self-dogfood = "app.self_dogfood:main"
+partizan-growth-balance-readiness = "app.growth_balance_readiness:main"
 
 [project.optional-dependencies]
 dev = [
