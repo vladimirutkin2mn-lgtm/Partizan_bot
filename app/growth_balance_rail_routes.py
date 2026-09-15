@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.config import Settings, get_settings
+from app.customer_autopilot import customer_autopilot_service
 from app.customer_funnel import CustomerProjectNotFoundError
 from app.growth_balance import growth_balance_service
 from app.stripe_objects import stripe_field
@@ -143,6 +144,7 @@ async def stripe_issuing_events_webhook(
     if event_type in {"issuing_transaction.created", "issuing_transaction.updated"}:
         try:
             growth_balance_service.record_issuing_transaction(event["data"]["object"])
+            customer_autopilot_service.reconcile_safety_policy()
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"received": True}
