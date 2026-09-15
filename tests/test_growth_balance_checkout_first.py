@@ -21,6 +21,7 @@ from app.growth_balance_funding_policy import (
     CheckoutFirstGrowthBalanceSettlementService,
     _install_checkout_first_liquidity_policy,
 )
+from app.growth_balance_paid_recovery import install_paid_checkout_project_recovery
 from app.runtime_store import MemoryRuntimeStateStore
 
 PROJECT_ID = UUID("22222222-2222-2222-2222-222222222222")
@@ -177,6 +178,96 @@ def test_paid_checkout_credits_balance_without_creating_fake_spend_rail() -> Non
     assert project["launch_unlocked"] is True
     assert project["launch_entitlement_source"] == "GROWTH_BALANCE"
     assert project["stripe_customer_id"] == "cus_checkout_only"
+
+
+def test_paid_checkout_replay_repairs_project_state_after_paid_record_crash() -> None:
+    store = MemoryRuntimeStateStore()
+    settlement = checkout_only_settlement(store)
+    paid_at = "2026-09-14T12:00:00+00:00"
+    store.put(
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(PROJECT_ID),
+        {
+            "id": str(PROJECT_ID),
+            "status": "CHECKOUT_PENDING",
+            "launch_unlocked": False,
+        },
+    )
+    store.put(
+        GROWTH_BALANCE_TOPUP_NAMESPACE,
+        "cs_paid_before_project_write",
+        {
+            "session_id": "cs_paid_before_project_write",
+            "project_id": str(PROJECT_ID),
+            "checkout_generation": 2,
+            "amount_cents": 50_000,
+            "currency": "usd",
+            "state": "PAID",
+            "paid_at": paid_at,
+        },
+    )
+    service = GrowthBalanceService(store, settlement_service=settlement)
+    install_paid_checkout_project_recovery(service)
+
+    for _ in range(2):
+        assert service.credit_paid_checkout(
+            PROJECT_ID,
+            session_id="cs_paid_before_project_write",
+            amount_cents=50_000,
+            currency="usd",
+            stripe_customer_id="cus_recovered",
+        ) is True
+
+    project = store.get(CUSTOMER_PROJECT_NAMESPACE, str(PROJECT_ID))
+    assert project is not None
+    assert project["status"] == "UNLOCKED"
+    assert project["launch_unlocked"] is True
+    assert project["launch_entitlement_source"] == "GROWTH_BALANCE"
+    assert project["launch_unlocked_at"] == paid_at
+    assert project["growth_balance_last_funded_at"] == paid_at
+    assert project["stripe_customer_id"] == "cus_recovered"
+
+
+def test_paid_checkout_replay_does_not_regress_newer_project_funding_timestamp() -> None:
+    store = MemoryRuntimeStateStore()
+    settlement = checkout_only_settlement(store)
+    store.put(
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(PROJECT_ID),
+        {
+            "id": str(PROJECT_ID),
+            "status": "UNLOCKED",
+            "launch_unlocked": True,
+            "launch_entitlement_source": "GROWTH_BALANCE",
+            "growth_balance_last_funded_at": "2026-09-14T13:00:00+00:00",
+        },
+    )
+    store.put(
+        GROWTH_BALANCE_TOPUP_NAMESPACE,
+        "cs_old_paid_replay",
+        {
+            "session_id": "cs_old_paid_replay",
+            "project_id": str(PROJECT_ID),
+            "checkout_generation": 1,
+            "amount_cents": 25_000,
+            "currency": "usd",
+            "state": "PAID",
+            "paid_at": "2026-09-14T12:00:00+00:00",
+        },
+    )
+    service = GrowthBalanceService(store, settlement_service=settlement)
+    install_paid_checkout_project_recovery(service)
+
+    assert service.credit_paid_checkout(
+        PROJECT_ID,
+        session_id="cs_old_paid_replay",
+        amount_cents=25_000,
+        currency="usd",
+    ) is True
+
+    project = store.get(CUSTOMER_PROJECT_NAMESPACE, str(PROJECT_ID))
+    assert project is not None
+    assert project["growth_balance_last_funded_at"] == "2026-09-14T13:00:00+00:00"
 
 
 def test_checkout_first_ui_does_not_intercept_growth_balance_submission() -> None:
