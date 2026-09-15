@@ -11,7 +11,10 @@ import httpx
 from pydantic import BaseModel, Field
 
 from app.creative_assets import creative_asset_service
-from app.customer_execution_boundary import require_customer_bound_mutation_scope
+from app.customer_execution_boundary import (
+    customer_execution_request_id,
+    require_customer_bound_mutation_scope,
+)
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_types import DistributionIdentityStatus
@@ -219,6 +222,13 @@ class TikTokDirectPostService:
             action_id,
             require_usable=True,
         )
+        if action is not None and customer_execution_request_id(action) is not None:
+            raw_expected_title = action.content_payload.get("title")
+            expected_title = "" if raw_expected_title is None else str(raw_expected_title)
+            if authorization.title != expected_title:
+                raise ValueError(
+                    "TikTok publish authorization title no longer matches the customer-confirmed action"
+                )
 
         identity = distribution_control_plane_service.get_identity(
             authorization.distribution_identity_id
