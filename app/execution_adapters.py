@@ -770,6 +770,11 @@ class DistributionExecutionAdapterService:
                 receipt=existing,
                 plan=distribution_execution_service.get_plan(action_id),
             )
+        if existing is not None and existing.outcome == AdapterExecutionOutcome.IN_PROGRESS:
+            raise ValueError(
+                "Execution outcome is unknown after an interrupted adapter attempt; "
+                "reconcile the provider state before any further execution"
+            )
         if existing is not None and existing.outcome == AdapterExecutionOutcome.STAGED:
             return DistributionAdapterExecutionView(
                 receipt=existing,
@@ -803,7 +808,10 @@ class DistributionExecutionAdapterService:
             adapter_name=adapter.name,
             provider=adapter.provider,
             outcome=AdapterExecutionOutcome.IN_PROGRESS,
-            message="Execution adapter attempt started; retry requires an explicit retry=true.",
+            message=(
+                "Execution adapter attempt started; if this process is interrupted, the provider "
+                "state must be reconciled and the attempt must not be retried."
+            ),
             metadata={
                 "platform": action.platform.value,
                 "action_type": action.action_type.value,
