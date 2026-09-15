@@ -19,6 +19,7 @@ from app.distribution_play_routes import router as distribution_play_router
 from app.distribution_routes import router as distribution_router
 from app.growth_autoresearch_routes import router as growth_autoresearch_router
 from app.growth_balance_funding_policy import enable_checkout_first_growth_balance_funding
+from app.growth_balance_rail_ops_routes import router as growth_balance_rail_ops_router
 from app.growth_balance_rail_routes import router as growth_balance_rail_router
 from app.icp_service import icp_service
 from app.logging import configure_logging
@@ -56,6 +57,7 @@ app.include_router(customer_managed_distribution_router)
 app.include_router(customer_reddit_router)
 app.include_router(customer_autoresearch_router)
 app.include_router(growth_balance_rail_router)
+app.include_router(growth_balance_rail_ops_router)
 app.include_router(growth_autoresearch_router)
 app.include_router(distribution_router)
 app.include_router(distribution_play_router)
