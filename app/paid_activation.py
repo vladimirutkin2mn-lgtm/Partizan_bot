@@ -17,6 +17,10 @@ from app.execution_adapters import (
     SecretResolver,
     distribution_execution_adapter_service,
 )
+from app.growth_balance_execution_safety import (
+    SettlementReadiness,
+    require_customer_growth_balance_execution_ready,
+)
 from app.meta_marketing_api import (
     HttpxMetaMarketingApiClient,
     MetaMarketingApiClient,
@@ -62,6 +66,7 @@ class PaidActivationService:
         secret_resolver: SecretResolver | None = None,
         connection_service: PaidProviderConnectionService | None = None,
         spec_service: PaidCampaignSpecService | None = None,
+        settlement_readiness: SettlementReadiness | None = None,
         authorization_ttl_minutes: int = 15,
     ) -> None:
         self._store = store or get_runtime_store()
@@ -69,6 +74,7 @@ class PaidActivationService:
         self._secret_resolver = secret_resolver or EnvironmentSecretResolver()
         self._connection_service = connection_service or paid_provider_connection_service
         self._spec_service = spec_service or paid_campaign_spec_service
+        self._settlement_readiness = settlement_readiness
         self._authorization_ttl = timedelta(minutes=authorization_ttl_minutes)
 
     def authorize(
@@ -95,6 +101,7 @@ class PaidActivationService:
         if action.experiment_id is None:
             raise ValueError("Paid action has no DistributionExperiment")
         experiment = distribution_execution_service.get_experiment(action.experiment_id)
+        self._require_growth_balance_ready(experiment.product_id)
         now = datetime.now(UTC)
         authorization = PaidActivationAuthorizationView(
             id=uuid4(),
@@ -133,7 +140,14 @@ class PaidActivationService:
             raise ValueError("PaidCampaignSpec is required before activation")
         if round(authorization.approved_budget_cap, 2) != round(spec.budget_cap, 2):
             raise ValueError("Activation authorization budget no longer matches PaidCampaignSpec")
+        rail = self._require_growth_balance_ready(authorization.product_id)
         connection = self._connection_service.require_active_meta(authorization.product_id)
+        if rail is not None and str(rail.get("bound_provider_account_id") or "") != str(
+            connection.ad_account_id
+        ):
+            raise ValueError(
+                "Growth Balance paid execution rail is bound to a different Meta ad account"
+            )
         access_token = self._secret_resolver.resolve(connection.access_token_env)
         if access_token is None:
             raise ValueError(
@@ -238,6 +252,13 @@ class PaidActivationService:
     def reset(self) -> None:
         if self._store.ephemeral:
             self._store.clear_namespace(PAID_ACTIVATION_AUTHORIZATION_NAMESPACE)
+
+    def _require_growth_balance_ready(self, product_id: UUID) -> dict | None:
+        return require_customer_growth_balance_execution_ready(
+            self._store,
+            product_id,
+            settlement=self._settlement_readiness,
+        )
 
     def _require_staged_meta_receipt(self, action_id: UUID) -> ExecutionAdapterReceipt:
         receipt = distribution_execution_adapter_service.get_receipt(action_id)
