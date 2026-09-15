@@ -6,7 +6,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.distribution_execution_schemas import DistributionExperimentView
+from app.distribution_execution_schemas import (
+    DistributionExperimentStatus,
+    DistributionExperimentView,
+)
 from app.distribution_execution_service import (
     DISTRIBUTION_ACTION_NAMESPACE,
     DISTRIBUTION_EXPERIMENT_NAMESPACE,
@@ -30,7 +33,6 @@ from app.meta_paid_control import (
     META_PAID_CONTROL_NAMESPACE,
     MetaPaidControlService,
     MetaPaidControlSnapshotView,
-    meta_paid_control_service,
 )
 from app.paid_control_resume_boundary import (
     paid_control_resume_scope,
@@ -48,7 +50,6 @@ from app.tiktok_paid_control import (
     TIKTOK_PAID_CONTROL_NAMESPACE,
     TikTokPaidControlService,
     TikTokPaidControlSnapshotView,
-    tiktok_paid_control_service,
 )
 from app.tiktok_paid_provider import TikTokPaidProviderConnectionService
 
@@ -93,7 +94,7 @@ class MetaCustomerPaidProviderController:
         connection_service: PaidProviderConnectionService | None = None,
     ) -> None:
         self._store = store
-        self._control = control_service or meta_paid_control_service
+        self._control = control_service or MetaPaidControlService(store=store)
         self._client = client or HttpxMetaMarketingApiClient()
         self._secrets = secret_resolver or EnvironmentSecretResolver()
         self._connections = connection_service or PaidProviderConnectionService(store)
@@ -253,7 +254,7 @@ class TikTokCustomerPaidProviderController:
         connection_service: TikTokPaidProviderConnectionService | None = None,
     ) -> None:
         self._store = store
-        self._control = control_service or tiktok_paid_control_service
+        self._control = control_service or TikTokPaidControlService(store=store)
         self._client = client or HttpxTikTokMarketingApiClient()
         self._secrets = secret_resolver or EnvironmentSecretResolver()
         self._connections = connection_service or TikTokPaidProviderConnectionService(store)
@@ -470,22 +471,48 @@ class CustomerPaidCampaignLifecycleService:
         expected_reason: str = AUTOPILOT_CUSTOMER_PAUSE_REASON,
     ) -> CustomerPaidCampaignLifecycleResult:
         candidates = self._candidates(product_id)
-        resumed: list[UUID] = []
-        reconciliation: list[UUID] = []
-        rollback_unknown: list[UUID] = []
         preserved: list[UUID] = []
-        mutations = 0
+        reconciliation: list[UUID] = []
+        resume_targets: list[tuple[object, ExecutionAdapterReceipt, CustomerPaidProviderController]] = []
+
         for action, receipt in candidates:
             controller = self._controllers.get(receipt.provider)
             if controller is None:
                 reconciliation.append(action.id)
                 continue
             snapshot = controller.get(action.id)
-            if snapshot is None or getattr(snapshot, "pause_state", None) != "CONFIRMED":
+            if snapshot is None:
+                reconciliation.append(action.id)
                 continue
-            if getattr(snapshot, "pause_reason", None) != expected_reason:
+            pause_state = str(getattr(snapshot, "pause_state", "") or "")
+            pause_reason = str(getattr(snapshot, "pause_reason", "") or "")
+            requires_reconciliation = bool(
+                getattr(snapshot, "requires_reconciliation", False)
+            )
+            if requires_reconciliation or pause_state == "UNKNOWN":
+                reconciliation.append(action.id)
+                continue
+            if pause_state != "CONFIRMED":
+                reconciliation.append(action.id)
+                continue
+            if pause_reason != expected_reason:
                 preserved.append(action.id)
                 continue
+            resume_targets.append((action, receipt, controller))
+
+        if reconciliation:
+            return CustomerPaidCampaignLifecycleResult(
+                product_id=product_id,
+                candidate_count=len(candidates),
+                provider_mutation_count=0,
+                preserved_pause_action_ids=preserved,
+                reconciliation_action_ids=self._dedupe(reconciliation),
+            )
+
+        resumed: list[UUID] = []
+        rollback_unknown: list[UUID] = []
+        mutations = 0
+        for action, _receipt, controller in resume_targets:
             try:
                 with paid_control_resume_scope(action.id):
                     updated = controller.resume_customer_pause(
@@ -566,7 +593,10 @@ class CustomerPaidCampaignLifecycleService:
         experiments: dict[UUID, DistributionExperimentView] = {}
         for payload in self._store.list_namespace(DISTRIBUTION_EXPERIMENT_NAMESPACE):
             experiment = DistributionExperimentView.model_validate(payload)
-            if experiment.product_id == product_id:
+            if (
+                experiment.product_id == product_id
+                and experiment.status == DistributionExperimentStatus.RUNNING
+            ):
                 experiments[experiment.id] = experiment
         candidates: list[tuple[DistributionActionView, ExecutionAdapterReceipt]] = []
         for payload in self._store.list_namespace(DISTRIBUTION_ACTION_NAMESPACE):
