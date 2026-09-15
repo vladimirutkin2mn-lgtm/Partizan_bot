@@ -70,8 +70,8 @@ def test_jit_funding_creates_no_topup_when_capacity_is_already_funded() -> None:
     assert plan.funding_required is False
 
 
-def test_jit_funding_never_funds_above_customer_test_budget() -> None:
-    with pytest.raises(ValueError, match="exceeds the customer test budget"):
+def test_jit_funding_never_funds_one_move_above_customer_test_budget() -> None:
+    with pytest.raises(ValueError, match="remaining test budget"):
         GrowthBalanceJitFundingService().plan(
             required_acquisition_usd=31,
             project_budget_usd=30,
@@ -80,6 +80,11 @@ def test_jit_funding_never_funds_above_customer_test_budget() -> None:
             remaining_acquisition_capacity_usd=0,
             management_fee_pct=10,
         )
+
+
+def test_jit_funding_never_pushes_cumulative_spend_above_test_budget() -> None:
+    with pytest.raises(ValueError, match="remaining test budget"):
+        _plan(cost=20, funded=22, spent=11, remaining_capacity=9)
 
 
 def test_zero_cost_research_move_never_enters_paid_funding() -> None:
