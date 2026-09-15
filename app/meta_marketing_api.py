@@ -10,7 +10,9 @@ from app.paid_provider_connections import PaidProviderConnectionView
 
 
 class MetaMarketingApiError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, ambiguous: bool = False) -> None:
+        super().__init__(message)
+        self.ambiguous = ambiguous
 
 
 @dataclass(frozen=True, slots=True)
@@ -277,7 +279,10 @@ class HttpxMetaMarketingApiClient:
         )
         identifier = payload.get("id") if isinstance(payload, dict) else None
         if not identifier:
-            raise MetaMarketingApiError("Meta Marketing API response did not include an object id")
+            raise MetaMarketingApiError(
+                "Meta Marketing API response did not include an object id",
+                ambiguous=True,
+            )
         return str(identifier)
 
     def _post_json(
@@ -297,8 +302,11 @@ class HttpxMetaMarketingApiClient:
                 timeout=self._timeout_seconds,
             )
         except httpx.HTTPError as exc:
-            raise MetaMarketingApiError("Meta Marketing API request failed") from exc
-        return self._parse_response(response)
+            raise MetaMarketingApiError(
+                "Meta Marketing API request failed",
+                ambiguous=True,
+            ) from exc
+        return self._parse_response(response, mutation=True)
 
     def _get_json(
         self,
@@ -318,9 +326,9 @@ class HttpxMetaMarketingApiClient:
             )
         except httpx.HTTPError as exc:
             raise MetaMarketingApiError("Meta Marketing API request failed") from exc
-        return self._parse_response(response)
+        return self._parse_response(response, mutation=False)
 
-    def _parse_response(self, response: httpx.Response) -> dict:
+    def _parse_response(self, response: httpx.Response, *, mutation: bool) -> dict:
         if response.status_code >= 400:
             message = "Meta Marketing API rejected the request"
             try:
@@ -330,13 +338,22 @@ class HttpxMetaMarketingApiClient:
                     message = f"Meta Marketing API rejected the request: {error['message']}"
             except ValueError:
                 pass
-            raise MetaMarketingApiError(message[:1000])
+            raise MetaMarketingApiError(
+                message[:1000],
+                ambiguous=mutation and response.status_code >= 500,
+            )
         try:
             payload = response.json()
         except ValueError as exc:
-            raise MetaMarketingApiError("Meta Marketing API returned invalid JSON") from exc
+            raise MetaMarketingApiError(
+                "Meta Marketing API returned invalid JSON",
+                ambiguous=mutation,
+            ) from exc
         if not isinstance(payload, dict):
-            raise MetaMarketingApiError("Meta Marketing API returned an invalid object")
+            raise MetaMarketingApiError(
+                "Meta Marketing API returned an invalid object",
+                ambiguous=mutation,
+            )
         return payload
 
     def _float(self, value: object) -> float:
