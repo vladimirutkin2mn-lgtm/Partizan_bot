@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field
 
 from app.config import get_settings
+from app.customer_execution_boundary import require_customer_bound_mutation_scope
 from app.distribution_execution_schemas import DistributionActionExecutionRequest
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_types import DistributionActionStatus
@@ -264,6 +265,7 @@ class OutreachSenderService:
             raise ValueError("Authorization recipient must match the evidence-backed business contact")
 
         action = distribution_execution_service.get_action(brief.action_id)
+        require_customer_bound_mutation_scope(action, "outreach send authorization")
         experiment = distribution_execution_service.get_experiment(brief.experiment_id)
         if action.status != DistributionActionStatus.PREPARED:
             raise ValueError("Outreach action must be PREPARED before send authorization")
@@ -452,6 +454,7 @@ class OutreachSenderService:
 
     def _ensure_action_approved(self, action_id: UUID) -> None:
         action = distribution_execution_service.get_action(action_id)
+        require_customer_bound_mutation_scope(action, "outreach send")
         if action.status == DistributionActionStatus.PREPARED:
             distribution_execution_service.approve_outreach(action_id)
             return
