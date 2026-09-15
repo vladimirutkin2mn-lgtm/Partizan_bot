@@ -13,18 +13,14 @@ from app.growth_balance import (
     GrowthBalanceSettlementService,
     growth_balance_service,
 )
+from app.growth_balance_rail_safety import require_growth_balance_reactivation_allowed
 from app.stripe_objects import stripe_field
 
 _CHECKOUT_ONLY_LOCK_TOKEN = "checkout_only_no_provider_liquidity"
 
 
 class CheckoutFirstGrowthBalanceSettlementService(GrowthBalanceSettlementService):
-    """Decouple customer funding from the downstream provider-spend rail.
-
-    Stripe Checkout can accept and credit Growth Balance while Stripe Issuing is
-    deliberately deferred. Paid acquisition still uses the inherited `readiness()`
-    contract, so `settlement_ready` remains false until the real spend rail is live.
-    """
+    """Decouple customer funding from the downstream provider-spend rail."""
 
     def funding_readiness(
         self,
@@ -43,8 +39,6 @@ class CheckoutFirstGrowthBalanceSettlementService(GrowthBalanceSettlementService
         return True, "STRIPE_CHECKOUT_READY_SPEND_RAIL_DEFERRED"
 
     def requires_provider_liquidity_lock(self) -> bool:
-        """Return whether funding must reserve Partizan-owned provider liquidity."""
-
         return self._settings().growth_balance_settlement_provider == "stripe_issuing"
 
     def provision_or_update(self, project_id: UUID, acquisition_capacity_cents: int) -> dict:
@@ -170,6 +164,7 @@ class CheckoutFirstGrowthBalanceSettlementService(GrowthBalanceSettlementService
         rail = self._store.get(GROWTH_BALANCE_RAIL_NAMESPACE, str(project_id))
         if rail is None or rail.get("binding_status") != "BOUND" or not rail.get("card_id"):
             raise ValueError("Partizan-funded card must be bound to Meta before activation")
+        require_growth_balance_reactivation_allowed(project_id, rail.get("paused_reason"))
         self._require_configured()
         try:
             card = self._modify_card(
@@ -188,18 +183,6 @@ class CheckoutFirstGrowthBalanceSettlementService(GrowthBalanceSettlementService
 
 
 def _install_checkout_first_liquidity_policy(service: GrowthBalanceService) -> None:
-    """Keep Issuing's global liquidity lock out of checkout-only customer funding.
-
-    `GrowthBalanceService.prepare_checkout()` predates checkout-first funding and
-    acquires a global `stripe_issuing_liquidity` lock before it asks the settlement
-    policy whether provider liquidity is needed. Until the spend rail tracked by
-    #160 is connected, ordinary Stripe Checkout must not depend on that lock.
-
-    We keep the original lock path intact whenever Stripe Issuing is explicitly
-    configured. The per-project Checkout reservation in `prepare_checkout()` is
-    unchanged, so payment recovery and duplicate-session protection remain intact.
-    """
-
     if getattr(service, "_checkout_first_liquidity_policy_installed", False):
         return
 
@@ -226,8 +209,6 @@ def _install_checkout_first_liquidity_policy(service: GrowthBalanceService) -> N
 
 
 def enable_checkout_first_growth_balance_funding() -> GrowthBalanceService:
-    """Wire the temporary MVP funding policy into the shared customer balance service."""
-
     current = growth_balance_service._settlement
     if not isinstance(current, CheckoutFirstGrowthBalanceSettlementService):
         growth_balance_service._settlement = CheckoutFirstGrowthBalanceSettlementService(
