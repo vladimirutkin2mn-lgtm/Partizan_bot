@@ -33,6 +33,13 @@ from app.product_intake import product_intake_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 STAGED_META_CONNECTION_KEY = "meta_connection_staged"
+AUTOPILOT_PROVIDER_PAUSE_REASONS = {
+    "CUSTOMER": AUTOPILOT_CUSTOMER_PAUSE_REASON,
+    "CHANNELS": "AUTOPILOT_CHANNELS_PAUSE",
+    "FUNDING": "AUTOPILOT_FUNDING_PAUSE",
+    "SETUP": "AUTOPILOT_SETUP_PAUSE",
+}
+AUTOPILOT_AUTOMATIC_PAUSE_REASONS = frozenset({"CHANNELS", "FUNDING", "SETUP"})
 
 
 class CustomerAutopilotService:
@@ -87,6 +94,23 @@ class CustomerAutopilotService:
             )
         return self.overview(project_id, customer_token)
 
+    def reconcile_safety_policy(self, product_id: UUID | None = None) -> int:
+        reconciled = 0
+        for project in self._store.list_namespace(CUSTOMER_PROJECT_NAMESPACE):
+            product_id_raw = project.get("product_id")
+            if project.get("research_state") != "READY" or not product_id_raw:
+                continue
+            candidate_product_id = UUID(str(product_id_raw))
+            if product_id is not None and candidate_product_id != product_id:
+                continue
+            try:
+                project_id = UUID(str(project["id"]))
+            except (KeyError, ValueError):
+                continue
+            self._ensure_mandate_if_ready(project_id, project, candidate_product_id)
+            reconciled += 1
+        return reconciled
+
     def set_status(
         self,
         project_id: UUID,
@@ -96,7 +120,8 @@ class CustomerAutopilotService:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         product_id = self._require_researched_product(project)
         auto_platforms = customer_channel_service.autonomous_platforms(project)
-        was_customer_paused = project.get("autopilot_pause_reason") == "CUSTOMER"
+        previous_pause_reason = str(project.get("autopilot_pause_reason") or "") or None
+        provider_pause_reason = self._provider_pause_reason(previous_pause_reason)
         self._materialize_staged_meta(project, product_id)
         self._ensure_mandate_if_ready(project_id, project, product_id)
         if status == "ACTIVE":
@@ -116,16 +141,16 @@ class CustomerAutopilotService:
                 raise ValueError("Connect Meta before activating Meta acquisition")
 
             provider_resume = None
-            if was_customer_paused:
+            if provider_pause_reason is not None:
                 try:
                     provider_resume = customer_paid_campaign_lifecycle_service.resume_product(
                         product_id,
-                        expected_reason=AUTOPILOT_CUSTOMER_PAUSE_REASON,
+                        expected_reason=provider_pause_reason,
                     )
                 except (KeyError, RuntimeError, ValueError) as exc:
                     recovery = customer_paid_campaign_lifecycle_service.pause_product(
                         product_id,
-                        reason=AUTOPILOT_CUSTOMER_PAUSE_REASON,
+                        reason=provider_pause_reason,
                     )
                     if recovery.requires_reconciliation:
                         raise ValueError(
@@ -147,7 +172,7 @@ class CustomerAutopilotService:
                 ):
                     recovery = customer_paid_campaign_lifecycle_service.pause_product(
                         product_id,
-                        reason=AUTOPILOT_CUSTOMER_PAUSE_REASON,
+                        reason=provider_pause_reason,
                     )
                     if recovery.requires_reconciliation:
                         raise ValueError(
@@ -157,13 +182,6 @@ class CustomerAutopilotService:
                         "Paid campaigns were returned to a confirmed pause; retry Autopilot resume"
                     )
 
-            if not was_customer_paused:
-                self._balance.activate_rail(project_id)
-                growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
-                project["autopilot_pause_reason"] = None
-                self._persist(project)
-                return self.overview(project_id, customer_token)
-
             try:
                 self._balance.activate_rail(project_id)
                 growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
@@ -171,24 +189,28 @@ class CustomerAutopilotService:
                 self._persist(project)
             except (KeyError, RuntimeError, ValueError) as exc:
                 rollback_requires_reconciliation = False
+                rollback_pause_reason = previous_pause_reason or "CUSTOMER"
+                rollback_provider_reason = (
+                    provider_pause_reason or AUTOPILOT_CUSTOMER_PAUSE_REASON
+                )
                 try:
                     growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
                 except (KeyError, RuntimeError, ValueError):
                     rollback_requires_reconciliation = True
                 try:
-                    self._balance.pause_rail(project_id, "CUSTOMER")
+                    self._balance.pause_rail(project_id, rollback_pause_reason)
                 except (KeyError, RuntimeError, ValueError):
                     rollback_requires_reconciliation = True
                 if provider_resume is not None and provider_resume.resumed_action_ids:
                     rollback = customer_paid_campaign_lifecycle_service.repause_actions(
                         product_id,
                         provider_resume.resumed_action_ids,
-                        reason=AUTOPILOT_CUSTOMER_PAUSE_REASON,
+                        reason=rollback_provider_reason,
                     )
                     rollback_requires_reconciliation = (
                         rollback_requires_reconciliation or rollback.requires_reconciliation
                     )
-                project["autopilot_pause_reason"] = "CUSTOMER"
+                project["autopilot_pause_reason"] = rollback_pause_reason
                 try:
                     self._persist(project)
                 except RuntimeError:
@@ -255,7 +277,7 @@ class CustomerAutopilotService:
             DistributionPlatform.INSTAGRAM in auto_platforms
             and mandate is not None
             and mandate.status == GrowthMandateStatus.PAUSED
-            and project.get("autopilot_pause_reason") != "CUSTOMER"
+            and project.get("autopilot_pause_reason") is None
             and bool(product.reference_links)
             and balance.remaining_acquisition_capacity_usd > 0
             and balance.settlement_ready
@@ -267,8 +289,12 @@ class CustomerAutopilotService:
             project["autopilot_pause_reason"] = None
             self._persist(project)
         elif mandate is not None and not balance.settlement_ready:
-            project["autopilot_pause_reason"] = "FUNDING"
-            self._persist(project)
+            self._apply_automatic_pause(
+                project_id,
+                project,
+                product_id,
+                reason=self._effective_automatic_pause_reason(project, "FUNDING"),
+            )
         return self.overview(project_id, customer_token)
 
     def overview(self, project_id: UUID, customer_token: str) -> CustomerAutopilotOverview:
@@ -416,15 +442,18 @@ class CustomerAutopilotService:
             existing = None
 
         auto_platforms = customer_channel_service.autonomous_platforms(project)
-        if not auto_platforms:
-            if existing is not None and existing.status == GrowthMandateStatus.ACTIVE:
-                growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
-                self._balance.pause_rail(project_id, "CHANNELS")
-                project["autopilot_pause_reason"] = "CHANNELS"
-                self._persist(project)
+        if project.get("autopilot_pause_reason") == "CUSTOMER":
             return existing
 
-        if existing is not None and not force_update:
+        if not auto_platforms:
+            if existing is not None:
+                self._apply_automatic_pause(
+                    project_id,
+                    project,
+                    product_id,
+                    reason=self._effective_automatic_pause_reason(project, "CHANNELS"),
+                )
+                return growth_mandate_service.get(product_id)
             return existing
 
         product = product_intake_service.get_product(product_id)
@@ -432,7 +461,28 @@ class CustomerAutopilotService:
             return existing
         analytics = distribution_analytics_service.product_analytics(product_id)
         balance = self._balance.summary(project_id, analytics.total_spend)
+        safety_reason: str | None = None
         if balance.funded_usd <= 0 or balance.remaining_acquisition_capacity_usd <= 0:
+            safety_reason = "FUNDING"
+        elif not balance.settlement_ready:
+            safety_reason = "FUNDING"
+        elif (
+            DistributionPlatform.INSTAGRAM in auto_platforms
+            and paid_provider_connection_service.get_meta(product_id) is None
+        ):
+            safety_reason = "SETUP"
+        if safety_reason is not None:
+            if existing is not None:
+                self._apply_automatic_pause(
+                    project_id,
+                    project,
+                    product_id,
+                    reason=self._effective_automatic_pause_reason(project, safety_reason),
+                )
+                return growth_mandate_service.get(product_id)
+            return existing
+
+        if existing is not None and not force_update:
             return existing
 
         distribution = audience_intelligence_service.get(product_id)
@@ -462,26 +512,64 @@ class CustomerAutopilotService:
             ),
         )
 
-        meta_required = DistributionPlatform.INSTAGRAM in auto_platforms
-        meta_connected = paid_provider_connection_service.get_meta(product_id) is not None
-        pause_reason: str | None = None
-        if meta_required and not meta_connected:
-            pause_reason = "SETUP"
-        elif not balance.settlement_ready:
-            pause_reason = "FUNDING"
-        if pause_reason is not None and mandate.status == GrowthMandateStatus.ACTIVE:
-            growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
-            self._balance.pause_rail(project_id, pause_reason)
-        elif (
-            pause_reason is None
-            and mandate.status == GrowthMandateStatus.PAUSED
-            and project.get("autopilot_pause_reason") == "CHANNELS"
-        ):
-            self._balance.activate_rail(project_id)
-            mandate = growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
-        project["autopilot_pause_reason"] = pause_reason
+        current_pause_reason = str(project.get("autopilot_pause_reason") or "") or None
+        if current_pause_reason not in AUTOPILOT_AUTOMATIC_PAUSE_REASONS:
+            project["autopilot_pause_reason"] = None
         self._persist(project)
         return mandate
+
+    def _apply_automatic_pause(
+        self,
+        project_id: UUID,
+        project: dict,
+        product_id: UUID,
+        *,
+        reason: str,
+    ) -> None:
+        if reason not in AUTOPILOT_AUTOMATIC_PAUSE_REASONS:
+            raise ValueError("Unsupported automatic Autopilot pause reason")
+        provider_reason = AUTOPILOT_PROVIDER_PAUSE_REASONS[reason]
+        pause_failed = False
+        project["autopilot_pause_reason"] = reason
+        try:
+            growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
+        except (KeyError, RuntimeError, ValueError):
+            pause_failed = True
+        try:
+            self._balance.pause_rail(project_id, reason)
+        except (KeyError, RuntimeError, ValueError):
+            pause_failed = True
+        try:
+            provider_pause = customer_paid_campaign_lifecycle_service.pause_product(
+                product_id,
+                reason=provider_reason,
+            )
+        except (KeyError, RuntimeError, ValueError):
+            provider_pause = None
+            pause_failed = True
+        if provider_pause is not None and provider_pause.requires_reconciliation:
+            pause_failed = True
+        try:
+            self._persist(project)
+        except RuntimeError:
+            pause_failed = True
+        if pause_failed:
+            raise ValueError(
+                "Autopilot safety pause is fail-closed, but paid provider state requires reconciliation"
+            )
+
+    @staticmethod
+    def _effective_automatic_pause_reason(project: dict, fallback: str) -> str:
+        current = str(project.get("autopilot_pause_reason") or "")
+        if current in AUTOPILOT_AUTOMATIC_PAUSE_REASONS:
+            return current
+        return fallback
+
+    @staticmethod
+    def _provider_pause_reason(project_pause_reason: str | None) -> str | None:
+        if project_pause_reason is None:
+            return None
+        return AUTOPILOT_PROVIDER_PAUSE_REASONS.get(project_pause_reason)
 
     def _materialize_staged_meta(self, project: dict, product_id: UUID):
         staged = project.get(STAGED_META_CONNECTION_KEY)
