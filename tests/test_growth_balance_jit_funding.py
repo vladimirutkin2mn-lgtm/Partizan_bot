@@ -14,6 +14,7 @@ from app.growth_balance_jit_funding import (
     GrowthBalanceJitFundingService,
     NextMoveFundingPlan,
 )
+from app.growth_balance_jit_routes import _funding_plan
 from app.main import app
 
 
@@ -81,12 +82,9 @@ def test_jit_funding_never_funds_above_customer_test_budget() -> None:
         )
 
 
-def test_zero_cost_move_never_requests_acquisition_funding() -> None:
-    plan = _plan(cost=0, funded=0)
-
-    assert plan.required_acquisition_usd == 0
-    assert plan.topup_amount_usd == 0
-    assert plan.funding_required is False
+def test_zero_cost_research_move_never_enters_paid_funding() -> None:
+    with pytest.raises(ValueError, match="required_acquisition_usd must be positive"):
+        _plan(cost=0, funded=0)
 
 
 def _registered_workspace() -> tuple[TestClient, object]:
@@ -119,6 +117,27 @@ def _experiment():
         action_id=uuid4(),
         platform="INSTAGRAM",
     )
+
+
+def test_non_waiting_experiment_cannot_trigger_jit_funding(monkeypatch) -> None:
+    project_id = uuid4()
+    customer_token = "customer-token"
+    product_id = uuid4()
+    experiment_id = uuid4()
+    monkeypatch.setattr(
+        "app.growth_balance_jit_routes.customer_funnel_service.get_project",
+        lambda _project_id, _customer_token: SimpleNamespace(
+            product_id=product_id,
+            budget_usd=30,
+        ),
+    )
+    monkeypatch.setattr(
+        "app.growth_balance_jit_routes.autonomy_overview_service.get",
+        lambda _product_id: SimpleNamespace(waiting_approval=[]),
+    )
+
+    with pytest.raises(ValueError, match="not waiting for execution"):
+        _funding_plan(project_id, customer_token, experiment_id)
 
 
 def test_jit_checkout_uses_server_derived_amount_without_client_amount(monkeypatch) -> None:
