@@ -12,7 +12,9 @@ from app.growth_balance import (
     growth_balance_service,
 )
 
-_NORMAL_REACTIVATION_REASONS = frozenset({"CUSTOMER", "CHANNELS", "SETUP", "FUNDING"})
+_NORMAL_REACTIVATION_REASONS = frozenset(
+    {"CUSTOMER", "CHANNELS", "SETUP", "FUNDING", "MANDATE_PAUSED"}
+)
 _operator_reactivation_project: ContextVar[str | None] = ContextVar(
     "growth_balance_operator_reactivation_project",
     default=None,
