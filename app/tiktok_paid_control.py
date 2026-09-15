@@ -136,6 +136,12 @@ class TikTokPaidControlService:
             pause_reason = "BUDGET_CAP"
         elif unexpected_active or receipt_reconciliation:
             pause_reason = "RECONCILIATION"
+        elif (
+            state.operation_status.upper() == "DISABLE"
+            and previous is not None
+            and previous.pause_state == "CONFIRMED"
+        ):
+            pause_reason = previous.pause_reason
 
         pause_state: Literal["NOT_REQUESTED", "CONFIRMED", "UNKNOWN"] = "NOT_REQUESTED"
         paused_at = previous.paused_at if previous is not None else None
