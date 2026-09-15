@@ -302,6 +302,14 @@ class GrowthBalanceSettlementService:
         rail = self._rail_for_card(card_id)
         if rail is None:
             return False
+        existing_transaction = self._store.get(
+            GROWTH_BALANCE_TRANSACTION_NAMESPACE,
+            transaction_id,
+        )
+        if existing_transaction is not None and existing_transaction.get(
+            "requires_financial_reconciliation"
+        ):
+            return True
         currency = str(stripe_field(transaction, "currency", "")).lower()
         merchant_data = stripe_field(transaction, "merchant_data")
         category = str(stripe_field(merchant_data, "category", ""))
