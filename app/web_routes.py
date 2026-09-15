@@ -91,6 +91,7 @@ _CUSTOMER_WORKSPACE_ASSETS = {
     "workspace.projects.v1.js": "text/javascript; charset=utf-8",
     "workspace.experiments.v1.css": "text/css; charset=utf-8",
     "workspace.experiments.v1.js": "text/javascript; charset=utf-8",
+    "workspace.jit-funding.v1.js": "text/javascript; charset=utf-8",
     "workspace.learning.v1.js": "text/javascript; charset=utf-8",
     "workspace.execution-request.v1.js": "text/javascript; charset=utf-8",
 }
@@ -113,6 +114,9 @@ _WORKSPACE_PROJECT_SCRIPT = (
 )
 _WORKSPACE_EXPERIMENT_SCRIPT = (
     '<script src="/workspace/assets/workspace.experiments.v1.js" defer></script>'
+)
+_WORKSPACE_JIT_FUNDING_SCRIPT = (
+    '<script src="/workspace/assets/workspace.jit-funding.v1.js" defer></script>'
 )
 _WORKSPACE_LEARNING_SCRIPT = (
     '<script src="/workspace/assets/workspace.learning.v1.js" defer></script>'
@@ -311,6 +315,7 @@ async def customer_workspace(
             f"{_WORKSPACE_SCRIPT_MARKER}\n  {_WORKSPACE_CHANNEL_SCRIPT}"
             f"\n  {_WORKSPACE_PROJECT_SCRIPT}"
             f"\n  {_WORKSPACE_EXPERIMENT_SCRIPT}"
+            f"\n  {_WORKSPACE_JIT_FUNDING_SCRIPT}"
             f"\n  {_WORKSPACE_LEARNING_SCRIPT}"
             f"\n  {_WORKSPACE_EXECUTION_REQUEST_SCRIPT}"
         ),
