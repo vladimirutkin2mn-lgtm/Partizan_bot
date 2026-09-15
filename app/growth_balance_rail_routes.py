@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field
 from app.config import Settings, get_settings
 from app.customer_funnel import CustomerProjectNotFoundError
 from app.growth_balance import growth_balance_service
+from app.growth_balance_authorization_reservations import (
+    growth_balance_authorization_reservation_service,
+)
 from app.stripe_objects import stripe_field
 
 router = APIRouter(prefix="/v1", tags=["growth-balance"])
@@ -98,8 +101,8 @@ async def stripe_issuing_authorization_webhook(
     """Synchronous Stripe Issuing authorization decision.
 
     The card-level MCC/amount controls remain the first safety boundary. This webhook
-    adds current Partizan state: active subscription, active Growth Mandate, provider
-    binding and remaining Growth Balance acquisition capacity.
+    adds current Partizan state and atomically reserves approved-but-uncaptured Growth
+    Balance capacity before returning an approval to Stripe.
     """
 
     secret = _webhook_secret(
@@ -114,7 +117,9 @@ async def stripe_issuing_authorization_webhook(
     event_type = str(stripe_field(event, "type", ""))
     approved = False
     if event_type == "issuing_authorization.request":
-        approved = growth_balance_service.authorize_request(event["data"]["object"])
+        approved = growth_balance_authorization_reservation_service.authorize_request(
+            event["data"]["object"]
+        )
     return JSONResponse(
         status_code=200,
         content={"approved": approved},
@@ -128,7 +133,7 @@ async def stripe_issuing_events_webhook(
     settings: Annotated[Settings, Depends(get_settings)],
     stripe_signature: Annotated[str | None, Header(alias="Stripe-Signature")] = None,
 ) -> dict[str, bool]:
-    """Persist financial Issuing captures/refunds as Growth Balance source of truth."""
+    """Persist Issuing lifecycle state as Growth Balance source of truth."""
 
     secret = _webhook_secret(
         settings.stripe_issuing_events_webhook_secret,
@@ -140,9 +145,15 @@ async def stripe_issuing_events_webhook(
         secret=secret,
     )
     event_type = str(stripe_field(event, "type", ""))
-    if event_type in {"issuing_transaction.created", "issuing_transaction.updated"}:
-        try:
-            growth_balance_service.record_issuing_transaction(event["data"]["object"])
-        except (ValueError, RuntimeError) as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    try:
+        if event_type in {"issuing_authorization.created", "issuing_authorization.updated"}:
+            growth_balance_authorization_reservation_service.record_authorization(
+                event["data"]["object"]
+            )
+        elif event_type in {"issuing_transaction.created", "issuing_transaction.updated"}:
+            growth_balance_authorization_reservation_service.record_transaction(
+                event["data"]["object"]
+            )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"received": True}
