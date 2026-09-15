@@ -26,6 +26,8 @@ from app.creative_generation import (
     CreativeGenerationView,
     creative_generation_service,
 )
+from app.customer_execution_boundary import require_customer_bound_mutation_scope
+from app.distribution_execution_service import distribution_execution_service
 from app.distribution_types import DistributionPlatform
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.tiktok_creative_api import (
@@ -104,6 +106,16 @@ class TikTokVideoCreativeFinalizer:
         self._store = store or get_runtime_store()
 
     def finalize(self, action_id: UUID) -> CreativeProviderFinalizationView:
+        try:
+            action = distribution_execution_service.get_action(action_id)
+        except KeyError:
+            action = None
+        if action is not None:
+            require_customer_bound_mutation_scope(
+                action,
+                "TikTok creative provider finalization",
+            )
+
         readiness = self._asset_service.readiness(action_id)
         brief = readiness.brief
         if readiness.status == CreativeReadinessStatus.READY:
