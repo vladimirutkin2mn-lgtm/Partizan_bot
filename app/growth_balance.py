@@ -21,6 +21,12 @@ GROWTH_BALANCE_RAIL_NAMESPACE = "customer_growth_balance_rails"
 GROWTH_BALANCE_TRANSACTION_NAMESPACE = "customer_growth_balance_transactions"
 GROWTH_BALANCE_LOCK_NAMESPACE = "customer_growth_balance_locks"
 ADVERTISING_MERCHANT_CATEGORY = "advertising_services"
+FINANCIAL_RECONCILIATION_PAUSE_REASONS = frozenset(
+    {
+        "UNEXPECTED_TRANSACTION_CURRENCY",
+        "UNEXPECTED_MERCHANT_CATEGORY",
+    }
+)
 _PENDING_LIQUIDITY_HOLD = timedelta(minutes=31)
 _LIQUIDITY_LOCK_TTL = timedelta(seconds=60)
 _LIQUIDITY_LOCK_KEY = "stripe_issuing_liquidity"
@@ -70,6 +76,9 @@ class GrowthBalanceSettlementService:
         rail = self._store.get(GROWTH_BALANCE_RAIL_NAMESPACE, str(project_id))
         if rail is None:
             return False, "STRIPE_ISSUING_CARD_NOT_PROVISIONED"
+        financial_pause_reason = self._financial_pause_reason(rail)
+        if financial_pause_reason is not None:
+            return False, f"FINANCIAL_RECONCILIATION_REQUIRED:{financial_pause_reason}"
         if rail.get("binding_status") != "BOUND":
             return False, "META_BILLING_NOT_BOUND_TO_PARTIZAN_CARD"
         return True, "READY"
@@ -80,10 +89,13 @@ class GrowthBalanceSettlementService:
         *,
         required_liquidity_cents: int,
     ) -> tuple[bool, str]:
-        del project_id
         configured, status = self._configuration_readiness()
         if not configured:
             return False, status
+        rail = self._store.get(GROWTH_BALANCE_RAIL_NAMESPACE, str(project_id))
+        financial_pause_reason = self._financial_pause_reason(rail)
+        if financial_pause_reason is not None:
+            return False, f"FINANCIAL_RECONCILIATION_REQUIRED:{financial_pause_reason}"
         settings = self._settings()
         try:
             cardholder = self._retrieve_cardholder(str(settings.stripe_issuing_cardholder_id))
@@ -110,7 +122,8 @@ class GrowthBalanceSettlementService:
         controls = self._spending_controls(acquisition_capacity_cents)
         rail = self._store.get(GROWTH_BALANCE_RAIL_NAMESPACE, str(project_id))
         bound = bool(rail and rail.get("binding_status") == "BOUND")
-        target_status = "active" if bound else "inactive"
+        financial_pause_reason = self._financial_pause_reason(rail)
+        target_status = "active" if bound and financial_pause_reason is None else "inactive"
         try:
             if rail and rail.get("card_id"):
                 card = self._modify_card(
@@ -164,6 +177,11 @@ class GrowthBalanceSettlementService:
         rail = self._store.get(GROWTH_BALANCE_RAIL_NAMESPACE, str(project_id))
         if rail is None or not rail.get("card_id"):
             raise ValueError("Partizan-funded Stripe Issuing card is not provisioned")
+        financial_pause_reason = self._financial_pause_reason(rail)
+        if financial_pause_reason is not None:
+            raise ValueError(
+                "Growth Balance financial reconciliation must be resolved before billing can reactivate"
+            )
         if int(rail.get("acquisition_limit_cents") or 0) <= 0:
             raise ValueError("Fund the Growth Balance before binding provider billing")
         self._require_configured()
@@ -197,16 +215,17 @@ class GrowthBalanceSettlementService:
         if rail is None or not rail.get("card_id"):
             return
         self._require_configured()
+        effective_reason = self._financial_pause_reason(rail) or reason
         try:
             card = self._modify_card(
                 str(rail["card_id"]),
                 status="inactive",
-                idempotency_key=f"partizan-issuing-pause-{project_id}-{reason}",
+                idempotency_key=f"partizan-issuing-pause-{project_id}-{effective_reason}",
             )
         except stripe.StripeError as exc:
             raise RuntimeError("Stripe Issuing card pause failed") from exc
         rail["card_status"] = str(stripe_field(card, "status", "inactive"))
-        rail["paused_reason"] = reason
+        rail["paused_reason"] = effective_reason
         rail["paused_at"] = datetime.now(UTC).isoformat()
         rail["updated_at"] = datetime.now(UTC).isoformat()
         self._store.put(GROWTH_BALANCE_RAIL_NAMESPACE, str(project_id), rail)
@@ -215,6 +234,10 @@ class GrowthBalanceSettlementService:
         rail = self._store.get(GROWTH_BALANCE_RAIL_NAMESPACE, str(project_id))
         if rail is None or rail.get("binding_status") != "BOUND" or not rail.get("card_id"):
             raise ValueError("Partizan-funded card must be bound to Meta before activation")
+        if self._financial_pause_reason(rail) is not None:
+            raise ValueError(
+                "Growth Balance financial reconciliation must be resolved by an operator before activation"
+            )
         self._require_configured()
         try:
             card = self._modify_card(
@@ -231,6 +254,34 @@ class GrowthBalanceSettlementService:
         rail["paused_reason"] = None
         rail["updated_at"] = datetime.now(UTC).isoformat()
         self._store.put(GROWTH_BALANCE_RAIL_NAMESPACE, str(project_id), rail)
+
+    def resolve_financial_pause(self, project_id: UUID, *, expected_reason: str) -> dict:
+        rail = self._store.get(GROWTH_BALANCE_RAIL_NAMESPACE, str(project_id))
+        if rail is None or not rail.get("card_id"):
+            raise ValueError("Partizan-funded Stripe Issuing card is not provisioned")
+        financial_pause_reason = self._financial_pause_reason(rail)
+        if financial_pause_reason is None:
+            raise ValueError("Growth Balance rail does not require financial reconciliation")
+        if expected_reason != financial_pause_reason:
+            raise ValueError("Growth Balance financial reconciliation reason changed")
+        self._require_configured()
+        try:
+            card = self._modify_card(
+                str(rail["card_id"]),
+                status="inactive",
+                idempotency_key=(
+                    f"partizan-issuing-financial-resolution-{project_id}-{financial_pause_reason}"
+                ),
+            )
+        except stripe.StripeError as exc:
+            raise RuntimeError("Stripe Issuing financial reconciliation pause failed") from exc
+        rail["card_status"] = str(stripe_field(card, "status", "inactive"))
+        rail["financial_reconciliation_resolved_reason"] = financial_pause_reason
+        rail["financial_reconciliation_resolved_at"] = datetime.now(UTC).isoformat()
+        rail["paused_reason"] = None
+        rail["updated_at"] = datetime.now(UTC).isoformat()
+        self._store.put(GROWTH_BALANCE_RAIL_NAMESPACE, str(project_id), rail)
+        return rail
 
     def uses_ledger(self, project_id: UUID) -> bool:
         return self._store.get(GROWTH_BALANCE_RAIL_NAMESPACE, str(project_id)) is not None
@@ -252,13 +303,35 @@ class GrowthBalanceSettlementService:
         if rail is None:
             return False
         currency = str(stripe_field(transaction, "currency", "")).lower()
-        if currency != str(rail.get("currency") or "").lower():
-            self.pause(UUID(str(rail["project_id"])), "UNEXPECTED_TRANSACTION_CURRENCY")
-            raise ValueError("Issuing transaction currency does not match Growth Balance rail")
         merchant_data = stripe_field(transaction, "merchant_data")
         category = str(stripe_field(merchant_data, "category", ""))
         transaction_type = str(stripe_field(transaction, "type", ""))
         amount_cents = int(stripe_field(transaction, "amount", 0))
+        if currency != str(rail.get("currency") or "").lower():
+            reason = "UNEXPECTED_TRANSACTION_CURRENCY"
+            self.pause(UUID(str(rail["project_id"])), reason)
+            self._store.put(
+                GROWTH_BALANCE_TRANSACTION_NAMESPACE,
+                transaction_id,
+                {
+                    "transaction_id": transaction_id,
+                    "project_id": str(rail["project_id"]),
+                    "card_id": card_id,
+                    "amount_cents": amount_cents,
+                    "spend_delta_cents": 0,
+                    "currency": currency,
+                    "type": transaction_type,
+                    "merchant_category": category,
+                    "merchant_name": str(stripe_field(merchant_data, "name", "")),
+                    "authorization_id": self._object_id(
+                        stripe_field(transaction, "authorization")
+                    ),
+                    "safety_anomaly": reason,
+                    "requires_financial_reconciliation": True,
+                    "updated_at": datetime.now(UTC).isoformat(),
+                },
+            )
+            return True
         payload = {
             "transaction_id": transaction_id,
             "project_id": str(rail["project_id"]),
@@ -272,6 +345,10 @@ class GrowthBalanceSettlementService:
             "authorization_id": self._object_id(stripe_field(transaction, "authorization")),
             "updated_at": datetime.now(UTC).isoformat(),
         }
+        if transaction_type == "capture" and category != ADVERTISING_MERCHANT_CATEGORY:
+            reason = "UNEXPECTED_MERCHANT_CATEGORY"
+            payload["safety_anomaly"] = reason
+            payload["requires_financial_reconciliation"] = True
         self._store.put(GROWTH_BALANCE_TRANSACTION_NAMESPACE, transaction_id, payload)
         if transaction_type == "capture" and category != ADVERTISING_MERCHANT_CATEGORY:
             self.pause(UUID(str(rail["project_id"])), "UNEXPECTED_MERCHANT_CATEGORY")
@@ -329,7 +406,10 @@ class GrowthBalanceSettlementService:
                 "provider": self._settings().growth_balance_settlement_provider,
                 "settlement_ready": ready,
                 "settlement_status": status,
+                "paused_reason": None,
+                "financial_reconciliation_required": False,
             }
+        financial_pause_reason = self._financial_pause_reason(rail)
         return {
             "project_id": str(project_id),
             "provider": rail.get("provider"),
@@ -342,6 +422,8 @@ class GrowthBalanceSettlementService:
             "binding_status": rail.get("binding_status"),
             "bound_provider": rail.get("bound_provider"),
             "bound_provider_account_id": rail.get("bound_provider_account_id"),
+            "paused_reason": rail.get("paused_reason"),
+            "financial_reconciliation_required": financial_pause_reason is not None,
             "acquisition_limit_usd": GrowthBalanceService._cents_to_usd(
                 int(rail.get("acquisition_limit_cents") or 0)
             ),
@@ -402,6 +484,15 @@ class GrowthBalanceSettlementService:
             ),
             None,
         )
+
+    @staticmethod
+    def _financial_pause_reason(rail: dict | None) -> str | None:
+        if rail is None:
+            return None
+        reason = str(rail.get("paused_reason") or "")
+        if reason in FINANCIAL_RECONCILIATION_PAUSE_REASONS:
+            return reason
+        return None
 
     @staticmethod
     def _spending_controls(amount_cents: int) -> dict:
@@ -712,6 +803,13 @@ class GrowthBalanceService:
         activate = getattr(self._settlement, "activate", None)
         if activate is not None:
             activate(project_id)
+
+    def resolve_financial_pause(self, project_id: UUID, *, expected_reason: str) -> dict:
+        resolve = getattr(self._settlement, "resolve_financial_pause", None)
+        if resolve is None:
+            raise ValueError("Growth Balance rail does not support financial reconciliation")
+        resolve(project_id, expected_reason=expected_reason)
+        return self.rail_view(project_id)
 
     def authorize_request(self, authorization: object) -> bool:
         authorize = getattr(self._settlement, "authorize_request", None)
