@@ -20,6 +20,7 @@ from app.distribution_routes import router as distribution_router
 from app.growth_autoresearch_routes import router as growth_autoresearch_router
 from app.growth_balance_funding_policy import enable_checkout_first_growth_balance_funding
 from app.growth_balance_paid_recovery import install_paid_checkout_project_recovery
+from app.growth_balance_payment_reversals import enable_growth_balance_payment_reversal_webhooks
 from app.growth_balance_rail_routes import router as growth_balance_rail_router
 from app.icp_service import icp_service
 from app.logging import configure_logging
@@ -37,6 +38,7 @@ from app.web_routes import router as web_router
 
 enable_checkout_first_growth_balance_funding()
 install_paid_checkout_project_recovery()
+enable_growth_balance_payment_reversal_webhooks()
 configure_logging()
 
 app = FastAPI(
