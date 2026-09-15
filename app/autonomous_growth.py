@@ -467,13 +467,11 @@ class AutonomousGrowthSweepService:
         mandates = [
             GrowthMandateView.model_validate(payload)
             for payload in self._store.list_namespace(GROWTH_MANDATE_NAMESPACE)
+            if GrowthMandateView.model_validate(payload).status
+            == GrowthMandateStatus.ACTIVE
         ]
         if product_id is not None:
             mandates = [item for item in mandates if item.product_id == product_id]
-        else:
-            mandates = [
-                item for item in mandates if item.status == GrowthMandateStatus.ACTIVE
-            ]
         return sorted(mandates, key=lambda item: str(item.product_id))
 
     def _pending_human_resolution(self, product_id: UUID) -> bool:
