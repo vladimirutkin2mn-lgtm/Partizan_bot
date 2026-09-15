@@ -19,6 +19,7 @@ from app.distribution_play_routes import router as distribution_play_router
 from app.distribution_routes import router as distribution_router
 from app.growth_autoresearch_routes import router as growth_autoresearch_router
 from app.growth_balance_funding_policy import enable_checkout_first_growth_balance_funding
+from app.growth_balance_jit_routes import router as growth_balance_jit_router
 from app.growth_balance_paid_recovery import install_paid_checkout_project_recovery
 from app.growth_balance_payment_reversals import enable_growth_balance_payment_reversal_webhooks
 from app.growth_balance_rail_ops_routes import router as growth_balance_rail_ops_router
@@ -51,6 +52,7 @@ app = FastAPI(
 app.include_router(web_router)
 app.include_router(customer_router)
 app.include_router(customer_account_router)
+app.include_router(growth_balance_jit_router)
 app.include_router(customer_project_router)
 app.include_router(customer_channel_router)
 app.include_router(customer_channel_selection_router)
