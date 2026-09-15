@@ -9,6 +9,10 @@ from app.autonomy_schemas import GrowthMandateStatus, GrowthMandateUpsertRequest
 from app.autonomy_service import growth_mandate_service
 from app.customer_channels import customer_channel_service
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE, customer_funnel_service
+from app.customer_paid_campaign_lifecycle import (
+    AUTOPILOT_CUSTOMER_PAUSE_REASON,
+    customer_paid_campaign_lifecycle_service,
+)
 from app.customer_schemas import (
     CustomerAutopilotConfigureRequest,
     CustomerAutopilotDecisionView,
@@ -92,6 +96,7 @@ class CustomerAutopilotService:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
         product_id = self._require_researched_product(project)
         auto_platforms = customer_channel_service.autonomous_platforms(project)
+        was_customer_paused = project.get("autopilot_pause_reason") == "CUSTOMER"
         self._materialize_staged_meta(project, product_id)
         self._ensure_mandate_if_ready(project_id, project, product_id)
         if status == "ACTIVE":
@@ -109,19 +114,124 @@ class CustomerAutopilotService:
                 and paid_provider_connection_service.get_meta(product_id) is None
             ):
                 raise ValueError("Connect Meta before activating Meta acquisition")
-            self._balance.activate_rail(project_id)
-            growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
-            project["autopilot_pause_reason"] = None
-        elif status == "PAUSED":
-            growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
-            project["autopilot_pause_reason"] = "CUSTOMER"
-            self._persist(project)
-            self._balance.pause_rail(project_id, "CUSTOMER")
+
+            provider_resume = None
+            if was_customer_paused:
+                try:
+                    provider_resume = customer_paid_campaign_lifecycle_service.resume_product(
+                        product_id,
+                        expected_reason=AUTOPILOT_CUSTOMER_PAUSE_REASON,
+                    )
+                except (KeyError, RuntimeError, ValueError) as exc:
+                    recovery = customer_paid_campaign_lifecycle_service.pause_product(
+                        product_id,
+                        reason=AUTOPILOT_CUSTOMER_PAUSE_REASON,
+                    )
+                    if recovery.requires_reconciliation:
+                        raise ValueError(
+                            "Paid campaigns require reconciliation before Autopilot can resume"
+                        ) from exc
+                    raise ValueError(
+                        "Paid campaigns were returned to a confirmed pause; retry Autopilot resume"
+                    ) from exc
+
+                accounted_action_ids = set(
+                    provider_resume.preserved_pause_action_ids
+                    + provider_resume.resumed_action_ids
+                    + provider_resume.reconciliation_action_ids
+                    + provider_resume.rollback_unknown_action_ids
+                )
+                if (
+                    provider_resume.requires_reconciliation
+                    or len(accounted_action_ids) != provider_resume.candidate_count
+                ):
+                    recovery = customer_paid_campaign_lifecycle_service.pause_product(
+                        product_id,
+                        reason=AUTOPILOT_CUSTOMER_PAUSE_REASON,
+                    )
+                    if recovery.requires_reconciliation:
+                        raise ValueError(
+                            "Paid campaigns require reconciliation before Autopilot can resume"
+                        )
+                    raise ValueError(
+                        "Paid campaigns were returned to a confirmed pause; retry Autopilot resume"
+                    )
+
+            if not was_customer_paused:
+                self._balance.activate_rail(project_id)
+                growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
+                project["autopilot_pause_reason"] = None
+                self._persist(project)
+                return self.overview(project_id, customer_token)
+
+            try:
+                self._balance.activate_rail(project_id)
+                growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
+                project["autopilot_pause_reason"] = None
+                self._persist(project)
+            except (KeyError, RuntimeError, ValueError) as exc:
+                rollback_requires_reconciliation = False
+                try:
+                    growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
+                except (KeyError, RuntimeError, ValueError):
+                    rollback_requires_reconciliation = True
+                try:
+                    self._balance.pause_rail(project_id, "CUSTOMER")
+                except (KeyError, RuntimeError, ValueError):
+                    rollback_requires_reconciliation = True
+                if provider_resume is not None and provider_resume.resumed_action_ids:
+                    rollback = customer_paid_campaign_lifecycle_service.repause_actions(
+                        product_id,
+                        provider_resume.resumed_action_ids,
+                        reason=AUTOPILOT_CUSTOMER_PAUSE_REASON,
+                    )
+                    rollback_requires_reconciliation = (
+                        rollback_requires_reconciliation or rollback.requires_reconciliation
+                    )
+                project["autopilot_pause_reason"] = "CUSTOMER"
+                try:
+                    self._persist(project)
+                except RuntimeError:
+                    rollback_requires_reconciliation = True
+                if rollback_requires_reconciliation:
+                    raise ValueError(
+                        "Autopilot resume failed and paid execution rollback requires reconciliation"
+                    ) from exc
+                raise ValueError("Autopilot resume failed safely; retry when the rail is ready") from exc
             return self.overview(project_id, customer_token)
-        else:
-            raise ValueError("Unsupported Autopilot status")
-        self._persist(project)
-        return self.overview(project_id, customer_token)
+
+        if status == "PAUSED":
+            pause_failed = False
+            project["autopilot_pause_reason"] = "CUSTOMER"
+            try:
+                growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
+            except (KeyError, RuntimeError, ValueError):
+                pause_failed = True
+            try:
+                self._balance.pause_rail(project_id, "CUSTOMER")
+            except (KeyError, RuntimeError, ValueError):
+                pause_failed = True
+            try:
+                provider_pause = customer_paid_campaign_lifecycle_service.pause_product(
+                    product_id,
+                    reason=AUTOPILOT_CUSTOMER_PAUSE_REASON,
+                )
+            except (KeyError, RuntimeError, ValueError):
+                provider_pause = None
+                pause_failed = True
+            if provider_pause is not None and provider_pause.requires_reconciliation:
+                pause_failed = True
+            try:
+                self._persist(project)
+            except RuntimeError:
+                pause_failed = True
+            if pause_failed:
+                raise ValueError(
+                    "Autopilot is fail-closed, but paid provider state requires reconciliation"
+                )
+            return self.overview(project_id, customer_token)
+
+        raise ValueError("Unsupported Autopilot status")
 
     def meta_connected(self, project_id: UUID, customer_token: str) -> CustomerAutopilotOverview:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
