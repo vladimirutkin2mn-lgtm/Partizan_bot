@@ -14,6 +14,7 @@ from app.growth_balance import growth_balance_service
 from app.growth_balance_authorization_reservations import (
     growth_balance_authorization_reservation_service,
 )
+from app.growth_balance_issuing_fallback import growth_balance_issuing_fallback_service
 from app.stripe_objects import stripe_field
 
 router = APIRouter(prefix="/v1", tags=["growth-balance"])
@@ -133,7 +134,7 @@ async def stripe_issuing_events_webhook(
     settings: Annotated[Settings, Depends(get_settings)],
     stripe_signature: Annotated[str | None, Header(alias="Stripe-Signature")] = None,
 ) -> dict[str, bool]:
-    """Persist Issuing lifecycle state as Growth Balance source of truth."""
+    """Persist Issuing lifecycle state and fail-close provider fallback decisions."""
 
     secret = _webhook_secret(
         settings.stripe_issuing_events_webhook_secret,
@@ -147,7 +148,7 @@ async def stripe_issuing_events_webhook(
     event_type = str(stripe_field(event, "type", ""))
     try:
         if event_type in {"issuing_authorization.created", "issuing_authorization.updated"}:
-            growth_balance_authorization_reservation_service.record_authorization(
+            growth_balance_issuing_fallback_service.record_authorization(
                 event["data"]["object"]
             )
         elif event_type in {"issuing_transaction.created", "issuing_transaction.updated"}:
