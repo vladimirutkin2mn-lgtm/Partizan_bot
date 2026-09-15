@@ -23,6 +23,11 @@ class MetaBillingBindingRequest(BaseModel):
     confirm_customer_payment_method_not_used: bool
 
 
+class FinancialReconciliationResolutionRequest(BaseModel):
+    expected_reason: str = Field(min_length=1, max_length=120)
+    confirm_anomaly_reviewed: bool
+
+
 def _webhook_secret(secret, *, label: str) -> str:
     if secret is None:
         raise HTTPException(
@@ -88,6 +93,33 @@ def confirm_growth_balance_meta_binding(
     except (KeyError, ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return growth_balance_service.rail_view(project_id)
+
+
+@router.post(
+    "/customer-projects/{project_id}/growth-balance/rail/financial-reconciliation/resolve"
+)
+def resolve_growth_balance_financial_reconciliation(
+    project_id: UUID,
+    payload: FinancialReconciliationResolutionRequest,
+) -> dict:
+    """Operator-only acknowledgement of an investigated Issuing safety anomaly.
+
+    Resolution deliberately leaves the Stripe card inactive. Autopilot/provider spend
+    can resume only through the separate explicit customer Autopilot Resume path.
+    """
+
+    if not payload.confirm_anomaly_reviewed:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Confirm that the financial anomaly was reviewed before resolution",
+        )
+    try:
+        return growth_balance_service.resolve_financial_pause(
+            project_id,
+            expected_reason=payload.expected_reason,
+        )
+    except (KeyError, ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/billing/stripe/issuing-authorizations")
