@@ -7,6 +7,8 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field
 
 from app.creative_assets import CreativeAssetSource, creative_asset_service
+from app.customer_execution_boundary import customer_execution_request_id
+from app.distribution_execution_service import distribution_execution_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.tiktok_owned_publishing import (
     TikTokCreatorPublishPreflightService,
@@ -95,6 +97,17 @@ class TikTokPublishAuthorizationService:
         asset = creative_asset_service.get_asset(preflight.creative_asset_id)
         if asset.id != preflight.creative_asset_id or asset.action_id != action_id:
             raise ValueError("Publish authorization creative does not match the action")
+
+        try:
+            action = distribution_execution_service.get_action(action_id)
+        except KeyError:
+            action = None
+        if action is not None and customer_execution_request_id(action) is not None:
+            self._validate_customer_bound_authorization(
+                action=action,
+                creative_asset_id=asset.id,
+                payload=payload,
+            )
 
         self._validate_title(payload.title)
         if payload.privacy_level not in preflight.privacy_level_options:
@@ -233,6 +246,39 @@ class TikTokPublishAuthorizationService:
         )
         self._persist(updated)
         return updated
+
+    def _validate_customer_bound_authorization(
+        self,
+        *,
+        action,
+        creative_asset_id: UUID,
+        payload: TikTokPublishAuthorizationCreateRequest,
+    ) -> None:
+        metadata = action.operational_metadata
+        if (
+            not metadata.get("customer_publish_confirmed_at")
+            or not metadata.get("customer_publish_confirmation_fingerprint")
+        ):
+            raise ValueError(
+                "Customer publish confirmation is required before TikTok publish authorization"
+            )
+        if metadata.get("customer_confirmed_creative_asset_id") != str(creative_asset_id):
+            raise ValueError(
+                "TikTok publish authorization creative must match the customer-confirmed video"
+            )
+        if (
+            not metadata.get("customer_confirmed_creative_blob_id")
+            or not metadata.get("customer_confirmed_creative_sha256")
+        ):
+            raise ValueError(
+                "TikTok publish authorization requires the exact immutable customer video binding"
+            )
+        raw_title = action.content_payload.get("title")
+        expected_title = raw_title if isinstance(raw_title, str) else ""
+        if payload.title != expected_title:
+            raise ValueError(
+                "TikTok publish authorization title must exactly match the customer-confirmed title"
+            )
 
     def _validate_title(self, value: str) -> None:
         utf16_units = len(value.encode("utf-16-le")) // 2
