@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,14 +24,6 @@ def reset_customer_state() -> None:
     growth_balance_service.reset()
 
 
-def _opportunity(cost: float) -> dict[str, object]:
-    return {
-        "title": "Sponsor a niche newsletter placement",
-        "recommended_action": "Run the smallest placement and measure paid signups.",
-        "estimated_cost_max_usd": cost,
-    }
-
-
 def _plan(
     *,
     cost: float,
@@ -39,7 +32,7 @@ def _plan(
     remaining_capacity: float = 0,
 ) -> NextMoveFundingPlan:
     return GrowthBalanceJitFundingService().plan(
-        opportunity=_opportunity(cost),
+        required_acquisition_usd=cost,
         project_budget_usd=30,
         funded_usd=funded,
         acquisition_spend_usd=spent,
@@ -79,7 +72,7 @@ def test_jit_funding_creates_no_topup_when_capacity_is_already_funded() -> None:
 def test_jit_funding_never_funds_above_customer_test_budget() -> None:
     with pytest.raises(ValueError, match="exceeds the customer test budget"):
         GrowthBalanceJitFundingService().plan(
-            opportunity=_opportunity(31),
+            required_acquisition_usd=31,
             project_budget_usd=30,
             funded_usd=0,
             acquisition_spend_usd=0,
@@ -120,11 +113,18 @@ def _registered_workspace() -> tuple[TestClient, object]:
     return client, preview
 
 
+def _experiment():
+    return SimpleNamespace(
+        experiment_id=uuid4(),
+        action_id=uuid4(),
+        platform="INSTAGRAM",
+    )
+
+
 def test_jit_checkout_uses_server_derived_amount_without_client_amount(monkeypatch) -> None:
     client, preview = _registered_workspace()
+    experiment = _experiment()
     plan = NextMoveFundingPlan(
-        opportunity_title="Niche newsletter",
-        recommended_action="Run one placement.",
         required_acquisition_usd=20,
         remaining_acquisition_capacity_usd=10,
         topup_amount_usd=11,
@@ -134,7 +134,7 @@ def test_jit_checkout_uses_server_derived_amount_without_client_amount(monkeypat
 
     monkeypatch.setattr(
         "app.growth_balance_jit_routes._funding_plan",
-        lambda _project_id, _customer_token: plan,
+        lambda _project_id, _customer_token, _experiment_id: (plan, experiment),
     )
 
     def fake_prepare(project_id, customer_token, amount_usd):
@@ -160,20 +160,22 @@ def test_jit_checkout_uses_server_derived_amount_without_client_amount(monkeypat
     )
 
     response = client.post(
-        f"/customer/workspace/{preview.project_id}/growth-balance/next-move/checkout"
+        f"/customer/workspace/{preview.project_id}/growth-balance/experiments/"
+        f"{experiment.experiment_id}/funding/checkout"
     )
 
     assert response.status_code == 200
     assert captured["amount_usd"] == 11
+    assert response.json()["experiment_id"] == str(experiment.experiment_id)
+    assert response.json()["action_id"] == str(experiment.action_id)
     assert response.json()["topup_amount_usd"] == 11
     assert response.json()["checkout_url"] == "https://checkout.stripe.test/jit"
 
 
 def test_jit_checkout_skips_stripe_when_move_is_already_funded(monkeypatch) -> None:
     client, preview = _registered_workspace()
+    experiment = _experiment()
     plan = NextMoveFundingPlan(
-        opportunity_title="Niche newsletter",
-        recommended_action="Run one placement.",
         required_acquisition_usd=20,
         remaining_acquisition_capacity_usd=20,
         topup_amount_usd=0,
@@ -181,7 +183,7 @@ def test_jit_checkout_skips_stripe_when_move_is_already_funded(monkeypatch) -> N
     )
     monkeypatch.setattr(
         "app.growth_balance_jit_routes._funding_plan",
-        lambda _project_id, _customer_token: plan,
+        lambda _project_id, _customer_token, _experiment_id: (plan, experiment),
     )
 
     def should_not_prepare(*_args, **_kwargs):
@@ -193,7 +195,8 @@ def test_jit_checkout_skips_stripe_when_move_is_already_funded(monkeypatch) -> N
     )
 
     response = client.post(
-        f"/customer/workspace/{preview.project_id}/growth-balance/next-move/checkout"
+        f"/customer/workspace/{preview.project_id}/growth-balance/experiments/"
+        f"{experiment.experiment_id}/funding/checkout"
     )
 
     assert response.status_code == 200
