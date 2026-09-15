@@ -41,8 +41,6 @@ class GrowthBalanceJitFundingService:
             field="project_budget_usd",
             allow_zero=False,
         )
-        if required_cents > project_budget_cents:
-            raise ValueError("Paid move exceeds the customer test budget")
         if management_fee_pct < 0 or management_fee_pct > 100:
             raise ValueError("Growth Balance management fee is invalid")
 
@@ -57,6 +55,9 @@ class GrowthBalanceJitFundingService:
             allow_zero=True,
         )
         target_spend_cents = spent_cents + required_cents
+        if target_spend_cents > project_budget_cents:
+            raise ValueError("Paid move exceeds the customer's remaining test budget")
+
         required_funded_cents = target_spend_cents + self._fee_cents(
             target_spend_cents,
             management_fee_pct,
