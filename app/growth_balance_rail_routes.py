@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.config import Settings, get_settings
+from app.customer_autopilot import customer_autopilot_service
 from app.customer_funnel import CustomerProjectNotFoundError
 from app.growth_balance import growth_balance_service
 from app.growth_balance_authorization_reservations import (
@@ -124,7 +125,7 @@ async def stripe_issuing_events_webhook(
     settings: Annotated[Settings, Depends(get_settings)],
     stripe_signature: Annotated[str | None, Header(alias="Stripe-Signature")] = None,
 ) -> dict[str, bool]:
-    """Persist Issuing lifecycle state as Growth Balance source of truth."""
+    """Persist Issuing lifecycle state and reconcile Autopilot safety immediately."""
 
     secret = _webhook_secret(
         settings.stripe_issuing_events_webhook_secret,
@@ -145,6 +146,7 @@ async def stripe_issuing_events_webhook(
             growth_balance_authorization_reservation_service.record_transaction(
                 event["data"]["object"]
             )
+            customer_autopilot_service.reconcile_safety_policy()
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {"received": True}

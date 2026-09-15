@@ -12,6 +12,7 @@ from app.autonomous_controlled_growth import (
     autonomous_controlled_growth_sweep_service,
 )
 from app.autonomous_growth import AutonomousGrowthSweepService
+from app.customer_autopilot import customer_autopilot_service
 from app.growth_autoresearch_execution import GrowthAutoResearchExecutionService
 from app.growth_autoresearch_execution_runtime import (
     growth_autoresearch_execution_runtime_service,
@@ -68,6 +69,9 @@ class AutonomousGrowthWorker:
             if heartbeat is not None:
                 heartbeat.mark_running(AUTONOMOUS_GROWTH_WORKER)
             try:
+                # Reconcile customer Autopilot safety before any autonomous provider work.
+                # CHANNELS/FUNDING/SETUP pauses are provider-confirmed and never auto-resumed.
+                customer_autopilot_service.reconcile_safety_policy(product_id=product_id)
                 # Give an existing READY AutoResearch challenger first access to its exact,
                 # permissioned non-paid DistributionPlay. The bridge still delegates every
                 # mutation to the existing mandate, drafting, approval and adapter control plane.
