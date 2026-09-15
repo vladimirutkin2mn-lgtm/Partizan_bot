@@ -13,6 +13,7 @@ from app.growth_balance import (
     GrowthBalanceSettlementService,
     growth_balance_service,
 )
+from app.growth_balance_rail_safety import require_growth_balance_reactivation_allowed
 from app.stripe_objects import stripe_field
 
 _CHECKOUT_ONLY_LOCK_TOKEN = "checkout_only_no_provider_liquidity"
@@ -170,6 +171,7 @@ class CheckoutFirstGrowthBalanceSettlementService(GrowthBalanceSettlementService
         rail = self._store.get(GROWTH_BALANCE_RAIL_NAMESPACE, str(project_id))
         if rail is None or rail.get("binding_status") != "BOUND" or not rail.get("card_id"):
             raise ValueError("Partizan-funded card must be bound to Meta before activation")
+        require_growth_balance_reactivation_allowed(project_id, rail.get("paused_reason"))
         self._require_configured()
         try:
             card = self._modify_card(
