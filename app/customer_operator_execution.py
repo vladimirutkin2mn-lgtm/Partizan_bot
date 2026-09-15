@@ -24,7 +24,11 @@ from app.distribution_execution_service import (
     InMemoryDistributionExecutionService,
     distribution_execution_service,
 )
-from app.distribution_types import DistributionActionStatus
+from app.distribution_types import (
+    DistributionActionStatus,
+    DistributionActionType,
+    DistributionPlatform,
+)
 from app.execution_adapters import (
     AdapterExecutionOutcome,
     DistributionAdapterExecuteRequest,
@@ -40,6 +44,10 @@ from app.tiktok_direct_post_reconciliation import (
     TikTokDirectPostReconciliationView,
     tiktok_direct_post_reconciliation_service,
 )
+from app.tiktok_publish_authorization import (
+    TikTokPublishAuthorizationService,
+    tiktok_publish_authorization_service,
+)
 
 
 class CustomerOperatorExecutionService:
@@ -51,6 +59,7 @@ class CustomerOperatorExecutionService:
         approval_service: CustomerOperatorApprovalService | None = None,
         adapter_service: DistributionExecutionAdapterService | None = None,
         tiktok_reconciliation_service: TikTokDirectPostReconciliationService | None = None,
+        tiktok_authorization_service: TikTokPublishAuthorizationService | None = None,
     ) -> None:
         self._request_service = request_service or customer_execution_request_service
         self._execution_service = execution_service or distribution_execution_service
@@ -60,6 +69,9 @@ class CustomerOperatorExecutionService:
         )
         self._tiktok_reconciliation_service = (
             tiktok_reconciliation_service or tiktok_direct_post_reconciliation_service
+        )
+        self._tiktok_authorization_service = (
+            tiktok_authorization_service or tiktok_publish_authorization_service
         )
 
     def view(self, request_id: UUID) -> CustomerOperatorExecutionView:
@@ -114,6 +126,7 @@ class CustomerOperatorExecutionService:
             # never trigger another provider mutation.
             return self._to_view(request=request, plan=plan, receipt=None)
 
+        self._validate_tiktok_authorization_if_usable(request=request, plan=plan)
         with customer_execution_request_scope(request.id):
             result = self._adapter_service.execute(
                 plan.action.id,
@@ -134,6 +147,43 @@ class CustomerOperatorExecutionService:
             plan=result.plan,
             receipt=result.receipt,
         )
+
+    def _validate_tiktok_authorization_if_usable(
+        self,
+        *,
+        request: CustomerExecutionRequestView,
+        plan: DistributionExecutionPlanView,
+    ) -> None:
+        action = plan.action
+        if (
+            action.platform != DistributionPlatform.TIKTOK
+            or action.action_type != DistributionActionType.ORGANIC_VIDEO
+        ):
+            return
+        try:
+            authorization = self._tiktok_authorization_service.get_current(
+                action.id,
+                require_usable=True,
+            )
+        except (KeyError, ValueError):
+            # No usable authorization means the permissioned adapter can only return an assisted
+            # preflight/consent state. It cannot submit a provider mutation.
+            return
+        if authorization.action_id != action.id:
+            raise ValueError("TikTok publish authorization does not match the customer-bound action.")
+        if (
+            request.confirmed_creative_asset_id is None
+            or authorization.creative_asset_id != request.confirmed_creative_asset_id
+        ):
+            raise ValueError(
+                "TikTok publish authorization creative does not match the customer-confirmed video."
+            )
+        raw_title = action.content_payload.get("title")
+        expected_title = raw_title if isinstance(raw_title, str) else ""
+        if authorization.title != expected_title:
+            raise ValueError(
+                "TikTok publish authorization title does not match the customer-confirmed title."
+            )
 
     def _refresh_read_only_provider_reconciliation(
         self,
