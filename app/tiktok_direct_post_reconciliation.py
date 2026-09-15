@@ -10,6 +10,7 @@ from uuid import UUID
 import httpx
 from pydantic import BaseModel, Field
 
+from app.customer_execution_boundary import require_customer_bound_mutation_scope
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_schemas import DistributionActionExecutionRequest
 from app.distribution_execution_service import distribution_execution_service
@@ -176,6 +177,16 @@ class TikTokDirectPostReconciliationService:
         *,
         mark_executed: bool = True,
     ) -> TikTokDirectPostReconciliationView:
+        try:
+            action = distribution_execution_service.get_action(action_id)
+        except KeyError:
+            action = None
+        if action is not None:
+            require_customer_bound_mutation_scope(
+                action,
+                "TikTok Direct Post reconciliation",
+            )
+
         attempt = self._direct_post_service.get_latest(action_id)
         if attempt.provider_publish_id is None:
             raise ValueError(

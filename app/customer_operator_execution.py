@@ -34,6 +34,12 @@ from app.execution_adapters import (
 from app.organic_creative_execution import (
     organic_creative_distribution_execution_adapter_service,
 )
+from app.tiktok_direct_post_reconciliation import (
+    TikTokDirectPostReconciliationService,
+    TikTokDirectPostReconciliationStatus,
+    TikTokDirectPostReconciliationView,
+    tiktok_direct_post_reconciliation_service,
+)
 
 
 class CustomerOperatorExecutionService:
@@ -44,6 +50,7 @@ class CustomerOperatorExecutionService:
         execution_service: InMemoryDistributionExecutionService | None = None,
         approval_service: CustomerOperatorApprovalService | None = None,
         adapter_service: DistributionExecutionAdapterService | None = None,
+        tiktok_reconciliation_service: TikTokDirectPostReconciliationService | None = None,
     ) -> None:
         self._request_service = request_service or customer_execution_request_service
         self._execution_service = execution_service or distribution_execution_service
@@ -51,11 +58,19 @@ class CustomerOperatorExecutionService:
         self._adapter_service = (
             adapter_service or organic_creative_distribution_execution_adapter_service
         )
+        self._tiktok_reconciliation_service = (
+            tiktok_reconciliation_service or tiktok_direct_post_reconciliation_service
+        )
 
     def view(self, request_id: UUID) -> CustomerOperatorExecutionView:
         request, plan = self._validated_request_plan(request_id)
         receipt = self._adapter_service.get_receipt(plan.action.id)
         self._require_execution_state(plan)
+        plan, receipt = self._refresh_read_only_provider_reconciliation(
+            request=request,
+            plan=plan,
+            receipt=receipt,
+        )
         return self._to_view(request=request, plan=plan, receipt=receipt)
 
     def execute(self, request_id: UUID) -> CustomerOperatorExecutionView:
@@ -118,6 +133,129 @@ class CustomerOperatorExecutionService:
             request=request,
             plan=result.plan,
             receipt=result.receipt,
+        )
+
+    def _refresh_read_only_provider_reconciliation(
+        self,
+        *,
+        request: CustomerExecutionRequestView,
+        plan: DistributionExecutionPlanView,
+        receipt: ExecutionAdapterReceipt | None,
+    ) -> tuple[DistributionExecutionPlanView, ExecutionAdapterReceipt | None]:
+        if not self._is_tiktok_reconcilable_receipt(receipt):
+            return plan, receipt
+        assert receipt is not None
+
+        if plan.action.status == DistributionActionStatus.EXECUTED:
+            try:
+                latest = self._tiktok_reconciliation_service.get_latest(plan.action.id)
+            except KeyError:
+                return plan, receipt.model_copy(
+                    update={
+                        "outcome": AdapterExecutionOutcome.EXECUTED,
+                        "message": (
+                            "Customer-bound action is already EXECUTED locally; no provider retry "
+                            "was attempted while reading execution state."
+                        ),
+                        "requires_operator_confirmation": False,
+                    }
+                )
+            return plan, self._receipt_from_tiktok_reconciliation(receipt, latest)
+
+        if (
+            plan.action.status != DistributionActionStatus.APPROVED
+            or plan.experiment.status != DistributionExperimentStatus.APPROVED
+        ):
+            return plan, receipt
+
+        # TikTok Direct Post is asynchronous. Refreshing execution state may poll the provider's
+        # read-only status endpoint, but it must never call Direct Post submission or retry an
+        # existing publication. The Direct Post attempt is the durable recovery source when a
+        # process crash left the generic adapter receipt incomplete. Only a confirmed
+        # PUBLISH_COMPLETE may advance local state.
+        try:
+            with customer_execution_request_scope(request.id):
+                reconciliation = self._tiktok_reconciliation_service.reconcile(
+                    plan.action.id,
+                    mark_executed=False,
+                )
+                if reconciliation.status == TikTokDirectPostReconciliationStatus.PUBLISHED:
+                    note = "TikTok read-only reconciliation confirmed PUBLISH_COMPLETE"
+                    if reconciliation.public_post_ids:
+                        note += f"; public post ids: {','.join(reconciliation.public_post_ids)}"
+                    plan = self._execution_service.mark_executed(
+                        plan.action.id,
+                        DistributionActionExecutionRequest(
+                            external_reference=reconciliation.provider_publish_id,
+                            notes=note,
+                        ),
+                    )
+        except (KeyError, RuntimeError, ValueError):
+            # Provider status polling is best-effort and never authorizes a retry. A transient
+            # read failure leaves the original durable execution receipt untouched.
+            return plan, receipt
+
+        self._approval_service.validate_exact_confirmation(
+            request=request,
+            plan=plan,
+        )
+        return plan, self._receipt_from_tiktok_reconciliation(receipt, reconciliation)
+
+    def _is_tiktok_reconcilable_receipt(
+        self,
+        receipt: ExecutionAdapterReceipt | None,
+    ) -> bool:
+        if receipt is None or receipt.provider != "tiktok-content-posting-api":
+            return False
+        return receipt.outcome in {
+            AdapterExecutionOutcome.IN_PROGRESS,
+            AdapterExecutionOutcome.ASSISTED,
+        }
+
+    def _receipt_from_tiktok_reconciliation(
+        self,
+        receipt: ExecutionAdapterReceipt,
+        reconciliation: TikTokDirectPostReconciliationView,
+    ) -> ExecutionAdapterReceipt:
+        metadata = dict(receipt.metadata)
+        metadata.update(
+            {
+                "provider_status": reconciliation.provider_status.value,
+                "reconciliation_status": reconciliation.status.value,
+                "public_post_ids": list(reconciliation.public_post_ids),
+            }
+        )
+        if reconciliation.fail_reason:
+            metadata["provider_fail_reason"] = reconciliation.fail_reason
+
+        if reconciliation.status == TikTokDirectPostReconciliationStatus.PUBLISHED:
+            outcome = AdapterExecutionOutcome.EXECUTED
+            message = "TikTok provider confirmed PUBLISH_COMPLETE for the exact authorized video."
+            requires_operator_confirmation = False
+        elif reconciliation.status == TikTokDirectPostReconciliationStatus.FAILED:
+            outcome = AdapterExecutionOutcome.FAILED
+            message = (
+                "TikTok provider confirmed that the publication failed. The existing customer-bound "
+                "execution will not be retried automatically."
+            )
+            requires_operator_confirmation = True
+        else:
+            outcome = AdapterExecutionOutcome.IN_PROGRESS
+            message = (
+                "TikTok Direct Post is still processing. Partizan performed read-only provider "
+                "reconciliation and did not submit or retry a publication."
+            )
+            requires_operator_confirmation = False
+
+        return receipt.model_copy(
+            update={
+                "outcome": outcome,
+                "message": message,
+                "requires_operator_confirmation": requires_operator_confirmation,
+                "external_reference": reconciliation.provider_publish_id,
+                "metadata": metadata,
+                "created_at": reconciliation.checked_at,
+            }
         )
 
     def _validated_request_plan(
