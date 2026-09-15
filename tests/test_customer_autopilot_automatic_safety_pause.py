@@ -203,6 +203,36 @@ def test_funding_exhaustion_pauses_existing_running_provider(
     assert balance.pause_calls == ["FUNDING"]
 
 
+def test_missing_meta_setup_beats_funding_as_automatic_pause_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    project = _project()
+    service = CustomerAutopilotService(MemoryRuntimeStateStore())
+    balance = FakeBalance(funded=0.0, remaining=0.0, settlement_ready=False, events=events)
+    lifecycle = FakeLifecycle(events)
+    service._balance = balance
+    _install_common(
+        monkeypatch,
+        service=service,
+        project=project,
+        lifecycle=lifecycle,
+        platforms=[DistributionPlatform.INSTAGRAM],
+        events=events,
+    )
+    monkeypatch.setattr(
+        customer_autopilot_module.paid_provider_connection_service,
+        "get_meta",
+        lambda product_id: None,
+    )
+
+    service._ensure_mandate_if_ready(PROJECT_ID, project, PRODUCT_ID)
+
+    assert project["autopilot_pause_reason"] == "SETUP"
+    assert lifecycle.pause_calls == ["AUTOPILOT_SETUP_PAUSE"]
+    assert balance.pause_calls == ["SETUP"]
+
+
 def test_automatic_pause_does_not_resume_when_conditions_recover(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
