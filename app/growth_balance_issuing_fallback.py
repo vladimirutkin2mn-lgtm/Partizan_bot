@@ -58,6 +58,7 @@ class GrowthBalanceIssuingFallbackService:
             return handled
         project_id = UUID(str(rail["project_id"]))
         reason, reason_message = fallback
+        pause_reason = f"ISSUING_FALLBACK_{authorization_id}_{reason}"
         incident_key = f"{_FALLBACK_INCIDENT_PREFIX}{authorization_id}"
         existing = self._store.get(GROWTH_BALANCE_LOCK_NAMESPACE, incident_key) or {}
         now = datetime.now(UTC).isoformat()
@@ -73,16 +74,20 @@ class GrowthBalanceIssuingFallbackService:
             "fallback_reason": reason,
             "reason_message": reason_message,
             "state": "RECONCILIATION_REQUIRED",
+            "pause_reason": pause_reason,
             "pause_confirmed_at": existing.get("pause_confirmed_at"),
             "created_at": existing.get("created_at") or now,
             "updated_at": now,
         }
         self._store.put(GROWTH_BALANCE_LOCK_NAMESPACE, incident_key, incident)
 
-        # Close the local gate before the provider mutation. Even if Stripe's pause
-        # call fails or times out, ordinary synchronous authorization requests now
-        # see an inactive rail and are declined while the webhook retry reconciles.
+        # Close every local reactivation path before the provider mutation. #323's
+        # sync/binding policy keys off paused_reason, so a Stripe pause timeout cannot
+        # leave a window where a concurrent top-up or binding replay reactivates the
+        # card while this incident is unresolved.
         rail["card_status"] = "inactive"
+        rail["paused_reason"] = pause_reason
+        rail["paused_at"] = rail.get("paused_at") or now
         rail["issuing_fallback_reconciliation_required"] = True
         rail["issuing_fallback_authorization_id"] = authorization_id
         rail["issuing_fallback_reason"] = reason
@@ -93,7 +98,6 @@ class GrowthBalanceIssuingFallbackService:
         if incident["pause_confirmed_at"]:
             return True
 
-        pause_reason = f"ISSUING_FALLBACK_{authorization_id}_{reason}"
         self._balance.pause_rail(project_id, pause_reason)
         incident["pause_confirmed_at"] = datetime.now(UTC).isoformat()
         incident["updated_at"] = incident["pause_confirmed_at"]
