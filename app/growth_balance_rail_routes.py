@@ -14,6 +14,7 @@ from app.growth_balance import growth_balance_service
 from app.growth_balance_authorization_reservations import (
     growth_balance_authorization_reservation_service,
 )
+from app.growth_balance_issuing_fallback import growth_balance_issuing_fallback_service
 from app.stripe_objects import stripe_field
 
 router = APIRouter(prefix="/v1", tags=["growth-balance"])
@@ -66,12 +67,7 @@ def confirm_growth_balance_meta_binding(
     project_id: UUID,
     payload: MetaBillingBindingRequest,
 ) -> dict:
-    """Confirm that the Partizan card is the active billing rail for this Meta account.
-
-    PAN/CVC are intentionally not accepted by this API. The operator performs the
-    provider-side billing attachment through the approved provider UI/process and then
-    records only the non-sensitive binding fact here.
-    """
+    """Confirm that the Partizan card is the active billing rail for this Meta account."""
 
     if not payload.confirm_partizan_card_primary:
         raise HTTPException(
@@ -98,12 +94,7 @@ async def stripe_issuing_authorization_webhook(
     settings: Annotated[Settings, Depends(get_settings)],
     stripe_signature: Annotated[str | None, Header(alias="Stripe-Signature")] = None,
 ) -> JSONResponse:
-    """Synchronous Stripe Issuing authorization decision.
-
-    The card-level MCC/amount controls remain the first safety boundary. This webhook
-    adds current Partizan state and atomically reserves approved-but-uncaptured Growth
-    Balance capacity before returning an approval to Stripe.
-    """
+    """Synchronous Stripe Issuing authorization decision."""
 
     secret = _webhook_secret(
         settings.stripe_issuing_authorization_webhook_secret,
@@ -147,7 +138,7 @@ async def stripe_issuing_events_webhook(
     event_type = str(stripe_field(event, "type", ""))
     try:
         if event_type in {"issuing_authorization.created", "issuing_authorization.updated"}:
-            growth_balance_authorization_reservation_service.record_authorization(
+            growth_balance_issuing_fallback_service.record_authorization(
                 event["data"]["object"]
             )
         elif event_type in {"issuing_transaction.created", "issuing_transaction.updated"}:
