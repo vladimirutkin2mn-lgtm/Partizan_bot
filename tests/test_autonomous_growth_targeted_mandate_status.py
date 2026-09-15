@@ -30,7 +30,7 @@ def _mandate_request() -> GrowthMandateUpsertRequest:
         max_autonomous_spend_per_day=50,
         max_concurrent_running_experiments=2,
         allowed_platforms=[DistributionPlatform.REDDIT],
-        allowed_actions=[DistributionActionType.COMMUNITY_REPLY],
+        allowed_actions=[DistributionActionType.REPLY],
         autonomous_prepare=True,
         autonomous_approve=True,
         autonomous_paid_activation=False,
