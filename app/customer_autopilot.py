@@ -462,15 +462,15 @@ class CustomerAutopilotService:
         analytics = distribution_analytics_service.product_analytics(product_id)
         balance = self._balance.summary(project_id, analytics.total_spend)
         safety_reason: str | None = None
-        if balance.funded_usd <= 0 or balance.remaining_acquisition_capacity_usd <= 0:
-            safety_reason = "FUNDING"
-        elif not balance.settlement_ready:
-            safety_reason = "FUNDING"
-        elif (
+        if (
             DistributionPlatform.INSTAGRAM in auto_platforms
             and paid_provider_connection_service.get_meta(product_id) is None
         ):
             safety_reason = "SETUP"
+        elif balance.funded_usd <= 0 or balance.remaining_acquisition_capacity_usd <= 0:
+            safety_reason = "FUNDING"
+        elif not balance.settlement_ready:
+            safety_reason = "FUNDING"
         if safety_reason is not None:
             if existing is not None:
                 self._apply_automatic_pause(
