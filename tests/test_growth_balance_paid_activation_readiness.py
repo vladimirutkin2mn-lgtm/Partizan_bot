@@ -60,7 +60,11 @@ class FakeConnectionService:
         )
 
 
-def _store(*, card_status: str = "active", paused_reason: str | None = None) -> MemoryRuntimeStateStore:
+def _store(
+    *,
+    card_status: str = "active",
+    paused_reason: str | None = None,
+) -> MemoryRuntimeStateStore:
     store = MemoryRuntimeStateStore()
     store.put(
         CUSTOMER_PROJECT_NAMESPACE,
@@ -97,8 +101,16 @@ def _wire_action(monkeypatch) -> ExecutionAdapterReceipt:
         operational_metadata={},
     )
     experiment = SimpleNamespace(product_id=PRODUCT_ID)
-    monkeypatch.setattr(paid_activation_module.distribution_execution_service, "get_action", lambda action_id: action)
-    monkeypatch.setattr(paid_activation_module.distribution_execution_service, "get_experiment", lambda experiment_id: experiment)
+    monkeypatch.setattr(
+        paid_activation_module.distribution_execution_service,
+        "get_action",
+        lambda action_id: action,
+    )
+    monkeypatch.setattr(
+        paid_activation_module.distribution_execution_service,
+        "get_experiment",
+        lambda experiment_id: experiment,
+    )
     receipt = ExecutionAdapterReceipt(
         action_id=ACTION_ID,
         adapter_name="meta-ads-create-paused",
@@ -106,14 +118,29 @@ def _wire_action(monkeypatch) -> ExecutionAdapterReceipt:
         outcome=AdapterExecutionOutcome.STAGED,
         message="staged",
         external_reference="meta:ad:ad_123",
-        metadata={"provider_ids": {"campaign_id": "cmp_123", "ad_set_id": "set_123", "ad_id": "ad_123"}},
+        metadata={
+            "provider_ids": {
+                "campaign_id": "cmp_123",
+                "ad_set_id": "set_123",
+                "ad_id": "ad_123",
+            }
+        },
         created_at=datetime.now(UTC),
     )
-    monkeypatch.setattr(paid_activation_module.distribution_execution_adapter_service, "get_receipt", lambda action_id: receipt)
+    monkeypatch.setattr(
+        paid_activation_module.distribution_execution_adapter_service,
+        "get_receipt",
+        lambda action_id: receipt,
+    )
     return receipt
 
 
-def _service(store: MemoryRuntimeStateStore, monkeypatch, *, connection: FakeConnectionService | None = None):
+def _service(
+    store: MemoryRuntimeStateStore,
+    monkeypatch,
+    *,
+    connection: FakeConnectionService | None = None,
+):
     _wire_action(monkeypatch)
     fake_meta = FakeMetaClient()
     secrets = FakeSecretResolver()
@@ -130,28 +157,45 @@ def _service(store: MemoryRuntimeStateStore, monkeypatch, *, connection: FakeCon
     return service, fake_meta, secrets, connections
 
 
+def _authorization_request() -> PaidActivationAuthorizationRequest:
+    return PaidActivationAuthorizationRequest(
+        approved_budget_cap=25.0,
+        confirm_spend=True,
+    )
+
+
 def test_paused_customer_rail_cannot_create_activation_authorization(monkeypatch) -> None:
     store = _store(card_status="inactive", paused_reason="GROWTH_BALANCE_REVERSAL")
     service, fake_meta, secrets, connections = _service(store, monkeypatch)
+
     with pytest.raises(ValueError, match="STRIPE_ISSUING_CARD_PAUSED"):
-        service.authorize(ACTION_ID, PaidActivationAuthorizationRequest(approved_budget_cap=25.0, confirm_spend=True))
+        service.authorize(ACTION_ID, _authorization_request())
+
     assert store.list_namespace(PAID_ACTIVATION_AUTHORIZATION_NAMESPACE) == []
     assert connections.calls == 0
     assert secrets.calls == 0
     assert fake_meta.calls == []
 
 
-def test_activation_rechecks_rail_after_authorization_and_before_provider_mutation(monkeypatch) -> None:
+def test_activation_rechecks_rail_after_authorization_and_before_provider_mutation(
+    monkeypatch,
+) -> None:
     store = _store()
     service, fake_meta, secrets, connections = _service(store, monkeypatch)
-    authorization = service.authorize(ACTION_ID, PaidActivationAuthorizationRequest(approved_budget_cap=25.0, confirm_spend=True))
+    authorization = service.authorize(ACTION_ID, _authorization_request())
+
     rail = store.get(GROWTH_BALANCE_RAIL_NAMESPACE, str(PROJECT_ID))
     assert rail is not None
     rail["card_status"] = "inactive"
     rail["paused_reason"] = "ISSUING_FALLBACK"
     store.put(GROWTH_BALANCE_RAIL_NAMESPACE, str(PROJECT_ID), rail)
+
     with pytest.raises(ValueError, match="STRIPE_ISSUING_CARD_PAUSED"):
-        service.activate(ACTION_ID, PaidActivationRequest(authorization_id=authorization.id))
+        service.activate(
+            ACTION_ID,
+            PaidActivationRequest(authorization_id=authorization.id),
+        )
+
     stored = service.get_authorization(authorization.id)
     assert stored.attempted_at is None
     assert stored.consumed_at is None
@@ -160,13 +204,24 @@ def test_activation_rechecks_rail_after_authorization_and_before_provider_mutati
     assert fake_meta.calls == []
 
 
-def test_activation_requires_exact_meta_account_bound_to_growth_balance_rail(monkeypatch) -> None:
+def test_activation_requires_exact_meta_account_bound_to_growth_balance_rail(
+    monkeypatch,
+) -> None:
     store = _store()
     connection = FakeConnectionService(ad_account_id="act_different")
-    service, fake_meta, secrets, connections = _service(store, monkeypatch, connection=connection)
-    authorization = service.authorize(ACTION_ID, PaidActivationAuthorizationRequest(approved_budget_cap=25.0, confirm_spend=True))
+    service, fake_meta, secrets, connections = _service(
+        store,
+        monkeypatch,
+        connection=connection,
+    )
+    authorization = service.authorize(ACTION_ID, _authorization_request())
+
     with pytest.raises(ValueError, match="different Meta ad account"):
-        service.activate(ACTION_ID, PaidActivationRequest(authorization_id=authorization.id))
+        service.activate(
+            ACTION_ID,
+            PaidActivationRequest(authorization_id=authorization.id),
+        )
+
     stored = service.get_authorization(authorization.id)
     assert stored.attempted_at is None
     assert connections.calls == 1
