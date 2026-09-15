@@ -2,15 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Mapping
 
 _CENT = Decimal("0.01")
 
 
 @dataclass(frozen=True)
 class NextMoveFundingPlan:
-    opportunity_title: str
-    recommended_action: str
     required_acquisition_usd: float
     remaining_acquisition_capacity_usd: float
     topup_amount_usd: float
@@ -22,12 +19,12 @@ class NextMoveFundingPlan:
 
 
 class GrowthBalanceJitFundingService:
-    """Calculate the smallest Growth Balance top-up for one researched move."""
+    """Calculate the smallest Growth Balance top-up for one executable paid move."""
 
     def plan(
         self,
         *,
-        opportunity: Mapping[str, object],
+        required_acquisition_usd: float,
         project_budget_usd: float,
         funded_usd: float,
         acquisition_spend_usd: float,
@@ -35,16 +32,23 @@ class GrowthBalanceJitFundingService:
         management_fee_pct: int,
     ) -> NextMoveFundingPlan:
         required_cents = self._usd_to_cents(
-            opportunity.get("estimated_cost_max_usd"),
-            field="estimated_cost_max_usd",
+            required_acquisition_usd,
+            field="required_acquisition_usd",
         )
-        project_budget_cents = self._usd_to_cents(project_budget_usd, field="project_budget_usd")
+        project_budget_cents = self._usd_to_cents(
+            project_budget_usd,
+            field="project_budget_usd",
+        )
         if required_cents > project_budget_cents:
-            raise ValueError("Recommended move exceeds the customer test budget")
+            raise ValueError("Paid move exceeds the customer test budget")
         if management_fee_pct < 0 or management_fee_pct > 100:
             raise ValueError("Growth Balance management fee is invalid")
 
-        funded_cents = self._usd_to_cents(funded_usd, field="funded_usd", allow_zero=True)
+        funded_cents = self._usd_to_cents(
+            funded_usd,
+            field="funded_usd",
+            allow_zero=True,
+        )
         spent_cents = self._usd_to_cents(
             acquisition_spend_usd,
             field="acquisition_spend_usd",
@@ -58,8 +62,6 @@ class GrowthBalanceJitFundingService:
         topup_cents = max(required_funded_cents - funded_cents, 0)
 
         return NextMoveFundingPlan(
-            opportunity_title=str(opportunity.get("title") or "Recommended next move"),
-            recommended_action=str(opportunity.get("recommended_action") or "").strip(),
             required_acquisition_usd=self._cents_to_usd(required_cents),
             remaining_acquisition_capacity_usd=max(
                 self._money(remaining_acquisition_capacity_usd),
@@ -96,7 +98,9 @@ class GrowthBalanceJitFundingService:
 
     @classmethod
     def _money(cls, value: object) -> float:
-        return cls._cents_to_usd(cls._usd_to_cents(value, field="amount", allow_zero=True))
+        return cls._cents_to_usd(
+            cls._usd_to_cents(value, field="amount", allow_zero=True)
+        )
 
     @staticmethod
     def _cents_to_usd(value: int) -> float:
