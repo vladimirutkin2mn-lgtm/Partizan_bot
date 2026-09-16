@@ -1,0 +1,151 @@
+name: Meta token access probe
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/meta-token-access-probe.yml
+
+concurrency:
+  group: partizan-production
+  cancel-in-progress: false
+
+jobs:
+  probe-meta-token-access:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse stale main
+        env:
+          EXPECTED_MAIN_SHA: 306eb8473e344fb6abe38377fa151f610dd27b23
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_main_sha="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [[ "${current_main_sha}" != "${EXPECTED_MAIN_SHA}" ]]; then
+            echo "::error::main moved from ${EXPECTED_MAIN_SHA} to ${current_main_sha}; refusing production probe"
+            exit 1
+          fi
+
+      - name: Require deployment configuration
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "${DEPLOY_HOST}" ]] && missing+=(DEPLOY_HOST)
+          [[ -z "${DEPLOY_SSH_KEY}" ]] && missing+=(DEPLOY_SSH_KEY)
+          [[ -z "${DEPLOY_SSH_KNOWN_HOSTS}" ]] && missing+=(DEPLOY_SSH_KNOWN_HOSTS)
+          [[ -z "${DEPLOY_PATH}" ]] && missing+=(DEPLOY_PATH)
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing production environment secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Pin production host key
+        env:
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Read Meta token permissions and accessible assets
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          PROJECT_ID: 700bbc15-02c4-4238-9aa5-e6caaff49b18
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf -v deploy_path_q '%q' "${DEPLOY_PATH}"
+          printf -v project_id_q '%q' "${PROJECT_ID}"
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" "bash -s -- ${deploy_path_q} ${project_id_q}" <<'REMOTE'
+          set -euo pipefail
+          DEPLOY_PATH="$1"
+          PROJECT_ID="$2"
+          cd "${DEPLOY_PATH}"
+          docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T -e PROJECT_ID="${PROJECT_ID}" api python - <<'PY'
+          import os
+          from uuid import UUID
+          import httpx
+          from app.config import get_settings
+          from app.customer_meta_oauth import CUSTOMER_META_PENDING_NAMESPACE
+          from app.provider_secret_store import provider_secret_store
+          from app.runtime_store import get_runtime_store
+
+          project_id = str(UUID(os.environ['PROJECT_ID']))
+          pending = get_runtime_store().get(CUSTOMER_META_PENDING_NAMESPACE, project_id)
+          assert isinstance(pending, dict), 'pending OAuth state missing'
+          ref = str(pending.get('secret_reference') or '')
+          token = provider_secret_store.get(ref)
+          assert token, 'pending Meta token missing'
+          version = get_settings().meta_oauth_api_version
+          assert version, 'Meta API version missing'
+          base = f'https://graph.facebook.com/{version}'
+          headers = {'Authorization': f'Bearer {token}'}
+
+          def get(path, params=None):
+              response = httpx.get(f'{base}/{path.lstrip("/")}', headers=headers, params=params or {}, timeout=20.0)
+              try:
+                  payload = response.json()
+              except ValueError:
+                  payload = {}
+              error = payload.get('error') if isinstance(payload, dict) else None
+              print(f'{path}_http={response.status_code}')
+              if isinstance(error, dict):
+                  print(f'{path}_error_code={error.get("code")}')
+                  print(f'{path}_error_type={error.get("type")}')
+              return payload if isinstance(payload, dict) else {}
+
+          permissions = get('me/permissions')
+          granted = sorted(
+              str(row.get('permission'))
+              for row in permissions.get('data', [])
+              if isinstance(row, dict) and row.get('status') == 'granted'
+          )
+          declined = sorted(
+              str(row.get('permission'))
+              for row in permissions.get('data', [])
+              if isinstance(row, dict) and row.get('status') != 'granted'
+          )
+          print('granted_permissions=' + ','.join(granted))
+          print('non_granted_permissions=' + ','.join(declined))
+
+          adaccounts = get('me/adaccounts', {'fields': 'id,account_id,name,account_status', 'limit': '50'})
+          ad_rows = [row for row in adaccounts.get('data', []) if isinstance(row, dict)]
+          print(f'live_ad_account_count={len(ad_rows)}')
+          for idx, row in enumerate(ad_rows[:10], start=1):
+              print(f'live_ad_account_{idx}_id={row.get("account_id") or row.get("id") or ""}')
+              print(f'live_ad_account_{idx}_name={row.get("name") or ""}')
+              print(f'live_ad_account_{idx}_status={row.get("account_status") or ""}')
+
+          businesses = get('me/businesses', {'fields': 'id,name', 'limit': '50'})
+          business_rows = [row for row in businesses.get('data', []) if isinstance(row, dict)]
+          print(f'business_count={len(business_rows)}')
+          for idx, row in enumerate(business_rows[:10], start=1):
+              print(f'business_{idx}_name={row.get("name") or ""}')
+
+          pages = get('me/accounts', {'fields': 'id,name', 'limit': '50'})
+          page_rows = [row for row in pages.get('data', []) if isinstance(row, dict)]
+          print(f'page_count={len(page_rows)}')
+          for idx, row in enumerate(page_rows[:10], start=1):
+              print(f'page_{idx}_name={row.get("name") or ""}')
+          PY
+          REMOTE
