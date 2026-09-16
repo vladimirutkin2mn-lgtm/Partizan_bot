@@ -12,7 +12,7 @@ _ORIGINAL_RUN = growth_run.run
 
 
 class AuthenticatedApiClient(growth_run.ApiClient):
-    """Attach operator auth and bounded discovery to internal Partizan API calls.
+    """Attach operator auth and bounded, resumable behavior to internal API calls.
 
     The generic runner already reads the key only from environment variables.
     Keeping production-only request shaping here means fresh-product POSTs and
@@ -32,15 +32,30 @@ class AuthenticatedApiClient(growth_run.ApiClient):
         operator: bool = False,
     ) -> Any:
         internal_api = path.startswith("/v1/")
+        effective_operator = operator or (internal_api and bool(self.operator_key))
+
+        if method == "POST" and path.endswith("/icps/generate"):
+            existing_path = path.removesuffix("/generate")
+            try:
+                return super().request(
+                    "GET",
+                    existing_path,
+                    operator=effective_operator,
+                )
+            except growth_run.GrowthRunHttpError as exc:
+                if exc.status != 404:
+                    raise
+
         if method == "POST" and path.endswith("/distribution/discover"):
             query = dict(query or {})
             query.setdefault("top_icp_count", self.top_icp_count)
+
         return super().request(
             method,
             path,
             body=body,
             query=query,
-            operator=operator or (internal_api and bool(self.operator_key)),
+            operator=effective_operator,
         )
 
 

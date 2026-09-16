@@ -37,6 +37,73 @@ def test_authenticated_runner_marks_every_internal_v1_request_as_operator(monkey
     ]
 
 
+def test_authenticated_runner_reuses_existing_icps(monkeypatch) -> None:
+    calls: list[tuple[str, str, bool]] = []
+    existing = {"ranked_count": 18, "icps": [{"id": "icp-1"}]}
+
+    def fake_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body=None,
+        query=None,
+        operator: bool = False,
+    ):
+        del self, body, query
+        calls.append((method, path, operator))
+        if method == "GET" and path.endswith("/icps"):
+            return existing
+        raise AssertionError(f"unexpected request: {method} {path}")
+
+    monkeypatch.setattr(growth_run.ApiClient, "request", fake_request)
+    client = AuthenticatedApiClient(
+        "https://partizan.example.com",
+        operator_key="runtime-secret",
+    )
+
+    result = client.post("/v1/products/product-1/icps/generate")
+
+    assert result == existing
+    assert calls == [("GET", "/v1/products/product-1/icps", True)]
+
+
+def test_authenticated_runner_generates_icps_only_when_missing(monkeypatch) -> None:
+    calls: list[tuple[str, str, bool]] = []
+    generated = {"ranked_count": 3, "icps": [{"id": "icp-1"}]}
+
+    def fake_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body=None,
+        query=None,
+        operator: bool = False,
+    ):
+        del self, body, query
+        calls.append((method, path, operator))
+        if method == "GET" and path.endswith("/icps"):
+            raise growth_run.GrowthRunHttpError(404, "ICP generation not found", path=path)
+        if method == "POST" and path.endswith("/icps/generate"):
+            return generated
+        raise AssertionError(f"unexpected request: {method} {path}")
+
+    monkeypatch.setattr(growth_run.ApiClient, "request", fake_request)
+    client = AuthenticatedApiClient(
+        "https://partizan.example.com",
+        operator_key="runtime-secret",
+    )
+
+    result = client.post("/v1/products/product-1/icps/generate")
+
+    assert result == generated
+    assert calls == [
+        ("GET", "/v1/products/product-1/icps", True),
+        ("POST", "/v1/products/product-1/icps/generate", True),
+    ]
+
+
 def test_authenticated_runner_bounds_distribution_discovery(monkeypatch) -> None:
     calls: list[tuple[str, str, dict | None, bool]] = []
 
