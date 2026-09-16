@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
@@ -168,7 +169,10 @@ class CustomerMetaOAuthService:
         return_path: str = "/start",
     ) -> str:
         customer_funnel_service.get_project_payload(project_id, customer_token)
-        if not self._settings.meta_oauth_public_ready:
+        if (
+            not self._settings.meta_oauth_public_ready
+            and str(project_id) not in self._owner_dogfood_project_ids()
+        ):
             raise CustomerMetaOAuthError(
                 "Facebook & Instagram connection is temporarily unavailable while "
                 "Partizan's Meta app is being activated for customer access"
@@ -410,6 +414,20 @@ class CustomerMetaOAuthService:
         if not origin:
             raise CustomerMetaOAuthError("PARTIZAN_PUBLIC_BASE_URL is required for Meta OAuth")
         return f"{origin}/v1/customer-meta/oauth/callback"
+
+    @staticmethod
+    def _owner_dogfood_project_ids() -> set[str]:
+        raw = os.getenv("META_OAUTH_DOGFOOD_PROJECT_IDS", "")
+        allowed: set[str] = set()
+        for item in raw.split(","):
+            normalized = item.strip()
+            if not normalized:
+                continue
+            try:
+                allowed.add(str(UUID(normalized)))
+            except ValueError:
+                continue
+        return allowed
 
     @staticmethod
     def _normalize_return_path(return_path: str) -> str:
