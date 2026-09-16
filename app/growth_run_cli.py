@@ -50,13 +50,18 @@ class AuthenticatedApiClient(growth_run.ApiClient):
             query = dict(query or {})
             query.setdefault("top_icp_count", self.top_icp_count)
 
-        return super().request(
-            method,
-            path,
-            body=body,
-            query=query,
-            operator=effective_operator,
-        )
+        try:
+            return super().request(
+                method,
+                path,
+                body=body,
+                query=query,
+                operator=effective_operator,
+            )
+        except growth_run.GrowthRunNetworkError as exc:
+            if method == "POST" and path.endswith("/distribution/enrich"):
+                raise growth_run.GrowthRunHttpError(504, str(exc), path=path) from exc
+            raise
 
 
 def _bounded_build_parser():

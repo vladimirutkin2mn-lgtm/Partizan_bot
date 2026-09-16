@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from app import growth_run
 from app.growth_run_cli import AuthenticatedApiClient, _bounded_build_parser
 
@@ -137,6 +139,56 @@ def test_authenticated_runner_bounds_distribution_discovery(monkeypatch) -> None
             True,
         )
     ]
+
+
+def test_authenticated_runner_degrades_enrichment_network_timeout(monkeypatch) -> None:
+    def fake_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body=None,
+        query=None,
+        operator: bool = False,
+    ):
+        del self, method, path, body, query, operator
+        raise growth_run.GrowthRunNetworkError("timed out")
+
+    monkeypatch.setattr(growth_run.ApiClient, "request", fake_request)
+    client = AuthenticatedApiClient(
+        "https://partizan.example.com",
+        operator_key="runtime-secret",
+    )
+
+    with pytest.raises(growth_run.GrowthRunHttpError) as exc_info:
+        client.post("/v1/products/product-1/distribution/enrich")
+
+    assert exc_info.value.status == 504
+    assert exc_info.value.detail == "timed out"
+    assert exc_info.value.path == "/v1/products/product-1/distribution/enrich"
+
+
+def test_authenticated_runner_keeps_other_network_timeouts_fatal(monkeypatch) -> None:
+    def fake_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        body=None,
+        query=None,
+        operator: bool = False,
+    ):
+        del self, method, path, body, query, operator
+        raise growth_run.GrowthRunNetworkError("timed out")
+
+    monkeypatch.setattr(growth_run.ApiClient, "request", fake_request)
+    client = AuthenticatedApiClient(
+        "https://partizan.example.com",
+        operator_key="runtime-secret",
+    )
+
+    with pytest.raises(growth_run.GrowthRunNetworkError, match="timed out"):
+        client.post("/v1/products/product-1/distribution/discover")
 
 
 def test_bounded_parser_preserves_default_and_allows_one_icp() -> None:
