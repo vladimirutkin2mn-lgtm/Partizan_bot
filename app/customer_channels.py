@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -54,6 +55,22 @@ DEFAULT_PUBLISHER_MODES: dict[DistributionPlatform, PublisherMode] = {
 AUTONOMOUS_EXECUTION_PLATFORMS = frozenset({DistributionPlatform.INSTAGRAM})
 
 
+def _meta_oauth_dogfood_project_ids() -> set[str]:
+    """Mirror the project-level Meta OAuth gate used by CustomerMetaOAuthService."""
+
+    raw = os.getenv("META_OAUTH_DOGFOOD_PROJECT_IDS", "")
+    allowed: set[str] = set()
+    for item in raw.split(","):
+        normalized = item.strip()
+        if not normalized:
+            continue
+        try:
+            allowed.add(str(UUID(normalized)))
+        except ValueError:
+            continue
+    return allowed
+
+
 class CustomerChannelService:
     def __init__(
         self,
@@ -87,6 +104,7 @@ class CustomerChannelService:
             item = metrics.get(platform)
             execution_ready, execution_blocker = self._execution_readiness(
                 platform,
+                project_id=project_id,
                 meta_connected=meta_connected,
                 settlement_ready=settlement_ready,
             )
@@ -106,7 +124,10 @@ class CustomerChannelService:
                         execution_ready=execution_ready,
                         execution_blocker=execution_blocker,
                     ),
-                    autonomous_execution_available=self._autonomous_execution_available(platform),
+                    autonomous_execution_available=self._autonomous_execution_available(
+                        platform,
+                        project_id=project_id,
+                    ),
                     execution_ready=execution_ready,
                     execution_blocker=execution_blocker,
                     connected=self._connected_value(
@@ -159,6 +180,7 @@ class CustomerChannelService:
             if item.mode == "AUTO":
                 execution_ready, blocker = self._execution_readiness(
                     item.platform,
+                    project_id=project_id,
                     meta_connected=meta_connected,
                     settlement_ready=settlement_ready,
                 )
@@ -203,6 +225,10 @@ class CustomerChannelService:
         """Return customer AUTO intent that is currently eligible for runtime consideration."""
 
         preferences = self._preferences(project)
+        try:
+            project_id = UUID(str(project["id"]))
+        except (KeyError, ValueError, TypeError):
+            project_id = None
         return [
             platform
             for platform in (
@@ -212,7 +238,7 @@ class CustomerChannelService:
                 DistributionPlatform.TELEGRAM,
             )
             if preferences[platform] == "AUTO"
-            and self._autonomous_execution_available(platform)
+            and self._autonomous_execution_available(platform, project_id=project_id)
         ]
 
     def filter_research(
@@ -419,23 +445,32 @@ class CustomerChannelService:
             rows[platform] = item
         return rows
 
-    def _autonomous_execution_available(self, platform: DistributionPlatform) -> bool:
+    def _autonomous_execution_available(
+        self,
+        platform: DistributionPlatform,
+        *,
+        project_id: UUID | None = None,
+    ) -> bool:
         if platform not in AUTONOMOUS_EXECUTION_PLATFORMS:
             return False
         if platform == DistributionPlatform.INSTAGRAM:
-            return self._settings.meta_oauth_public_ready
+            return self._settings.meta_oauth_public_ready or (
+                project_id is not None
+                and str(project_id) in _meta_oauth_dogfood_project_ids()
+            )
         return True
 
     def _execution_readiness(
         self,
         platform: DistributionPlatform,
         *,
+        project_id: UUID | None = None,
         meta_connected: bool,
         settlement_ready: bool,
     ) -> tuple[bool, str | None]:
         if platform not in AUTONOMOUS_EXECUTION_PLATFORMS:
             return False, "autonomous execution is not supported for this channel"
-        if not self._autonomous_execution_available(platform):
+        if not self._autonomous_execution_available(platform, project_id=project_id):
             return False, "Meta customer connection is temporarily unavailable"
         if platform == DistributionPlatform.INSTAGRAM and not meta_connected:
             return False, "connect Meta first"
