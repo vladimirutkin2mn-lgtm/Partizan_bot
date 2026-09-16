@@ -14,7 +14,9 @@ def test_jit_funding_controller_uses_server_derived_paid_proposal() -> None:
         "${encodeURIComponent(pendingProposal.proposal_id)}/checkout"
     )
     assert checkout_route in source
-    assert "amount_usd" not in source
+    assert "{ method: 'POST' }" in source
+    assert "body:" not in source
+    assert "amount_usd:" not in source
     assert "stopImmediatePropagation" in source
     assert "}, true);" in source
 
