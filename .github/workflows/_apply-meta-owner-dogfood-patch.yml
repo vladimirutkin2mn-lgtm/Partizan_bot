@@ -1,0 +1,75 @@
+name: Apply Meta owner dogfood patch
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/_apply-meta-owner-dogfood-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Apply source and regression-test patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/customer_meta_oauth.py')
+          text = path.read_text(encoding='utf-8')
+
+          import_old = 'import hashlib\nimport secrets\n'
+          import_new = 'import hashlib\nimport os\nimport secrets\n'
+          if import_new not in text:
+              if import_old not in text:
+                  raise SystemExit('customer_meta_oauth import anchor missing')
+              text = text.replace(import_old, import_new, 1)
+
+          gate_old = '''        customer_funnel_service.get_project_payload(project_id, customer_token)\n        if not self._settings.meta_oauth_public_ready:\n'''
+          gate_new = '''        customer_funnel_service.get_project_payload(project_id, customer_token)\n        if (\n            not self._settings.meta_oauth_public_ready\n            and str(project_id) not in self._owner_dogfood_project_ids()\n        ):\n'''
+          if gate_new not in text:
+              if gate_old not in text:
+                  raise SystemExit('customer_meta_oauth readiness gate anchor missing')
+              text = text.replace(gate_old, gate_new, 1)
+
+          helper_anchor = '''    @staticmethod\n    def _normalize_return_path(return_path: str) -> str:\n'''
+          helper = '''    @staticmethod\n    def _owner_dogfood_project_ids() -> set[str]:\n        raw = os.getenv("META_OAUTH_DOGFOOD_PROJECT_IDS", "")\n        allowed: set[str] = set()\n        for item in raw.split(","):\n            normalized = item.strip()\n            if not normalized:\n                continue\n            try:\n                allowed.add(str(UUID(normalized)))\n            except ValueError:\n                continue\n        return allowed\n\n'''
+          if helper not in text:
+              if helper_anchor not in text:
+                  raise SystemExit('customer_meta_oauth helper anchor missing')
+              text = text.replace(helper_anchor, helper + helper_anchor, 1)
+
+          path.write_text(text, encoding='utf-8')
+
+          env_path = Path('.env.example')
+          env_text = env_path.read_text(encoding='utf-8')
+          env_line = 'META_OAUTH_DOGFOOD_PROJECT_IDS=\n'
+          if env_line not in env_text:
+              anchor = 'META_OAUTH_PUBLIC_READY=false\n'
+              if anchor not in env_text:
+                  raise SystemExit('.env.example Meta public-ready anchor missing')
+              env_text = env_text.replace(anchor, anchor + env_line, 1)
+              env_path.write_text(env_text, encoding='utf-8')
+
+          test_path = Path('tests/test_meta_oauth_owner_dogfood.py')
+          test_path.write_text('''from __future__ import annotations\n\nfrom urllib.parse import parse_qs, urlsplit\nfrom uuid import uuid4\n\nimport pytest\nfrom cryptography.fernet import Fernet\n\nfrom app.config import Settings\nfrom app.customer_funnel import customer_funnel_service\nfrom app.customer_meta_oauth import (\n    CUSTOMER_META_OAUTH_STATE_NAMESPACE,\n    CustomerMetaOAuthError,\n    CustomerMetaOAuthService,\n)\n\n\nclass _Store:\n    def __init__(self) -> None:\n        self.data: dict[tuple[str, str], dict] = {}\n\n    def put(self, namespace: str, key: str, value: dict) -> None:\n        self.data[(namespace, key)] = dict(value)\n\n    def get(self, namespace: str, key: str):\n        value = self.data.get((namespace, key))\n        return dict(value) if value is not None else None\n\n\ndef _settings() -> Settings:\n    return Settings(\n        _env_file=None,\n        partizan_public_base_url="https://partizan.example.com",\n        meta_oauth_app_id="1234567890",\n        meta_oauth_app_secret="meta-secret-not-real",\n        meta_oauth_api_version="v26.0",\n        meta_oauth_public_ready=False,\n        provider_secret_encryption_key=Fernet.generate_key().decode("ascii"),\n    )\n\n\ndef test_allowlisted_project_can_start_owner_dogfood_oauth(monkeypatch) -> None:\n    project_id = uuid4()\n    monkeypatch.setenv(\n        "META_OAUTH_DOGFOOD_PROJECT_IDS",\n        f"not-a-uuid, {project_id}",\n    )\n    monkeypatch.setattr(\n        customer_funnel_service,\n        "get_project_payload",\n        lambda _project_id, _customer_token: {},\n    )\n    store = _Store()\n    service = CustomerMetaOAuthService(store=store, settings=_settings())\n\n    authorization_url = service.begin(\n        project_id,\n        "customer-token",\n        return_path="/workspace",\n    )\n\n    query = parse_qs(urlsplit(authorization_url).query)\n    assert query["scope"] == ["ads_management,ads_read"]\n    assert query["redirect_uri"] == [\n        "https://partizan.example.com/v1/customer-meta/oauth/callback"\n    ]\n    states = [\n        value\n        for (namespace, _), value in store.data.items()\n        if namespace == CUSTOMER_META_OAUTH_STATE_NAMESPACE\n    ]\n    assert len(states) == 1\n    assert states[0]["project_id"] == str(project_id)\n    assert states[0]["return_path"] == "/workspace"\n\n\ndef test_non_allowlisted_project_stays_blocked_when_public_oauth_is_off(monkeypatch) -> None:\n    allowed_project_id = uuid4()\n    blocked_project_id = uuid4()\n    monkeypatch.setenv("META_OAUTH_DOGFOOD_PROJECT_IDS", str(allowed_project_id))\n    monkeypatch.setattr(\n        customer_funnel_service,\n        "get_project_payload",\n        lambda _project_id, _customer_token: {},\n    )\n    store = _Store()\n    service = CustomerMetaOAuthService(store=store, settings=_settings())\n\n    with pytest.raises(CustomerMetaOAuthError, match="temporarily unavailable"):\n        service.begin(blocked_project_id, "customer-token")\n\n    assert not any(\n        namespace == CUSTOMER_META_OAUTH_STATE_NAMESPACE\n        for namespace, _ in store.data\n    )\n''', encoding='utf-8')
+
+          Path('.github/workflows/_apply-meta-owner-dogfood-patch.yml').unlink()
+          PY
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Allow project-scoped Meta owner dogfood OAuth'
+          git push origin HEAD:${GITHUB_HEAD_REF}
