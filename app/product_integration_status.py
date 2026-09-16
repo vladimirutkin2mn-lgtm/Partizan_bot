@@ -17,6 +17,7 @@ class ProductIntegrationFunnelView(BaseModel):
 class ProductIntegrationStatusView(BaseModel):
     product_id: UUID
     event_key_configured: bool
+    first_party_attribution_configured: bool
     public_tracking_configured: bool
     public_base_url: str | None = None
     experiment_count: int
@@ -48,8 +49,14 @@ class ProductIntegrationStatusService:
         unobserved = [event_type for event_type, seen in observations.items() if not seen]
 
         public_tracking_configured = settings.partizan_public_base_url is not None
+        first_party_attribution_configured = (
+            settings.partizan_self_dogfood_product_id == product_id
+        )
+        conversion_ingestion_configured = (
+            key_status.configured or first_party_attribution_configured
+        )
         blockers: list[str] = []
-        if not key_status.configured:
+        if not conversion_ingestion_configured:
             blockers.append("Create a Product Event Key for server-to-server conversions")
         if not public_tracking_configured:
             blockers.append("Configure PARTIZAN_PUBLIC_BASE_URL for first-click VISIT attribution")
@@ -59,11 +66,12 @@ class ProductIntegrationStatusService:
         return ProductIntegrationStatusView(
             product_id=product_id,
             event_key_configured=key_status.configured,
+            first_party_attribution_configured=first_party_attribution_configured,
             public_tracking_configured=public_tracking_configured,
             public_base_url=settings.partizan_public_base_url,
             experiment_count=analytics.experiment_count,
             ready_for_attributed_conversions=(
-                key_status.configured
+                conversion_ingestion_configured
                 and public_tracking_configured
                 and analytics.experiment_count > 0
             ),
