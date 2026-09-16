@@ -87,6 +87,7 @@
     }
 
     if (pendingProposal && pendingProjectId !== currentProjectId) resetProposal();
+    const resolvingProposal = pendingProposal === null;
 
     busy = true;
     button.disabled = true;
@@ -115,7 +116,7 @@
       }
       reviewProposal(proposal, currentProjectId);
     } catch (error) {
-      if (error.status === 409) {
+      if (error.status === 409 && resolvingProposal) {
         failClosed(
           'No executable paid move is ready yet. Partizan will not request acquisition funding from a research-only preview.',
         );
