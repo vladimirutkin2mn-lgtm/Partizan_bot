@@ -22,7 +22,7 @@ class _Store:
     def put(self, namespace: str, key: str, value: dict) -> None:
         self.data[(namespace, key)] = dict(value)
 
-    def get(self, namespace: str, key: str):
+    def get(self, namespace: str, key: str) -> dict | None:
         value = self.data.get((namespace, key))
         return dict(value) if value is not None else None
 
