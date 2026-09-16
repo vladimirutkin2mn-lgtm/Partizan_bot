@@ -111,7 +111,7 @@ jobs:
         shell: bash
         run: |
           current_main_sha="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
-          if [[ "${current_main_sha}" != "966cc738e3d5e93be225e0240e6b557ebcf238f1" ]]; then
+          if [[ "${current_main_sha}" != "8715023e67f43bd0278639412955d99be8a54f0c" ]]; then
             echo "::error::Refusing self-dogfood dry cycle because main moved to ${current_main_sha}"
             exit 1
           fi
