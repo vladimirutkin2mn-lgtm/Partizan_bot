@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 ASSET = ROOT / "app" / "web" / "workspace.jit-funding.v1.js"
 ROUTES = ROOT / "app" / "web_routes.py"
@@ -10,7 +9,11 @@ def test_jit_funding_controller_uses_server_derived_paid_proposal() -> None:
     source = ASSET.read_text(encoding="utf-8")
 
     assert "/growth-balance/paid-proposal`" in source
-    assert "/growth-balance/paid-proposal/${encodeURIComponent(pendingProposal.proposal_id)}/checkout" in source
+    checkout_route = (
+        "/growth-balance/paid-proposal/"
+        "${encodeURIComponent(pendingProposal.proposal_id)}/checkout"
+    )
+    assert checkout_route in source
     assert "amount_usd" not in source
     assert "stopImmediatePropagation" in source
     assert "}, true);" in source
