@@ -10,6 +10,10 @@ x-partizan-service: &partizan-service
     DATABASE_URL: ${CONTAINER_DATABASE_URL:?Set CONTAINER_DATABASE_URL in .env.prod}
     RUNTIME_STORAGE: database
     PARTIZAN_RELEASE_SHA: ${PARTIZAN_RELEASE_SHA:-unknown}
+    # Partizan-on-Partizan has a stable internal Product identity. Operators may
+    # override it explicitly, but ordinary production no longer needs a secret/env
+    # edit before the idempotent self-dogfood bootstrap can create the Product row.
+    PARTIZAN_SELF_DOGFOOD_PRODUCT_ID: ${PARTIZAN_SELF_DOGFOOD_PRODUCT_ID:-eb8f160f-1b85-5f1b-a4f0-18038f63ac34}
   restart: unless-stopped
 
 services:
