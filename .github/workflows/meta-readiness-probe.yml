@@ -1,0 +1,109 @@
+name: Meta production readiness probe
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/meta-readiness-probe.yml'
+
+jobs:
+  meta-production-readiness:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse stale-main probe
+        shell: bash
+        env:
+          EXPECTED_MAIN_SHA: d4cdd3402f0d00a7136811f8c949f8d0db87dc7e
+        run: |
+          set -euo pipefail
+          current_main_sha="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [[ "${current_main_sha}" != "${EXPECTED_MAIN_SHA}" ]]; then
+            echo "::error::main moved from ${EXPECTED_MAIN_SHA} to ${current_main_sha}; refusing production probe"
+            exit 1
+          fi
+
+      - name: Require production connection
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          for name in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            [[ -n "${!name:-}" ]] || { echo "::error::missing ${name}"; exit 1; }
+          done
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Pin production host key
+        shell: bash
+        env:
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Read only Meta readiness booleans
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" "DEPLOY_PATH='${DEPLOY_PATH}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "${DEPLOY_PATH}"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.env.prod')
+          if not path.is_file():
+              raise SystemExit('production .env.prod is missing')
+
+          values = {}
+          for raw in path.read_text(encoding='utf-8').splitlines():
+              line = raw.strip()
+              if not line or line.startswith('#') or '=' not in line:
+                  continue
+              key, value = line.split('=', 1)
+              values[key.strip()] = value.strip().strip('"').strip("'")
+
+          def configured(name: str) -> bool:
+              return bool(values.get(name, '').strip())
+
+          ready = values.get('META_OAUTH_PUBLIC_READY', 'false').strip().lower() == 'true'
+          public_base = values.get('PARTIZAN_PUBLIC_BASE_URL', '').rstrip('/')
+          version = values.get('META_OAUTH_API_VERSION', '')
+
+          print(f"meta_app_id_configured={configured('META_OAUTH_APP_ID')}")
+          print(f"meta_app_secret_configured={configured('META_OAUTH_APP_SECRET')}")
+          print(f"meta_api_version_configured={configured('META_OAUTH_API_VERSION')}")
+          print(f"provider_secret_encryption_configured={configured('PROVIDER_SECRET_ENCRYPTION_KEY')}")
+          print(f"meta_oauth_public_ready={ready}")
+          print(f"production_origin_matches={public_base == 'https://partizanlabs.com'}")
+          print(f"oauth_redirect_uri=https://partizanlabs.com/v1/customer-meta/oauth/callback")
+          print(f"api_version_shape_ok={version.startswith('v') and version[1:].replace('.', '').isdigit() and version.count('.') == 1}")
+
+          required = all([
+              configured('META_OAUTH_APP_ID'),
+              configured('META_OAUTH_APP_SECRET'),
+              configured('META_OAUTH_API_VERSION'),
+              configured('PROVIDER_SECRET_ENCRYPTION_KEY'),
+              public_base == 'https://partizanlabs.com',
+          ])
+          print(f"owner_oauth_config_ready={required and ready}")
+          PY
+          REMOTE
