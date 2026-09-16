@@ -305,12 +305,18 @@ class DistributionPlayPlanner:
             template.estimated_cost_max,
             product.budget,
         )
+        budget_adjustment, budget_reason = self._budget_priority_adjustment(
+            template,
+            product.budget,
+        )
         rationale = [
             f"Opportunity relevance={opportunity.relevance_score or 0:.1f}/100.",
             f"Tactic quality hypothesis={template.quality_score:.1f}/10.",
             f"Automation level={template.automation_level.value}.",
             f"Attribution level={template.attribution_level.value}.",
         ]
+        if budget_reason is not None:
+            rationale.append(budget_reason)
         if selection is not None:
             rationale.append(
                 f"Selected Distribution Identity score={selection.score:.1f}/100."
@@ -348,7 +354,11 @@ class DistributionPlayPlanner:
             estimated_cost_max=cost_max,
             effort_hours=template.effort_hours,
             time_to_signal_days=template.time_to_signal_days,
-            priority_score=self._priority(opportunity, template),
+            priority_score=self._priority(
+                opportunity,
+                template,
+                budget_adjustment=budget_adjustment,
+            ),
             rationale=rationale,
         )
 
@@ -374,9 +384,43 @@ class DistributionPlayPlanner:
         self,
         opportunity: DistributionOpportunityView,
         template: DistributionTacticTemplate,
+        *,
+        budget_adjustment: float = 0.0,
     ) -> float:
         relevance = opportunity.relevance_score or 0
-        return round(min(100.0, relevance * 0.7 + template.quality_score * 3.0), 1)
+        base = relevance * 0.7 + template.quality_score * 3.0
+        return round(max(0.0, min(100.0, base + budget_adjustment)), 1)
+
+    def _budget_priority_adjustment(
+        self,
+        template: DistributionTacticTemplate,
+        budget: float | None,
+    ) -> tuple[float, str | None]:
+        if budget is None:
+            return 0.0, None
+
+        nominal_min = max(0.0, float(template.estimated_cost_min))
+        if nominal_min <= 0:
+            return 0.0, (
+                "Budget fit: this tactic has no required cash minimum, so a small test budget "
+                "does not reduce its planning priority."
+            )
+        if budget >= nominal_min:
+            return 0.0, (
+                f"Budget fit: test budget {budget:.2f} covers the tactic's nominal minimum "
+                f"of {nominal_min:.2f}; planning priority is unchanged."
+            )
+
+        coverage = max(0.0, min(1.0, budget / nominal_min))
+        if template.tactic_class == DistributionTacticClass.PAID_PLATFORM:
+            penalty = round(20.0 + (1.0 - coverage) * 10.0, 1)
+        else:
+            penalty = round(8.0 + (1.0 - coverage) * 7.0, 1)
+        return -penalty, (
+            f"Budget fit: test budget {budget:.2f} is below the tactic's nominal minimum "
+            f"of {nominal_min:.2f}; priority reduced by {penalty:.1f} so lower-cash paths "
+            "are tried first without hiding this tactic."
+        )
 
     def _cap_cost(
         self,
