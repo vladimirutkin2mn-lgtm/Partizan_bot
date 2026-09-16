@@ -6,7 +6,7 @@ if [[ "${1:-}" == "--local" ]]; then
   MODE="local"
 fi
 
-COMPOSE="docker compose -f docker-compose.prod.yml --env-file .env.prod"
+COMPOSE="bash tools/compose_shared_host.sh"
 
 run_check() {
   ${COMPOSE} exec -T api python -c "

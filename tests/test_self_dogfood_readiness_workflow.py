@@ -20,7 +20,7 @@ def test_self_dogfood_readiness_is_read_only_snapshot() -> None:
     assert "python -m app.self_dogfood" in source
     assert "--require-proof" not in source
     assert "contents: read" in source
-    assert "docker compose" in source
+    assert "bash tools/compose_shared_host.sh" in source
     assert "exec -T api" in source
     assert "partizan-growth-run" not in source
     assert "distribution-actions" not in source
