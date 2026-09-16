@@ -1,0 +1,156 @@
+name: Enable Meta owner dogfood project
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/meta-owner-dogfood-enable.yml
+
+concurrency:
+  group: partizan-production
+  cancel-in-progress: false
+
+jobs:
+  enable-meta-owner-dogfood:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refuse stale main
+        env:
+          EXPECTED_MAIN_SHA: f389f2f3a49e1c5922dec4fe1e2c08a445e4f2b6
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_main_sha="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [[ "${current_main_sha}" != "${EXPECTED_MAIN_SHA}" ]]; then
+            echo "::error::main moved from ${EXPECTED_MAIN_SHA} to ${current_main_sha}; refusing production mutation"
+            exit 1
+          fi
+
+      - name: Require deployment configuration
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -z "${DEPLOY_HOST}" ]] && missing+=(DEPLOY_HOST)
+          [[ -z "${DEPLOY_SSH_KEY}" ]] && missing+=(DEPLOY_SSH_KEY)
+          [[ -z "${DEPLOY_SSH_KNOWN_HOSTS}" ]] && missing+=(DEPLOY_SSH_KNOWN_HOSTS)
+          [[ -z "${DEPLOY_PATH}" ]] && missing+=(DEPLOY_PATH)
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing production environment secrets: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Pin production host key
+        env:
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Allowlist project and restart API
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          PROJECT_ID: 700bbc15-02c4-4238-9aa5-e6caaff49b18
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf -v deploy_path_q '%q' "${DEPLOY_PATH}"
+          printf -v project_id_q '%q' "${PROJECT_ID}"
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" "bash -s -- ${deploy_path_q} ${project_id_q}" <<'REMOTE'
+          set -euo pipefail
+          DEPLOY_PATH="$1"
+          PROJECT_ID="$2"
+          cd "${DEPLOY_PATH}"
+          test -f .env.prod
+
+          python - "${PROJECT_ID}" <<'PY'
+          from pathlib import Path
+          from uuid import UUID
+          import sys
+
+          project_id = str(UUID(sys.argv[1]))
+          path = Path('.env.prod')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          key = 'META_OAUTH_DOGFOOD_PROJECT_IDS'
+          found = False
+          updated: list[str] = []
+          for line in lines:
+              if line.startswith(f'{key}='):
+                  found = True
+                  raw = line.split('=', 1)[1]
+                  values: list[str] = []
+                  for item in raw.split(','):
+                      candidate = item.strip()
+                      if not candidate:
+                          continue
+                      try:
+                          candidate = str(UUID(candidate))
+                      except ValueError:
+                          continue
+                      if candidate not in values:
+                          values.append(candidate)
+                  if project_id not in values:
+                      values.append(project_id)
+                  line = f'{key}={",".join(values)}'
+              updated.append(line)
+          if not found:
+              updated.append(f'{key}={project_id}')
+          path.write_text('\n'.join(updated) + '\n', encoding='utf-8')
+          print('meta_dogfood_allowlist_updated=true')
+          PY
+
+          docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --no-deps --force-recreate api
+
+          api_container="$(docker compose --env-file .env.prod -f docker-compose.prod.yml ps -q api)"
+          test -n "${api_container}"
+          for _ in $(seq 1 45); do
+            status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${api_container}")"
+            if [[ "${status}" == "healthy" ]]; then
+              break
+            fi
+            sleep 2
+          done
+          status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "${api_container}")"
+          if [[ "${status}" != "healthy" ]]; then
+            echo "API health status: ${status}" >&2
+            docker compose --env-file .env.prod -f docker-compose.prod.yml logs --tail=80 api >&2
+            exit 1
+          fi
+
+          docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T -e PROJECT_ID="${PROJECT_ID}" api python - <<'PY'
+          import os
+          from uuid import UUID
+
+          project_id = str(UUID(os.environ['PROJECT_ID']))
+          values = {
+              item.strip()
+              for item in os.getenv('META_OAUTH_DOGFOOD_PROJECT_IDS', '').split(',')
+              if item.strip()
+          }
+          assert project_id in values, 'project not present in API allowlist'
+          public_ready = os.getenv('META_OAUTH_PUBLIC_READY', '').strip().lower() in {'1', 'true', 'yes', 'on'}
+          assert not public_ready, 'public Meta OAuth unexpectedly enabled'
+          print('project_allowlisted=true')
+          print('public_meta_oauth_ready=false')
+          PY
+          REMOTE
