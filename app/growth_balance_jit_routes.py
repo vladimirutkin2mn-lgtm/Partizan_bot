@@ -20,8 +20,14 @@ from app.customer_funnel import (
     CustomerProjectNotFoundError,
     customer_funnel_service,
 )
+from app.customer_recommended_action import (
+    CustomerRecommendedActionState,
+    CustomerRecommendedActionView,
+    customer_recommended_action_service,
+)
 from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_play_service import distribution_play_service
+from app.distribution_types import DistributionActionType
 from app.growth_balance import growth_balance_service
 from app.growth_balance_jit_funding import (
     NextMoveFundingPlan,
@@ -170,6 +176,44 @@ def _proposal_plan(
     return plan, proposal
 
 
+def _recommended_proposal_plan(
+    project_id: UUID,
+    customer_token: str,
+    proposal_id: UUID | None = None,
+) -> tuple[NextMoveFundingPlan, PrefundingPaidProposal]:
+    resolution = customer_recommended_action_service.resolve(project_id, customer_token)
+    if (
+        resolution.view.state != CustomerRecommendedActionState.ACTIONABLE
+        or resolution.play is None
+        or resolution.play.action_type != DistributionActionType.PAID_CAMPAIGN
+    ):
+        raise ValueError("The current recommended action does not require paid funding")
+
+    project = customer_funnel_service.get_project(project_id, customer_token)
+    if project.product_id is None:
+        raise ValueError("Finish research before funding a paid move")
+    current = prefunding_paid_proposal_service.get_or_create(
+        project_id=project_id,
+        product_id=project.product_id,
+        project_budget_usd=float(project.budget_usd),
+        plays=[resolution.play],
+    )
+    if proposal_id is not None:
+        requested = prefunding_paid_proposal_service.require_project(proposal_id, project_id)
+        if requested.id != current.id:
+            raise ValueError(
+                "This paid proposal is stale because the recommended play or budget changed; "
+                "review the current recommendation before funding"
+            )
+    plan = _balance_plan(
+        project_id=project_id,
+        product_id=project.product_id,
+        project_budget_usd=float(project.budget_usd),
+        required_acquisition_usd=float(current.budget_cap),
+    )
+    return plan, current
+
+
 def _view(
     plan: NextMoveFundingPlan,
     experiment: AutonomyExperimentSummary,
@@ -235,6 +279,83 @@ def _checkout_url(
         amount_cents=amount_cents,
     )
     return checkout.url
+
+
+@router.get(
+    "/customer/workspace/{project_id}/recommended-action",
+    response_model=CustomerRecommendedActionView,
+)
+def get_recommended_action(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> CustomerRecommendedActionView:
+    customer_token = _project_access(session_token, project_id)
+    try:
+        return customer_recommended_action_service.resolve(project_id, customer_token).view
+    except (CustomerProjectNotFoundError, CustomerProjectAccessError) as exc:
+        raise HTTPException(status_code=404, detail="Customer project not found") from exc
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/recommended-action/paid-proposal",
+    response_model=CustomerPrefundingPaidProposalView,
+)
+def get_or_create_recommended_paid_proposal(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> CustomerPrefundingPaidProposalView:
+    customer_token = _project_access(session_token, project_id)
+    try:
+        plan, proposal = _recommended_proposal_plan(project_id, customer_token)
+        return _proposal_view(plan, proposal)
+    except (CustomerProjectNotFoundError, CustomerProjectAccessError, KeyError) as exc:
+        raise HTTPException(status_code=409, detail="No recommended paid play is ready") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/recommended-action/paid-proposals/{proposal_id}/checkout",
+    response_model=CustomerPrefundingPaidProposalCheckoutResponse,
+)
+def create_recommended_paid_proposal_checkout(
+    project_id: UUID,
+    proposal_id: UUID,
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> CustomerPrefundingPaidProposalCheckoutResponse:
+    customer_token = _project_access(session_token, project_id)
+    try:
+        plan, proposal = _recommended_proposal_plan(
+            project_id,
+            customer_token,
+            proposal_id,
+        )
+        view = _proposal_view(plan, proposal)
+        checkout_url = None
+        if plan.funding_required:
+            checkout_url = _checkout_url(
+                project_id=project_id,
+                customer_token=customer_token,
+                topup_amount_usd=plan.topup_amount_usd,
+                request=request,
+                settings=settings,
+            )
+        return CustomerPrefundingPaidProposalCheckoutResponse(
+            **view.model_dump(),
+            checkout_url=checkout_url,
+        )
+    except (CustomerProjectNotFoundError, CustomerProjectAccessError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail="Recommended paid proposal not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except BillingConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except stripe.StripeError as exc:
+        raise HTTPException(status_code=502, detail="Stripe Growth Balance checkout is unavailable") from exc
 
 
 @router.post(
