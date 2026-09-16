@@ -145,6 +145,38 @@ Interpret the classification conservatively:
 
 A TLS diagnostic result is evidence for an operator action, not permission for Partizan automation to mutate the shared proxy. The external proxy remains owned by its host project because a reload/restart can interrupt every product behind it.
 
+### Only the sanctioned path reaches production
+
+Public routing depends on the API container carrying the shared-host overlay, and nothing about an
+invocation that omits it looks wrong: the container starts, the application is healthy, and every
+internal `compose exec` probe passes while the public hostname serves `502`. On 2026-09-16 a
+workflow running on a pull-request branch restarted the API with
+`docker compose -f docker-compose.prod.yml up -d --force-recreate api`; the site was down for over
+an hour and the workflow reported success.
+
+Three rules now make that shape unrepresentable, and `tools/check_prod_mutation_contract.sh` enforces
+them in CI:
+
+- a workflow that can reach production is never triggered by `pull_request` and declares
+  `environment: production`;
+- a workflow never names compose files itself: production compose goes through
+  `tools/compose_shared_host.sh`, which derives the file set from the host's own `.env.prod`, so the
+  overlay follows the host rather than the caller;
+- a workflow that mutates production containers ends with public verification —
+  `tools/verify_public_edge.sh` or the deploy script's own public smoke — because an internal probe
+  cannot see the edge.
+
+The contract only covers what lives in this repository. `edge-watchdog.yml` covers the rest: every
+ten minutes it requires `200` from public `/health/live` and `/health/ready`, and on failure it runs
+`tools/ensure_shared_host_caddy_route.sh` — the same guarded, rollback-safe repair the deploy uses —
+before opening a `🚨 Production edge unreachable` issue. It closes that issue on the first run that
+finds the edge healthy again.
+
+Repository-level deployment secrets defeat the first rule: any workflow on any branch can read them.
+Keep `DEPLOY_HOST`, `DEPLOY_PATH`, `DEPLOY_SSH_KEY` and `DEPLOY_SSH_KNOWN_HOSTS` in the `production`
+environment with a deployment branch policy restricted to `main`, so an unreviewed branch cannot
+obtain production access in the first place.
+
 ## TLS state
 
 `Caddyfile.prod` uses Caddy's automatic HTTPS for the explicitly configured hostname. Certificate/account state is stored in named host volumes:
