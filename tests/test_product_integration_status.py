@@ -55,6 +55,7 @@ def test_integration_status_exposes_actionable_configuration_blockers() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["event_key_configured"] is False
+    assert payload["first_party_attribution_configured"] is False
     assert payload["public_tracking_configured"] is False
     assert payload["experiment_count"] == 0
     assert payload["ready_for_attributed_conversions"] is False
@@ -76,6 +77,7 @@ def test_integration_status_never_returns_event_key_plaintext() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["event_key_configured"] is True
+    assert payload["first_party_attribution_configured"] is False
     assert payload["public_tracking_configured"] is True
     assert payload["public_base_url"] == "https://partizan.example.com"
     assert payload["ready_for_attributed_conversions"] is False
@@ -83,6 +85,36 @@ def test_integration_status_never_returns_event_key_plaintext() -> None:
         "Create a DistributionExperiment before verifying attributed events"
     ]
     assert plaintext not in response.text
+
+
+def test_integration_status_accepts_first_party_self_dogfood_bridge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    product_id = _product()
+    _override_settings(
+        partizan_public_base_url="https://partizan.example.com",
+        partizan_self_dogfood_product_id=product_id,
+    )
+
+    metrics = SimpleNamespace(visits=0, signups=0, activated_users=0, paid_users=0)
+    analytics = SimpleNamespace(
+        experiment_count=1,
+        experiments=[SimpleNamespace(metrics=metrics)],
+    )
+    monkeypatch.setattr(
+        "app.product_integration_status.distribution_analytics_service.product_analytics",
+        lambda _product_id: analytics,
+    )
+
+    response = client.get(f"/v1/products/{product_id}/integration-status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["event_key_configured"] is False
+    assert payload["first_party_attribution_configured"] is True
+    assert payload["public_tracking_configured"] is True
+    assert payload["ready_for_attributed_conversions"] is True
+    assert payload["blockers"] == []
 
 
 def test_integration_status_surfaces_observed_real_funnel(monkeypatch: pytest.MonkeyPatch) -> None:
