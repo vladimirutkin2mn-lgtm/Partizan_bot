@@ -56,7 +56,7 @@ jobs:
           printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Read only Meta readiness booleans
+      - name: Read only Meta readiness and validate app credentials
         shell: bash
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -67,6 +67,10 @@ jobs:
           set -euo pipefail
           cd "${DEPLOY_PATH}"
           python3 - <<'PY'
+          import json
+          import urllib.error
+          import urllib.parse
+          import urllib.request
           from pathlib import Path
 
           path = Path('.env.prod')
@@ -86,7 +90,9 @@ jobs:
 
           ready = values.get('META_OAUTH_PUBLIC_READY', 'false').strip().lower() == 'true'
           public_base = values.get('PARTIZAN_PUBLIC_BASE_URL', '').rstrip('/')
-          version = values.get('META_OAUTH_API_VERSION', '')
+          version = values.get('META_OAUTH_API_VERSION', '').strip()
+          app_id = values.get('META_OAUTH_APP_ID', '').strip()
+          app_secret = values.get('META_OAUTH_APP_SECRET', '').strip()
 
           print(f"meta_app_id_configured={configured('META_OAUTH_APP_ID')}")
           print(f"meta_app_secret_configured={configured('META_OAUTH_APP_SECRET')}")
@@ -94,16 +100,75 @@ jobs:
           print(f"provider_secret_encryption_configured={configured('PROVIDER_SECRET_ENCRYPTION_KEY')}")
           print(f"meta_oauth_public_ready={ready}")
           print(f"production_origin_matches={public_base == 'https://partizanlabs.com'}")
-          print(f"oauth_redirect_uri=https://partizanlabs.com/v1/customer-meta/oauth/callback")
+          print("oauth_redirect_uri=https://partizanlabs.com/v1/customer-meta/oauth/callback")
+          print(f"meta_api_version={version or '-'}")
           print(f"api_version_shape_ok={version.startswith('v') and version[1:].replace('.', '').isdigit() and version.count('.') == 1}")
 
           required = all([
-              configured('META_OAUTH_APP_ID'),
-              configured('META_OAUTH_APP_SECRET'),
-              configured('META_OAUTH_API_VERSION'),
+              app_id,
+              app_secret,
+              version,
               configured('PROVIDER_SECRET_ENCRYPTION_KEY'),
               public_base == 'https://partizanlabs.com',
           ])
           print(f"owner_oauth_config_ready={required and ready}")
+
+          token_ok = False
+          identity_ok = False
+          token_http_status = None
+          identity_http_status = None
+
+          if app_id and app_secret and version:
+              token_endpoint = f"https://graph.facebook.com/{version}/oauth/access_token"
+              token_body = urllib.parse.urlencode({
+                  'client_id': app_id,
+                  'client_secret': app_secret,
+                  'grant_type': 'client_credentials',
+              }).encode('utf-8')
+              token_request = urllib.request.Request(
+                  token_endpoint,
+                  data=token_body,
+                  headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                  method='POST',
+              )
+              app_token = None
+              try:
+                  with urllib.request.urlopen(token_request, timeout=15) as response:
+                      token_http_status = response.status
+                      payload = json.loads(response.read().decode('utf-8'))
+                      app_token = payload.get('access_token') if isinstance(payload, dict) else None
+                      token_ok = bool(app_token)
+              except urllib.error.HTTPError as exc:
+                  token_http_status = exc.code
+              except (urllib.error.URLError, TimeoutError, ValueError):
+                  token_http_status = 0
+
+              if app_token:
+                  identity_endpoint = (
+                      f"https://graph.facebook.com/{version}/{urllib.parse.quote(app_id, safe='')}"
+                      '?fields=id,name'
+                  )
+                  identity_request = urllib.request.Request(
+                      identity_endpoint,
+                      headers={'Authorization': f'Bearer {app_token}'},
+                      method='GET',
+                  )
+                  try:
+                      with urllib.request.urlopen(identity_request, timeout=15) as response:
+                          identity_http_status = response.status
+                          payload = json.loads(response.read().decode('utf-8'))
+                          identity_ok = (
+                              isinstance(payload, dict)
+                              and str(payload.get('id') or '') == app_id
+                          )
+                  except urllib.error.HTTPError as exc:
+                      identity_http_status = exc.code
+                  except (urllib.error.URLError, TimeoutError, ValueError):
+                      identity_http_status = 0
+
+          print(f"meta_app_token_exchange_ok={token_ok}")
+          print(f"meta_app_token_http_status={token_http_status if token_http_status is not None else '-'}")
+          print(f"meta_app_identity_ok={identity_ok}")
+          print(f"meta_app_identity_http_status={identity_http_status if identity_http_status is not None else '-'}")
           PY
           REMOTE
