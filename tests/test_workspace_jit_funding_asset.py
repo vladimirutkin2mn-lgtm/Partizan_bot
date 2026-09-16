@@ -19,17 +19,18 @@ def test_jit_funding_controller_uses_server_derived_paid_proposal() -> None:
 def test_jit_funding_controller_requires_exact_amount_review_before_checkout() -> None:
     source = ASSET.read_text(encoding="utf-8")
 
-    review_index = source.index("reviewProposal(proposal, currentProjectId)")
-    checkout_index = source.index("pendingProposal.proposal_id")
-    assert review_index > checkout_index
+    assert "if (pendingProposal) {" in source
+    assert "reviewProposal(proposal, currentProjectId);" in source
     assert "Add only ${money(proposal.topup_amount_usd)}" in source
     assert "only ${money(proposal.topup_amount_usd)} needs to be added" in source
     assert "Funding does not start spend." in source
 
 
-def test_jit_funding_controller_fails_closed_for_research_only_preview() -> None:
+def test_jit_funding_controller_fails_closed_only_while_resolving_proposal() -> None:
     source = ASSET.read_text(encoding="utf-8")
 
+    assert "const resolvingProposal = pendingProposal === null;" in source
+    assert "error.status === 409 && resolvingProposal" in source
     assert "No executable paid move is ready yet" in source
     assert "research-only preview" in source
     assert "/execute" not in source
