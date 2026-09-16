@@ -51,6 +51,11 @@ jobs:
           bash -n tools/bootstrap_prod_host.sh
           bash -n tools/compose_shared_host.sh
           bash -n tools/diagnose_shared_host_tls.sh
+          bash -n tools/ensure_shared_host_caddy_route.sh
+          bash -n tools/verify_public_edge.sh
+          bash -n tools/check_prod_mutation_contract.sh
+      - name: Check production mutation contract
+        run: bash tools/check_prod_mutation_contract.sh
       - name: Migrate database
         run: alembic upgrade head
       - name: Test

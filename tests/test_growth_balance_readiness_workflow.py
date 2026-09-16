@@ -12,7 +12,7 @@ def test_growth_balance_readiness_workflow_is_read_only_and_post_deploy() -> Non
     assert "actions: write" not in source
     assert "pull-requests: write" not in source
     assert "python -m app.growth_balance_readiness --pretty" in source
-    assert "docker compose" in source
+    assert "bash tools/compose_shared_host.sh" in source
     assert " up " not in source
     assert " down " not in source
     assert " restart " not in source

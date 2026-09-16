@@ -119,5 +119,5 @@ jobs:
             remote_args="--project-id ${PROJECT_ID} --pretty"
           fi
           ssh -o BatchMode=yes "${DEPLOY_HOST}" \
-            "cd '${DEPLOY_PATH}' && docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api python - ${remote_args}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python - ${remote_args}" \
             < tools/report_community_distribution_acceptance.py

@@ -106,4 +106,4 @@ jobs:
         shell: bash
         run: |
           ssh -o BatchMode=yes "${DEPLOY_HOST}" \
-            "cd '${DEPLOY_PATH}' && docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api python -m app.self_dogfood"
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python -m app.self_dogfood"
