@@ -71,6 +71,36 @@ def test_distribution_discovery_returns_only_mvp_platforms() -> None:
     }
 
 
+def test_distribution_discovery_can_be_bounded_to_one_top_icp() -> None:
+    product_id = _confirmed_product()
+    generated = client.post(f"/v1/products/{product_id}/icps/generate")
+    assert generated.status_code == 200
+
+    response = client.post(
+        f"/v1/products/{product_id}/distribution/discover",
+        params={"top_icp_count": 1},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["top_icp_count"] == 1
+    assert body["opportunity_count"] > 0
+
+
+@pytest.mark.parametrize("top_icp_count", [0, 4])
+def test_distribution_discovery_rejects_unbounded_icp_counts(top_icp_count: int) -> None:
+    product_id = _confirmed_product()
+    generated = client.post(f"/v1/products/{product_id}/icps/generate")
+    assert generated.status_code == 200
+
+    response = client.post(
+        f"/v1/products/{product_id}/distribution/discover",
+        params={"top_icp_count": top_icp_count},
+    )
+
+    assert response.status_code == 422
+
+
 def test_distribution_discovery_can_be_retrieved() -> None:
     product_id = _confirmed_product()
     client.post(f"/v1/products/{product_id}/icps/generate")
