@@ -60,7 +60,9 @@ def test_allowlisted_project_can_start_owner_dogfood_oauth(monkeypatch) -> None:
     )
 
     query = parse_qs(urlsplit(authorization_url).query)
-    assert query["scope"] == ["ads_management,ads_read"]
+    assert query["scope"] == [
+        "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement"
+    ]
     assert query["redirect_uri"] == [
         "https://partizan.example.com/v1/customer-meta/oauth/callback"
     ]
