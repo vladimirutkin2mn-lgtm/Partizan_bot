@@ -93,6 +93,7 @@ _CUSTOMER_WORKSPACE_ASSETS = {
     "workspace.experiments.v1.js": "text/javascript; charset=utf-8",
     "workspace.learning.v1.js": "text/javascript; charset=utf-8",
     "workspace.execution-request.v1.js": "text/javascript; charset=utf-8",
+    "workspace.jit-funding.v1.js": "text/javascript; charset=utf-8",
 }
 _WORKSPACE_STYLESHEET_MARKER = '<link rel="stylesheet" href="/workspace/assets/workspace.v1.css">'
 _WORKSPACE_CHANNEL_STYLESHEET = (
@@ -119,6 +120,9 @@ _WORKSPACE_LEARNING_SCRIPT = (
 )
 _WORKSPACE_EXECUTION_REQUEST_SCRIPT = (
     '<script src="/workspace/assets/workspace.execution-request.v1.js" defer></script>'
+)
+_WORKSPACE_JIT_FUNDING_SCRIPT = (
+    '<script src="/workspace/assets/workspace.jit-funding.v1.js" defer></script>'
 )
 
 
@@ -313,6 +317,7 @@ async def customer_workspace(
             f"\n  {_WORKSPACE_EXPERIMENT_SCRIPT}"
             f"\n  {_WORKSPACE_LEARNING_SCRIPT}"
             f"\n  {_WORKSPACE_EXECUTION_REQUEST_SCRIPT}"
+            f"\n  {_WORKSPACE_JIT_FUNDING_SCRIPT}"
         ),
         1,
     )
