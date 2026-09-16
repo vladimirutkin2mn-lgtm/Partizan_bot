@@ -94,3 +94,70 @@ jobs:
           fi
       - name: Build production image
         run: docker build --tag partizan-bot:ci .
+
+  self-dogfood-dry-cycle-production:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'ops/run-self-dogfood-dry-cycle-20260916'
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse stale main target
+        shell: bash
+        run: |
+          current_main_sha="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [[ "${current_main_sha}" != "4f3f0946fd3f651994176fdad166e19c7fb8564f" ]]; then
+            echo "::error::Refusing self-dogfood dry cycle because main moved to ${current_main_sha}"
+            exit 1
+          fi
+      - name: Require production operation configuration
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          missing=()
+          [[ -z "${DEPLOY_HOST}" ]] && missing+=(DEPLOY_HOST)
+          [[ -z "${DEPLOY_SSH_KEY}" ]] && missing+=(DEPLOY_SSH_KEY)
+          [[ -z "${DEPLOY_SSH_KNOWN_HOSTS}" ]] && missing+=(DEPLOY_SSH_KNOWN_HOSTS)
+          [[ -z "${DEPLOY_PATH}" ]] && missing+=(DEPLOY_PATH)
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing production operation configuration: ${missing[*]}"
+            exit 1
+          fi
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin production host key
+        env:
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Run bounded Partizan-on-Partizan dry cycle
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api partizan-growth-run --product-id eb8f160f-1b85-5f1b-a4f0-18038f63ac34 --destination-url https://partizanlabs.com/start --enrich-count 8 --json"
+      - name: Report self-dogfood readiness after dry cycle
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api python -m app.self_dogfood"
