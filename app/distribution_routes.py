@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from app.audience_intelligence_service import audience_intelligence_service
 from app.autonomous_growth_routes import router as autonomous_growth_router
@@ -62,7 +62,10 @@ router.include_router(tiktok_owned_publishing_router)
     "/products/{product_id}/distribution/discover",
     response_model=AudienceDistributionMapView,
 )
-async def discover_distribution(product_id: UUID) -> AudienceDistributionMapView:
+async def discover_distribution(
+    product_id: UUID,
+    top_icp_count: int = Query(default=3, ge=1, le=3),
+) -> AudienceDistributionMapView:
     try:
         product = product_intake_service.get_product(product_id)
         icp_result = icp_service.get(product_id)
@@ -72,7 +75,11 @@ async def discover_distribution(product_id: UUID) -> AudienceDistributionMapView
             detail="Generate ICPs before distribution discovery",
         ) from exc
     try:
-        return await audience_intelligence_service.discover(product, icp_result)
+        return await audience_intelligence_service.discover(
+            product,
+            icp_result,
+            top_icp_count=top_icp_count,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except RuntimeError as exc:
