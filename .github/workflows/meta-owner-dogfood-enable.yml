@@ -83,41 +83,44 @@ jobs:
           cd "${DEPLOY_PATH}"
           test -f .env.prod
 
-          python - "${PROJECT_ID}" <<'PY'
-          from pathlib import Path
-          from uuid import UUID
-          import sys
+          key='META_OAUTH_DOGFOOD_PROJECT_IDS'
+          current="$(sed -n "s/^${key}=//p" .env.prod | head -n 1)"
+          already_present=false
+          IFS=',' read -r -a parts <<< "${current}"
+          for item in "${parts[@]}"; do
+            item="${item#"${item%%[![:space:]]*}"}"
+            item="${item%"${item##*[![:space:]]}"}"
+            if [[ "${item}" == "${PROJECT_ID}" ]]; then
+              already_present=true
+              break
+            fi
+          done
 
-          project_id = str(UUID(sys.argv[1]))
-          path = Path('.env.prod')
-          lines = path.read_text(encoding='utf-8').splitlines()
-          key = 'META_OAUTH_DOGFOOD_PROJECT_IDS'
-          found = False
-          updated: list[str] = []
-          for line in lines:
-              if line.startswith(f'{key}='):
-                  found = True
-                  raw = line.split('=', 1)[1]
-                  values: list[str] = []
-                  for item in raw.split(','):
-                      candidate = item.strip()
-                      if not candidate:
-                          continue
-                      try:
-                          candidate = str(UUID(candidate))
-                      except ValueError:
-                          continue
-                      if candidate not in values:
-                          values.append(candidate)
-                  if project_id not in values:
-                      values.append(project_id)
-                  line = f'{key}={",".join(values)}'
-              updated.append(line)
-          if not found:
-              updated.append(f'{key}={project_id}')
-          path.write_text('\n'.join(updated) + '\n', encoding='utf-8')
-          print('meta_dogfood_allowlist_updated=true')
-          PY
+          if [[ "${already_present}" != "true" ]]; then
+            if [[ -n "${current}" ]]; then
+              next_value="${current},${PROJECT_ID}"
+            else
+              next_value="${PROJECT_ID}"
+            fi
+            tmp="$(mktemp .env.prod.meta.XXXXXX)"
+            awk -v key="${key}" -v replacement="${key}=${next_value}" '
+              BEGIN { replaced = 0 }
+              index($0, key "=") == 1 {
+                if (!replaced) {
+                  print replacement
+                  replaced = 1
+                }
+                next
+              }
+              { print }
+              END {
+                if (!replaced) print replacement
+              }
+            ' .env.prod > "${tmp}"
+            chmod --reference=.env.prod "${tmp}"
+            mv "${tmp}" .env.prod
+          fi
+          echo 'meta_dogfood_allowlist_updated=true'
 
           docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --no-deps --force-recreate api
 
