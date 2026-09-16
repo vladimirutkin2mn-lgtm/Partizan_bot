@@ -29,6 +29,14 @@ from app.runtime_store import RuntimeStateStore, get_runtime_store
 CUSTOMER_META_OAUTH_STATE_NAMESPACE = "customer_meta_oauth_state"
 CUSTOMER_META_PENDING_NAMESPACE = "customer_meta_pending"
 META_OAUTH_RETURN_PATHS = frozenset({"/start", "/workspace"})
+META_OAUTH_SCOPES = (
+    "ads_management",
+    "ads_read",
+    "business_management",
+    "pages_show_list",
+    "pages_read_engagement",
+)
+META_OAUTH_MAX_BUSINESSES = 5
 
 
 class CustomerMetaOAuthError(RuntimeError):
@@ -89,7 +97,9 @@ class HttpxMetaOAuthClient:
             },
             bearer_token=access_token,
         )
-        return [row for row in payload.get("data", []) if isinstance(row, dict)]
+        accounts = [row for row in payload.get("data", []) if isinstance(row, dict)]
+        accounts.extend(self._business_ad_accounts(access_token))
+        return self._dedupe_ad_accounts(accounts)[:50]
 
     def promote_pages(self, access_token: str, account_id: str) -> list[dict]:
         normalized = account_id.removeprefix("act_")
@@ -106,6 +116,59 @@ class HttpxMetaOAuthClient:
         else:
             rows = []
         return [row for row in rows if isinstance(row, dict)]
+
+    def _business_ad_accounts(self, access_token: str) -> list[dict]:
+        try:
+            payload = self._get(
+                "me/businesses",
+                params={"fields": "id,name", "limit": str(META_OAUTH_MAX_BUSINESSES)},
+                bearer_token=access_token,
+            )
+        except CustomerMetaOAuthError:
+            return []
+
+        rows: list[dict] = []
+        businesses = [
+            item for item in payload.get("data", []) if isinstance(item, dict)
+        ][:META_OAUTH_MAX_BUSINESSES]
+        for business in businesses:
+            business_id = str(business.get("id") or "")
+            if not business_id:
+                continue
+            for edge in ("owned_ad_accounts", "client_ad_accounts"):
+                try:
+                    asset_payload = self._get(
+                        f"{business_id}/{edge}",
+                        params={
+                            "fields": "id,account_id,name,currency,account_status",
+                            "limit": "50",
+                        },
+                        bearer_token=access_token,
+                    )
+                except CustomerMetaOAuthError:
+                    continue
+                rows.extend(
+                    item
+                    for item in asset_payload.get("data", [])
+                    if isinstance(item, dict)
+                )
+                if len(rows) >= 50:
+                    return rows
+        return rows
+
+    @staticmethod
+    def _dedupe_ad_accounts(rows: list[dict]) -> list[dict]:
+        result: list[dict] = []
+        seen: set[str] = set()
+        for row in rows:
+            account_id = str(row.get("account_id") or row.get("id") or "").removeprefix(
+                "act_"
+            )
+            if not account_id or account_id in seen:
+                continue
+            seen.add(account_id)
+            result.append(row)
+        return result
 
     def _get(
         self,
@@ -206,7 +269,7 @@ class CustomerMetaOAuthService:
                 "redirect_uri": redirect_uri,
                 "state": state,
                 "response_type": "code",
-                "scope": "ads_management,ads_read",
+                "scope": ",".join(META_OAUTH_SCOPES),
             }
         )
         return f"https://www.facebook.com/{version}/dialog/oauth?{query}"
@@ -253,31 +316,57 @@ class CustomerMetaOAuthService:
 
         accounts: list[CustomerMetaAdAccountOption] = []
         pages_by_account: dict[str, list[CustomerMetaPageOption]] = {}
-        for raw in self._client.ad_accounts(access_token)[:20]:
-            account_id = str(raw.get("account_id") or raw.get("id") or "").removeprefix(
-                "act_"
-            )
-            if not account_id:
-                continue
-            option = CustomerMetaAdAccountOption(
-                id=str(raw.get("id") or f"act_{account_id}"),
-                account_id=account_id,
-                name=str(raw.get("name") or f"Ad account {account_id}"),
-                currency=str(raw.get("currency")) if raw.get("currency") else None,
-            )
-            accounts.append(option)
-            pages: list[CustomerMetaPageOption] = []
-            for page in self._client.promote_pages(access_token, account_id)[:25]:
-                page_id = str(page.get("id") or "")
-                if page_id:
-                    pages.append(
-                        CustomerMetaPageOption(
-                            id=page_id,
-                            name=str(page.get("name") or f"Page {page_id}"),
+        try:
+            raw_accounts = self._client.ad_accounts(access_token)[:20]
+            for raw in raw_accounts:
+                account_id = str(
+                    raw.get("account_id") or raw.get("id") or ""
+                ).removeprefix("act_")
+                if not account_id:
+                    continue
+                option = CustomerMetaAdAccountOption(
+                    id=str(raw.get("id") or f"act_{account_id}"),
+                    account_id=account_id,
+                    name=str(raw.get("name") or f"Ad account {account_id}"),
+                    currency=str(raw.get("currency")) if raw.get("currency") else None,
+                )
+                accounts.append(option)
+                pages: list[CustomerMetaPageOption] = []
+                for page in self._client.promote_pages(access_token, account_id)[:25]:
+                    page_id = str(page.get("id") or "")
+                    if page_id:
+                        pages.append(
+                            CustomerMetaPageOption(
+                                id=page_id,
+                                name=str(page.get("name") or f"Page {page_id}"),
+                            )
                         )
-                    )
-            pages_by_account[account_id] = pages
+                pages_by_account[account_id] = pages
+        except CustomerMetaOAuthError:
+            self._safe_delete_secret(secret_reference)
+            raise
 
+        if not accounts:
+            self._safe_delete_secret(secret_reference)
+            self._clear_pending(project_id)
+            raise CustomerMetaOAuthError(
+                "Meta authorized, but no manageable ad accounts were returned. "
+                "Reconnect Meta and grant the requested business and advertising access."
+            )
+        if not any(pages_by_account.values()):
+            self._safe_delete_secret(secret_reference)
+            self._clear_pending(project_id)
+            raise CustomerMetaOAuthError(
+                "Meta returned ad accounts, but no Facebook Pages that those accounts can promote. "
+                "Reconnect Meta and grant the requested Page and business access."
+            )
+
+        previous_pending = self._store.get(CUSTOMER_META_PENDING_NAMESPACE, str(project_id))
+        previous_secret_reference = (
+            str(previous_pending.get("secret_reference") or "")
+            if isinstance(previous_pending, dict)
+            else ""
+        )
         self._store.put(
             CUSTOMER_META_PENDING_NAMESPACE,
             str(project_id),
@@ -292,6 +381,8 @@ class CustomerMetaOAuthService:
                 "created_at": datetime.now(UTC).isoformat(),
             },
         )
+        if previous_secret_reference and previous_secret_reference != secret_reference:
+            self._safe_delete_secret(previous_secret_reference)
         return project_id, return_path
 
     def options(self, project_id: UUID, customer_token: str) -> CustomerMetaOptionsView:
@@ -402,6 +493,14 @@ class CustomerMetaOAuthService:
     def _persist_project(self, project: dict) -> None:
         project["updated_at"] = datetime.now(UTC).isoformat()
         self._store.put(CUSTOMER_PROJECT_NAMESPACE, project["id"], project)
+
+    def _clear_pending(self, project_id: UUID) -> None:
+        pending = self._store.get(CUSTOMER_META_PENDING_NAMESPACE, str(project_id))
+        if isinstance(pending, dict):
+            secret_reference = str(pending.get("secret_reference") or "")
+            if secret_reference:
+                self._safe_delete_secret(secret_reference)
+        self._store.delete(CUSTOMER_META_PENDING_NAMESPACE, str(project_id))
 
     def _safe_delete_secret(self, reference: str) -> None:
         try:
