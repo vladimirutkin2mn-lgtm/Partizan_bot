@@ -17,17 +17,25 @@ from app.distribution_types import (
     OpportunityKind,
 )
 from app.prefunding_paid_proposal import PrefundingPaidProposalService
-from app.runtime_store import RuntimeStateStore
+from app.runtime_store import MemoryRuntimeStateStore
+
+PROJECT_ID = uuid4()
+PRODUCT_ID = uuid4()
 
 
-def _play(*, priority: float, cost: float, action_type=DistributionActionType.PAID_CAMPAIGN):
+def _play(
+    *,
+    priority: float,
+    cost: float,
+    action_type: DistributionActionType = DistributionActionType.PAID_CAMPAIGN,
+) -> DistributionPlayView:
     return DistributionPlayView(
         id=uuid4(),
         product_id=PRODUCT_ID,
         icp_id=uuid4(),
         opportunity_id=uuid4(),
         platform=DistributionPlatform.INSTAGRAM,
-        opportunity_kind=OpportunityKind.CREATOR,
+        opportunity_kind=OpportunityKind.CREATOR_ACCOUNT,
         opportunity_title=f"Paid opportunity {priority}",
         tactic_id=f"paid-{priority}",
         tactic_class=DistributionTacticClass.PAID_PLATFORM,
@@ -47,12 +55,8 @@ def _play(*, priority: float, cost: float, action_type=DistributionActionType.PA
     )
 
 
-PROJECT_ID = uuid4()
-PRODUCT_ID = uuid4()
-
-
 def test_proposal_is_deterministic_idempotent_and_budget_bounded() -> None:
-    service = PrefundingPaidProposalService(RuntimeStateStore())
+    service = PrefundingPaidProposalService(MemoryRuntimeStateStore())
     low = _play(priority=10, cost=8)
     high = _play(priority=90, cost=25)
 
@@ -77,7 +81,7 @@ def test_proposal_is_deterministic_idempotent_and_budget_bounded() -> None:
 
 
 def test_proposal_does_not_accept_non_paid_or_blocked_plays() -> None:
-    service = PrefundingPaidProposalService(RuntimeStateStore())
+    service = PrefundingPaidProposalService(MemoryRuntimeStateStore())
     organic = _play(
         priority=100,
         cost=10,
@@ -100,7 +104,7 @@ def test_proposal_does_not_accept_non_paid_or_blocked_plays() -> None:
 
 
 def test_proposal_rejects_zero_customer_test_budget() -> None:
-    service = PrefundingPaidProposalService(RuntimeStateStore())
+    service = PrefundingPaidProposalService(MemoryRuntimeStateStore())
 
     with pytest.raises(ValueError, match="Customer test budget must be positive"):
         service.get_or_create(
@@ -112,7 +116,7 @@ def test_proposal_rejects_zero_customer_test_budget() -> None:
 
 
 def test_proposal_is_project_bound() -> None:
-    service = PrefundingPaidProposalService(RuntimeStateStore())
+    service = PrefundingPaidProposalService(MemoryRuntimeStateStore())
     proposal = service.get_or_create(
         project_id=PROJECT_ID,
         product_id=PRODUCT_ID,
