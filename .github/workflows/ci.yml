@@ -146,18 +146,51 @@ jobs:
           printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
       - name: Run bounded Partizan-on-Partizan dry cycle
+        id: dry_cycle
+        continue-on-error: true
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         shell: bash
         run: |
+          set +e
           ssh -o BatchMode=yes "${DEPLOY_HOST}" \
-            "cd '${DEPLOY_PATH}' && docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api partizan-growth-run --product-id eb8f160f-1b85-5f1b-a4f0-18038f63ac34 --destination-url https://partizanlabs.com/start --enrich-count 8 --top-icp-count 1 --json"
+            "cd '${DEPLOY_PATH}' && docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api partizan-growth-run --product-id eb8f160f-1b85-5f1b-a4f0-18038f63ac34 --destination-url https://partizanlabs.com/start --enrich-count 8 --top-icp-count 1 --json" \
+            > self-dogfood-raw.log 2>&1
+          status=$?
+          set -e
+          sed -E \
+            -e 's/((PARTIZAN_OPERATOR_KEY|X-Partizan-Operator-Key|Authorization)[=: ]+)[^[:space:]]+/\1[REDACTED]/Ig' \
+            -e 's/(Bearer[[:space:]]+)[A-Za-z0-9._~+\/-]+/\1[REDACTED]/Ig' \
+            self-dogfood-raw.log > self-dogfood-diagnostic.log
+          rm -f self-dogfood-raw.log
+          printf '\nexit_code=%s\n' "${status}" >> self-dogfood-diagnostic.log
+          echo "exit_code=${status}" >> "${GITHUB_OUTPUT}"
+          cat self-dogfood-diagnostic.log
       - name: Report self-dogfood readiness after dry cycle
+        if: always()
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         shell: bash
         run: |
           ssh -o BatchMode=yes "${DEPLOY_HOST}" \
-            "cd '${DEPLOY_PATH}' && docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api python -m app.self_dogfood"
+            "cd '${DEPLOY_PATH}' && docker compose -f docker-compose.prod.yml --env-file .env.prod exec -T api python -m app.self_dogfood" \
+            > self-dogfood-readiness.log 2>&1
+          cat self-dogfood-readiness.log
+      - name: Upload sanitized self-dogfood diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: self-dogfood-bounded-diagnostic
+          path: |
+            self-dogfood-diagnostic.log
+            self-dogfood-readiness.log
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve dry-cycle failure
+        if: always() && steps.dry_cycle.outputs.exit_code != '0'
+        shell: bash
+        run: |
+          echo "::error::Bounded self-dogfood dry cycle failed; sanitized diagnostic artifact uploaded"
+          exit 1
