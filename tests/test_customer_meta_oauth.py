@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from urllib.parse import parse_qs, urlsplit
 
+import pytest
 from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 
@@ -32,6 +33,24 @@ class _Response:
 
     def json(self) -> dict:
         return self._payload
+
+
+class _MetaClientStub:
+    def __init__(self, *, accounts: list[dict], pages: list[dict] | None = None) -> None:
+        self._accounts = accounts
+        self._pages = pages or []
+
+    def exchange_code(self, *, code: str, redirect_uri: str) -> str:
+        return "short-token"
+
+    def extend_token(self, short_lived_token: str) -> str:
+        return "long-token"
+
+    def ad_accounts(self, access_token: str) -> list[dict]:
+        return list(self._accounts)
+
+    def promote_pages(self, access_token: str, account_id: str) -> list[dict]:
+        return list(self._pages)
 
 
 def _settings(**overrides) -> Settings:
@@ -66,6 +85,8 @@ def test_meta_resource_requests_keep_user_token_in_bearer_header(monkeypatch) ->
         calls.append((url, params, headers))
         if url.endswith("/me/adaccounts"):
             return _Response({"data": [{"id": "act_123", "account_id": "123"}]})
+        if url.endswith("/me/businesses"):
+            return _Response({"data": []})
         return _Response({"promote_pages": {"data": [{"id": "page_1", "name": "Page"}]}})
 
     monkeypatch.setattr("app.customer_meta_oauth.httpx.get", fake_get)
@@ -77,11 +98,55 @@ def test_meta_resource_requests_keep_user_token_in_bearer_header(monkeypatch) ->
 
     assert accounts[0]["account_id"] == "123"
     assert pages[0]["id"] == "page_1"
-    assert len(calls) == 2
+    assert len(calls) == 3
     for url, params, headers in calls:
         assert token not in url
         assert "access_token" not in params
         assert headers == {"Authorization": f"Bearer {token}"}
+
+
+def test_meta_ad_accounts_fall_back_to_business_manager_and_dedupe(monkeypatch) -> None:
+    calls: list[tuple[str, dict | None]] = []
+
+    def fake_get(url, *, params, headers=None, timeout):
+        calls.append((url, headers))
+        if url.endswith("/me/adaccounts"):
+            return _Response({"data": []})
+        if url.endswith("/me/businesses"):
+            return _Response({"data": [{"id": "biz_1", "name": "Partizan"}]})
+        if url.endswith("/biz_1/owned_ad_accounts"):
+            return _Response(
+                {
+                    "data": [
+                        {
+                            "id": "act_123",
+                            "account_id": "123",
+                            "name": "Owned",
+                            "currency": "USD",
+                        }
+                    ]
+                }
+            )
+        if url.endswith("/biz_1/client_ad_accounts"):
+            return _Response(
+                {
+                    "data": [
+                        {"id": "act_123", "account_id": "123", "name": "Duplicate"},
+                        {"id": "act_456", "account_id": "456", "name": "Client"},
+                    ]
+                }
+            )
+        raise AssertionError(f"unexpected Meta URL: {url}")
+
+    monkeypatch.setattr("app.customer_meta_oauth.httpx.get", fake_get)
+    oauth_client = HttpxMetaOAuthClient(_settings())
+    token = "EAAB-business-token-not-real"
+
+    accounts = oauth_client.ad_accounts(token)
+
+    assert [item["account_id"] for item in accounts] == ["123", "456"]
+    assert len(calls) == 4
+    assert all(headers == {"Authorization": f"Bearer {token}"} for _, headers in calls)
 
 
 def test_meta_oauth_fails_closed_until_app_is_publicly_customer_ready() -> None:
@@ -119,11 +184,56 @@ def test_meta_oauth_can_begin_before_research_or_funding() -> None:
     assert project["product_id"] is None
     assert project["launch_unlocked"] is False
     assert len(state) >= 32
-    assert query["scope"] == ["ads_management,ads_read"]
+    assert query["scope"] == [
+        "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement"
+    ]
     persisted = store.list_namespace(CUSTOMER_META_OAUTH_STATE_NAMESPACE)
     assert len(persisted) >= 1
     assert all(state not in str(item) for item in persisted)
     assert service.pending_context(state) == (preview.project_id, "/start")
+
+
+def test_meta_oauth_fails_callback_when_no_usable_assets_are_returned() -> None:
+    store = get_runtime_store()
+    preview = _preview()
+    settings = _settings()
+    secret_store = ProviderSecretStore(store=store, settings=settings)
+    service = CustomerMetaOAuthService(
+        store=store,
+        settings=settings,
+        client=_MetaClientStub(accounts=[]),
+        secret_store=secret_store,
+    )
+    authorization_url = service.begin(preview.project_id, preview.customer_token)
+    state = parse_qs(urlsplit(authorization_url).query)["state"][0]
+
+    with pytest.raises(CustomerMetaOAuthError, match="no manageable ad accounts"):
+        service.complete_with_return(state=state, code="oauth-code")
+
+    assert store.get(CUSTOMER_META_PENDING_NAMESPACE, str(preview.project_id)) is None
+
+
+def test_meta_oauth_requires_a_promotable_page_before_reporting_success() -> None:
+    store = get_runtime_store()
+    preview = _preview()
+    settings = _settings()
+    secret_store = ProviderSecretStore(store=store, settings=settings)
+    service = CustomerMetaOAuthService(
+        store=store,
+        settings=settings,
+        client=_MetaClientStub(
+            accounts=[{"id": "act_123", "account_id": "123", "name": "Test"}],
+            pages=[],
+        ),
+        secret_store=secret_store,
+    )
+    authorization_url = service.begin(preview.project_id, preview.customer_token)
+    state = parse_qs(urlsplit(authorization_url).query)["state"][0]
+
+    with pytest.raises(CustomerMetaOAuthError, match="no Facebook Pages"):
+        service.complete_with_return(state=state, code="oauth-code")
+
+    assert store.get(CUSTOMER_META_PENDING_NAMESPACE, str(preview.project_id)) is None
 
 
 def test_meta_oauth_state_preserves_workspace_return_without_open_redirect() -> None:
