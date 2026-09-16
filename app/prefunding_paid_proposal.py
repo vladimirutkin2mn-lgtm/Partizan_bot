@@ -43,25 +43,17 @@ class PrefundingPaidProposalService:
         project_budget_usd: float,
         plays: list[DistributionPlayView],
     ) -> PrefundingPaidProposal:
+        play, budget_cap = self._candidate(
+            project_budget_usd=project_budget_usd,
+            plays=plays,
+        )
         existing = self._existing(project_id, product_id)
-        if existing is not None:
+        if (
+            existing is not None
+            and existing.play_id == play.id
+            and float(existing.budget_cap) == budget_cap
+        ):
             return existing
-
-        candidates = [
-            play
-            for play in plays
-            if play.status == DistributionPlayStatus.READY
-            and play.tactic_class == DistributionTacticClass.PAID_PLATFORM
-            and play.action_type == DistributionActionType.PAID_CAMPAIGN
-            and play.estimated_cost_max > 0
-        ]
-        if not candidates:
-            raise ValueError("No executable paid distribution play is ready for funding")
-        candidates.sort(key=lambda play: (-play.priority_score, str(play.id)))
-        play = candidates[0]
-        budget_cap = round(min(float(project_budget_usd), float(play.estimated_cost_max)), 2)
-        if budget_cap <= 0:
-            raise ValueError("Customer test budget must be positive before paid funding")
 
         proposal = PrefundingPaidProposal(
             id=uuid4(),
@@ -93,6 +85,29 @@ class PrefundingPaidProposalService:
         if proposal.project_id != project_id:
             raise ValueError("Paid funding proposal does not belong to this project")
         return proposal
+
+    def _candidate(
+        self,
+        *,
+        project_budget_usd: float,
+        plays: list[DistributionPlayView],
+    ) -> tuple[DistributionPlayView, float]:
+        candidates = [
+            play
+            for play in plays
+            if play.status == DistributionPlayStatus.READY
+            and play.tactic_class == DistributionTacticClass.PAID_PLATFORM
+            and play.action_type == DistributionActionType.PAID_CAMPAIGN
+            and play.estimated_cost_max > 0
+        ]
+        if not candidates:
+            raise ValueError("No executable paid distribution play is ready for funding")
+        candidates.sort(key=lambda play: (-play.priority_score, str(play.id)))
+        play = candidates[0]
+        budget_cap = round(min(float(project_budget_usd), float(play.estimated_cost_max)), 2)
+        if budget_cap <= 0:
+            raise ValueError("Customer test budget must be positive before paid funding")
+        return play, budget_cap
 
     def _existing(
         self,
