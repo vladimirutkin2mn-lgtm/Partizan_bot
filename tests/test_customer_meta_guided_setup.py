@@ -21,10 +21,12 @@ class _GuidedMetaStub:
         *,
         businesses: list[dict] | None = None,
         accounts: list[dict] | None = None,
+        business_pages: list[dict] | None = None,
         pages: list[dict] | None = None,
     ) -> None:
         self.business_rows = businesses or []
         self.account_rows = accounts or []
+        self.business_page_rows = business_pages or []
         self.page_rows = pages or []
 
     def exchange_code(self, *, code: str, redirect_uri: str) -> str:
@@ -35,6 +37,9 @@ class _GuidedMetaStub:
 
     def businesses(self, access_token: str) -> list[dict]:
         return list(self.business_rows)
+
+    def business_pages(self, access_token: str, business_id: str) -> list[dict]:
+        return list(self.business_page_rows)
 
     def ad_accounts(self, access_token: str) -> list[dict]:
         return list(self.account_rows)
@@ -135,7 +140,34 @@ def test_guided_meta_preflight_distinguishes_ad_account_without_page() -> None:
     view = service.view(preview.project_id, preview.customer_token)
     assert view.status == "AD_ACCOUNT_NEEDS_PAGE"
     assert view.ad_account_count == 1
+    assert view.business_page_count == 0
     assert view.promotable_page_count == 0
+
+
+def test_guided_meta_preflight_distinguishes_page_not_promotable_for_ad_account() -> None:
+    store = get_runtime_store()
+    preview = _preview()
+    settings = _settings()
+    service = CustomerMetaGuidedSetupService(
+        store=store,
+        settings=settings,
+        client=_GuidedMetaStub(
+            businesses=[{"id": "biz_1", "name": "Partizan"}],
+            accounts=[{"id": "act_123", "account_id": "123", "name": "Partizan Ads"}],
+            business_pages=[{"id": "page_1", "name": "Partizan"}],
+        ),
+        secret_store=ProviderSecretStore(store=store, settings=settings),
+    )
+
+    _complete(service, preview.project_id, preview.customer_token)
+
+    view = service.view(preview.project_id, preview.customer_token)
+    assert view.status == "PAGE_NEEDS_AD_ACCOUNT_ACCESS"
+    assert view.ad_account_count == 1
+    assert view.business_page_count == 1
+    assert view.business_page_names == ["Partizan"]
+    assert view.promotable_page_count == 0
+    assert "Do not create another Page" in view.message
 
 
 def test_guided_meta_check_reuses_token_and_promotes_ready_assets() -> None:
@@ -182,3 +214,5 @@ def test_workspace_meta_guided_asset_contains_setup_cjm_contract() -> None:
     assert "Meta setup needs one more step" in source
     assert "Check again" in source
     assert "Do you already use Meta Ads Manager for this business?" in source
+    assert "PAGE_NEEDS_AD_ACCOUNT_ACCESS" in source
+    assert "Do not create another Page" in source
