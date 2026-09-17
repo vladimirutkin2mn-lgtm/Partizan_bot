@@ -19,17 +19,10 @@
   window.fetch = async (input, options = {}) => {
     const details = requestDetails(input, options);
     const match = details?.url?.pathname.match(/^\/customer\/workspace\/([^/]+)\/meta\/connect$/);
-    if (
-      details
-      && details.url.origin === window.location.origin
-      && details.method === 'POST'
-      && match
-    ) {
+    if (details && details.url.origin === window.location.origin && details.method === 'POST' && match) {
       const nextUrl = new URL(details.url.toString());
       nextUrl.pathname = `/customer/workspace/${match[1]}/meta-guided/connect`;
-      if (details.request) {
-        return nativeFetch(new Request(nextUrl.toString(), details.request), options);
-      }
+      if (details.request) return nativeFetch(new Request(nextUrl.toString(), details.request), options);
       return nativeFetch(nextUrl.toString(), options);
     }
     return nativeFetch(input, options);
@@ -68,9 +61,7 @@
     });
     let payload = null;
     try { payload = await response.json(); } catch (_) { payload = null; }
-    if (!response.ok) {
-      throw new Error(String(payload?.detail || `Request failed (${response.status})`));
-    }
+    if (!response.ok) throw new Error(String(payload?.detail || `Request failed (${response.status})`));
     return payload;
   };
 
@@ -125,6 +116,115 @@
     return node;
   };
 
+  const copyButton = (value) => button('Copy', async (event) => {
+    const control = event.currentTarget;
+    try {
+      await navigator.clipboard.writeText(value);
+      control.textContent = 'Copied';
+      window.setTimeout(() => { control.textContent = 'Copy'; }, 1200);
+    } catch (_) {
+      showNotice('Could not copy automatically. Select the suggested text manually.', true);
+    }
+  });
+
+  const addSteps = (guide, steps) => {
+    if (!steps.length) return;
+    const heading = document.createElement('strong');
+    heading.textContent = 'What to do in Meta';
+    heading.style.display = 'block';
+    heading.style.marginTop = '14px';
+    guide.appendChild(heading);
+    const list = document.createElement('ol');
+    list.className = 'note';
+    list.style.margin = '8px 0 0';
+    list.style.paddingLeft = '20px';
+    list.style.display = 'grid';
+    list.style.gap = '6px';
+    steps.forEach((step) => {
+      const item = document.createElement('li');
+      item.textContent = step;
+      list.appendChild(item);
+    });
+    guide.appendChild(list);
+  };
+
+  const addSuggestion = (container, label, value, copyable = true) => {
+    const row = document.createElement('div');
+    row.style.display = 'grid';
+    row.style.gridTemplateColumns = 'minmax(110px, .35fr) minmax(0, 1fr) auto';
+    row.style.gap = '10px';
+    row.style.alignItems = 'center';
+    row.style.padding = '10px 0';
+    row.style.borderTop = '1px solid var(--line)';
+    const name = document.createElement('span');
+    name.className = 'note';
+    name.style.margin = '0';
+    name.textContent = label;
+    const text = document.createElement('strong');
+    text.style.fontSize = '12px';
+    text.style.lineHeight = '1.45';
+    text.textContent = value;
+    row.appendChild(name);
+    row.appendChild(text);
+    if (copyable) row.appendChild(copyButton(value));
+    else row.appendChild(document.createElement('span'));
+    container.appendChild(row);
+  };
+
+  const addPageCreationHelp = (guide) => {
+    const box = document.createElement('div');
+    box.style.marginTop = '16px';
+    box.style.padding = '14px';
+    box.style.border = '1px solid var(--line)';
+    box.style.borderRadius = '14px';
+    box.style.background = 'rgba(255,255,255,.02)';
+
+    const heading = document.createElement('strong');
+    heading.textContent = 'Suggested Page details';
+    box.appendChild(heading);
+    const intro = document.createElement('p');
+    intro.className = 'note';
+    intro.style.margin = '6px 0 10px';
+    intro.textContent = 'Use the same brand name customers see on your product or website. These category suggestions work well for many software products; choose the closest option Meta actually offers.';
+    box.appendChild(intro);
+
+    addSuggestion(box, 'Page name', 'Use your product or company brand name', false);
+    addSuggestion(box, 'Category', 'Software Company');
+    addSuggestion(box, 'Alternatives', 'Internet Company · Business Service', false);
+    addSuggestion(box, 'Bio formula', 'What you sell + who it helps + the main outcome', false);
+    addSuggestion(box, 'Bio example', 'AI software that helps teams find and acquire customers through measurable growth experiments.');
+
+    const optional = document.createElement('p');
+    optional.className = 'note';
+    optional.style.margin = '10px 0 0';
+    optional.textContent = 'You can skip optional Page onboarding such as profile image, cover, WhatsApp and extra contact details for now. Finish creating the Page, make sure it belongs to this Business Portfolio, then return here and click Check again.';
+    box.appendChild(optional);
+    guide.appendChild(box);
+  };
+
+  const addStatusInstructions = (guide, setup) => {
+    const steps = {
+      NO_META_BUSINESS: [
+        'Open Meta Business setup and create a Business Portfolio for the business you want Partizan to advertise.',
+        'Use the real business or brand name customers recognize.',
+        'When Meta finishes creating it, return to Partizan and click Check again.',
+      ],
+      BUSINESS_NEEDS_AD_ACCOUNT: [
+        'If you already use Ads Manager, assign this Facebook profile access to the ad account in the Business Portfolio.',
+        'If you do not have an ad account yet, create one in Meta Ads Manager under this Business Portfolio.',
+        'Return to Partizan and click Check again.',
+      ],
+      AD_ACCOUNT_NEEDS_PAGE: [
+        'Open Page settings and create a new Facebook Page or add an existing Page to this Business Portfolio.',
+        'Give the Business Portfolio and your Facebook profile access to the Page.',
+        'Finish the Page creation flow. Optional profile and contact setup can be skipped for now.',
+        'Return to Partizan and click Check again. You do not need to reconnect Meta.',
+      ],
+    }[setup.status] || [];
+    addSteps(guide, steps);
+    if (setup.status === 'AD_ACCOUNT_NEEDS_PAGE') addPageCreationHelp(guide);
+  };
+
   const renderGuidedSetup = (setup) => {
     const guide = ensureGuide();
     if (!guide) return;
@@ -170,6 +270,8 @@
       question.textContent = 'Do you already use Meta Ads Manager for this business?';
       guide.appendChild(question);
     }
+
+    addStatusInstructions(guide, setup);
 
     const actions = document.createElement('div');
     actions.className = 'hero-actions';
@@ -226,11 +328,9 @@
     try {
       const setup = await apiJson(`/customer/workspace/${encodeURIComponent(projectId)}/meta-guided/setup`);
       renderGuidedSetup(setup);
-      if (!['NOT_STARTED', 'READY'].includes(setup.status)) {
-        if (metaState === 'connected') {
-          showNotice(setup.message, true);
-          cleanMetaCallbackQuery();
-        }
+      if (!['NOT_STARTED', 'READY'].includes(setup.status) && metaState === 'connected') {
+        showNotice(setup.message, true);
+        cleanMetaCallbackQuery();
       }
     } catch (_) {
       // Guided setup is supplemental. The existing Meta connection UI remains usable.
@@ -242,10 +342,7 @@
     const error = params.get('meta_error') || '';
     const reason = params.get('meta_reason') || '';
     const code = params.get('meta_code') || '';
-    const detail = [
-      reason ? `reason ${reason}` : '',
-      code ? `code ${code}` : '',
-    ].filter(Boolean).join(', ');
+    const detail = [reason ? `reason ${reason}` : '', code ? `code ${code}` : ''].filter(Boolean).join(', ');
     const base = errorMessages[error] || 'Meta connection was not completed.';
     showNotice(detail ? `${base} (${detail})` : base, true);
   };
