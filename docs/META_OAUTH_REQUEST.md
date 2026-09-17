@@ -26,9 +26,10 @@ ads_read
 business_management
 pages_show_list
 pages_read_engagement
+pages_manage_ads
 ```
 
-The advertising scopes support the Marketing API execution path. The business/Page scopes let Partizan discover ad accounts held through Business Manager and identify Facebook Pages that an available ad account can promote. Partizan still stores only the customer-authorized token and does not start spend merely because OAuth succeeds.
+The advertising scopes support the Marketing API execution path. The business/Page scopes let Partizan discover ad accounts held through Business Manager, identify Facebook Pages that an available ad account can promote, and use the selected Page for advertising. Partizan still stores only the customer-authorized token and does not start spend merely because OAuth succeeds.
 
 The Graph API version must be pinned explicitly in `vNN.N` form, for example:
 
@@ -59,7 +60,7 @@ Before calling the Partizan production configuration complete:
 1. Create or select the Meta Developer app owned by the Partizan business/operator.
 2. Enable the Meta product/capability required for Facebook Login and Marketing API access.
 3. Add the exact redirect URI shown above to the app's valid OAuth redirect URIs.
-4. Ensure the app can request `ads_management`, `ads_read`, `business_management`, `pages_show_list`, and `pages_read_engagement` for the intended user population.
+4. Ensure the app can request `ads_management`, `ads_read`, `business_management`, `pages_show_list`, `pages_read_engagement`, and `pages_manage_ads` for the intended user population.
 5. Pin the Graph API version that Partizan will use and return it as `META_OAUTH_API_VERSION`.
 6. For owner dogfood, confirm the operator can connect the intended test ad account and Facebook Page.
 7. Before onboarding unrelated customer accounts, make the app available to non-role users and complete any Meta App Review, access-level, or business-verification requirements shown by the current Meta developer dashboard for the requested permissions.
@@ -95,7 +96,7 @@ The preflight reports all configuration errors it can validate in one run. Fix e
 
 ## Expected Partizan behavior
 
-The customer clicks **Connect Meta** inside Autopilot. Partizan redirects to Meta OAuth with the advertising, Business Manager, and Page-discovery scopes above. After callback, Partizan exchanges and extends the access token, encrypts it at rest, lists available ad accounts directly and — when needed — through Business Manager, and lists Pages that can be promoted from each returned account.
+The customer clicks **Connect Meta** inside Autopilot. Partizan redirects to Meta OAuth with the advertising, Business Manager, and Page scopes above. After callback, Partizan exchanges and extends the access token, encrypts it at rest, lists available ad accounts directly and — when needed — through Business Manager, and lists Pages that can be promoted from each returned account.
 
 OAuth is not reported as successful unless Partizan has at least one manageable ad account and at least one Facebook Page that a returned account can promote. Failed/incomplete attempts do not leave a newly issued access token available for later execution.
 
