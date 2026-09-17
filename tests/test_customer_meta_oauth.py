@@ -278,9 +278,7 @@ def test_meta_oauth_callback_returns_autonomous_customer_to_workspace(monkeypatc
     )
 
 
-def test_meta_oauth_error_returns_to_workspace_when_state_has_workspace_context(
-    monkeypatch,
-) -> None:
+def test_meta_oauth_error_returns_safe_diagnostics_to_workspace(monkeypatch) -> None:
     preview = _preview()
     monkeypatch.setattr(
         "app.customer_routes.customer_meta_oauth_service.pending_context",
@@ -288,12 +286,41 @@ def test_meta_oauth_error_returns_to_workspace_when_state_has_workspace_context(
     )
 
     response = client.get(
-        "/v1/customer-meta/oauth/callback?state=workspace-state&error=access_denied",
+        "/v1/customer-meta/oauth/callback"
+        "?state=workspace-state&error=access_denied&error_reason=user_denied&error_code=200",
         follow_redirects=False,
     )
 
     assert response.status_code == 303
-    assert response.headers["location"] == f"/workspace?meta=error&project={preview.project_id}"
+    location = response.headers["location"]
+    query = parse_qs(urlsplit(location).query)
+    assert urlsplit(location).path == "/workspace"
+    assert query == {
+        "meta": ["error"],
+        "project": [str(preview.project_id)],
+        "meta_error": ["access_denied"],
+        "meta_reason": ["user_denied"],
+        "meta_code": ["200"],
+    }
+
+
+def test_meta_oauth_callback_drops_unsafe_error_tokens(monkeypatch) -> None:
+    preview = _preview()
+    monkeypatch.setattr(
+        "app.customer_routes.customer_meta_oauth_service.pending_context",
+        lambda state: (preview.project_id, "/workspace"),
+    )
+
+    response = client.get(
+        "/v1/customer-meta/oauth/callback"
+        "?state=workspace-state&error=access_denied&error_reason=not%20safe&error_code=200",
+        follow_redirects=False,
+    )
+
+    query = parse_qs(urlsplit(response.headers["location"]).query)
+    assert query["meta_error"] == ["access_denied"]
+    assert query["meta_code"] == ["200"]
+    assert "meta_reason" not in query
 
 
 def test_meta_account_is_staged_until_research_creates_product() -> None:
