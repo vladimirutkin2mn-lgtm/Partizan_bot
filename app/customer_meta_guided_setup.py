@@ -18,7 +18,6 @@ from app.customer_meta_oauth import (
     META_OAUTH_SCOPES,
     CustomerMetaOAuthError,
     HttpxMetaOAuthClient,
-    customer_meta_oauth_service,
 )
 from app.provider_secret_store import ProviderSecretStore, provider_secret_store
 from app.runtime_store import RuntimeStateStore, get_runtime_store
