@@ -592,3 +592,22 @@ class CustomerMetaGuidedSetupService:
 
 
 customer_meta_guided_setup_service = CustomerMetaGuidedSetupService()
+
+
+def install_guided_meta_oauth_completion() -> None:
+    from app.customer_meta_oauth import customer_meta_oauth_service
+
+    if getattr(customer_meta_oauth_service, "_guided_setup_installed", False):
+        return
+    original_complete = customer_meta_oauth_service.complete_with_return
+
+    def complete_with_guided(*, state: str, code: str) -> tuple[UUID, str]:
+        if customer_meta_guided_setup_service.is_guided_state(state):
+            return customer_meta_guided_setup_service.complete_with_return(
+                state=state,
+                code=code,
+            )
+        return original_complete(state=state, code=code)
+
+    customer_meta_oauth_service.complete_with_return = complete_with_guided  # type: ignore[method-assign]
+    customer_meta_oauth_service._guided_setup_installed = True  # type: ignore[attr-defined]
