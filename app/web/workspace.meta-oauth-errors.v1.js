@@ -197,7 +197,7 @@
     const optional = document.createElement('p');
     optional.className = 'note';
     optional.style.margin = '10px 0 0';
-    optional.textContent = 'You can skip optional Page onboarding such as profile image, cover, WhatsApp and extra contact details for now. Finish creating the Page, make sure it belongs to this Business Portfolio, then return here and click Check again.';
+    optional.textContent = 'If you already created the Page, do not create another one. In Meta Business Settings, confirm that this Page belongs to the same Business Portfolio and that your Facebook profile has access to both the Page and the ad account. Optional Page onboarding such as profile image, cover, WhatsApp and extra contact details can be skipped for now. Then return here and click Check again.';
     box.appendChild(optional);
     guide.appendChild(box);
   };
@@ -215,9 +215,9 @@
         'Return to Partizan and click Check again.',
       ],
       AD_ACCOUNT_NEEDS_PAGE: [
-        'Open Page settings and create a new Facebook Page or add an existing Page to this Business Portfolio.',
-        'Give the Business Portfolio and your Facebook profile access to the Page.',
-        'Finish the Page creation flow. Optional profile and contact setup can be skipped for now.',
+        'If you have not created a Facebook Page yet, open Page settings and create one or add an existing Page to this Business Portfolio.',
+        'If the Page already exists, do not create another one. Confirm it belongs to this same Business Portfolio.',
+        'Confirm your Facebook profile has access to both the Page and the ad account. Partizan waits until Meta returns the Page as available for promotion from that ad account.',
         'Return to Partizan and click Check again. You do not need to reconnect Meta.',
       ],
     }[setup.status] || [];
@@ -304,7 +304,7 @@
             return;
           }
           renderGuidedSetup(next);
-          showNotice('Partizan checked Meta again. One setup step is still required.', true);
+          showNotice(next.message || 'Partizan checked Meta again. One setup step is still required.', true);
         } catch (error) {
           showNotice(error.message, true);
         } finally {
