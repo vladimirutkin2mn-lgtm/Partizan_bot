@@ -185,7 +185,7 @@ def test_meta_oauth_can_begin_before_research_or_funding() -> None:
     assert project["launch_unlocked"] is False
     assert len(state) >= 32
     assert query["scope"] == [
-        "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,pages_manage_ads"
+        "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement"
     ]
     persisted = store.list_namespace(CUSTOMER_META_OAUTH_STATE_NAMESPACE)
     assert len(persisted) >= 1
