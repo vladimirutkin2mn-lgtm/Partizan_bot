@@ -91,6 +91,8 @@
     node = document.createElement('div');
     node.id = 'meta-guided-setup';
     node.className = 'meta-options hidden';
+    node.style.gridTemplateColumns = '1fr';
+    node.style.alignItems = 'start';
     if (form) parent.insertBefore(node, form);
     else parent.appendChild(node);
     return node;
@@ -103,6 +105,12 @@
     anchor.href = url;
     anchor.target = '_blank';
     anchor.rel = 'noopener noreferrer';
+    anchor.style.display = 'inline-flex';
+    anchor.style.alignItems = 'center';
+    anchor.style.justifyContent = 'center';
+    anchor.style.width = 'auto';
+    anchor.style.textDecoration = 'none';
+    anchor.style.whiteSpace = 'nowrap';
     return anchor;
   };
 
@@ -111,6 +119,8 @@
     node.type = 'button';
     node.className = `button ${primary ? 'button-primary' : 'button-secondary'}`;
     node.textContent = label;
+    node.style.width = 'auto';
+    node.style.whiteSpace = 'nowrap';
     node.addEventListener('click', onClick);
     return node;
   };
@@ -124,13 +134,15 @@
 
     if (!setup || ['NOT_STARTED', 'READY'].includes(setup.status)) {
       guide.classList.add('hidden');
+      metaConnect?.classList.remove('hidden');
       return;
     }
 
     guide.replaceChildren();
     guide.classList.remove('hidden');
+    metaConnect?.classList.add('hidden');
     if (metaStateNode) metaStateNode.textContent = 'Setup needed';
-    if (metaDetail) metaDetail.textContent = setup.message;
+    if (metaDetail) metaDetail.textContent = 'Finish the Meta setup below, then Partizan can check again without another login.';
 
     const title = document.createElement('strong');
     title.textContent = 'Meta setup needs one more step';
@@ -160,7 +172,8 @@
     }
 
     const actions = document.createElement('div');
-    actions.className = 'inline-form';
+    actions.className = 'hero-actions';
+    actions.style.marginTop = '14px';
 
     if (setup.primary_url) {
       const labels = {
