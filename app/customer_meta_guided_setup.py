@@ -4,7 +4,7 @@ import hashlib
 import os
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -36,6 +36,16 @@ MetaGuidedStatus = Literal[
     "READY",
     "REAUTHORIZE_REQUIRED",
 ]
+_META_GUIDED_STATUSES = frozenset(
+    {
+        "NOT_STARTED",
+        "NO_META_BUSINESS",
+        "BUSINESS_NEEDS_AD_ACCOUNT",
+        "AD_ACCOUNT_NEEDS_PAGE",
+        "READY",
+        "REAUTHORIZE_REQUIRED",
+    }
+)
 
 
 class CustomerMetaGuidedConnectResponse(BaseModel):
@@ -104,7 +114,9 @@ class CustomerMetaGuidedSetupService:
         if self._settings.meta_oauth_app_secret is None:
             raise CustomerMetaOAuthError("Meta OAuth is not configured")
         if self._settings.provider_secret_encryption_key is None:
-            raise CustomerMetaOAuthError("Encrypted provider secret storage is not configured")
+            raise CustomerMetaOAuthError(
+                "Encrypted provider secret storage is not configured"
+            )
 
         self._clear_guided_setup(project_id)
         state = secrets.token_urlsafe(32)
@@ -116,7 +128,9 @@ class CustomerMetaGuidedSetupService:
                 "project_id": str(project_id),
                 "return_path": META_GUIDED_SETUP_RETURN_PATH,
                 "created_at": now.isoformat(),
-                "expires_at": (now + timedelta(minutes=META_GUIDED_STATE_TTL_MINUTES)).isoformat(),
+                "expires_at": (
+                    now + timedelta(minutes=META_GUIDED_STATE_TTL_MINUTES)
+                ).isoformat(),
                 "used": False,
                 "guided_setup": True,
             },
@@ -131,7 +145,8 @@ class CustomerMetaGuidedSetupService:
             }
         )
         return (
-            f"https://www.facebook.com/{self._settings.meta_oauth_api_version}/dialog/oauth?{query}"
+            f"https://www.facebook.com/{self._settings.meta_oauth_api_version}"
+            f"/dialog/oauth?{query}"
         )
 
     def complete_with_return(self, *, state: str, code: str) -> tuple[UUID, str]:
@@ -146,7 +161,10 @@ class CustomerMetaGuidedSetupService:
         record["used"] = True
         self._store.put(CUSTOMER_META_OAUTH_STATE_NAMESPACE, state_key, record)
 
-        short_token = self._client.exchange_code(code=code, redirect_uri=self._redirect_uri())
+        short_token = self._client.exchange_code(
+            code=code,
+            redirect_uri=self._redirect_uri(),
+        )
         access_token = self._client.extend_token(short_token)
         secret_reference = self._secret_store.create_reference()
         self._secret_store.put(secret_reference, access_token)
@@ -162,9 +180,16 @@ class CustomerMetaGuidedSetupService:
             raise
         return project_id, META_GUIDED_SETUP_RETURN_PATH
 
-    def view(self, project_id: UUID, customer_token: str) -> CustomerMetaGuidedSetupView:
+    def view(
+        self,
+        project_id: UUID,
+        customer_token: str,
+    ) -> CustomerMetaGuidedSetupView:
         customer_funnel_service.get_project_payload(project_id, customer_token)
-        record = self._store.get(CUSTOMER_META_GUIDED_SETUP_NAMESPACE, str(project_id))
+        record = self._store.get(
+            CUSTOMER_META_GUIDED_SETUP_NAMESPACE,
+            str(project_id),
+        )
         if not isinstance(record, dict):
             return CustomerMetaGuidedSetupView(
                 status="NOT_STARTED",
@@ -172,16 +197,25 @@ class CustomerMetaGuidedSetupService:
             )
         return self._view_from_record(record)
 
-    def check(self, project_id: UUID, customer_token: str) -> CustomerMetaGuidedSetupView:
+    def check(
+        self,
+        project_id: UUID,
+        customer_token: str,
+    ) -> CustomerMetaGuidedSetupView:
         customer_funnel_service.get_project_payload(project_id, customer_token)
-        record = self._store.get(CUSTOMER_META_GUIDED_SETUP_NAMESPACE, str(project_id))
+        record = self._store.get(
+            CUSTOMER_META_GUIDED_SETUP_NAMESPACE,
+            str(project_id),
+        )
         if not isinstance(record, dict):
             return CustomerMetaGuidedSetupView(
                 status="NOT_STARTED",
                 message="Connect Meta first so Partizan can check your setup.",
             )
         secret_reference = str(record.get("secret_reference") or "")
-        access_token = self._secret_store.get(secret_reference) if secret_reference else None
+        access_token = (
+            self._secret_store.get(secret_reference) if secret_reference else None
+        )
         if not access_token:
             self._store.put(
                 CUSTOMER_META_GUIDED_SETUP_NAMESPACE,
@@ -209,7 +243,9 @@ class CustomerMetaGuidedSetupService:
                     "status": "REAUTHORIZE_REQUIRED",
                     "business_count": int(record.get("business_count") or 0),
                     "ad_account_count": int(record.get("ad_account_count") or 0),
-                    "promotable_page_count": int(record.get("promotable_page_count") or 0),
+                    "promotable_page_count": int(
+                        record.get("promotable_page_count") or 0
+                    ),
                     "business_names": list(record.get("business_names") or [])[:5],
                     "checked_at": datetime.now(UTC).isoformat(),
                 },
@@ -217,7 +253,10 @@ class CustomerMetaGuidedSetupService:
             return self.view(project_id, customer_token)
 
     def is_guided_state(self, state: str) -> bool:
-        record = self._store.get(CUSTOMER_META_OAUTH_STATE_NAMESPACE, self._state_key(state))
+        record = self._store.get(
+            CUSTOMER_META_OAUTH_STATE_NAMESPACE,
+            self._state_key(state),
+        )
         return bool(isinstance(record, dict) and record.get("guided_setup"))
 
     def _run_preflight(
@@ -241,14 +280,21 @@ class CustomerMetaGuidedSetupService:
         pages_by_account: dict[str, list[dict]] = {}
         promotable_page_count = 0
         for raw in accounts:
-            account_id = str(raw.get("account_id") or raw.get("id") or "").removeprefix("act_")
+            account_id = str(
+                raw.get("account_id") or raw.get("id") or ""
+            ).removeprefix("act_")
             if not account_id:
                 continue
-            pages = self._client.promote_pages(access_token, account_id)[:25]
+            try:
+                pages = self._client.promote_pages(access_token, account_id)[:25]
+            except CustomerMetaOAuthError:
+                pages = []
             normalized_pages = [
                 {
                     "id": str(page.get("id") or ""),
-                    "name": str(page.get("name") or f"Page {page.get('id') or ''}"),
+                    "name": str(
+                        page.get("name") or f"Page {page.get('id') or ''}"
+                    ),
                 }
                 for page in pages
                 if str(page.get("id") or "")
@@ -259,8 +305,12 @@ class CustomerMetaGuidedSetupService:
                 {
                     "id": str(raw.get("id") or f"act_{account_id}"),
                     "account_id": account_id,
-                    "name": str(raw.get("name") or f"Ad account {account_id}"),
-                    "currency": str(raw.get("currency")) if raw.get("currency") else None,
+                    "name": str(
+                        raw.get("name") or f"Ad account {account_id}"
+                    ),
+                    "currency": (
+                        str(raw.get("currency")) if raw.get("currency") else None
+                    ),
                 }
             )
 
@@ -280,13 +330,21 @@ class CustomerMetaGuidedSetupService:
                 accounts=eligible_accounts,
                 pages_by_account=eligible_pages,
             )
-            self._store.delete(CUSTOMER_META_GUIDED_SETUP_NAMESPACE, str(project_id))
+            self._store.delete(
+                CUSTOMER_META_GUIDED_SETUP_NAMESPACE,
+                str(project_id),
+            )
             return CustomerMetaGuidedSetupView(
                 status="READY",
-                message="Meta is ready. Choose the ad account and Facebook Page Partizan should use.",
+                message=(
+                    "Meta is ready. Choose the ad account and Facebook Page "
+                    "Partizan should use."
+                ),
                 business_count=len(businesses),
                 ad_account_count=len(eligible_accounts),
-                promotable_page_count=sum(len(items) for items in eligible_pages.values()),
+                promotable_page_count=sum(
+                    len(items) for items in eligible_pages.values()
+                ),
             )
 
         if normalized_accounts:
@@ -317,9 +375,14 @@ class CustomerMetaGuidedSetupService:
         accounts: list[dict],
         pages_by_account: dict[str, list[dict]],
     ) -> None:
-        previous = self._store.get(CUSTOMER_META_PENDING_NAMESPACE, str(project_id))
+        previous = self._store.get(
+            CUSTOMER_META_PENDING_NAMESPACE,
+            str(project_id),
+        )
         previous_ref = (
-            str(previous.get("secret_reference") or "") if isinstance(previous, dict) else ""
+            str(previous.get("secret_reference") or "")
+            if isinstance(previous, dict)
+            else ""
         )
         self._store.put(
             CUSTOMER_META_PENDING_NAMESPACE,
@@ -336,62 +399,93 @@ class CustomerMetaGuidedSetupService:
             self._safe_delete_secret(previous_ref)
 
     def _replace_guided_setup(self, project_id: UUID, record: dict) -> None:
-        previous = self._store.get(CUSTOMER_META_GUIDED_SETUP_NAMESPACE, str(project_id))
-        previous_ref = (
-            str(previous.get("secret_reference") or "") if isinstance(previous, dict) else ""
+        previous = self._store.get(
+            CUSTOMER_META_GUIDED_SETUP_NAMESPACE,
+            str(project_id),
         )
-        self._store.put(CUSTOMER_META_GUIDED_SETUP_NAMESPACE, str(project_id), record)
+        previous_ref = (
+            str(previous.get("secret_reference") or "")
+            if isinstance(previous, dict)
+            else ""
+        )
+        self._store.put(
+            CUSTOMER_META_GUIDED_SETUP_NAMESPACE,
+            str(project_id),
+            record,
+        )
         current_ref = str(record.get("secret_reference") or "")
         if previous_ref and previous_ref != current_ref:
             self._safe_delete_secret(previous_ref)
 
     def _clear_guided_setup(self, project_id: UUID) -> None:
-        previous = self._store.get(CUSTOMER_META_GUIDED_SETUP_NAMESPACE, str(project_id))
+        previous = self._store.get(
+            CUSTOMER_META_GUIDED_SETUP_NAMESPACE,
+            str(project_id),
+        )
         if isinstance(previous, dict):
             previous_ref = str(previous.get("secret_reference") or "")
             if previous_ref:
                 self._safe_delete_secret(previous_ref)
-        self._store.delete(CUSTOMER_META_GUIDED_SETUP_NAMESPACE, str(project_id))
+        self._store.delete(
+            CUSTOMER_META_GUIDED_SETUP_NAMESPACE,
+            str(project_id),
+        )
 
     @staticmethod
     def _view_from_record(record: dict) -> CustomerMetaGuidedSetupView:
-        status = str(record.get("status") or "NOT_STARTED")
+        raw_status = str(record.get("status") or "NOT_STARTED")
+        status = cast(
+            MetaGuidedStatus,
+            raw_status if raw_status in _META_GUIDED_STATUSES else "NOT_STARTED",
+        )
         messages = {
             "NO_META_BUSINESS": (
-                "Partizan could not find a Meta Business Portfolio for this Facebook profile. "
-                "Create or open your Business setup, then come back and check again."
+                "Partizan could not find a Meta Business Portfolio for this Facebook "
+                "profile. Create or open your Business setup, then come back and check again."
             ),
             "BUSINESS_NEEDS_AD_ACCOUNT": (
-                "Meta Business was found, but this Facebook profile has no manageable ad account. "
-                "If you already use Ads Manager, assign yourself to the ad account; otherwise create one."
+                "Meta Business was found, but this Facebook profile has no manageable "
+                "ad account. If you already use Ads Manager, assign yourself to the ad "
+                "account; otherwise create one."
             ),
             "AD_ACCOUNT_NEEDS_PAGE": (
-                "An ad account was found, but no Facebook Page available for promotion was returned. "
-                "Add or assign a Page in Meta Business Settings, then check again."
+                "An ad account was found, but no Facebook Page available for promotion "
+                "was returned. Add or assign a Page in Meta Business Settings, then check again."
             ),
             "REAUTHORIZE_REQUIRED": (
-                "The saved Meta authorization can no longer be checked. Connect Meta again to refresh access."
+                "The saved Meta authorization can no longer be checked. Connect Meta "
+                "again to refresh access."
             ),
         }
         primary_urls = {
             "NO_META_BUSINESS": "https://business.facebook.com/reg/",
-            "BUSINESS_NEEDS_AD_ACCOUNT": "https://business.facebook.com/settings/ad-accounts",
+            "BUSINESS_NEEDS_AD_ACCOUNT": (
+                "https://business.facebook.com/settings/ad-accounts"
+            ),
             "AD_ACCOUNT_NEEDS_PAGE": "https://business.facebook.com/settings/pages",
             "REAUTHORIZE_REQUIRED": None,
         }
         secondary_urls = {
-            "BUSINESS_NEEDS_AD_ACCOUNT": "https://adsmanager.facebook.com/adsmanager/manage/campaigns",
+            "BUSINESS_NEEDS_AD_ACCOUNT": (
+                "https://adsmanager.facebook.com/adsmanager/manage/campaigns"
+            ),
         }
         return CustomerMetaGuidedSetupView(
-            status=status,  # type: ignore[arg-type]
-            message=messages.get(status, "Connect Meta to check Business, ad account and Page access."),
+            status=status,
+            message=messages.get(
+                status,
+                "Connect Meta to check Business, ad account and Page access.",
+            ),
             business_count=int(record.get("business_count") or 0),
             ad_account_count=int(record.get("ad_account_count") or 0),
             promotable_page_count=int(record.get("promotable_page_count") or 0),
-            business_names=[str(item) for item in record.get("business_names", [])][:5],
+            business_names=[
+                str(item) for item in record.get("business_names", [])
+            ][:5],
             primary_url=primary_urls.get(status),
             secondary_url=secondary_urls.get(status),
-            can_check_again=status in {
+            can_check_again=status
+            in {
                 "NO_META_BUSINESS",
                 "BUSINESS_NEEDS_AD_ACCOUNT",
                 "AD_ACCOUNT_NEEDS_PAGE",
@@ -413,7 +507,9 @@ class CustomerMetaGuidedSetupService:
     def _redirect_uri(self) -> str:
         origin = self._settings.partizan_public_base_url
         if not origin:
-            raise CustomerMetaOAuthError("PARTIZAN_PUBLIC_BASE_URL is required for Meta OAuth")
+            raise CustomerMetaOAuthError(
+                "PARTIZAN_PUBLIC_BASE_URL is required for Meta OAuth"
+            )
         return f"{origin}/v1/customer-meta/oauth/callback"
 
     @staticmethod
@@ -443,7 +539,10 @@ def install_guided_meta_oauth_completion() -> None:
 
     def complete_with_guided(*, state: str, code: str) -> tuple[UUID, str]:
         if customer_meta_guided_setup_service.is_guided_state(state):
-            return customer_meta_guided_setup_service.complete_with_return(state=state, code=code)
+            return customer_meta_guided_setup_service.complete_with_return(
+                state=state,
+                code=code,
+            )
         return original_complete(state=state, code=code)
 
     customer_meta_oauth_service.complete_with_return = complete_with_guided  # type: ignore[method-assign]
