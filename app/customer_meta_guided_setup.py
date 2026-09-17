@@ -150,17 +150,20 @@ class CustomerMetaGuidedSetupService:
         )
 
     def complete_with_return(self, *, state: str, code: str) -> tuple[UUID, str]:
-        state_key = self._state_key(state)
-        record = self._store.get(CUSTOMER_META_OAUTH_STATE_NAMESPACE, state_key)
+        record = self._state_record(state)
         if record is None or record.get("used") or not record.get("guided_setup"):
             raise CustomerMetaOAuthError("Meta OAuth state is invalid or already used")
         expires_at = datetime.fromisoformat(str(record["expires_at"]))
         if self._as_utc(expires_at) <= datetime.now(UTC):
             raise CustomerMetaOAuthError("Meta OAuth state has expired")
+
         project_id = UUID(str(record["project_id"]))
         record["used"] = True
-        self._store.put(CUSTOMER_META_OAUTH_STATE_NAMESPACE, state_key, record)
-
+        self._store.put(
+            CUSTOMER_META_OAUTH_STATE_NAMESPACE,
+            self._state_key(state),
+            record,
+        )
         short_token = self._client.exchange_code(
             code=code,
             redirect_uri=self._redirect_uri(),
@@ -170,11 +173,7 @@ class CustomerMetaGuidedSetupService:
         self._secret_store.put(secret_reference, access_token)
 
         try:
-            self._run_preflight(
-                project_id=project_id,
-                secret_reference=secret_reference,
-                access_token=access_token,
-            )
+            self._run_preflight(project_id, secret_reference, access_token)
         except Exception:
             self._safe_delete_secret(secret_reference)
             raise
@@ -212,56 +211,25 @@ class CustomerMetaGuidedSetupService:
                 status="NOT_STARTED",
                 message="Connect Meta first so Partizan can check your setup.",
             )
+
         secret_reference = str(record.get("secret_reference") or "")
         access_token = (
             self._secret_store.get(secret_reference) if secret_reference else None
         )
         if not access_token:
-            self._store.put(
-                CUSTOMER_META_GUIDED_SETUP_NAMESPACE,
-                str(project_id),
-                {
-                    **record,
-                    "status": "REAUTHORIZE_REQUIRED",
-                    "checked_at": datetime.now(UTC).isoformat(),
-                },
-            )
-            return self.view(project_id, customer_token)
+            return self._mark_reauthorization_required(project_id, record)
         try:
-            return self._run_preflight(
-                project_id=project_id,
-                secret_reference=secret_reference,
-                access_token=access_token,
-            )
+            return self._run_preflight(project_id, secret_reference, access_token)
         except CustomerMetaOAuthError:
             self._safe_delete_secret(secret_reference)
-            self._store.put(
-                CUSTOMER_META_GUIDED_SETUP_NAMESPACE,
-                str(project_id),
-                {
-                    "project_id": str(project_id),
-                    "status": "REAUTHORIZE_REQUIRED",
-                    "business_count": int(record.get("business_count") or 0),
-                    "ad_account_count": int(record.get("ad_account_count") or 0),
-                    "promotable_page_count": int(
-                        record.get("promotable_page_count") or 0
-                    ),
-                    "business_names": list(record.get("business_names") or [])[:5],
-                    "checked_at": datetime.now(UTC).isoformat(),
-                },
-            )
-            return self.view(project_id, customer_token)
+            return self._mark_reauthorization_required(project_id, record)
 
     def is_guided_state(self, state: str) -> bool:
-        record = self._store.get(
-            CUSTOMER_META_OAUTH_STATE_NAMESPACE,
-            self._state_key(state),
-        )
+        record = self._state_record(state)
         return bool(isinstance(record, dict) and record.get("guided_setup"))
 
     def _run_preflight(
         self,
-        *,
         project_id: UUID,
         secret_reference: str,
         access_token: str,
@@ -278,7 +246,6 @@ class CustomerMetaGuidedSetupService:
 
         normalized_accounts: list[dict] = []
         pages_by_account: dict[str, list[dict]] = {}
-        promotable_page_count = 0
         for raw in accounts:
             account_id = str(
                 raw.get("account_id") or raw.get("id") or ""
@@ -289,7 +256,7 @@ class CustomerMetaGuidedSetupService:
                 pages = self._client.promote_pages(access_token, account_id)[:25]
             except CustomerMetaOAuthError:
                 pages = []
-            normalized_pages = [
+            pages_by_account[account_id] = [
                 {
                     "id": str(page.get("id") or ""),
                     "name": str(
@@ -299,8 +266,6 @@ class CustomerMetaGuidedSetupService:
                 for page in pages
                 if str(page.get("id") or "")
             ]
-            pages_by_account[account_id] = normalized_pages
-            promotable_page_count += len(normalized_pages)
             normalized_accounts.append(
                 {
                     "id": str(raw.get("id") or f"act_{account_id}"),
@@ -314,6 +279,7 @@ class CustomerMetaGuidedSetupService:
                 }
             )
 
+        promotable_page_count = sum(len(items) for items in pages_by_account.values())
         if normalized_accounts and promotable_page_count:
             eligible_accounts = [
                 item
@@ -325,10 +291,10 @@ class CustomerMetaGuidedSetupService:
                 for item in eligible_accounts
             }
             self._promote_to_standard_pending(
-                project_id=project_id,
-                secret_reference=secret_reference,
-                accounts=eligible_accounts,
-                pages_by_account=eligible_pages,
+                project_id,
+                secret_reference,
+                eligible_accounts,
+                eligible_pages,
             )
             self._store.delete(
                 CUSTOMER_META_GUIDED_SETUP_NAMESPACE,
@@ -353,8 +319,7 @@ class CustomerMetaGuidedSetupService:
             status = "BUSINESS_NEEDS_AD_ACCOUNT"
         else:
             status = "NO_META_BUSINESS"
-
-        setup_record = {
+        record = {
             "project_id": str(project_id),
             "secret_reference": secret_reference,
             "status": status,
@@ -364,21 +329,17 @@ class CustomerMetaGuidedSetupService:
             "business_names": business_names,
             "checked_at": datetime.now(UTC).isoformat(),
         }
-        self._replace_guided_setup(project_id, setup_record)
-        return self._view_from_record(setup_record)
+        self._replace_guided_setup(project_id, record)
+        return self._view_from_record(record)
 
     def _promote_to_standard_pending(
         self,
-        *,
         project_id: UUID,
         secret_reference: str,
         accounts: list[dict],
         pages_by_account: dict[str, list[dict]],
     ) -> None:
-        previous = self._store.get(
-            CUSTOMER_META_PENDING_NAMESPACE,
-            str(project_id),
-        )
+        previous = self._store.get(CUSTOMER_META_PENDING_NAMESPACE, str(project_id))
         previous_ref = (
             str(previous.get("secret_reference") or "")
             if isinstance(previous, dict)
@@ -417,19 +378,39 @@ class CustomerMetaGuidedSetupService:
         if previous_ref and previous_ref != current_ref:
             self._safe_delete_secret(previous_ref)
 
+    def _mark_reauthorization_required(
+        self,
+        project_id: UUID,
+        previous: dict,
+    ) -> CustomerMetaGuidedSetupView:
+        record = {
+            "project_id": str(project_id),
+            "status": "REAUTHORIZE_REQUIRED",
+            "business_count": int(previous.get("business_count") or 0),
+            "ad_account_count": int(previous.get("ad_account_count") or 0),
+            "promotable_page_count": int(
+                previous.get("promotable_page_count") or 0
+            ),
+            "business_names": list(previous.get("business_names") or [])[:5],
+            "checked_at": datetime.now(UTC).isoformat(),
+        }
+        self._store.put(
+            CUSTOMER_META_GUIDED_SETUP_NAMESPACE,
+            str(project_id),
+            record,
+        )
+        return self._view_from_record(record)
+
     def _clear_guided_setup(self, project_id: UUID) -> None:
         previous = self._store.get(
             CUSTOMER_META_GUIDED_SETUP_NAMESPACE,
             str(project_id),
         )
         if isinstance(previous, dict):
-            previous_ref = str(previous.get("secret_reference") or "")
-            if previous_ref:
-                self._safe_delete_secret(previous_ref)
-        self._store.delete(
-            CUSTOMER_META_GUIDED_SETUP_NAMESPACE,
-            str(project_id),
-        )
+            reference = str(previous.get("secret_reference") or "")
+            if reference:
+                self._safe_delete_secret(reference)
+        self._store.delete(CUSTOMER_META_GUIDED_SETUP_NAMESPACE, str(project_id))
 
     @staticmethod
     def _view_from_record(record: dict) -> CustomerMetaGuidedSetupView:
@@ -468,7 +449,7 @@ class CustomerMetaGuidedSetupService:
         secondary_urls = {
             "BUSINESS_NEEDS_AD_ACCOUNT": (
                 "https://adsmanager.facebook.com/adsmanager/manage/campaigns"
-            ),
+            )
         }
         return CustomerMetaGuidedSetupView(
             status=status,
@@ -492,11 +473,16 @@ class CustomerMetaGuidedSetupService:
             },
         )
 
+    def _state_record(self, state: str) -> dict | None:
+        return self._store.get(
+            CUSTOMER_META_OAUTH_STATE_NAMESPACE,
+            self._state_key(state),
+        )
+
     def _project_enabled(self, project_id: UUID) -> bool:
         if self._settings.meta_oauth_public_ready:
             return True
-        raw = os.getenv("META_OAUTH_DOGFOOD_PROJECT_IDS", "")
-        for item in raw.split(","):
+        for item in os.getenv("META_OAUTH_DOGFOOD_PROJECT_IDS", "").split(","):
             try:
                 if str(UUID(item.strip())) == str(project_id):
                     return True
@@ -546,4 +532,4 @@ def install_guided_meta_oauth_completion() -> None:
         return original_complete(state=state, code=code)
 
     customer_meta_oauth_service.complete_with_return = complete_with_guided  # type: ignore[method-assign]
-    setattr(customer_meta_oauth_service, "_guided_setup_installed", True)
+    customer_meta_oauth_service._guided_setup_installed = True  # type: ignore[attr-defined]
