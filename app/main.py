@@ -11,6 +11,8 @@ from app.customer_channel_routes import router as customer_channel_router
 from app.customer_channel_selection_routes import router as customer_channel_selection_router
 from app.customer_economics_routes import router as customer_economics_router
 from app.customer_learning_routes import router as customer_learning_router
+from app.customer_meta_guided_routes import router as customer_meta_guided_router
+from app.customer_meta_guided_setup import install_guided_meta_oauth_completion
 from app.customer_project_routes import router as customer_project_router
 from app.customer_reddit_routes import router as customer_reddit_router
 from app.customer_routes import router as customer_router
@@ -41,6 +43,7 @@ from app.web_routes import router as web_router
 enable_checkout_first_growth_balance_funding()
 install_paid_checkout_project_recovery()
 enable_growth_balance_payment_reversal_webhooks()
+install_guided_meta_oauth_completion()
 configure_logging()
 
 app = FastAPI(
@@ -52,6 +55,7 @@ app = FastAPI(
 app.include_router(web_router)
 app.include_router(customer_router)
 app.include_router(customer_account_router)
+app.include_router(customer_meta_guided_router)
 app.include_router(growth_balance_jit_router)
 app.include_router(customer_project_router)
 app.include_router(customer_channel_router)
