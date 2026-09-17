@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Annotated
 from urllib.parse import urlencode
 from uuid import UUID
@@ -53,6 +54,7 @@ from app.self_dogfood import SELF_DOGFOOD_ATTRIBUTION_COOKIE, self_dogfood_servi
 from app.stripe_objects import stripe_field
 
 router = APIRouter(prefix="/v1", tags=["customer"])
+_META_CALLBACK_TOKEN_RE = re.compile(r"^[A-Za-z0-9_.-]{1,80}$")
 
 
 def _stripe_customer_id(source: object) -> str | None:
@@ -94,12 +96,37 @@ def _project_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=409, detail=str(exc))
 
 
+def _safe_meta_callback_token(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if not _META_CALLBACK_TOKEN_RE.fullmatch(normalized):
+        return None
+    return normalized
+
+
+def _meta_internal_error_code(exc: CustomerMetaOAuthError) -> str:
+    message = str(exc)
+    if "no manageable ad accounts" in message:
+        return "no_manageable_ad_accounts"
+    if "no Facebook Pages" in message:
+        return "no_promotable_pages"
+    if "state is invalid" in message or "state has expired" in message:
+        return "oauth_state_invalid"
+    if "Meta OAuth/API request" in message:
+        return "meta_api_rejected"
+    return "partizan_meta_oauth_failed"
+
+
 def _meta_callback_target(
     *,
     state: str | None,
     result: str,
     project_id: UUID | None = None,
     return_path: str | None = None,
+    meta_error: str | None = None,
+    meta_reason: str | None = None,
+    meta_code: str | None = None,
 ) -> str:
     if return_path is None and state:
         context = customer_meta_oauth_service.pending_context(state)
@@ -111,6 +138,15 @@ def _meta_callback_target(
     query_payload = {"meta": result}
     if project_id is not None:
         query_payload["project"] = str(project_id)
+    safe_meta_error = _safe_meta_callback_token(meta_error)
+    safe_meta_reason = _safe_meta_callback_token(meta_reason)
+    safe_meta_code = _safe_meta_callback_token(meta_code)
+    if safe_meta_error:
+        query_payload["meta_error"] = safe_meta_error
+    if safe_meta_reason:
+        query_payload["meta_reason"] = safe_meta_reason
+    if safe_meta_code:
+        query_payload["meta_code"] = safe_meta_code
     return f"{safe_return_path}?{urlencode(query_payload)}"
 
 
@@ -547,10 +583,18 @@ def complete_customer_meta_oauth(
     state: str | None = None,
     code: str | None = None,
     error: str | None = None,
+    error_reason: str | None = None,
+    error_code: str | None = None,
 ) -> RedirectResponse:
     if error or not state or not code:
         return RedirectResponse(
-            url=_meta_callback_target(state=state, result="error"),
+            url=_meta_callback_target(
+                state=state,
+                result="error",
+                meta_error=error or "missing_oauth_response",
+                meta_reason=error_reason,
+                meta_code=error_code,
+            ),
             status_code=303,
         )
     try:
@@ -558,9 +602,13 @@ def complete_customer_meta_oauth(
             state=state,
             code=code,
         )
-    except CustomerMetaOAuthError:
+    except CustomerMetaOAuthError as exc:
         return RedirectResponse(
-            url=_meta_callback_target(state=state, result="error"),
+            url=_meta_callback_target(
+                state=state,
+                result="error",
+                meta_error=_meta_internal_error_code(exc),
+            ),
             status_code=303,
         )
     return RedirectResponse(
