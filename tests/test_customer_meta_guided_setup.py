@@ -1,3 +1,4 @@
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from cryptography.fernet import Fernet
@@ -168,7 +169,12 @@ def test_guided_meta_check_reuses_token_and_promotes_ready_assets() -> None:
 
 
 def test_workspace_meta_guided_asset_contains_setup_cjm_contract() -> None:
-    source = ( __import__("pathlib").Path(__file__).resolve().parents[1] / "app" / "web" / "workspace.meta-oauth-errors.v1.js" ).read_text(encoding="utf-8")
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "app"
+        / "web"
+        / "workspace.meta-oauth-errors.v1.js"
+    ).read_text(encoding="utf-8")
 
     assert "/meta-guided/connect" in source
     assert "/meta-guided/setup" in source
