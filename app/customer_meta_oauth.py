@@ -35,6 +35,7 @@ META_OAUTH_SCOPES = (
     "business_management",
     "pages_show_list",
     "pages_read_engagement",
+    "pages_manage_ads",
 )
 META_OAUTH_MAX_BUSINESSES = 5
 
