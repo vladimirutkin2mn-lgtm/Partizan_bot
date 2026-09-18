@@ -103,6 +103,10 @@ class CustomerChannelService:
         settlement_ready = bool(
             self._balance.rail_view(project_id).get("settlement_ready")
         )
+        telegram_balance_available_usd = self._balance.summary(
+            project_id,
+            self._provider_distribution_spend(project),
+        ).available_usd
 
         rows: list[CustomerChannelView] = []
         for platform in (
@@ -122,6 +126,7 @@ class CustomerChannelService:
                 telegram_automation_status=telegram_automation.status,
                 telegram_automation_ready=telegram_automation.readiness_ok,
                 telegram_automation_blockers=telegram_automation.blockers,
+                telegram_balance_available_usd=telegram_balance_available_usd,
             )
             rows.append(
                 CustomerChannelView(
@@ -196,6 +201,10 @@ class CustomerChannelService:
         settlement_ready = bool(
             self._balance.rail_view(project_id).get("settlement_ready")
         )
+        telegram_balance_available_usd = self._balance.summary(
+            project_id,
+            self._provider_distribution_spend(project),
+        ).available_usd
         for item in payload.channels:
             if item.publisher_mode is not None:
                 option = next(
@@ -220,6 +229,7 @@ class CustomerChannelService:
                     telegram_automation_status=telegram_automation.status,
                     telegram_automation_ready=telegram_automation.readiness_ok,
                     telegram_automation_blockers=telegram_automation.blockers,
+                    telegram_balance_available_usd=telegram_balance_available_usd,
                 )
                 if not execution_ready:
                     if item.platform not in AUTONOMOUS_EXECUTION_PLATFORMS:
@@ -279,6 +289,8 @@ class CustomerChannelService:
                 if (
                     automation.status != TelegramAutomationStatus.ENABLED
                     or not automation.readiness_ok
+                    or self._telegram_balance_available_usd(project_id, project)
+                    < float(self._settings.partizan_telegram_execution_fee_usd)
                 ):
                     continue
             result.append(platform)
@@ -469,6 +481,24 @@ class CustomerChannelService:
             return False, "connect an authorised Reddit account first"
         return True, None
 
+    def _provider_distribution_spend(self, project: dict) -> float:
+        product_id_raw = project.get("product_id")
+        if not product_id_raw:
+            return 0.0
+        try:
+            analytics = distribution_analytics_service.product_analytics(
+                UUID(str(product_id_raw))
+            )
+        except (KeyError, ValueError):
+            return 0.0
+        return float(analytics.total_costs.distribution_spend)
+
+    def _telegram_balance_available_usd(self, project_id: UUID, project: dict) -> float:
+        return self._balance.summary(
+            project_id,
+            self._provider_distribution_spend(project),
+        ).available_usd
+
     def _metrics_by_platform(self, project: dict) -> dict[DistributionPlatform, object]:
         product_id_raw = project.get("product_id")
         if not product_id_raw:
@@ -517,6 +547,7 @@ class CustomerChannelService:
         telegram_automation_status: TelegramAutomationStatus,
         telegram_automation_ready: bool,
         telegram_automation_blockers: list[str],
+        telegram_balance_available_usd: float,
     ) -> tuple[bool, str | None]:
         if platform not in AUTONOMOUS_EXECUTION_PLATFORMS:
             return False, "autonomous execution is not supported for this channel"
@@ -538,6 +569,12 @@ class CustomerChannelService:
                 return False, (
                     "; ".join(telegram_automation_blockers)
                     or "Telegram automation readiness check failed"
+                )
+            execution_fee = float(self._settings.partizan_telegram_execution_fee_usd)
+            if telegram_balance_available_usd < execution_fee:
+                return False, (
+                    "fund the Growth Balance before Telegram automation; "
+                    f"each confirmed publish currently costs ${execution_fee:.3f}"
                 )
             return True, None
         if not meta_connected:
