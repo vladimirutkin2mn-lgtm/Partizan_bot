@@ -227,23 +227,25 @@ class CustomerAutopilotService:
 
         if status == "PAUSED":
             pause_failed = False
+            paid_mandate = self._mandate_includes_paid(product_id)
             project["autopilot_pause_reason"] = "CUSTOMER"
             try:
                 growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
             except (KeyError, RuntimeError, ValueError):
                 pause_failed = True
-            try:
-                self._balance.pause_rail(project_id, "CUSTOMER")
-            except (KeyError, RuntimeError, ValueError):
-                pause_failed = True
-            try:
-                provider_pause = customer_paid_campaign_lifecycle_service.pause_product(
-                    product_id,
-                    reason=AUTOPILOT_CUSTOMER_PAUSE_REASON,
-                )
-            except (KeyError, RuntimeError, ValueError):
-                provider_pause = None
-                pause_failed = True
+            provider_pause = None
+            if paid_mandate:
+                try:
+                    self._balance.pause_rail(project_id, "CUSTOMER")
+                except (KeyError, RuntimeError, ValueError):
+                    pause_failed = True
+                try:
+                    provider_pause = customer_paid_campaign_lifecycle_service.pause_product(
+                        product_id,
+                        reason=AUTOPILOT_CUSTOMER_PAUSE_REASON,
+                    )
+                except (KeyError, RuntimeError, ValueError):
+                    pause_failed = True
             if provider_pause is not None and provider_pause.requires_reconciliation:
                 pause_failed = True
             try:
@@ -251,9 +253,11 @@ class CustomerAutopilotService:
             except RuntimeError:
                 pause_failed = True
             if pause_failed:
-                raise ValueError(
-                    "Autopilot is fail-closed, but paid provider state requires reconciliation"
-                )
+                if paid_mandate:
+                    raise ValueError(
+                        "Autopilot is fail-closed, but paid provider state requires reconciliation"
+                    )
+                raise ValueError("Autopilot pause could not be confirmed safely")
             return self.overview(project_id, customer_token)
 
         raise ValueError("Unsupported Autopilot status")
