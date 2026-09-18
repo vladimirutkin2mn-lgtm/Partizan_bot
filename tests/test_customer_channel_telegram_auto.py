@@ -8,8 +8,8 @@ from app.channel_execution import PublisherMode
 from app.customer_channel_schemas import CustomerChannelPreferencesUpdateRequest
 from app.customer_channels import CustomerChannelService
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
-from app.growth_balance import GROWTH_BALANCE_TOPUP_NAMESPACE
 from app.distribution_types import DistributionPlatform
+from app.growth_balance import GROWTH_BALANCE_TOPUP_NAMESPACE
 from app.runtime_store import MemoryRuntimeStateStore
 from app.telegram_client_governance import TelegramAutomationStatus
 
