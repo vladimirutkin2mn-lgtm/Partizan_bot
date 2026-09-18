@@ -216,3 +216,6 @@ def test_workspace_meta_guided_asset_contains_setup_cjm_contract() -> None:
     assert "Do you already use Meta Ads Manager for this business?" in source
     assert "PAGE_NEEDS_AD_ACCOUNT_ACCESS" in source
     assert "Do not create another Facebook Page" in source
+    assert "Partizan checked Meta again. Setup still needs one more step." in source
+    assert "showNotice(next.message" not in source
+    assert "showNotice(setup.message, true)" not in source
