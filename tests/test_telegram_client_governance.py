@@ -7,6 +7,7 @@ from pydantic import SecretStr
 
 import app.telegram_client_governance as governance
 from app.channel_execution import PublisherMode
+from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
 from app.distribution_types import DistributionPlatform
 from app.runtime_store import MemoryRuntimeStateStore
 from app.telegram_client_governance import (
@@ -76,6 +77,12 @@ class FakePublishService:
         assert self.receipt is not None
         return self.receipt
 
+    async def publish_internal(self, project_id, project, action_id, payload):
+        self.publish_calls.append((project_id, "internal", action_id, payload.retry))
+        assert str(project.get("product_id")) != ""
+        assert self.receipt is not None
+        return self.receipt
+
 
 class FakeSecretStore:
     def __init__(self, values: dict[str, str]) -> None:
@@ -118,6 +125,7 @@ def _fixture(monkeypatch):
     experiment_id = uuid4()
     action_id = uuid4()
     project = {
+        "id": project_id,
         "project_id": project_id,
         "product_id": product_id,
         "channel_publisher_modes": {
@@ -152,6 +160,15 @@ def _fixture(monkeypatch):
         FakeDistributionExecution(action, experiment),
     )
     monkeypatch.setattr(governance, "customer_telegram_client_publish_service", publish_service)
+    store.put(
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(project_id),
+        {
+            **project,
+            "id": str(project_id),
+            "product_id": str(product_id),
+        },
+    )
     store.put(
         CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE,
         str(project_id),
@@ -293,6 +310,39 @@ async def test_automated_publish_rechecks_pause_revoke_and_daily_limit(monkeypat
             action.id,
             TelegramPublishRequest(),
         )
+
+
+@pytest.mark.asyncio
+async def test_internal_automation_publish_reuses_explicit_project_authorization(monkeypatch) -> None:
+    store, project, action, receipt, publish_service = _fixture(monkeypatch)
+    service = _service(store)
+    project_id = project["project_id"]
+
+    with pytest.raises(CustomerTelegramClientPublishError, match="not explicitly enabled"):
+        await service.automated_publish_internal(
+            project_id,
+            action.id,
+            TelegramPublishRequest(),
+        )
+
+    service.authorize_automation(
+        project_id,
+        "customer-token",
+        TelegramAutomationAuthorizationRequest(
+            confirm_client_owned_execution=True,
+            max_publishes_per_day=2,
+        ),
+    )
+
+    result = await service.automated_publish_internal(
+        project_id,
+        action.id,
+        TelegramPublishRequest(retry=True),
+    )
+
+    assert result == receipt
+    assert service.automation_status_internal(project_id).status == TelegramAutomationStatus.ENABLED
+    assert publish_service.publish_calls == []
 
 
 @pytest.mark.asyncio
