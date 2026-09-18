@@ -295,7 +295,11 @@ class CustomerAutopilotService:
             growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
             project["autopilot_pause_reason"] = None
             self._persist(project)
-        elif mandate is not None and not balance.settlement_ready:
+        elif (
+            DistributionPlatform.INSTAGRAM in auto_platforms
+            and mandate is not None
+            and not balance.settlement_ready
+        ):
             self._apply_automatic_pause(
                 project_id,
                 project,
@@ -313,6 +317,7 @@ class CustomerAutopilotService:
             and project.get("autopilot_target_max_cac")
         )
         auto_platforms = customer_channel_service.autonomous_platforms(project)
+        paid_auto = DistributionPlatform.INSTAGRAM in auto_platforms
 
         if not research_ready:
             balance = self._balance.summary(project_id, 0.0)
@@ -320,21 +325,16 @@ class CustomerAutopilotService:
             blockers: list[str] = []
             if not auto_platforms:
                 blockers.append("No autonomous execution channel is enabled")
-            if (
-                DistributionPlatform.INSTAGRAM in auto_platforms
-                and not staged_meta.connected
-            ):
+            if paid_auto and not staged_meta.connected:
                 blockers.append("Meta access is not connected")
-            if not guardrails_saved:
+            if paid_auto and not guardrails_saved:
                 blockers.append("Maximum CAC and autonomous-spend guardrails are not saved")
-            if balance.funded_usd <= 0:
+            if paid_auto and balance.funded_usd <= 0:
                 blockers.append("Growth Balance is not funded")
-            if not balance.settlement_ready:
+            if paid_auto and not balance.settlement_ready:
                 blockers.append("Paid execution payment path is not ready yet")
             blockers.append(
-                "Partizan is researching before spend; add acquisition budget only for a concrete paid move"
-                if balance.funded_usd <= 0
-                else "Partizan is mapping the audience and acquisition strategy"
+                "Partizan is researching acquisition opportunities before execution"
             )
             return CustomerAutopilotOverview(
                 project_id=project_id,
@@ -371,18 +371,18 @@ class CustomerAutopilotService:
         if not auto_platforms:
             blockers.append("No autonomous execution channel is enabled")
         if not product.reference_links:
-            blockers.append("Website or landing page is required for paid traffic")
-        if balance.funded_usd <= 0:
+            blockers.append("A product destination link is required for acquisition")
+        if paid_auto and balance.funded_usd <= 0:
             blockers.append("Growth Balance is not funded")
-        elif balance.remaining_acquisition_capacity_usd <= 0:
+        elif paid_auto and balance.remaining_acquisition_capacity_usd <= 0:
             blockers.append("Growth Balance has no acquisition capacity remaining")
-        if not balance.settlement_ready:
+        if paid_auto and not balance.settlement_ready:
             blockers.append("Paid execution payment path is not ready yet")
-        if not guardrails_saved:
+        if paid_auto and not guardrails_saved:
             blockers.append("Maximum CAC and autonomous-spend guardrails are not saved")
-        elif mandate is None and balance.funded_usd > 0 and auto_platforms:
-            blockers.append("Partizan is applying the saved guardrails")
-        if DistributionPlatform.INSTAGRAM in auto_platforms and connection is None:
+        elif mandate is None and auto_platforms:
+            blockers.append("Partizan is applying the channel automation policy")
+        if paid_auto and connection is None:
             blockers.append("Meta access is not connected")
         if mandate is not None and mandate.status != GrowthMandateStatus.ACTIVE:
             blockers.append(f"Autopilot is {mandate.status.value.lower()}")
