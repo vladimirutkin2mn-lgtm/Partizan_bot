@@ -55,6 +55,78 @@ def test_all_in_growth_balance_charges_fee_only_on_actual_acquisition_spend() ->
     assert summary.settlement_ready is True
 
 
+def test_subcent_telegram_execution_fee_consumes_growth_balance_exactly_once() -> None:
+    store = MemoryRuntimeStateStore()
+    store.put(
+        GROWTH_BALANCE_TOPUP_NAMESPACE,
+        "cs_paid_1",
+        {
+            "session_id": "cs_paid_1",
+            "project_id": str(PROJECT_ID),
+            "amount_cents": 100,
+            "currency": "usd",
+            "state": "PAID",
+        },
+    )
+    service = GrowthBalanceService(store, settlement_service=ReadySettlement())
+
+    created = service.record_service_charge(
+        PROJECT_ID,
+        charge_key="telegram-execution:action-1",
+        amount_usd=0.001,
+        category="TELEGRAM_EXECUTION_FEE",
+        acquisition_spend_usd=0.0,
+        metadata={"action_id": "action-1"},
+    )
+    duplicate = service.record_service_charge(
+        PROJECT_ID,
+        charge_key="telegram-execution:action-1",
+        amount_usd=0.001,
+        category="TELEGRAM_EXECUTION_FEE",
+        acquisition_spend_usd=0.0,
+        metadata={"action_id": "action-1"},
+    )
+    summary = service.summary(PROJECT_ID, 0.0)
+
+    assert created is True
+    assert duplicate is False
+    assert summary.execution_fee_usd == 0.001
+    assert summary.used_usd == 0.001
+    assert summary.available_usd == 0.999
+    assert summary.acquisition_capacity_usd == 0.91
+
+
+def test_ten_subcent_execution_fees_accumulate_to_one_cent() -> None:
+    store = MemoryRuntimeStateStore()
+    store.put(
+        GROWTH_BALANCE_TOPUP_NAMESPACE,
+        "cs_paid_1",
+        {
+            "session_id": "cs_paid_1",
+            "project_id": str(PROJECT_ID),
+            "amount_cents": 100,
+            "currency": "usd",
+            "state": "PAID",
+        },
+    )
+    service = GrowthBalanceService(store, settlement_service=ReadySettlement())
+
+    for index in range(10):
+        assert service.record_service_charge(
+            PROJECT_ID,
+            charge_key=f"telegram-execution:action-{index}",
+            amount_usd=0.001,
+            category="TELEGRAM_EXECUTION_FEE",
+            acquisition_spend_usd=0.0,
+        )
+
+    summary = service.summary(PROJECT_ID, 0.0)
+    assert summary.execution_fee_usd == 0.01
+    assert summary.used_usd == 0.01
+    assert summary.available_usd == 0.99
+    assert summary.acquisition_capacity_usd == 0.9
+
+
 def test_all_in_capacity_uses_fee_on_media_spend_not_ten_percent_of_deposit() -> None:
     assert GrowthBalanceService._max_acquisition_cents(100_000, 10) == 90_909
     assert GrowthBalanceService._fee_cents(90_909, 10) == 9_091
