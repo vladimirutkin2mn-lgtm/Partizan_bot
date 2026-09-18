@@ -290,7 +290,7 @@ class CustomerChannelService:
                     automation.status != TelegramAutomationStatus.ENABLED
                     or not automation.readiness_ok
                     or self._telegram_balance_available_usd(project_id, project)
-                    < float(self._settings.partizan_telegram_execution_fee_usd)
+                    < self._telegram_execution_fee_usd()
                 ):
                     continue
             result.append(platform)
@@ -481,6 +481,9 @@ class CustomerChannelService:
             return False, "connect an authorised Reddit account first"
         return True, None
 
+    def _telegram_execution_fee_usd(self) -> float:
+        return float(getattr(self._settings, "partizan_telegram_execution_fee_usd", 0.001))
+
     def _provider_distribution_spend(self, project: dict) -> float:
         product_id_raw = project.get("product_id")
         if not product_id_raw:
@@ -570,7 +573,7 @@ class CustomerChannelService:
                     "; ".join(telegram_automation_blockers)
                     or "Telegram automation readiness check failed"
                 )
-            execution_fee = float(self._settings.partizan_telegram_execution_fee_usd)
+            execution_fee = self._telegram_execution_fee_usd()
             if telegram_balance_available_usd < execution_fee:
                 return False, (
                     "fund the Growth Balance before Telegram automation; "
