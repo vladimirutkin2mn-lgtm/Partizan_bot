@@ -5,6 +5,7 @@ import app.customer_autopilot as autopilot
 from app.autonomy_service import GrowthMandateService
 from app.customer_autopilot import CustomerAutopilotService
 from app.distribution_types import DistributionActionType, DistributionPlatform
+from app.growth_balance import GROWTH_BALANCE_TOPUP_NAMESPACE
 from app.runtime_store import MemoryRuntimeStateStore
 
 
@@ -26,7 +27,10 @@ class FakeProductIntake:
 class FakeAnalytics:
     def product_analytics(self, product_id):
         del product_id
-        return SimpleNamespace(total_spend=0.0)
+        return SimpleNamespace(
+            total_spend=0.0,
+            total_costs=SimpleNamespace(distribution_spend=0.0),
+        )
 
 
 class FakeAudience:
@@ -59,7 +63,7 @@ def _patch_common(monkeypatch, store, platforms):
     return mandate_service
 
 
-def test_telegram_only_autopilot_creates_zero_spend_mandate_without_paid_guardrails(
+def test_telegram_only_autopilot_uses_funded_balance_without_paid_guardrails(
     monkeypatch,
 ) -> None:
     store = MemoryRuntimeStateStore()
@@ -77,6 +81,17 @@ def test_telegram_only_autopilot_creates_zero_spend_mandate_without_paid_guardra
         "research_state": "READY",
     }
 
+    store.put(
+        GROWTH_BALANCE_TOPUP_NAMESPACE,
+        "telegram-autopilot-balance",
+        {
+            "project_id": str(project_id),
+            "amount_cents": 100,
+            "currency": "usd",
+            "state": "PAID",
+        },
+    )
+
     mandate = service._ensure_mandate_if_ready(
         project_id,
         project,
@@ -85,9 +100,9 @@ def test_telegram_only_autopilot_creates_zero_spend_mandate_without_paid_guardra
     )
 
     assert mandate is not None
-    assert mandate.total_budget_cap == 0
-    assert mandate.max_autonomous_spend_per_experiment == 0
-    assert mandate.max_autonomous_spend_per_day == 0
+    assert mandate.total_budget_cap == 1.0
+    assert mandate.max_autonomous_spend_per_experiment == 0.001
+    assert mandate.max_autonomous_spend_per_day == 1.0
     assert mandate.target_max_cac is None
     assert mandate.allowed_platforms == [DistributionPlatform.TELEGRAM]
     assert set(mandate.allowed_actions) == {
