@@ -494,7 +494,10 @@ class CustomerChannelService:
             )
         except (KeyError, ValueError):
             return 0.0
-        return float(analytics.total_costs.distribution_spend)
+        costs = getattr(analytics, "total_costs", None)
+        if costs is not None and hasattr(costs, "distribution_spend"):
+            return float(costs.distribution_spend)
+        return float(getattr(analytics, "total_spend", 0.0) or 0.0)
 
     def _telegram_balance_available_usd(self, project_id: UUID, project: dict) -> float:
         return self._balance.summary(
