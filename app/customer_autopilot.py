@@ -544,9 +544,12 @@ class CustomerAutopilotService:
             per_experiment = round(min(remaining, max(1.0, total_cap * 0.20)), 2)
             daily = round(min(remaining, max(per_experiment, total_cap / 7)), 2)
         else:
-            total_cap = 0.0
-            per_experiment = 0.0
-            daily = 0.0
+            execution_fee = self._telegram_execution_fee_usd()
+            if balance.available_usd < execution_fee:
+                return existing
+            total_cap = round(balance.funded_usd, 6)
+            per_experiment = execution_fee
+            daily = total_cap
 
         mandate = growth_mandate_service.upsert(
             product_id,
