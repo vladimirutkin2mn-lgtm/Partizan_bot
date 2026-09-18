@@ -436,6 +436,15 @@ class CustomerMetaOAuthService:
         if not version:
             raise CustomerMetaOAuthError("META_OAUTH_API_VERSION is not configured")
 
+        selected_account = accounts[payload.ad_account_id]
+        selected_page = pages[payload.page_id]
+        ad_account_name = str(selected_account.get("name") or "").strip()
+        page_name = str(selected_page.get("name") or "").strip()
+        if ad_account_name:
+            project["meta_ad_account_name"] = ad_account_name
+        if page_name:
+            project["meta_page_name"] = page_name
+
         staged_payload = {
             "ad_account_id": payload.ad_account_id,
             "page_id": payload.page_id,
@@ -481,6 +490,47 @@ class CustomerMetaOAuthService:
             self._safe_delete_secret(previous_staged_ref)
         self._store.delete(CUSTOMER_META_PENDING_NAMESPACE, str(project_id))
         customer_autopilot_service.meta_connected(project_id, customer_token)
+
+    def resolve_ad_account_name(
+        self,
+        project_id: UUID,
+        customer_token: str,
+    ) -> str | None:
+        project = customer_funnel_service.get_project_payload(project_id, customer_token)
+        cached = str(project.get("meta_ad_account_name") or "").strip()
+        if cached:
+            return cached
+
+        connection = self._connection_for_project(project_id)
+        if connection is None:
+            return None
+        secret_reference = str(connection.access_token_env or "")
+        access_token = (
+            self._secret_store.get(secret_reference) if secret_reference else None
+        )
+        if not access_token:
+            return None
+
+        target_account_id = str(connection.ad_account_id or "").removeprefix("act_")
+        if not target_account_id:
+            return None
+        try:
+            rows = self._client.ad_accounts(access_token)
+        except CustomerMetaOAuthError:
+            return None
+        for row in rows:
+            account_id = str(
+                row.get("account_id") or row.get("id") or ""
+            ).removeprefix("act_")
+            if account_id != target_account_id:
+                continue
+            name = str(row.get("name") or "").strip()
+            if not name:
+                return None
+            project["meta_ad_account_name"] = name
+            self._persist_project(project)
+            return name
+        return None
 
     def _connection_for_project(self, project_id: UUID):
         project = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
