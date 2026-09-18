@@ -321,7 +321,7 @@
             return;
           }
           renderGuidedSetup(next);
-          showNotice(next.message || 'Partizan checked Meta again. One setup step is still required.', true);
+          showNotice('Partizan checked Meta again. Setup still needs one more step.');
         } catch (error) {
           showNotice(error.message, true);
         } finally {
@@ -346,7 +346,6 @@
       const setup = await apiJson(`/customer/workspace/${encodeURIComponent(projectId)}/meta-guided/setup`);
       renderGuidedSetup(setup);
       if (!['NOT_STARTED', 'READY'].includes(setup.status) && metaState === 'connected') {
-        showNotice(setup.message, true);
         cleanMetaCallbackQuery();
       }
     } catch (_) {
