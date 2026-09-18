@@ -127,8 +127,11 @@ class CustomerAutopilotService:
         if status == "ACTIVE":
             if not auto_platforms:
                 raise ValueError("Enable at least one Auto channel before resuming Partizan")
-            self._require_acquisition_destination(product_id)
-            paid_auto = DistributionPlatform.INSTAGRAM in auto_platforms
+            paid_auto = self._has_paid_auto_platform(auto_platforms)
+            if paid_auto:
+                self._require_paid_destination(product_id)
+            else:
+                self._require_acquisition_destination(product_id)
             analytics = distribution_analytics_service.product_analytics(product_id)
             balance = self._balance.summary(project_id, analytics.total_spend)
             if paid_auto and balance.remaining_acquisition_capacity_usd <= 0:
@@ -136,7 +139,7 @@ class CustomerAutopilotService:
             if paid_auto and not balance.settlement_ready:
                 raise ValueError("Paid execution payment path is not ready yet")
             if (
-                paid_auto
+                DistributionPlatform.INSTAGRAM in auto_platforms
                 and paid_provider_connection_service.get_meta(product_id) is None
             ):
                 raise ValueError("Connect Meta before activating Meta acquisition")
@@ -317,7 +320,7 @@ class CustomerAutopilotService:
             and project.get("autopilot_target_max_cac")
         )
         auto_platforms = customer_channel_service.autonomous_platforms(project)
-        paid_auto = DistributionPlatform.INSTAGRAM in auto_platforms
+        paid_auto = self._has_paid_auto_platform(auto_platforms)
 
         if not research_ready:
             balance = self._balance.summary(project_id, 0.0)
@@ -325,7 +328,10 @@ class CustomerAutopilotService:
             blockers: list[str] = []
             if not auto_platforms:
                 blockers.append("No autonomous execution channel is enabled")
-            if paid_auto and not staged_meta.connected:
+            if (
+                DistributionPlatform.INSTAGRAM in auto_platforms
+                and not staged_meta.connected
+            ):
                 blockers.append("Meta access is not connected")
             if paid_auto and not guardrails_saved:
                 blockers.append("Maximum CAC and autonomous-spend guardrails are not saved")
@@ -382,7 +388,10 @@ class CustomerAutopilotService:
             blockers.append("Maximum CAC and autonomous-spend guardrails are not saved")
         elif mandate is None and auto_platforms:
             blockers.append("Partizan is applying the channel automation policy")
-        if paid_auto and connection is None:
+        if (
+            DistributionPlatform.INSTAGRAM in auto_platforms
+            and connection is None
+        ):
             blockers.append("Meta access is not connected")
         if mandate is not None and mandate.status != GrowthMandateStatus.ACTIVE:
             blockers.append(f"Autopilot is {mandate.status.value.lower()}")
@@ -447,7 +456,7 @@ class CustomerAutopilotService:
             existing = None
 
         auto_platforms = customer_channel_service.autonomous_platforms(project)
-        paid_auto = DistributionPlatform.INSTAGRAM in auto_platforms
+        paid_auto = self._has_paid_auto_platform(auto_platforms)
         target_max_cac = project.get("autopilot_target_max_cac")
         if paid_auto and (
             not project.get("autopilot_spend_confirmed") or target_max_cac is None
@@ -473,7 +482,10 @@ class CustomerAutopilotService:
         analytics = distribution_analytics_service.product_analytics(product_id)
         balance = self._balance.summary(project_id, analytics.total_spend)
         safety_reason: str | None = None
-        if paid_auto and paid_provider_connection_service.get_meta(product_id) is None:
+        if (
+            DistributionPlatform.INSTAGRAM in auto_platforms
+            and paid_provider_connection_service.get_meta(product_id) is None
+        ):
             safety_reason = "SETUP"
         elif paid_auto and (
             balance.funded_usd <= 0 or balance.remaining_acquisition_capacity_usd <= 0
@@ -639,7 +651,21 @@ class CustomerAutopilotService:
             mandate = growth_mandate_service.get(product_id)
         except KeyError:
             return False
-        return DistributionActionType.PAID_CAMPAIGN in mandate.allowed_actions
+        allowed_actions = getattr(mandate, "allowed_actions", None)
+        if allowed_actions is None:
+            # Legacy/test snapshots without action metadata are treated as paid
+            # so provider pause remains fail-closed.
+            return True
+        return DistributionActionType.PAID_CAMPAIGN in allowed_actions
+
+    @staticmethod
+    def _has_paid_auto_platform(
+        auto_platforms: list[DistributionPlatform],
+    ) -> bool:
+        return any(
+            platform in {DistributionPlatform.INSTAGRAM, DistributionPlatform.TIKTOK}
+            for platform in auto_platforms
+        )
 
     @staticmethod
     def _effective_automatic_pause_reason(project: dict, fallback: str) -> str:
@@ -704,6 +730,13 @@ class CustomerAutopilotService:
         if project.get("research_state") != "READY" or not product_id_raw:
             raise ValueError("Partizan must finish internal acquisition research first")
         return UUID(str(product_id_raw))
+
+    @staticmethod
+    def _require_paid_destination(product_id: UUID):
+        product = product_intake_service.get_product(product_id)
+        if not product.reference_links:
+            raise ValueError("Add a website or landing page before starting paid Autopilot")
+        return product
 
     @staticmethod
     def _require_acquisition_destination(product_id: UUID):
