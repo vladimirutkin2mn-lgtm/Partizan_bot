@@ -679,7 +679,7 @@ class GrowthBalanceService:
         used_micros = provider_cost_micros + execution_fee_micros
         available_micros = max(funded_micros - used_micros, 0)
         effective_funded_cents = max(
-            (funded_micros - execution_fee_micros) // _MICROS_PER_CENT,
+            funded_cents - (execution_fee_micros // _MICROS_PER_CENT),
             0,
         )
         capacity_cents = self._max_acquisition_cents(effective_funded_cents, fee_pct)
