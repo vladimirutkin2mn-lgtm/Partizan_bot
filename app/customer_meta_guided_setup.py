@@ -76,6 +76,8 @@ class GuidedMetaOAuthClient(Protocol):
 
     def business_pages(self, access_token: str, business_id: str) -> list[dict]: ...
 
+    def managed_pages(self, access_token: str) -> list[dict]: ...
+
     def ad_accounts(self, access_token: str) -> list[dict]: ...
 
     def promote_pages(self, access_token: str, account_id: str) -> list[dict]: ...
@@ -113,6 +115,16 @@ class HttpxGuidedMetaOAuthClient(HttpxMetaOAuthClient):
                 seen.add(page_id)
                 rows.append(item)
         return rows[:50]
+
+    def managed_pages(self, access_token: str) -> list[dict]:
+        payload = self._get(
+            "me/accounts",
+            params={"fields": "id,name,tasks", "limit": "50"},
+            bearer_token=access_token,
+        )
+        return [
+            item for item in payload.get("data", []) if isinstance(item, dict)
+        ][:50]
 
 
 class CustomerMetaGuidedSetupService:
@@ -292,6 +304,25 @@ class CustomerMetaGuidedSetupService:
             for item in business_pages[:5]
         ]
 
+        try:
+            managed_pages = self._client.managed_pages(access_token)
+        except CustomerMetaOAuthError:
+            managed_pages = []
+        business_page_ids = {
+            str(item.get("id") or "") for item in business_pages if item.get("id")
+        }
+        managed_advertisable_pages = [
+            page
+            for page in managed_pages
+            if str(page.get("id") or "") in business_page_ids
+            and "ADVERTISE"
+            in {
+                str(task).strip().upper()
+                for task in (page.get("tasks") or [])
+                if str(task).strip()
+            }
+        ]
+
         normalized_accounts: list[dict] = []
         pages_by_account: dict[str, list[dict]] = {}
         for raw in accounts:
@@ -326,6 +357,23 @@ class CustomerMetaGuidedSetupService:
                     ),
                 }
             )
+
+        if (
+            len(normalized_accounts) == 1
+            and not any(pages_by_account.values())
+            and managed_advertisable_pages
+        ):
+            only_account_id = str(normalized_accounts[0]["account_id"])
+            pages_by_account[only_account_id] = [
+                {
+                    "id": str(page.get("id") or ""),
+                    "name": str(
+                        page.get("name") or f"Page {page.get('id') or ''}"
+                    ),
+                }
+                for page in managed_advertisable_pages[:25]
+                if str(page.get("id") or "")
+            ]
 
         promotable_page_count = sum(len(items) for items in pages_by_account.values())
         if normalized_accounts and promotable_page_count:
