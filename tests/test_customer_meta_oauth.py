@@ -371,6 +371,45 @@ def test_meta_account_is_staged_until_research_creates_product() -> None:
     assert staged["ad_account_id"] == "123"
     assert staged["page_id"] == "page_1"
     assert staged["country_codes"] == ["US"]
+    assert project["meta_ad_account_name"] == "Partizan test account"
     assert staged["access_token_env"] == secret_reference
     assert service.options(preview.project_id, preview.customer_token).connected_to_meta is True
     assert store.get(CUSTOMER_META_PENDING_NAMESPACE, str(preview.project_id)) is None
+
+
+def test_meta_account_name_backfills_for_existing_connection(monkeypatch) -> None:
+    store = get_runtime_store()
+    preview = _preview()
+    settings = _settings()
+    secret_store = ProviderSecretStore(store=store, settings=settings)
+    secret_reference = secret_store.create_reference()
+    secret_store.put(secret_reference, "EAAB-existing-token-not-real")
+    service = CustomerMetaOAuthService(
+        store=store,
+        settings=settings,
+        client=_MetaClientStub(
+            accounts=[
+                {
+                    "id": "act_123",
+                    "account_id": "123",
+                    "name": "Existing Meta account",
+                    "currency": "USD",
+                }
+            ]
+        ),
+        secret_store=secret_store,
+    )
+
+    class _Connection:
+        ad_account_id = "123"
+        access_token_env = secret_reference
+
+    monkeypatch.setattr(service, "_connection_for_project", lambda project_id: _Connection())
+
+    assert (
+        service.resolve_ad_account_name(preview.project_id, preview.customer_token)
+        == "Existing Meta account"
+    )
+    project = store.get(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id))
+    assert project is not None
+    assert project["meta_ad_account_name"] == "Existing Meta account"
