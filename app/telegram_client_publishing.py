@@ -24,17 +24,40 @@ class CustomerTelegramClientPublishService(_BaseCustomerTelegramClientPublishSer
             require_customer_bound_mutation_scope(action, "Telegram client publish")
         except ValueError as exc:
             raise _impl.CustomerTelegramClientPublishError(str(exc)) from exc
-        if payload.retry:
-            existing = self.get_receipt(action_id)
-            if (
-                existing is not None
-                and existing.outcome == _impl.TelegramClientPublishOutcome.FAILED
-                and self._failed_publish_result_is_ambiguous(existing)
-            ):
-                raise _impl.CustomerTelegramClientPublishError(
-                    "The previous Telegram publish result is unknown; reconcile before retrying"
-                )
+        self._require_retry_safe(action_id, payload)
         return await super().publish(project_id, customer_token, action_id, payload)
+
+    async def publish_internal(
+        self,
+        project_id: _impl.UUID,
+        project: dict,
+        action_id: _impl.UUID,
+        payload: _impl.TelegramPublishRequest,
+    ) -> _impl.TelegramClientPublishReceipt:
+        action = _impl.distribution_execution_service.get_action(action_id)
+        try:
+            require_customer_bound_mutation_scope(action, "Telegram autonomous client publish")
+        except ValueError as exc:
+            raise _impl.CustomerTelegramClientPublishError(str(exc)) from exc
+        self._require_retry_safe(action_id, payload)
+        return await super().publish_internal(project_id, project, action_id, payload)
+
+    def _require_retry_safe(
+        self,
+        action_id: _impl.UUID,
+        payload: _impl.TelegramPublishRequest,
+    ) -> None:
+        if not payload.retry:
+            return
+        existing = self.get_receipt(action_id)
+        if (
+            existing is not None
+            and existing.outcome == _impl.TelegramClientPublishOutcome.FAILED
+            and self._failed_publish_result_is_ambiguous(existing)
+        ):
+            raise _impl.CustomerTelegramClientPublishError(
+                "The previous Telegram publish result is unknown; reconcile before retrying"
+            )
 
     def _failed_publish_result_is_ambiguous(
         self,
