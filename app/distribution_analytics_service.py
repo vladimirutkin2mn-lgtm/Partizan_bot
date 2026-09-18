@@ -195,12 +195,12 @@ class InMemoryDistributionAnalyticsService:
     def product_analytics(self, product_id: UUID) -> DistributionProductAnalyticsView:
         experiments = distribution_execution_service.list_experiments(product_id)
         analytics = [self.experiment_analytics(item.id) for item in experiments]
-        total_spend = round(sum(item.metrics.spend for item in analytics), 2)
+        total_spend = round(sum(item.metrics.spend for item in analytics), 3)
         total_paid_users = sum(item.metrics.paid_users for item in analytics)
         total_revenue = round(sum(item.metrics.revenue for item in analytics), 2)
         total_costs = self._sum_costs([item.costs for item in analytics])
         blended_cac = (
-            round(total_spend / total_paid_users, 2) if total_paid_users else None
+            round(total_spend / total_paid_users, 3) if total_paid_users else None
         )
         blended_roas = round(total_revenue / total_spend, 3) if total_spend else None
         analytics.sort(
@@ -349,7 +349,7 @@ class InMemoryDistributionAnalyticsService:
 
         rows: list[DistributionSliceMetricsView] = []
         for (dimension, key, label), items in groups.items():
-            spend = round(sum(item.metrics.spend for item in items), 2)
+            spend = round(sum(item.metrics.spend for item in items), 3)
             paid = sum(item.metrics.paid_users for item in items)
             revenue = round(sum(item.metrics.revenue for item in items), 2)
             rows.append(
@@ -361,7 +361,7 @@ class InMemoryDistributionAnalyticsService:
                     spend=spend,
                     paid_users=paid,
                     revenue=revenue,
-                    cac=round(spend / paid, 2) if paid else None,
+                    cac=round(spend / paid, 3) if paid else None,
                     roas=round(revenue / spend, 3) if spend else None,
                     replies=sum(item.replies for item in items),
                     removals=sum(item.removals for item in items),
@@ -563,7 +563,7 @@ class InMemoryDistributionAnalyticsService:
             revenue=revenue,
             visit_to_signup_rate=self._ratio(signups, visits),
             signup_to_paid_rate=self._ratio(paid_users, signups),
-            cac=round(spend / paid_users, 2) if paid_users else None,
+            cac=round(spend / paid_users, 3) if paid_users else None,
             roas=round(revenue / spend, 3) if spend else None,
             revenue_per_paid_user=(
                 round(revenue / paid_users, 2) if paid_users else None
@@ -582,7 +582,7 @@ class InMemoryDistributionAnalyticsService:
         totals = {
             category: round(
                 sum(item.amount for item in observed if item.category == category),
-                2,
+                3,
             )
             for category in DistributionCostCategory
         }
@@ -590,7 +590,7 @@ class InMemoryDistributionAnalyticsService:
             totals[DistributionCostCategory.RESEARCH_FEE]
             + totals[DistributionCostCategory.EXECUTION_FEE]
             + totals[DistributionCostCategory.DISTRIBUTION_SPEND],
-            2,
+            3,
         )
         return DistributionCostBreakdownView(
             research_fee=totals[DistributionCostCategory.RESEARCH_FEE],
@@ -620,16 +620,16 @@ class InMemoryDistributionAnalyticsService:
 
     def _sum_costs(self, rows) -> DistributionCostBreakdownView:
         rows = list(rows)
-        research = round(sum(item.research_fee for item in rows), 2)
-        execution = round(sum(item.execution_fee for item in rows), 2)
-        distribution = round(sum(item.distribution_spend for item in rows), 2)
-        operating = round(sum(item.operating_cost for item in rows), 2)
+        research = round(sum(item.research_fee for item in rows), 3)
+        execution = round(sum(item.execution_fee for item in rows), 3)
+        distribution = round(sum(item.distribution_spend for item in rows), 3)
+        operating = round(sum(item.operating_cost for item in rows), 3)
         return DistributionCostBreakdownView(
             research_fee=research,
             execution_fee=execution,
             distribution_spend=distribution,
             operating_cost=operating,
-            customer_total=round(research + execution + distribution, 2),
+            customer_total=round(research + execution + distribution, 3),
         )
 
     def _publisher_mode(self, action) -> PublisherMode:
