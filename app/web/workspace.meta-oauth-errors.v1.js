@@ -220,6 +220,12 @@
         'Confirm your Facebook profile has access to both the Page and the ad account. Partizan waits until Meta returns the Page as available for promotion from that ad account.',
         'Return to Partizan and click Check again. You do not need to reconnect Meta.',
       ],
+      PAGE_NEEDS_AD_ACCOUNT_ACCESS: [
+        'Do not create another Facebook Page. Partizan can already see a Page inside your Meta Business Portfolio.',
+        'Open Page settings and confirm your Facebook profile has access to that Page.',
+        'Open Ad Account settings and confirm the same profile has permission to manage advertising for the ad account.',
+        'Confirm the Page and ad account belong to the same Business Portfolio, then return here and click Check again.',
+      ],
     }[setup.status] || [];
     addSteps(guide, steps);
     if (setup.status === 'AD_ACCOUNT_NEEDS_PAGE') addPageCreationHelp(guide);
@@ -256,12 +262,19 @@
     const facts = [];
     if (setup.business_count) facts.push(`${setup.business_count} Business Portfolio${setup.business_count === 1 ? '' : 's'} found`);
     if (setup.ad_account_count) facts.push(`${setup.ad_account_count} ad account${setup.ad_account_count === 1 ? '' : 's'} found`);
+    if (setup.business_page_count) facts.push(`${setup.business_page_count} Facebook Page${setup.business_page_count === 1 ? '' : 's'} found in Business`);
     if (setup.promotable_page_count) facts.push(`${setup.promotable_page_count} promotable Page${setup.promotable_page_count === 1 ? '' : 's'} found`);
     if (facts.length) {
       const factNode = document.createElement('p');
       factNode.className = 'note';
       factNode.textContent = facts.join(' · ');
       guide.appendChild(factNode);
+    }
+    if (setup.business_page_names?.length) {
+      const pageNames = document.createElement('p');
+      pageNames.className = 'note';
+      pageNames.textContent = `Page${setup.business_page_names.length === 1 ? '' : 's'}: ${setup.business_page_names.join(', ')}`;
+      guide.appendChild(pageNames);
     }
 
     if (setup.status === 'BUSINESS_NEEDS_AD_ACCOUNT') {
@@ -282,11 +295,15 @@
         NO_META_BUSINESS: 'Open Meta Business setup →',
         BUSINESS_NEEDS_AD_ACCOUNT: 'Yes — fix ad account access →',
         AD_ACCOUNT_NEEDS_PAGE: 'Open Page settings →',
+        PAGE_NEEDS_AD_ACCOUNT_ACCESS: 'Open Page access →',
       };
       actions.appendChild(linkButton(labels[setup.status] || 'Open Meta Business Settings →', setup.primary_url, true));
     }
     if (setup.secondary_url && setup.status === 'BUSINESS_NEEDS_AD_ACCOUNT') {
       actions.appendChild(linkButton('No — open Ads Manager →', setup.secondary_url));
+    }
+    if (setup.secondary_url && setup.status === 'PAGE_NEEDS_AD_ACCOUNT_ACCESS') {
+      actions.appendChild(linkButton('Open Ad Account access →', setup.secondary_url));
     }
 
     if (setup.can_check_again) {

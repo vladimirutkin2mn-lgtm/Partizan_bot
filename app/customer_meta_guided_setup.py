@@ -18,7 +18,6 @@ from app.customer_meta_oauth import (
     META_OAUTH_SCOPES,
     CustomerMetaOAuthError,
     HttpxMetaOAuthClient,
-    customer_meta_oauth_service,
 )
 from app.provider_secret_store import ProviderSecretStore, provider_secret_store
 from app.runtime_store import RuntimeStateStore, get_runtime_store
@@ -33,6 +32,7 @@ MetaGuidedStatus = Literal[
     "NO_META_BUSINESS",
     "BUSINESS_NEEDS_AD_ACCOUNT",
     "AD_ACCOUNT_NEEDS_PAGE",
+    "PAGE_NEEDS_AD_ACCOUNT_ACCESS",
     "READY",
     "REAUTHORIZE_REQUIRED",
 ]
@@ -42,6 +42,7 @@ _META_GUIDED_STATUSES = frozenset(
         "NO_META_BUSINESS",
         "BUSINESS_NEEDS_AD_ACCOUNT",
         "AD_ACCOUNT_NEEDS_PAGE",
+        "PAGE_NEEDS_AD_ACCOUNT_ACCESS",
         "READY",
         "REAUTHORIZE_REQUIRED",
     }
@@ -57,8 +58,10 @@ class CustomerMetaGuidedSetupView(BaseModel):
     message: str
     business_count: int = Field(default=0, ge=0)
     ad_account_count: int = Field(default=0, ge=0)
+    business_page_count: int = Field(default=0, ge=0)
     promotable_page_count: int = Field(default=0, ge=0)
     business_names: list[str] = Field(default_factory=list, max_length=5)
+    business_page_names: list[str] = Field(default_factory=list, max_length=5)
     primary_url: HttpUrl | None = None
     secondary_url: HttpUrl | None = None
     can_check_again: bool = False
@@ -70,6 +73,8 @@ class GuidedMetaOAuthClient(Protocol):
     def extend_token(self, short_lived_token: str) -> str: ...
 
     def businesses(self, access_token: str) -> list[dict]: ...
+
+    def business_pages(self, access_token: str, business_id: str) -> list[dict]: ...
 
     def ad_accounts(self, access_token: str) -> list[dict]: ...
 
@@ -86,6 +91,28 @@ class HttpxGuidedMetaOAuthClient(HttpxMetaOAuthClient):
         return [
             item for item in payload.get("data", []) if isinstance(item, dict)
         ][:META_GUIDED_MAX_BUSINESSES]
+
+    def business_pages(self, access_token: str, business_id: str) -> list[dict]:
+        rows: list[dict] = []
+        seen: set[str] = set()
+        for edge in ("owned_pages", "client_pages"):
+            try:
+                payload = self._get(
+                    f"{business_id}/{edge}",
+                    params={"fields": "id,name", "limit": "50"},
+                    bearer_token=access_token,
+                )
+            except CustomerMetaOAuthError:
+                continue
+            for item in payload.get("data", []):
+                if not isinstance(item, dict):
+                    continue
+                page_id = str(item.get("id") or "")
+                if not page_id or page_id in seen:
+                    continue
+                seen.add(page_id)
+                rows.append(item)
+        return rows[:50]
 
 
 class CustomerMetaGuidedSetupService:
@@ -244,6 +271,27 @@ class CustomerMetaGuidedSetupService:
             for item in businesses[:5]
         ]
 
+        business_pages: list[dict] = []
+        seen_business_pages: set[str] = set()
+        for business in businesses[:META_GUIDED_MAX_BUSINESSES]:
+            business_id = str(business.get("id") or "")
+            if not business_id:
+                continue
+            try:
+                pages = self._client.business_pages(access_token, business_id)
+            except CustomerMetaOAuthError:
+                continue
+            for page in pages:
+                page_id = str(page.get("id") or "")
+                if not page_id or page_id in seen_business_pages:
+                    continue
+                seen_business_pages.add(page_id)
+                business_pages.append(page)
+        business_page_names = [
+            str(item.get("name") or f"Page {item.get('id') or ''}").strip()
+            for item in business_pages[:5]
+        ]
+
         normalized_accounts: list[dict] = []
         pages_by_account: dict[str, list[dict]] = {}
         for raw in accounts:
@@ -308,13 +356,18 @@ class CustomerMetaGuidedSetupService:
                 ),
                 business_count=len(businesses),
                 ad_account_count=len(eligible_accounts),
+                business_page_count=len(business_pages),
                 promotable_page_count=sum(
                     len(items) for items in eligible_pages.values()
                 ),
+                business_names=business_names,
+                business_page_names=business_page_names,
             )
 
-        if normalized_accounts:
-            status: MetaGuidedStatus = "AD_ACCOUNT_NEEDS_PAGE"
+        if normalized_accounts and business_pages:
+            status: MetaGuidedStatus = "PAGE_NEEDS_AD_ACCOUNT_ACCESS"
+        elif normalized_accounts:
+            status = "AD_ACCOUNT_NEEDS_PAGE"
         elif businesses:
             status = "BUSINESS_NEEDS_AD_ACCOUNT"
         else:
@@ -325,8 +378,10 @@ class CustomerMetaGuidedSetupService:
             "status": status,
             "business_count": len(businesses),
             "ad_account_count": len(normalized_accounts),
+            "business_page_count": len(business_pages),
             "promotable_page_count": promotable_page_count,
             "business_names": business_names,
+            "business_page_names": business_page_names,
             "checked_at": datetime.now(UTC).isoformat(),
         }
         self._replace_guided_setup(project_id, record)
@@ -388,10 +443,14 @@ class CustomerMetaGuidedSetupService:
             "status": "REAUTHORIZE_REQUIRED",
             "business_count": int(previous.get("business_count") or 0),
             "ad_account_count": int(previous.get("ad_account_count") or 0),
+            "business_page_count": int(previous.get("business_page_count") or 0),
             "promotable_page_count": int(
                 previous.get("promotable_page_count") or 0
             ),
             "business_names": list(previous.get("business_names") or [])[:5],
+            "business_page_names": list(
+                previous.get("business_page_names") or []
+            )[:5],
             "checked_at": datetime.now(UTC).isoformat(),
         }
         self._store.put(
@@ -430,8 +489,14 @@ class CustomerMetaGuidedSetupService:
                 "account; otherwise create one."
             ),
             "AD_ACCOUNT_NEEDS_PAGE": (
-                "An ad account was found, but no Facebook Page available for promotion "
-                "was returned. Add or assign a Page in Meta Business Settings, then check again."
+                "An ad account was found, but Partizan could not find a Facebook Page "
+                "inside the connected Meta Business Portfolio. Add or assign a Page, "
+                "then check again."
+            ),
+            "PAGE_NEEDS_AD_ACCOUNT_ACCESS": (
+                "A Facebook Page exists in the connected Meta Business Portfolio, but "
+                "Meta does not return it as available for promotion from the ad account. "
+                "Do not create another Page. Check Page and ad-account access, then try again."
             ),
             "REAUTHORIZE_REQUIRED": (
                 "The saved Meta authorization can no longer be checked. Connect Meta "
@@ -444,12 +509,18 @@ class CustomerMetaGuidedSetupService:
                 "https://business.facebook.com/settings/ad-accounts"
             ),
             "AD_ACCOUNT_NEEDS_PAGE": "https://business.facebook.com/settings/pages",
+            "PAGE_NEEDS_AD_ACCOUNT_ACCESS": (
+                "https://business.facebook.com/settings/pages"
+            ),
             "REAUTHORIZE_REQUIRED": None,
         }
         secondary_urls = {
             "BUSINESS_NEEDS_AD_ACCOUNT": (
                 "https://adsmanager.facebook.com/adsmanager/manage/campaigns"
-            )
+            ),
+            "PAGE_NEEDS_AD_ACCOUNT_ACCESS": (
+                "https://business.facebook.com/settings/ad-accounts"
+            ),
         }
         return CustomerMetaGuidedSetupView(
             status=status,
@@ -459,9 +530,13 @@ class CustomerMetaGuidedSetupService:
             ),
             business_count=int(record.get("business_count") or 0),
             ad_account_count=int(record.get("ad_account_count") or 0),
+            business_page_count=int(record.get("business_page_count") or 0),
             promotable_page_count=int(record.get("promotable_page_count") or 0),
             business_names=[
                 str(item) for item in record.get("business_names", [])
+            ][:5],
+            business_page_names=[
+                str(item) for item in record.get("business_page_names", [])
             ][:5],
             primary_url=primary_urls.get(status),
             secondary_url=secondary_urls.get(status),
@@ -470,6 +545,7 @@ class CustomerMetaGuidedSetupService:
                 "NO_META_BUSINESS",
                 "BUSINESS_NEEDS_AD_ACCOUNT",
                 "AD_ACCOUNT_NEEDS_PAGE",
+                "PAGE_NEEDS_AD_ACCOUNT_ACCESS",
             },
         )
 
@@ -519,6 +595,8 @@ customer_meta_guided_setup_service = CustomerMetaGuidedSetupService()
 
 
 def install_guided_meta_oauth_completion() -> None:
+    from app.customer_meta_oauth import customer_meta_oauth_service
+
     if getattr(customer_meta_oauth_service, "_guided_setup_installed", False):
         return
     original_complete = customer_meta_oauth_service.complete_with_return
