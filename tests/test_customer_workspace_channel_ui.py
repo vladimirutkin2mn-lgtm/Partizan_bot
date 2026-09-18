@@ -50,6 +50,22 @@ def test_channels_expose_customer_owned_telegram_and_reddit_connections() -> Non
     assert "Publishing still requires an approved action" in javascript
 
 
+def test_channels_expose_bounded_telegram_automation_controls() -> None:
+    javascript = _channel_javascript()
+
+    assert "/telegram/automation" in javascript
+    assert "/telegram/automation/pause" in javascript
+    assert "confirm_client_owned_execution" in javascript
+    assert "max_publishes_per_day" in javascript
+    assert "data-telegram-automation-enable" in javascript
+    assert "data-telegram-automation-pause" in javascript
+    assert "data-telegram-automation-revoke" in javascript
+    assert "maximum of" in javascript
+    assert "per 24 hours" in javascript
+    assert "I explicitly authorize Partizan" in javascript
+    assert "Re-enabling requires explicit authorization again" in javascript
+
+
 def test_community_activation_routes_to_execution_choice_without_publishing() -> None:
     javascript = _channel_javascript()
     activation_handler = javascript.split(

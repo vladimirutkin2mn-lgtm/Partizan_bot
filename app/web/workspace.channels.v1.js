@@ -24,6 +24,7 @@
   let selectedCommunityAction = null;
   let focusedPlatform = null;
   let telegramChallenge = null;
+  let telegramAutomation = null;
   const connectionState = new Map();
 
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({
@@ -85,7 +86,7 @@
       .channel-detail-status{display:inline-flex;padding:5px 8px;border-radius:999px;border:1px solid var(--line-strong);font-size:9px;color:var(--muted);white-space:nowrap}.channel-detail-status.connected,.channel-detail-status.enabled{color:var(--accent);border-color:rgba(201,255,101,.3);background:rgba(201,255,101,.05)}.channel-detail-status.needs{color:var(--warn);border-color:rgba(255,212,121,.27)}.channel-detail-status.off{opacity:.7}
       .channel-execution-row td{padding:0!important;background:rgba(255,255,255,.012)}.channel-execution-panel{padding:14px 16px 16px;display:grid;grid-template-columns:minmax(220px,.8fr) minmax(280px,1.2fr);gap:14px;border-bottom:1px solid var(--line)}.channel-execution-panel.is-focused{outline:1px solid rgba(201,255,101,.34);outline-offset:-1px;background:rgba(201,255,101,.025)}.channel-execution-panel h4{font-size:11px;margin:0 0 8px}.channel-execution-panel p{font-size:10px;line-height:1.5;color:var(--muted);margin:6px 0}.channel-mode-box,.channel-connection-box{padding:12px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.018)}
       .channel-publisher-select{width:100%;height:38px;border:1px solid var(--line-strong);border-radius:10px;background:#11141b;color:var(--text);padding:0 9px;font:inherit;font-size:11px}.channel-mode-blocker{min-height:15px}.channel-capabilities{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}.channel-capability{padding:4px 7px;border:1px solid var(--line);border-radius:999px;font-size:9px;color:var(--muted)}.channel-capability.ready{color:var(--accent);border-color:rgba(201,255,101,.24)}
-      .channel-connection-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.channel-connection-head strong,.channel-connection-head small{display:block}.channel-connection-head small{font-size:9px;color:var(--muted);margin-top:4px}.channel-inline-form{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}.channel-inline-form.telegram-confirm{grid-template-columns:1fr 1fr auto}.channel-inline-form input{min-width:0;height:38px;border:1px solid var(--line-strong);border-radius:10px;background:#11141b;color:var(--text);padding:0 10px;font:inherit;font-size:11px}.channel-inline-form .button,.channel-connection-box>.button{padding:9px 12px;font-size:11px}.channel-connection-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:9px}.channel-safe-note{font-size:9px!important;color:var(--muted);margin-top:9px!important}.channel-connect-button{border:1px solid var(--line-strong);border-radius:9px;background:rgba(255,255,255,.04);color:var(--soft);font:inherit;font-size:10px;padding:7px 9px;cursor:pointer}.channel-connect-button:disabled{opacity:.5;cursor:not-allowed}
+      .channel-connection-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.channel-connection-head strong,.channel-connection-head small{display:block}.channel-connection-head small{font-size:9px;color:var(--muted);margin-top:4px}.channel-inline-form{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}.channel-inline-form.telegram-confirm{grid-template-columns:1fr 1fr auto}.channel-inline-form input{min-width:0;height:38px;border:1px solid var(--line-strong);border-radius:10px;background:#11141b;color:var(--text);padding:0 10px;font:inherit;font-size:11px}.channel-inline-form .button,.channel-connection-box>.button{padding:9px 12px;font-size:11px}.channel-connection-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-top:9px}.channel-safe-note{font-size:9px!important;color:var(--muted);margin-top:9px!important}.channel-connect-button{border:1px solid var(--line-strong);border-radius:9px;background:rgba(255,255,255,.04);color:var(--soft);font:inherit;font-size:10px;padding:7px 9px;cursor:pointer}.channel-connect-button:disabled{opacity:.5;cursor:not-allowed}.telegram-automation-panel{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}.telegram-automation-panel header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.telegram-automation-panel header strong,.telegram-automation-panel header small{display:block}.telegram-automation-panel header small{font-size:9px;color:var(--muted);margin-top:4px}.telegram-automation-form{margin-top:10px;display:grid;gap:9px}.telegram-automation-limit{display:grid;grid-template-columns:minmax(0,1fr) 90px;gap:8px;align-items:center;font-size:10px;color:var(--soft)}.telegram-automation-limit input{width:100%;height:36px;border:1px solid var(--line-strong);border-radius:9px;background:#11141b;color:var(--text);padding:0 9px;font:inherit}.telegram-automation-confirm{display:flex;gap:8px;align-items:flex-start;font-size:9px;line-height:1.45;color:var(--muted)}.telegram-automation-confirm input{margin-top:2px}.telegram-automation-blockers{font-size:9px;color:var(--warn);line-height:1.45;margin-top:8px}
       .community-action-inbox{margin:0 0 16px;padding:14px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.018)}.community-action-inbox>header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}.community-action-inbox h4{margin:0;font-size:12px}.community-action-inbox header p{margin:4px 0 0;font-size:10px;color:var(--muted)}.community-action-list{display:grid;gap:8px}.community-action-card{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:11px;border:1px solid var(--line);border-radius:11px}.community-action-card strong,.community-action-card small{display:block}.community-action-card small{margin-top:4px;color:var(--muted);font-size:9px;line-height:1.45}.community-action-meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}.community-action-meta span{font-size:9px;padding:3px 6px;border:1px solid var(--line);border-radius:999px;color:var(--muted)}.community-action-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.community-action-actions .button{padding:7px 9px;font-size:10px}.community-action-empty{font-size:10px;color:var(--muted)}
       .community-action-modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(4,6,10,.78);backdrop-filter:blur(8px)}.community-action-modal.hidden{display:none}.community-action-dialog{width:min(640px,100%);max-height:min(760px,90vh);overflow:auto;border:1px solid var(--line-strong);border-radius:16px;background:#11141b;padding:18px;box-shadow:0 22px 80px rgba(0,0,0,.45)}.community-action-dialog header{display:flex;justify-content:space-between;gap:12px}.community-action-dialog h3{margin:0;font-size:16px}.community-action-dialog p{font-size:10px;line-height:1.55;color:var(--muted)}.community-action-review{display:grid;gap:10px;margin:14px 0}.community-action-review div{padding:10px;border:1px solid var(--line);border-radius:10px}.community-action-review span{display:block;font-size:9px;color:var(--muted);margin-bottom:5px}.community-action-review code,.community-action-review pre{white-space:pre-wrap;word-break:break-word;font:inherit;font-size:10px;color:var(--soft);margin:0}.community-action-confirm{display:flex;gap:8px;align-items:flex-start;font-size:10px;line-height:1.45;color:var(--soft)}.community-action-modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}.community-action-modal-actions .button{font-size:10px;padding:8px 11px}
       @media(max-width:760px){.channel-execution-panel{grid-template-columns:1fr}.channel-inline-form,.channel-inline-form.telegram-confirm{grid-template-columns:1fr}.channel-inline-form .button{width:100%}.community-action-card{grid-template-columns:1fr}.community-action-actions{justify-content:flex-start}}
@@ -188,6 +189,29 @@
     return `<span class="channel-capability${ready}"${title}>${escapeHtml(CAPABILITY_LABELS[item.capability] || item.capability)} ${item.ready ? '✓' : '·'}</span>`;
   }).join('');
 
+  const telegramAutomationHtml = () => {
+    const automation = telegramAutomation || {};
+    const status = automation.status || 'DISABLED';
+    const cap = Number(automation.max_publishes_per_day || 1);
+    const blockers = Array.isArray(automation.blockers) ? automation.blockers.filter(Boolean) : [];
+    const statusClass = status === 'ENABLED' ? 'connected' : (status === 'DISABLED' ? 'off' : 'needs');
+    const statusLabel = {
+      DISABLED: 'Disabled',
+      ENABLED: 'Enabled',
+      PAUSED: 'Paused',
+      REVOKED: 'Revoked',
+    }[status] || status;
+    const blockersHtml = blockers.length
+      ? `<div class="telegram-automation-blockers">${escapeHtml(blockers.join(' · '))}</div>`
+      : '';
+    if (status === 'ENABLED') {
+      return `<div class="telegram-automation-panel"><header><div><strong>Telegram automation</strong><small>Up to ${cap} confirmed publish${cap === 1 ? '' : 'es'} per rolling 24 hours</small></div><span class="channel-detail-status ${statusClass}">${escapeHtml(statusLabel)}</span></header><div class="channel-connection-actions"><button class="button button-secondary" type="button" data-telegram-automation-pause>Pause automation</button><button class="button button-secondary" type="button" data-telegram-automation-revoke>Revoke automation</button></div><p class="channel-safe-note">Enabled automation may publish an already-approved Telegram action without another per-item confirmation, but only while live readiness checks pass and within this daily cap.</p>${blockersHtml}</div>`;
+    }
+    const buttonLabel = status === 'PAUSED' ? 'Resume automation' : (status === 'REVOKED' ? 'Re-enable automation' : 'Enable automation');
+    const disabled = automation.readiness_ok === false ? ' disabled' : '';
+    return `<div class="telegram-automation-panel"><header><div><strong>Telegram automation</strong><small>Explicitly authorize bounded client-owned publishing</small></div><span class="channel-detail-status ${statusClass}">${escapeHtml(statusLabel)}</span></header><form class="telegram-automation-form" data-telegram-automation-enable><label class="telegram-automation-limit"><span>Maximum confirmed publishes per rolling 24 hours</span><input name="max_publishes_per_day" type="number" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, cap))}" required></label><label class="telegram-automation-confirm"><input name="confirm_client_owned_execution" type="checkbox" required> <span>I explicitly authorize Partizan to publish already-approved Telegram actions from this connected account within the selected daily limit. I can pause or revoke this at any time.</span></label><div class="channel-connection-actions"><button class="button button-primary" type="submit"${disabled}>${escapeHtml(buttonLabel)}</button></div></form>${blockersHtml}<p class="channel-safe-note">This authorization does not create an action by itself. Target, content, action approval, connection health, duplicate guards and provider readiness are re-checked at publish time.</p></div>`;
+  };
+
   const telegramConnectionHtml = (channel) => {
     const mode = clientOwnedMode(channel);
     if (!mode?.available) {
@@ -196,7 +220,7 @@
     const connection = connectionFor('TELEGRAM');
     if (connection?.status === 'ACTIVE') {
       const label = connection.display_name || (connection.username ? `@${connection.username}` : 'Telegram account');
-      return `<div class="channel-connection-box"><div class="channel-connection-head"><div><strong>${escapeHtml(label)}</strong><small>Connected for client-owned Telegram execution</small></div><span class="channel-detail-status connected">Connected</span></div><div class="channel-connection-actions"><button class="button button-secondary" type="button" data-disconnect-channel="TELEGRAM">Disconnect</button></div><p class="channel-safe-note">Connection grants access only. A real publish still requires a prepared approved action and the existing Telegram governance gates.</p></div>`;
+      return `<div class="channel-connection-box"><div class="channel-connection-head"><div><strong>${escapeHtml(label)}</strong><small>Connected for client-owned Telegram execution</small></div><span class="channel-detail-status connected">Connected</span></div><div class="channel-connection-actions"><button class="button button-secondary" type="button" data-disconnect-channel="TELEGRAM">Disconnect</button></div><p class="channel-safe-note">Connection grants access only. Manual client-owned publishes still require an approved action and explicit per-item confirmation.</p>${telegramAutomationHtml()}</div>`;
     }
     if (telegramChallenge) {
       const passwordField = telegramChallenge.status === 'PASSWORD_REQUIRED'
@@ -277,14 +301,23 @@
     const projectId = currentProjectId();
     if (!projectId) return;
     const tasks = [];
+    let telegramModeAvailable = false;
     for (const channel of channels) {
       if (!['TELEGRAM', 'REDDIT'].includes(channel.platform)) continue;
       if (!clientOwnedMode(channel)) continue;
       const platform = channel.platform;
+      if (platform === 'TELEGRAM') telegramModeAvailable = true;
       const endpoint = `/customer/workspace/${encodeURIComponent(projectId)}/${platform.toLowerCase()}/connection`;
       tasks.push(api(endpoint)
         .then((value) => connectionState.set(platform, value))
         .catch(() => connectionState.delete(platform)));
+    }
+    if (telegramModeAvailable) {
+      tasks.push(api(`/customer/workspace/${encodeURIComponent(projectId)}/telegram/automation`)
+        .then((value) => { telegramAutomation = value; })
+        .catch(() => { telegramAutomation = null; }));
+    } else {
+      telegramAutomation = null;
     }
     await Promise.all(tasks);
   };
@@ -608,14 +641,26 @@
   tableBody.addEventListener('submit', async (event) => {
     const startForm = event.target.closest('[data-telegram-start]');
     const confirmForm = event.target.closest('[data-telegram-confirm]');
-    if (!startForm && !confirmForm) return;
+    const automationForm = event.target.closest('[data-telegram-automation-enable]');
+    if (!startForm && !confirmForm && !automationForm) return;
     event.preventDefault();
     const projectId = currentProjectId();
     if (!projectId) return;
     const submit = event.target.querySelector('button[type="submit"]');
     if (submit) submit.disabled = true;
     try {
-      if (startForm) {
+      if (automationForm) {
+        const form = new FormData(automationForm);
+        const maximum = Number(form.get('max_publishes_per_day') || 1);
+        telegramAutomation = await api(`/customer/workspace/${encodeURIComponent(projectId)}/telegram/automation`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            confirm_client_owned_execution: form.get('confirm_client_owned_execution') === 'on',
+            max_publishes_per_day: maximum,
+          }),
+        });
+        showNotice(`Telegram automation enabled with a maximum of ${telegramAutomation.max_publishes_per_day} confirmed publish${telegramAutomation.max_publishes_per_day === 1 ? '' : 'es'} per 24 hours.`);
+      } else if (startForm) {
         const phone = new FormData(startForm).get('phone_number');
         telegramChallenge = await api(`/customer/workspace/${encodeURIComponent(projectId)}/telegram/connection/start`, {
           method: 'POST',
@@ -657,16 +702,49 @@
       if (connect.dataset.connectChannel === 'INSTAGRAM') await beginMetaConnect(connect);
       return;
     }
+
+    const projectId = currentProjectId();
+    if (!projectId) return;
+
+    const pauseAutomation = event.target.closest('[data-telegram-automation-pause]');
+    if (pauseAutomation) {
+      pauseAutomation.disabled = true;
+      try {
+        telegramAutomation = await api(`/customer/workspace/${encodeURIComponent(projectId)}/telegram/automation/pause`, { method: 'POST' });
+        showNotice('Telegram automation paused. No new automated Telegram publish can start.');
+        await refresh();
+      } catch (error) {
+        showNotice(error.message, true);
+        pauseAutomation.disabled = false;
+      }
+      return;
+    }
+
+    const revokeAutomation = event.target.closest('[data-telegram-automation-revoke]');
+    if (revokeAutomation) {
+      revokeAutomation.disabled = true;
+      try {
+        telegramAutomation = await api(`/customer/workspace/${encodeURIComponent(projectId)}/telegram/automation`, { method: 'DELETE' });
+        showNotice('Telegram automation revoked. Re-enabling requires explicit authorization again.');
+        await refresh();
+      } catch (error) {
+        showNotice(error.message, true);
+        revokeAutomation.disabled = false;
+      }
+      return;
+    }
+
     const disconnect = event.target.closest('[data-disconnect-channel]');
     if (!disconnect) return;
     const platform = disconnect.dataset.disconnectChannel;
     if (!['TELEGRAM', 'REDDIT'].includes(platform)) return;
-    const projectId = currentProjectId();
-    if (!projectId) return;
     disconnect.disabled = true;
     try {
       await api(`/customer/workspace/${encodeURIComponent(projectId)}/${platform.toLowerCase()}/connection`, { method: 'DELETE' });
-      if (platform === 'TELEGRAM') telegramChallenge = null;
+      if (platform === 'TELEGRAM') {
+        telegramChallenge = null;
+        telegramAutomation = null;
+      }
       connectionState.delete(platform);
       showNotice(`${platform === 'TELEGRAM' ? 'Telegram' : 'Reddit'} disconnected.`);
       await refresh();
