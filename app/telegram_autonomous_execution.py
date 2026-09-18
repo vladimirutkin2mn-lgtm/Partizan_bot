@@ -1,14 +1,22 @@
 from __future__ import annotations
 
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
+from app.config import get_settings
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
+from app.distribution_analytics_schemas import (
+    DistributionCostCategory,
+    DistributionEvidenceKind,
+    DistributionSpendCreate,
+)
+from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_execution_service import distribution_execution_service
 from app.execution_adapters import (
     AdapterExecutionOutcome,
     DistributionAdapterExecutionView,
     ExecutionAdapterReceipt,
 )
+from app.growth_balance import GrowthBalanceService
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.telegram_client_governance import (
     CustomerTelegramClientPublishError,
@@ -23,8 +31,14 @@ from app.telegram_client_publishing import (
 class CustomerTelegramAutonomousExecutionService:
     """Route autonomous Telegram actions only through explicit client-owned authorization."""
 
-    def __init__(self, store: RuntimeStateStore | None = None) -> None:
+    def __init__(
+        self,
+        store: RuntimeStateStore | None = None,
+        *,
+        balance_service: GrowthBalanceService | None = None,
+    ) -> None:
         self._store = store or get_runtime_store()
+        self._balance = balance_service or GrowthBalanceService(self._store)
 
     async def execute(
         self,
@@ -48,11 +62,50 @@ class CustomerTelegramAutonomousExecutionService:
                 "Telegram channel is not in AUTO mode for this project"
             )
 
+        plan = distribution_execution_service.get_plan(action_id)
+        analytics = distribution_analytics_service.product_analytics(product_id)
+        provider_spend = float(analytics.total_costs.distribution_spend)
+        execution_fee = float(get_settings().partizan_telegram_execution_fee_usd)
+        balance = self._balance.summary(project_id, provider_spend)
+        if balance.available_usd < execution_fee:
+            raise CustomerTelegramClientPublishError(
+                "Growth Balance does not have enough available funds for the "
+                f"${execution_fee:.3f} Telegram execution fee"
+            )
+
         receipt = await customer_telegram_governance_service.automated_publish_internal(
             project_id,
             action_id,
             TelegramPublishRequest(retry=retry),
         )
+        if receipt.outcome == TelegramClientPublishOutcome.EXECUTED:
+            charge_key = f"telegram-execution:{action_id}"
+            self._balance.record_service_charge(
+                project_id,
+                charge_key=charge_key,
+                amount_usd=execution_fee,
+                category="TELEGRAM_EXECUTION_FEE",
+                acquisition_spend_usd=provider_spend,
+                metadata={
+                    "action_id": str(action_id),
+                    "experiment_id": str(plan.experiment.id),
+                    "platform": "TELEGRAM",
+                },
+            )
+            distribution_analytics_service.add_spend(
+                plan.experiment.id,
+                DistributionSpendCreate(
+                    spend_id=uuid5(NAMESPACE_URL, charge_key),
+                    amount=execution_fee,
+                    category=DistributionCostCategory.EXECUTION_FEE,
+                    evidence_kind=DistributionEvidenceKind.OBSERVED,
+                    action_type=plan.action.action_type,
+                    properties={
+                        "source": "telegram_autonomous_execution",
+                        "growth_balance_charge_key": charge_key,
+                    },
+                ),
+            )
         return DistributionAdapterExecutionView(
             receipt=ExecutionAdapterReceipt(
                 action_id=receipt.action_id,
@@ -65,7 +118,7 @@ class CustomerTelegramAutonomousExecutionService:
                 metadata={"telegram_client_owned": True},
                 created_at=receipt.created_at,
             ),
-            plan=distribution_execution_service.get_plan(action_id),
+            plan=plan,
         )
 
     def _project_id_for_product(self, product_id: UUID) -> UUID:
