@@ -207,6 +207,11 @@ def get_customer_workspace(
         project_payload = customer_funnel_service.get_project_payload(project_id, customer_token)
         project = customer_funnel_service.get_project(project_id, customer_token)
         autopilot = customer_autopilot_service.overview(project_id, customer_token)
+        if autopilot.meta.connected and not autopilot.meta.ad_account_name:
+            autopilot.meta.ad_account_name = customer_meta_oauth_service.resolve_ad_account_name(
+                project_id,
+                customer_token,
+            )
     except (CustomerProjectNotFoundError, CustomerProjectAccessError, ValueError) as exc:
         raise _account_error(exc) from exc
     target_max_cac_raw = project_payload.get("autopilot_target_max_cac")
