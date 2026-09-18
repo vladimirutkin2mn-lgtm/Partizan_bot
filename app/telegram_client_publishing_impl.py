@@ -514,6 +514,24 @@ class CustomerTelegramClientPublishService:
         payload: TelegramPublishRequest,
     ) -> TelegramClientPublishReceipt:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
+        return await self._publish_for_project(project_id, project, action_id, payload)
+
+    async def publish_internal(
+        self,
+        project_id: UUID,
+        project: dict,
+        action_id: UUID,
+        payload: TelegramPublishRequest,
+    ) -> TelegramClientPublishReceipt:
+        return await self._publish_for_project(project_id, project, action_id, payload)
+
+    async def _publish_for_project(
+        self,
+        project_id: UUID,
+        project: dict,
+        action_id: UUID,
+        payload: TelegramPublishRequest,
+    ) -> TelegramClientPublishReceipt:
         self._require_ready()
         action = distribution_execution_service.get_action(action_id)
         if action.platform != DistributionPlatform.TELEGRAM:
