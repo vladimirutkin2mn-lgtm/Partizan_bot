@@ -237,7 +237,7 @@ def test_guided_meta_preflight_requires_advertise_task_for_managed_page_fallback
     assert view.promotable_page_count == 0
 
 
-def test_guided_meta_preflight_does_not_guess_page_to_account_for_multiple_accounts() -> None:
+def test_guided_meta_preflight_offers_managed_page_for_multiple_ad_accounts() -> None:
     store = get_runtime_store()
     preview = _preview()
     settings = _settings()
@@ -262,9 +262,14 @@ def test_guided_meta_preflight_does_not_guess_page_to_account_for_multiple_accou
     _complete(service, preview.project_id, preview.customer_token)
 
     view = service.view(preview.project_id, preview.customer_token)
-    assert view.status == "PAGE_NEEDS_AD_ACCOUNT_ACCESS"
-    assert view.ad_account_count == 2
-    assert view.promotable_page_count == 0
+    assert view.status == "NOT_STARTED"
+    pending = store.get(CUSTOMER_META_PENDING_NAMESPACE, str(preview.project_id))
+    assert pending is not None
+    assert [item["account_id"] for item in pending["ad_accounts"]] == ["123", "456"]
+    assert pending["pages_by_ad_account"] == {
+        "123": [{"id": "page_1", "name": "Partizan"}],
+        "456": [{"id": "page_1", "name": "Partizan"}],
+    }
 
 
 def test_guided_meta_check_reuses_token_and_promotes_ready_assets() -> None:
