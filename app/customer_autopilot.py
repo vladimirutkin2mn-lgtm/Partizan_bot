@@ -414,6 +414,9 @@ class CustomerAutopilotService:
             meta=CustomerMetaConnectionView(
                 connected=connection is not None,
                 ad_account_id=connection.ad_account_id if connection else None,
+                ad_account_name=(
+                    str(project.get("meta_ad_account_name") or "").strip() or None
+                ),
                 page_id=connection.page_id if connection else None,
                 instagram_actor_id=connection.instagram_actor_id if connection else None,
                 country_codes=list(connection.country_codes) if connection else [],
@@ -603,6 +606,9 @@ class CustomerAutopilotService:
         return CustomerMetaConnectionView(
             connected=True,
             ad_account_id=str(staged.get("ad_account_id") or "") or None,
+            ad_account_name=(
+                str(project.get("meta_ad_account_name") or "").strip() or None
+            ),
             page_id=str(staged.get("page_id") or "") or None,
             instagram_actor_id=(
                 str(staged.get("instagram_actor_id"))
