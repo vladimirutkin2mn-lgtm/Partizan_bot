@@ -12,7 +12,7 @@ from telethon.tl import types as telegram_types
 
 from app.channel_execution import PublisherMode
 from app.config import Settings, get_settings
-from app.customer_funnel import customer_funnel_service
+from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE, customer_funnel_service
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_types import DistributionPlatform
 from app.provider_secret_store import ProviderSecretStore, provider_secret_store
@@ -222,25 +222,11 @@ class CustomerTelegramGovernanceService:
         customer_token: str,
     ) -> TelegramAutomationView:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
-        record = self._store.get(CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE, str(project_id))
-        blockers = self._automation_blockers(project_id, project)
-        if record is None:
-            return TelegramAutomationView(
-                project_id=project_id,
-                status=TelegramAutomationStatus.DISABLED,
-                readiness_ok=not blockers,
-                blockers=blockers,
-            )
-        return TelegramAutomationView(
-            project_id=project_id,
-            status=TelegramAutomationStatus(str(record["status"])),
-            max_publishes_per_day=int(record.get("max_publishes_per_day") or 1),
-            authorized_at=self._optional_datetime(record.get("authorized_at")),
-            paused_at=self._optional_datetime(record.get("paused_at")),
-            revoked_at=self._optional_datetime(record.get("revoked_at")),
-            readiness_ok=not blockers,
-            blockers=blockers,
-        )
+        return self._automation_view(project_id, project)
+
+    def automation_status_internal(self, project_id: UUID) -> TelegramAutomationView:
+        project = self._internal_project(project_id)
+        return self._automation_view(project_id, project)
 
     def authorize_automation(
         self,
@@ -335,6 +321,39 @@ class CustomerTelegramGovernanceService:
             payload,
         )
 
+    async def automated_publish_internal(
+        self,
+        project_id: UUID,
+        action_id: UUID,
+        payload: TelegramPublishRequest,
+    ) -> TelegramClientPublishReceipt:
+        project = self._internal_project(project_id)
+        authorization = self._automation_view(project_id, project)
+        if authorization.status != TelegramAutomationStatus.ENABLED:
+            raise CustomerTelegramClientPublishError(
+                "Telegram automation is not explicitly enabled for this project"
+            )
+        blockers = self._automation_blockers(project_id, project)
+        if blockers:
+            raise CustomerTelegramClientPublishError("; ".join(blockers))
+        self._require_action_ownership(project, action_id)
+        existing = customer_telegram_client_publish_service.get_receipt(action_id)
+        if existing is not None and (
+            not payload.retry or existing.outcome == TelegramClientPublishOutcome.EXECUTED
+        ):
+            return existing
+        if existing is not None and existing.outcome == TelegramClientPublishOutcome.IN_PROGRESS:
+            raise CustomerTelegramClientPublishError(
+                "The previous Telegram publish outcome is unknown; reconcile before retrying"
+            )
+        self._enforce_automation_daily_limit(project_id, authorization.max_publishes_per_day)
+        return await customer_telegram_client_publish_service.publish_internal(
+            project_id,
+            project,
+            action_id,
+            payload,
+        )
+
     async def observe_publish(
         self,
         project_id: UUID,
@@ -407,6 +426,37 @@ class CustomerTelegramGovernanceService:
         if self._store.ephemeral:
             self._store.clear_namespace(CUSTOMER_TELEGRAM_OBSERVATION_NAMESPACE)
             self._store.clear_namespace(CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE)
+
+    def _automation_view(
+        self,
+        project_id: UUID,
+        project: dict,
+    ) -> TelegramAutomationView:
+        record = self._store.get(CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE, str(project_id))
+        blockers = self._automation_blockers(project_id, project)
+        if record is None:
+            return TelegramAutomationView(
+                project_id=project_id,
+                status=TelegramAutomationStatus.DISABLED,
+                readiness_ok=not blockers,
+                blockers=blockers,
+            )
+        return TelegramAutomationView(
+            project_id=project_id,
+            status=TelegramAutomationStatus(str(record["status"])),
+            max_publishes_per_day=int(record.get("max_publishes_per_day") or 1),
+            authorized_at=self._optional_datetime(record.get("authorized_at")),
+            paused_at=self._optional_datetime(record.get("paused_at")),
+            revoked_at=self._optional_datetime(record.get("revoked_at")),
+            readiness_ok=not blockers,
+            blockers=blockers,
+        )
+
+    def _internal_project(self, project_id: UUID) -> dict:
+        project = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
+        if project is None:
+            raise CustomerTelegramClientPublishError("Customer project not found")
+        return project
 
     def _automation_blockers(self, project_id: UUID, project: dict) -> list[str]:
         blockers: list[str] = []
