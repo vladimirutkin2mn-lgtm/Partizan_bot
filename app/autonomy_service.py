@@ -174,11 +174,17 @@ class GrowthMandateService:
             if payload.proposed_budget <= 0:
                 blocks.append("Paid activation requires a positive proposed budget")
 
-        if total_spend + payload.proposed_budget > mandate.total_budget_cap:
+        if (
+            payload.proposed_budget > 0
+            and total_spend + payload.proposed_budget > mandate.total_budget_cap
+        ):
             blocks.append(
                 "Proposed spend would exceed the total Growth Mandate budget cap"
             )
-        if daily_spend + payload.proposed_budget > mandate.max_autonomous_spend_per_day:
+        if (
+            payload.proposed_budget > 0
+            and daily_spend + payload.proposed_budget > mandate.max_autonomous_spend_per_day
+        ):
             blocks.append("Proposed spend would exceed the daily autonomous spend cap")
         if (
             mandate.max_concurrent_running_experiments is not None
