@@ -5,7 +5,6 @@ import pytest
 
 import app.telegram_autonomous_execution as autonomous
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
-from app.growth_balance import GROWTH_BALANCE_TOPUP_NAMESPACE, GrowthBalanceService
 from app.distribution_execution_schemas import (
     DistributionExecutionPlanView,
     DistributionExperimentStatus,
@@ -19,6 +18,7 @@ from app.distribution_types import (
     DistributionActionType,
     DistributionPlatform,
 )
+from app.growth_balance import GROWTH_BALANCE_TOPUP_NAMESPACE, GrowthBalanceService
 from app.runtime_store import MemoryRuntimeStateStore
 from app.telegram_autonomous_execution import CustomerTelegramAutonomousExecutionService
 from app.telegram_client_governance import CustomerTelegramClientPublishError
