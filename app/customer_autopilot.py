@@ -441,17 +441,18 @@ class CustomerAutopilotService:
         *,
         force_update: bool = False,
     ):
-        if not project.get("autopilot_spend_confirmed"):
-            return None
-        target_max_cac = project.get("autopilot_target_max_cac")
-        if target_max_cac is None:
-            return None
         try:
             existing = growth_mandate_service.get(product_id)
         except KeyError:
             existing = None
 
         auto_platforms = customer_channel_service.autonomous_platforms(project)
+        paid_auto = DistributionPlatform.INSTAGRAM in auto_platforms
+        target_max_cac = project.get("autopilot_target_max_cac")
+        if paid_auto and (
+            not project.get("autopilot_spend_confirmed") or target_max_cac is None
+        ):
+            return existing
         if project.get("autopilot_pause_reason") == "CUSTOMER":
             return existing
 
@@ -472,14 +473,13 @@ class CustomerAutopilotService:
         analytics = distribution_analytics_service.product_analytics(product_id)
         balance = self._balance.summary(project_id, analytics.total_spend)
         safety_reason: str | None = None
-        if (
-            DistributionPlatform.INSTAGRAM in auto_platforms
-            and paid_provider_connection_service.get_meta(product_id) is None
-        ):
+        if paid_auto and paid_provider_connection_service.get_meta(product_id) is None:
             safety_reason = "SETUP"
-        elif balance.funded_usd <= 0 or balance.remaining_acquisition_capacity_usd <= 0:
+        elif paid_auto and (
+            balance.funded_usd <= 0 or balance.remaining_acquisition_capacity_usd <= 0
+        ):
             safety_reason = "FUNDING"
-        elif not balance.settlement_ready:
+        elif paid_auto and not balance.settlement_ready:
             safety_reason = "FUNDING"
         if safety_reason is not None:
             if existing is not None:
@@ -495,35 +495,75 @@ class CustomerAutopilotService:
         if existing is not None and not force_update:
             return existing
 
+        if (
+            existing is not None
+            and DistributionActionType.PAID_CAMPAIGN in existing.allowed_actions
+            and not paid_auto
+        ):
+            self._pause_paid_execution_surface(
+                project_id,
+                product_id,
+                reason=AUTOPILOT_PROVIDER_PAUSE_REASONS["CHANNELS"],
+            )
+
         distribution = audience_intelligence_service.get(product_id)
         try:
             distribution_play_service.get(product_id)
         except KeyError:
             distribution_play_service.generate(product, distribution)
 
-        total_cap = round(balance.acquisition_capacity_usd, 2)
-        remaining = round(balance.remaining_acquisition_capacity_usd, 2)
-        per_experiment = round(min(remaining, max(1.0, total_cap * 0.20)), 2)
-        daily = round(min(remaining, max(per_experiment, total_cap / 7)), 2)
+        allowed_actions: list[DistributionActionType] = []
+        if paid_auto:
+            allowed_actions.append(DistributionActionType.PAID_CAMPAIGN)
+        if DistributionPlatform.TELEGRAM in auto_platforms:
+            allowed_actions.extend(
+                [
+                    DistributionActionType.COMMENT,
+                    DistributionActionType.REPLY,
+                    DistributionActionType.STANDALONE_POST,
+                ]
+            )
+
+        if paid_auto:
+            total_cap = round(balance.acquisition_capacity_usd, 2)
+            remaining = round(balance.remaining_acquisition_capacity_usd, 2)
+            per_experiment = round(min(remaining, max(1.0, total_cap * 0.20)), 2)
+            daily = round(min(remaining, max(per_experiment, total_cap / 7)), 2)
+        else:
+            total_cap = 0.0
+            per_experiment = 0.0
+            daily = 0.0
+
         mandate = growth_mandate_service.upsert(
             product_id,
             GrowthMandateUpsertRequest(
                 total_budget_cap=total_cap,
-                target_max_cac=float(target_max_cac),
+                target_max_cac=(
+                    float(target_max_cac) if target_max_cac is not None else None
+                ),
                 max_autonomous_spend_per_experiment=per_experiment,
                 max_autonomous_spend_per_day=daily,
                 max_concurrent_running_experiments=2,
                 allowed_platforms=auto_platforms,
-                allowed_actions=[DistributionActionType.PAID_CAMPAIGN],
+                allowed_actions=allowed_actions,
                 autonomous_prepare=True,
                 autonomous_approve=True,
-                autonomous_paid_activation=True,
+                autonomous_paid_activation=paid_auto,
                 approval_threshold=None,
             ),
         )
 
         current_pause_reason = str(project.get("autopilot_pause_reason") or "") or None
-        if current_pause_reason not in AUTOPILOT_AUTOMATIC_PAUSE_REASONS:
+        if (
+            not paid_auto
+            and current_pause_reason in AUTOPILOT_AUTOMATIC_PAUSE_REASONS
+        ):
+            mandate = growth_mandate_service.set_status(
+                product_id,
+                GrowthMandateStatus.ACTIVE,
+            )
+            project["autopilot_pause_reason"] = None
+        elif current_pause_reason not in AUTOPILOT_AUTOMATIC_PAUSE_REASONS:
             project["autopilot_pause_reason"] = None
         self._persist(project)
         return mandate
