@@ -359,12 +359,11 @@ class CustomerMetaGuidedSetupService:
             )
 
         if (
-            len(normalized_accounts) == 1
+            normalized_accounts
             and not any(pages_by_account.values())
             and managed_advertisable_pages
         ):
-            only_account_id = str(normalized_accounts[0]["account_id"])
-            pages_by_account[only_account_id] = [
+            fallback_pages = [
                 {
                     "id": str(page.get("id") or ""),
                     "name": str(
@@ -374,6 +373,8 @@ class CustomerMetaGuidedSetupService:
                 for page in managed_advertisable_pages[:25]
                 if str(page.get("id") or "")
             ]
+            for account in normalized_accounts:
+                pages_by_account[str(account["account_id"])] = list(fallback_pages)
 
         promotable_page_count = sum(len(items) for items in pages_by_account.values())
         if normalized_accounts and promotable_page_count:
