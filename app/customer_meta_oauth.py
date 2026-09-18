@@ -437,13 +437,9 @@ class CustomerMetaOAuthService:
             raise CustomerMetaOAuthError("META_OAUTH_API_VERSION is not configured")
 
         selected_account = accounts[payload.ad_account_id]
-        selected_page = pages[payload.page_id]
         ad_account_name = str(selected_account.get("name") or "").strip()
-        page_name = str(selected_page.get("name") or "").strip()
         if ad_account_name:
             project["meta_ad_account_name"] = ad_account_name
-        if page_name:
-            project["meta_page_name"] = page_name
 
         staged_payload = {
             "ad_account_id": payload.ad_account_id,
