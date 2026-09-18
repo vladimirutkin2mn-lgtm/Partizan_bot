@@ -503,7 +503,8 @@ class CustomerAutopilotService:
             self._pause_paid_execution_surface(
                 project_id,
                 product_id,
-                reason=AUTOPILOT_PROVIDER_PAUSE_REASONS["CHANNELS"],
+                rail_reason="CHANNELS",
+                provider_reason=AUTOPILOT_PROVIDER_PAUSE_REASONS["CHANNELS"],
             )
 
         distribution = audience_intelligence_service.get(product_id)
@@ -578,15 +579,43 @@ class CustomerAutopilotService:
     ) -> None:
         if reason not in AUTOPILOT_AUTOMATIC_PAUSE_REASONS:
             raise ValueError("Unsupported automatic Autopilot pause reason")
-        provider_reason = AUTOPILOT_PROVIDER_PAUSE_REASONS[reason]
+        paid_mandate = self._mandate_includes_paid(product_id)
         pause_failed = False
         project["autopilot_pause_reason"] = reason
         try:
             growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
         except (KeyError, RuntimeError, ValueError):
             pause_failed = True
+        if paid_mandate:
+            self._pause_paid_execution_surface(
+                project_id,
+                product_id,
+                rail_reason=reason,
+                provider_reason=AUTOPILOT_PROVIDER_PAUSE_REASONS[reason],
+            )
         try:
-            self._balance.pause_rail(project_id, reason)
+            self._persist(project)
+        except RuntimeError:
+            pause_failed = True
+        if pause_failed:
+            if paid_mandate:
+                raise ValueError(
+                    "Autopilot safety pause is fail-closed, but paid provider state "
+                    "requires reconciliation"
+                )
+            raise ValueError("Autopilot safety pause could not be confirmed")
+
+    def _pause_paid_execution_surface(
+        self,
+        project_id: UUID,
+        product_id: UUID,
+        *,
+        rail_reason: str,
+        provider_reason: str,
+    ) -> None:
+        pause_failed = False
+        try:
+            self._balance.pause_rail(project_id, rail_reason)
         except (KeyError, RuntimeError, ValueError):
             pause_failed = True
         try:
@@ -599,14 +628,18 @@ class CustomerAutopilotService:
             pause_failed = True
         if provider_pause is not None and provider_pause.requires_reconciliation:
             pause_failed = True
-        try:
-            self._persist(project)
-        except RuntimeError:
-            pause_failed = True
         if pause_failed:
             raise ValueError(
-                "Autopilot safety pause is fail-closed, but paid provider state requires reconciliation"
+                "Paid execution could not be confirmed paused; reconciliation is required"
             )
+
+    @staticmethod
+    def _mandate_includes_paid(product_id: UUID) -> bool:
+        try:
+            mandate = growth_mandate_service.get(product_id)
+        except KeyError:
+            return False
+        return DistributionActionType.PAID_CAMPAIGN in mandate.allowed_actions
 
     @staticmethod
     def _effective_automatic_pause_reason(project: dict, fallback: str) -> str:
@@ -673,10 +706,10 @@ class CustomerAutopilotService:
         return UUID(str(product_id_raw))
 
     @staticmethod
-    def _require_paid_destination(product_id: UUID):
+    def _require_acquisition_destination(product_id: UUID):
         product = product_intake_service.get_product(product_id)
         if not product.reference_links:
-            raise ValueError("Add a website or landing page before starting paid Autopilot")
+            raise ValueError("Add a product destination link before starting Autopilot")
         return product
 
     @staticmethod
