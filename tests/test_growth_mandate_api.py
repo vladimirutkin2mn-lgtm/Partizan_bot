@@ -150,6 +150,87 @@ def test_growth_mandate_is_persisted_and_versioned() -> None:
     assert reloaded.max_autonomous_spend_per_experiment == 40
 
 
+def test_zero_spend_telegram_mandate_is_valid() -> None:
+    product_id = _create_product()
+    response = client.put(
+        f"/v1/products/{product_id}/growth-mandate",
+        json=_mandate_payload(
+            total_budget_cap=0,
+            target_max_cac=None,
+            max_autonomous_spend_per_experiment=0,
+            max_autonomous_spend_per_day=0,
+            allowed_platforms=["TELEGRAM"],
+            allowed_actions=["COMMENT", "REPLY", "STANDALONE_POST"],
+            approval_threshold=None,
+        ),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_budget_cap"] == 0
+    assert payload["allowed_platforms"] == ["TELEGRAM"]
+    assert payload["autonomous_paid_activation"] is False
+
+
+def test_zero_budget_paid_campaign_mandate_is_rejected() -> None:
+    product_id = _create_product()
+    response = client.put(
+        f"/v1/products/{product_id}/growth-mandate",
+        json=_mandate_payload(
+            total_budget_cap=0,
+            max_autonomous_spend_per_experiment=0,
+            max_autonomous_spend_per_day=0,
+            allowed_platforms=["INSTAGRAM"],
+            allowed_actions=["PAID_CAMPAIGN"],
+            approval_threshold=None,
+        ),
+    )
+
+    assert response.status_code == 422
+    assert "positive total_budget_cap" in response.text
+
+
+def test_zero_spend_telegram_action_is_not_blocked_by_historical_paid_spend() -> None:
+    product_id = _create_product()
+    response = client.put(
+        f"/v1/products/{product_id}/growth-mandate",
+        json=_mandate_payload(
+            total_budget_cap=0,
+            target_max_cac=None,
+            max_autonomous_spend_per_experiment=0,
+            max_autonomous_spend_per_day=0,
+            allowed_platforms=["TELEGRAM"],
+            allowed_actions=["STANDALONE_POST"],
+            approval_threshold=None,
+        ),
+    )
+    assert response.status_code == 200
+    experiment_id = _put_experiment(product_id)
+    spend_id = uuid4()
+    get_runtime_store().put(
+        DISTRIBUTION_SPEND_NAMESPACE,
+        str(spend_id),
+        {
+            "spend_id": str(spend_id),
+            "experiment_id": str(experiment_id),
+            "amount": 25,
+            "occurred_at": datetime.now(UTC).isoformat(),
+            "properties": {},
+        },
+    )
+
+    result = _evaluate(
+        product_id,
+        platform="TELEGRAM",
+        action_type="STANDALONE_POST",
+        proposed_budget=0,
+        requests_paid_activation=False,
+    )
+
+    assert result["decision"] == "ALLOW"
+    assert result["current_total_spend"] == 25
+
+
 def test_action_inside_mandate_is_allowed() -> None:
     product_id = _create_product()
     mandate = _create_mandate(product_id)
