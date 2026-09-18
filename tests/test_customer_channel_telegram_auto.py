@@ -8,6 +8,7 @@ from app.channel_execution import PublisherMode
 from app.customer_channel_schemas import CustomerChannelPreferencesUpdateRequest
 from app.customer_channels import CustomerChannelService
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
+from app.growth_balance import GROWTH_BALANCE_TOPUP_NAMESPACE
 from app.distribution_types import DistributionPlatform
 from app.runtime_store import MemoryRuntimeStateStore
 from app.telegram_client_governance import TelegramAutomationStatus
@@ -78,6 +79,16 @@ def test_telegram_auto_requires_explicit_automation_but_not_paid_settlement(monk
             "channel_publisher_modes": {"TELEGRAM": "MANUAL"},
         },
     )
+    store.put(
+        GROWTH_BALANCE_TOPUP_NAMESPACE,
+        "telegram-test-balance",
+        {
+            "project_id": str(project_id),
+            "amount_cents": 100,
+            "currency": "usd",
+            "state": "PAID",
+        },
+    )
     publishing = FakeTelegramPublishing()
     governance = FakeTelegramGovernance()
     monkeypatch.setattr(channels, "customer_funnel_service", StoreBackedFunnel(store))
@@ -85,7 +96,10 @@ def test_telegram_auto_requires_explicit_automation_but_not_paid_settlement(monk
     monkeypatch.setattr(channels, "customer_telegram_governance_service", governance)
     service = CustomerChannelService(
         store=store,
-        settings=SimpleNamespace(meta_oauth_public_ready=False),
+        settings=SimpleNamespace(
+            meta_oauth_public_ready=False,
+            partizan_telegram_execution_fee_usd=0.001,
+        ),
     )
 
     service.update(
@@ -131,6 +145,16 @@ def test_telegram_auto_fails_closed_when_connection_or_live_readiness_disappears
             "channel_publisher_modes": {"TELEGRAM": "CLIENT_OWNED"},
         },
     )
+    store.put(
+        GROWTH_BALANCE_TOPUP_NAMESPACE,
+        "telegram-test-balance",
+        {
+            "project_id": str(project_id),
+            "amount_cents": 100,
+            "currency": "usd",
+            "state": "PAID",
+        },
+    )
     publishing = FakeTelegramPublishing()
     governance = FakeTelegramGovernance()
     governance.status = TelegramAutomationStatus.ENABLED
@@ -139,7 +163,10 @@ def test_telegram_auto_fails_closed_when_connection_or_live_readiness_disappears
     monkeypatch.setattr(channels, "customer_telegram_governance_service", governance)
     service = CustomerChannelService(
         store=store,
-        settings=SimpleNamespace(meta_oauth_public_ready=False),
+        settings=SimpleNamespace(
+            meta_oauth_public_ready=False,
+            partizan_telegram_execution_fee_usd=0.001,
+        ),
     )
     project = store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
     assert project is not None
