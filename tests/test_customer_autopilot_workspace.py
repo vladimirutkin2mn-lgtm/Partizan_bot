@@ -128,6 +128,12 @@ def test_customer_browsers_use_separate_funnel_and_workspace_boundaries() -> Non
 
     assert "$('meta-connect').disabled = !overview.product_id;" not in workspace_source
     assert "$('meta-connect').disabled = false;" in workspace_source
+    assert "overview.meta.ad_account_name" in workspace_source
+    assert (
+        "window.history.replaceState({}, '', "
+        "`/workspace?project=${encodeURIComponent(projectId)}`);"
+        in workspace_source
+    )
     assert "channel-mode-select" in workspace_source
     assert "openFundingControls" in workspace_source
     assert "$('overview-fund-button').addEventListener('click', openFundingControls)" in workspace_source

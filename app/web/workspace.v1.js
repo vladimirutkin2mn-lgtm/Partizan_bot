@@ -485,7 +485,7 @@
     $('meta-state').textContent = overview.meta.connected ? 'Connected' : 'Not connected';
     $('meta-state').classList.toggle('good', overview.meta.connected);
     $('meta-detail').textContent = overview.meta.connected
-      ? `Ad account ${overview.meta.ad_account_id}`
+      ? (overview.meta.ad_account_name || `Ad account ${overview.meta.ad_account_id}`)
       : 'Connect Meta only when a recommended Instagram & Facebook action needs execution access. Access alone never starts spend.';
     $('meta-connect').textContent = overview.meta.connected ? 'Reconnect Meta' : 'Connect Meta →';
     $('meta-connect').disabled = false;
@@ -894,6 +894,7 @@
         }),
       });
       $('meta-options-form').classList.add('hidden');
+      window.history.replaceState({}, '', `/workspace?project=${encodeURIComponent(projectId)}`);
       showNotice('Meta connected to this Partizan project.');
       await loadWorkspace();
     } catch (error) {

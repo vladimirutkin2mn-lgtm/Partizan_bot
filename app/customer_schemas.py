@@ -295,6 +295,7 @@ class CustomerMetaConnectionRequest(BaseModel):
 class CustomerMetaConnectionView(BaseModel):
     connected: bool
     ad_account_id: str | None = None
+    ad_account_name: str | None = None
     page_id: str | None = None
     instagram_actor_id: str | None = None
     country_codes: list[str] = Field(default_factory=list)
