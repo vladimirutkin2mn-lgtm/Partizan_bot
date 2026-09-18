@@ -5,6 +5,7 @@ import pytest
 
 import app.telegram_autonomous_execution as autonomous
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
+from app.growth_balance import GROWTH_BALANCE_TOPUP_NAMESPACE, GrowthBalanceService
 from app.distribution_execution_schemas import (
     DistributionExecutionPlanView,
     DistributionExperimentStatus,
@@ -44,6 +45,24 @@ class FakeDistributionExecution:
     def get_plan(self, action_id):
         assert action_id == self.plan.action.id
         return self.plan
+
+
+class FakeAnalytics:
+    def __init__(self) -> None:
+        self.spend_by_id: dict[str, object] = {}
+
+    def product_analytics(self, product_id):
+        del product_id
+        return type(
+            "Analytics",
+            (),
+            {"total_costs": type("Costs", (), {"distribution_spend": 0.0})()},
+        )()
+
+    def add_spend(self, experiment_id, payload):
+        key = str(payload.spend_id)
+        self.spend_by_id.setdefault(key, (experiment_id, payload))
+        return self.spend_by_id[key]
 
 
 def _plan(product_id, action_id, experiment_id) -> DistributionExecutionPlanView:
@@ -93,6 +112,16 @@ async def test_autonomous_telegram_routes_through_client_owned_governance(monkey
             "channel_publisher_modes": {"TELEGRAM": "CLIENT_OWNED"},
         },
     )
+    store.put(
+        GROWTH_BALANCE_TOPUP_NAMESPACE,
+        "telegram-autonomous-balance",
+        {
+            "project_id": str(project_id),
+            "amount_cents": 100,
+            "currency": "usd",
+            "state": "PAID",
+        },
+    )
     receipt = TelegramClientPublishReceipt(
         action_id=action_id,
         outcome=TelegramClientPublishOutcome.EXECUTED,
@@ -113,7 +142,13 @@ async def test_autonomous_telegram_routes_through_client_owned_governance(monkey
         "distribution_execution_service",
         FakeDistributionExecution(_plan(product_id, action_id, experiment_id)),
     )
-    service = CustomerTelegramAutonomousExecutionService(store=store)
+    analytics = FakeAnalytics()
+    monkeypatch.setattr(autonomous, "distribution_analytics_service", analytics)
+    balance = GrowthBalanceService(store)
+    service = CustomerTelegramAutonomousExecutionService(
+        store=store,
+        balance_service=balance,
+    )
 
     result = await service.execute(
         product_id=product_id,
@@ -124,6 +159,62 @@ async def test_autonomous_telegram_routes_through_client_owned_governance(monkey
     assert result.receipt.adapter_name == "telegram-client-owned-autonomous"
     assert result.receipt.outcome.value == "EXECUTED"
     assert governance.calls == [(project_id, action_id, False)]
+    assert balance.summary(project_id, 0.0).execution_fee_usd == 0.001
+    assert balance.summary(project_id, 0.0).available_usd == 0.999
+    assert len(analytics.spend_by_id) == 1
+    _, spend = next(iter(analytics.spend_by_id.values()))
+    assert spend.amount == 0.001
+    assert spend.category.value == "EXECUTION_FEE"
+
+    duplicate = await service.execute(
+        product_id=product_id,
+        action_id=action_id,
+    )
+    assert duplicate.receipt.outcome.value == "EXECUTED"
+    assert balance.summary(project_id, 0.0).execution_fee_usd == 0.001
+    assert len(analytics.spend_by_id) == 1
+
+
+@pytest.mark.asyncio
+async def test_autonomous_telegram_requires_available_growth_balance(monkeypatch) -> None:
+    store = MemoryRuntimeStateStore()
+    project_id = uuid4()
+    product_id = uuid4()
+    action_id = uuid4()
+    experiment_id = uuid4()
+    store.put(
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(project_id),
+        {
+            "id": str(project_id),
+            "product_id": str(product_id),
+            "channel_preferences": {"TELEGRAM": "AUTO"},
+            "channel_publisher_modes": {"TELEGRAM": "CLIENT_OWNED"},
+        },
+    )
+    receipt = TelegramClientPublishReceipt(
+        action_id=action_id,
+        outcome=TelegramClientPublishOutcome.EXECUTED,
+        message="confirmed",
+        created_at=datetime(2026, 9, 18, 12, 0, tzinfo=UTC),
+    )
+    governance = FakeGovernance(receipt)
+    monkeypatch.setattr(autonomous, "customer_telegram_governance_service", governance)
+    monkeypatch.setattr(
+        autonomous,
+        "distribution_execution_service",
+        FakeDistributionExecution(_plan(product_id, action_id, experiment_id)),
+    )
+    monkeypatch.setattr(autonomous, "distribution_analytics_service", FakeAnalytics())
+    service = CustomerTelegramAutonomousExecutionService(
+        store=store,
+        balance_service=GrowthBalanceService(store),
+    )
+
+    with pytest.raises(CustomerTelegramClientPublishError, match="Growth Balance"):
+        await service.execute(product_id=product_id, action_id=action_id)
+
+    assert governance.calls == []
 
 
 @pytest.mark.asyncio
