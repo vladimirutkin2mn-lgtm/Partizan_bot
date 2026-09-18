@@ -176,6 +176,62 @@ async def test_autonomous_telegram_routes_through_client_owned_governance(monkey
 
 
 @pytest.mark.asyncio
+async def test_failed_telegram_publish_does_not_charge_growth_balance(monkeypatch) -> None:
+    store = MemoryRuntimeStateStore()
+    project_id = uuid4()
+    product_id = uuid4()
+    action_id = uuid4()
+    experiment_id = uuid4()
+    store.put(
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(project_id),
+        {
+            "id": str(project_id),
+            "product_id": str(product_id),
+            "channel_preferences": {"TELEGRAM": "AUTO"},
+            "channel_publisher_modes": {"TELEGRAM": "CLIENT_OWNED"},
+        },
+    )
+    store.put(
+        GROWTH_BALANCE_TOPUP_NAMESPACE,
+        "telegram-failed-balance",
+        {
+            "project_id": str(project_id),
+            "amount_cents": 100,
+            "currency": "usd",
+            "state": "PAID",
+        },
+    )
+    receipt = TelegramClientPublishReceipt(
+        action_id=action_id,
+        outcome=TelegramClientPublishOutcome.FAILED,
+        message="Telegram rejected the publish.",
+        created_at=datetime(2026, 9, 18, 12, 0, tzinfo=UTC),
+    )
+    governance = FakeGovernance(receipt)
+    monkeypatch.setattr(autonomous, "customer_telegram_governance_service", governance)
+    monkeypatch.setattr(
+        autonomous,
+        "distribution_execution_service",
+        FakeDistributionExecution(_plan(product_id, action_id, experiment_id)),
+    )
+    analytics = FakeAnalytics()
+    monkeypatch.setattr(autonomous, "distribution_analytics_service", analytics)
+    balance = GrowthBalanceService(store)
+    service = CustomerTelegramAutonomousExecutionService(
+        store=store,
+        balance_service=balance,
+    )
+
+    result = await service.execute(product_id=product_id, action_id=action_id)
+
+    assert result.receipt.outcome.value == "FAILED"
+    assert balance.summary(project_id, 0.0).execution_fee_usd == 0
+    assert balance.summary(project_id, 0.0).available_usd == 1.0
+    assert analytics.spend_by_id == {}
+
+
+@pytest.mark.asyncio
 async def test_autonomous_telegram_requires_available_growth_balance(monkeypatch) -> None:
     store = MemoryRuntimeStateStore()
     project_id = uuid4()
