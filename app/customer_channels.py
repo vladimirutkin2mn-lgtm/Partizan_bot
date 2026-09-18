@@ -21,6 +21,10 @@ from app.managed_distribution import managed_distribution_service
 from app.paid_provider_connections import paid_provider_connection_service
 from app.reddit_client_publishing import customer_reddit_client_publish_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.telegram_client_governance import (
+    TelegramAutomationStatus,
+    customer_telegram_governance_service,
+)
 from app.telegram_client_publishing import customer_telegram_client_publish_service
 
 CHANNEL_PREFERENCES_KEY = "channel_preferences"
@@ -52,7 +56,9 @@ DEFAULT_PUBLISHER_MODES: dict[DistributionPlatform, PublisherMode] = {
 # Research is enabled by default, but no acquisition channel is pre-authorized
 # for execution. A platform may become AUTO only after an explicit customer
 # action and only when its execution + spend-control path is production-ready.
-AUTONOMOUS_EXECUTION_PLATFORMS = frozenset({DistributionPlatform.INSTAGRAM})
+AUTONOMOUS_EXECUTION_PLATFORMS = frozenset(
+    {DistributionPlatform.INSTAGRAM, DistributionPlatform.TELEGRAM}
+)
 
 
 def _meta_oauth_dogfood_project_ids() -> set[str]:
@@ -89,6 +95,10 @@ class CustomerChannelService:
         metrics = self._metrics_by_platform(project)
         meta_connected = self._meta_connected(project)
         telegram_connected = customer_telegram_client_publish_service.is_connected(project_id)
+        telegram_automation = customer_telegram_governance_service.automation_status(
+            project_id,
+            customer_token,
+        )
         reddit_connected = customer_reddit_client_publish_service.is_connected(project_id)
         settlement_ready = bool(
             self._balance.rail_view(project_id).get("settlement_ready")
@@ -107,6 +117,11 @@ class CustomerChannelService:
                 project_id=project_id,
                 meta_connected=meta_connected,
                 settlement_ready=settlement_ready,
+                telegram_connected=telegram_connected,
+                telegram_publisher_mode=publisher_modes[DistributionPlatform.TELEGRAM],
+                telegram_automation_status=telegram_automation.status,
+                telegram_automation_ready=telegram_automation.readiness_ok,
+                telegram_automation_blockers=telegram_automation.blockers,
             )
             rows.append(
                 CustomerChannelView(
@@ -173,27 +188,15 @@ class CustomerChannelService:
         preferences = self._preferences(project)
         publisher_modes = self._publisher_modes(project)
         meta_connected = self._meta_connected(project)
+        telegram_connected = customer_telegram_client_publish_service.is_connected(project_id)
+        telegram_automation = customer_telegram_governance_service.automation_status(
+            project_id,
+            customer_token,
+        )
         settlement_ready = bool(
             self._balance.rail_view(project_id).get("settlement_ready")
         )
         for item in payload.channels:
-            if item.mode == "AUTO":
-                execution_ready, blocker = self._execution_readiness(
-                    item.platform,
-                    project_id=project_id,
-                    meta_connected=meta_connected,
-                    settlement_ready=settlement_ready,
-                )
-                if not execution_ready:
-                    if item.platform not in AUTONOMOUS_EXECUTION_PLATFORMS:
-                        raise ValueError(
-                            f"Autonomous execution is not available for {CHANNEL_LABELS[item.platform]} yet. "
-                            "Use Research only or Off."
-                        )
-                    raise ValueError(
-                        f"Auto is not ready for {CHANNEL_LABELS[item.platform]}: {blocker}. "
-                        "Keep Research only until the required execution path is ready."
-                    )
             if item.publisher_mode is not None:
                 option = next(
                     entry
@@ -206,6 +209,28 @@ class CustomerChannelService:
                         f"{CHANNEL_LABELS[item.platform]}: {option.blocker}"
                     )
                 publisher_modes[item.platform] = item.publisher_mode
+            if item.mode == "AUTO":
+                execution_ready, blocker = self._execution_readiness(
+                    item.platform,
+                    project_id=project_id,
+                    meta_connected=meta_connected,
+                    settlement_ready=settlement_ready,
+                    telegram_connected=telegram_connected,
+                    telegram_publisher_mode=publisher_modes[DistributionPlatform.TELEGRAM],
+                    telegram_automation_status=telegram_automation.status,
+                    telegram_automation_ready=telegram_automation.readiness_ok,
+                    telegram_automation_blockers=telegram_automation.blockers,
+                )
+                if not execution_ready:
+                    if item.platform not in AUTONOMOUS_EXECUTION_PLATFORMS:
+                        raise ValueError(
+                            f"Autonomous execution is not available for {CHANNEL_LABELS[item.platform]} yet. "
+                            "Use Research only or Off."
+                        )
+                    raise ValueError(
+                        f"Auto is not ready for {CHANNEL_LABELS[item.platform]}: {blocker}. "
+                        "Keep Research only until the required execution path is ready."
+                    )
             if item.mode is not None:
                 preferences[item.platform] = item.mode
         selected_platform = self._selected_platform(project)
@@ -229,17 +254,35 @@ class CustomerChannelService:
             project_id = UUID(str(project["id"]))
         except (KeyError, ValueError, TypeError):
             project_id = None
-        return [
-            platform
-            for platform in (
-                DistributionPlatform.INSTAGRAM,
-                DistributionPlatform.TIKTOK,
-                DistributionPlatform.REDDIT,
-                DistributionPlatform.TELEGRAM,
-            )
-            if preferences[platform] == "AUTO"
-            and self._autonomous_execution_available(platform, project_id=project_id)
-        ]
+        publisher_modes = self._publisher_modes(project)
+        result: list[DistributionPlatform] = []
+        for platform in (
+            DistributionPlatform.INSTAGRAM,
+            DistributionPlatform.TIKTOK,
+            DistributionPlatform.REDDIT,
+            DistributionPlatform.TELEGRAM,
+        ):
+            if preferences[platform] != "AUTO":
+                continue
+            if not self._autonomous_execution_available(platform, project_id=project_id):
+                continue
+            if platform == DistributionPlatform.TELEGRAM:
+                if (
+                    project_id is None
+                    or publisher_modes[platform] != PublisherMode.CLIENT_OWNED
+                    or not customer_telegram_client_publish_service.is_connected(project_id)
+                ):
+                    continue
+                automation = customer_telegram_governance_service.automation_status_internal(
+                    project_id
+                )
+                if (
+                    automation.status != TelegramAutomationStatus.ENABLED
+                    or not automation.readiness_ok
+                ):
+                    continue
+            result.append(platform)
+        return result
 
     def filter_research(
         self,
@@ -458,6 +501,8 @@ class CustomerChannelService:
                 project_id is not None
                 and str(project_id) in _meta_oauth_dogfood_project_ids()
             )
+        if platform == DistributionPlatform.TELEGRAM:
+            return customer_telegram_client_publish_service.readiness_blocker() is None
         return True
 
     def _execution_readiness(
@@ -467,12 +512,35 @@ class CustomerChannelService:
         project_id: UUID | None = None,
         meta_connected: bool,
         settlement_ready: bool,
+        telegram_connected: bool,
+        telegram_publisher_mode: PublisherMode,
+        telegram_automation_status: TelegramAutomationStatus,
+        telegram_automation_ready: bool,
+        telegram_automation_blockers: list[str],
     ) -> tuple[bool, str | None]:
         if platform not in AUTONOMOUS_EXECUTION_PLATFORMS:
             return False, "autonomous execution is not supported for this channel"
         if not self._autonomous_execution_available(platform, project_id=project_id):
+            if platform == DistributionPlatform.TELEGRAM:
+                return False, (
+                    customer_telegram_client_publish_service.readiness_blocker()
+                    or "Telegram client-owned execution is temporarily unavailable"
+                )
             return False, "Meta customer connection is temporarily unavailable"
-        if platform == DistributionPlatform.INSTAGRAM and not meta_connected:
+        if platform == DistributionPlatform.TELEGRAM:
+            if telegram_publisher_mode != PublisherMode.CLIENT_OWNED:
+                return False, "select Use my account for Telegram first"
+            if not telegram_connected:
+                return False, "connect an authorised Telegram account first"
+            if telegram_automation_status != TelegramAutomationStatus.ENABLED:
+                return False, "enable bounded Telegram automation first"
+            if not telegram_automation_ready:
+                return False, (
+                    "; ".join(telegram_automation_blockers)
+                    or "Telegram automation readiness check failed"
+                )
+            return True, None
+        if not meta_connected:
             return False, "connect Meta first"
         if not settlement_ready:
             return False, "Partizan's paid-execution payment path is not ready"
