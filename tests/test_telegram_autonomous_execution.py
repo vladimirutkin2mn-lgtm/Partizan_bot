@@ -4,6 +4,7 @@ from uuid import uuid4
 import pytest
 
 import app.telegram_autonomous_execution as autonomous
+from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
 from app.distribution_execution_schemas import (
     DistributionExecutionPlanView,
     DistributionExperimentStatus,
@@ -83,7 +84,7 @@ async def test_autonomous_telegram_routes_through_client_owned_governance(monkey
     action_id = uuid4()
     experiment_id = uuid4()
     store.put(
-        "customer_projects",
+        CUSTOMER_PROJECT_NAMESPACE,
         str(project_id),
         {
             "id": str(project_id),
@@ -132,7 +133,7 @@ async def test_autonomous_telegram_fails_closed_outside_auto_mode(monkeypatch) -
     product_id = uuid4()
     action_id = uuid4()
     store.put(
-        "customer_projects",
+        CUSTOMER_PROJECT_NAMESPACE,
         str(project_id),
         {
             "id": str(project_id),
