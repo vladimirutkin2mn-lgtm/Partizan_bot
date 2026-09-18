@@ -7,6 +7,7 @@ from app.audience_intelligence_service import audience_intelligence_service
 from app.autonomy_overview import autonomy_overview_service
 from app.autonomy_schemas import GrowthMandateStatus, GrowthMandateUpsertRequest
 from app.autonomy_service import growth_mandate_service
+from app.config import get_settings
 from app.customer_channels import customer_channel_service
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE, customer_funnel_service
 from app.customer_paid_campaign_lifecycle import (
@@ -133,7 +134,7 @@ class CustomerAutopilotService:
             else:
                 self._require_acquisition_destination(product_id)
             analytics = distribution_analytics_service.product_analytics(product_id)
-            balance = self._balance.summary(project_id, analytics.total_spend)
+            balance = self._balance.summary(project_id, self._provider_distribution_spend(analytics))
             if paid_auto and balance.remaining_acquisition_capacity_usd <= 0:
                 raise ValueError("Fund the Growth Balance before activating Meta Autopilot")
             if paid_auto and not balance.settlement_ready:
@@ -278,7 +279,7 @@ class CustomerAutopilotService:
         self._ensure_mandate_if_ready(project_id, project, product_id)
         product = product_intake_service.get_product(product_id)
         analytics = distribution_analytics_service.product_analytics(product_id)
-        balance = self._balance.summary(project_id, analytics.total_spend)
+        balance = self._balance.summary(project_id, self._provider_distribution_spend(analytics))
         try:
             mandate = growth_mandate_service.get(product_id)
         except KeyError:
@@ -364,7 +365,7 @@ class CustomerAutopilotService:
         self._ensure_mandate_if_ready(project_id, project, product_id)
         product = product_intake_service.get_product(product_id)
         analytics = distribution_analytics_service.product_analytics(product_id)
-        balance = self._balance.summary(project_id, analytics.total_spend)
+        balance = self._balance.summary(project_id, self._provider_distribution_spend(analytics))
         try:
             autonomy = autonomy_overview_service.get(product_id)
             mandate = autonomy.mandate
@@ -480,7 +481,7 @@ class CustomerAutopilotService:
         if not product.reference_links:
             return existing
         analytics = distribution_analytics_service.product_analytics(product_id)
-        balance = self._balance.summary(project_id, analytics.total_spend)
+        balance = self._balance.summary(project_id, self._provider_distribution_spend(analytics))
         safety_reason: str | None = None
         if (
             DistributionPlatform.INSTAGRAM in auto_platforms
@@ -752,6 +753,7 @@ class CustomerAutopilotService:
             acquisition_spend_usd=balance.acquisition_spend_usd,
             management_fee_pct=balance.management_fee_pct,
             management_fee_usd=balance.management_fee_usd,
+            execution_fee_usd=balance.execution_fee_usd,
             used_usd=balance.used_usd,
             available_usd=balance.available_usd,
             acquisition_capacity_usd=balance.acquisition_capacity_usd,
@@ -759,6 +761,17 @@ class CustomerAutopilotService:
             settlement_ready=balance.settlement_ready,
             settlement_status=balance.settlement_status,
         )
+
+    @staticmethod
+    def _provider_distribution_spend(analytics) -> float:
+        costs = getattr(analytics, "total_costs", None)
+        if costs is not None and hasattr(costs, "distribution_spend"):
+            return float(costs.distribution_spend)
+        return float(getattr(analytics, "total_spend", 0.0) or 0.0)
+
+    @staticmethod
+    def _telegram_execution_fee_usd() -> float:
+        return float(get_settings().partizan_telegram_execution_fee_usd)
 
     @staticmethod
     def _experiment(item) -> CustomerAutopilotExperimentView:
