@@ -150,6 +150,53 @@ def test_growth_mandate_is_persisted_and_versioned() -> None:
     assert reloaded.max_autonomous_spend_per_experiment == 40
 
 
+def test_telegram_mandate_requires_positive_customer_budget() -> None:
+    product_id = _create_product()
+    response = client.put(
+        f"/v1/products/{product_id}/growth-mandate",
+        json=_mandate_payload(
+            total_budget_cap=0,
+            target_max_cac=None,
+            max_autonomous_spend_per_experiment=0,
+            max_autonomous_spend_per_day=0,
+            allowed_platforms=["TELEGRAM"],
+            allowed_actions=["COMMENT", "REPLY", "STANDALONE_POST"],
+            approval_threshold=None,
+        ),
+    )
+
+    assert response.status_code == 422
+
+
+def test_zero_media_spend_telegram_action_runs_inside_funded_mandate() -> None:
+    product_id = _create_product()
+    response = client.put(
+        f"/v1/products/{product_id}/growth-mandate",
+        json=_mandate_payload(
+            total_budget_cap=1,
+            target_max_cac=None,
+            max_autonomous_spend_per_experiment=0.001,
+            max_autonomous_spend_per_day=1,
+            allowed_platforms=["TELEGRAM"],
+            allowed_actions=["STANDALONE_POST"],
+            approval_threshold=None,
+        ),
+    )
+    assert response.status_code == 200
+
+    result = _evaluate(
+        product_id,
+        platform="TELEGRAM",
+        action_type="STANDALONE_POST",
+        proposed_budget=0,
+        requests_paid_activation=False,
+    )
+
+    assert result["decision"] == "ALLOW"
+    assert result["remaining_total_budget"] == 1
+    assert result["remaining_daily_budget"] == 1
+
+
 def test_action_inside_mandate_is_allowed() -> None:
     product_id = _create_product()
     mandate = _create_mandate(product_id)

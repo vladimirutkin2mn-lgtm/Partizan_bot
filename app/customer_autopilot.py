@@ -7,6 +7,7 @@ from app.audience_intelligence_service import audience_intelligence_service
 from app.autonomy_overview import autonomy_overview_service
 from app.autonomy_schemas import GrowthMandateStatus, GrowthMandateUpsertRequest
 from app.autonomy_service import growth_mandate_service
+from app.config import get_settings
 from app.customer_channels import customer_channel_service
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE, customer_funnel_service
 from app.customer_paid_campaign_lifecycle import (
@@ -127,12 +128,16 @@ class CustomerAutopilotService:
         if status == "ACTIVE":
             if not auto_platforms:
                 raise ValueError("Enable at least one Auto channel before resuming Partizan")
-            self._require_paid_destination(product_id)
+            paid_auto = self._has_paid_auto_platform(auto_platforms)
+            if paid_auto:
+                self._require_paid_destination(product_id)
+            else:
+                self._require_acquisition_destination(product_id)
             analytics = distribution_analytics_service.product_analytics(product_id)
-            balance = self._balance.summary(project_id, analytics.total_spend)
-            if balance.remaining_acquisition_capacity_usd <= 0:
-                raise ValueError("Fund the Growth Balance before activating Autopilot")
-            if not balance.settlement_ready:
+            balance = self._balance.summary(project_id, self._provider_distribution_spend(analytics))
+            if paid_auto and balance.remaining_acquisition_capacity_usd <= 0:
+                raise ValueError("Fund the Growth Balance before activating Meta Autopilot")
+            if paid_auto and not balance.settlement_ready:
                 raise ValueError("Paid execution payment path is not ready yet")
             if (
                 DistributionPlatform.INSTAGRAM in auto_platforms
@@ -141,7 +146,7 @@ class CustomerAutopilotService:
                 raise ValueError("Connect Meta before activating Meta acquisition")
 
             provider_resume = None
-            if provider_pause_reason is not None:
+            if paid_auto and provider_pause_reason is not None:
                 try:
                     provider_resume = customer_paid_campaign_lifecycle_service.resume_product(
                         product_id,
@@ -183,7 +188,8 @@ class CustomerAutopilotService:
                     )
 
             try:
-                self._balance.activate_rail(project_id)
+                if paid_auto:
+                    self._balance.activate_rail(project_id)
                 growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
                 project["autopilot_pause_reason"] = None
                 self._persist(project)
@@ -197,11 +203,12 @@ class CustomerAutopilotService:
                     growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
                 except (KeyError, RuntimeError, ValueError):
                     rollback_requires_reconciliation = True
-                try:
-                    self._balance.pause_rail(project_id, rollback_pause_reason)
-                except (KeyError, RuntimeError, ValueError):
-                    rollback_requires_reconciliation = True
-                if provider_resume is not None and provider_resume.resumed_action_ids:
+                if paid_auto:
+                    try:
+                        self._balance.pause_rail(project_id, rollback_pause_reason)
+                    except (KeyError, RuntimeError, ValueError):
+                        rollback_requires_reconciliation = True
+                if paid_auto and provider_resume is not None and provider_resume.resumed_action_ids:
                     rollback = customer_paid_campaign_lifecycle_service.repause_actions(
                         product_id,
                         provider_resume.resumed_action_ids,
@@ -219,7 +226,7 @@ class CustomerAutopilotService:
                     raise ValueError(
                         "Autopilot resume failed and paid execution rollback requires reconciliation"
                     ) from exc
-                raise ValueError("Autopilot resume failed safely; retry when the rail is ready") from exc
+                raise ValueError("Autopilot resume failed safely; retry when setup is ready") from exc
             return self.overview(project_id, customer_token)
 
         if status == "PAUSED":
@@ -268,7 +275,7 @@ class CustomerAutopilotService:
         self._ensure_mandate_if_ready(project_id, project, product_id)
         product = product_intake_service.get_product(product_id)
         analytics = distribution_analytics_service.product_analytics(product_id)
-        balance = self._balance.summary(project_id, analytics.total_spend)
+        balance = self._balance.summary(project_id, self._provider_distribution_spend(analytics))
         try:
             mandate = growth_mandate_service.get(product_id)
         except KeyError:
@@ -288,7 +295,11 @@ class CustomerAutopilotService:
             growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
             project["autopilot_pause_reason"] = None
             self._persist(project)
-        elif mandate is not None and not balance.settlement_ready:
+        elif (
+            DistributionPlatform.INSTAGRAM in auto_platforms
+            and mandate is not None
+            and not balance.settlement_ready
+        ):
             self._apply_automatic_pause(
                 project_id,
                 project,
@@ -306,6 +317,7 @@ class CustomerAutopilotService:
             and project.get("autopilot_target_max_cac")
         )
         auto_platforms = customer_channel_service.autonomous_platforms(project)
+        paid_auto = self._has_paid_auto_platform(auto_platforms)
 
         if not research_ready:
             balance = self._balance.summary(project_id, 0.0)
@@ -318,16 +330,14 @@ class CustomerAutopilotService:
                 and not staged_meta.connected
             ):
                 blockers.append("Meta access is not connected")
-            if not guardrails_saved:
+            if paid_auto and not guardrails_saved:
                 blockers.append("Maximum CAC and autonomous-spend guardrails are not saved")
-            if balance.funded_usd <= 0:
+            if paid_auto and balance.funded_usd <= 0:
                 blockers.append("Growth Balance is not funded")
-            if not balance.settlement_ready:
+            if paid_auto and not balance.settlement_ready:
                 blockers.append("Paid execution payment path is not ready yet")
             blockers.append(
-                "Partizan is researching before spend; add acquisition budget only for a concrete paid move"
-                if balance.funded_usd <= 0
-                else "Partizan is mapping the audience and acquisition strategy"
+                "Partizan is researching acquisition opportunities before execution"
             )
             return CustomerAutopilotOverview(
                 project_id=project_id,
@@ -351,7 +361,7 @@ class CustomerAutopilotService:
         self._ensure_mandate_if_ready(project_id, project, product_id)
         product = product_intake_service.get_product(product_id)
         analytics = distribution_analytics_service.product_analytics(product_id)
-        balance = self._balance.summary(project_id, analytics.total_spend)
+        balance = self._balance.summary(project_id, self._provider_distribution_spend(analytics))
         try:
             autonomy = autonomy_overview_service.get(product_id)
             mandate = autonomy.mandate
@@ -364,18 +374,21 @@ class CustomerAutopilotService:
         if not auto_platforms:
             blockers.append("No autonomous execution channel is enabled")
         if not product.reference_links:
-            blockers.append("Website or landing page is required for paid traffic")
-        if balance.funded_usd <= 0:
+            blockers.append("A product destination link is required for acquisition")
+        if paid_auto and balance.funded_usd <= 0:
             blockers.append("Growth Balance is not funded")
-        elif balance.remaining_acquisition_capacity_usd <= 0:
+        elif paid_auto and balance.remaining_acquisition_capacity_usd <= 0:
             blockers.append("Growth Balance has no acquisition capacity remaining")
-        if not balance.settlement_ready:
+        if paid_auto and not balance.settlement_ready:
             blockers.append("Paid execution payment path is not ready yet")
-        if not guardrails_saved:
+        if paid_auto and not guardrails_saved:
             blockers.append("Maximum CAC and autonomous-spend guardrails are not saved")
-        elif mandate is None and balance.funded_usd > 0 and auto_platforms:
-            blockers.append("Partizan is applying the saved guardrails")
-        if DistributionPlatform.INSTAGRAM in auto_platforms and connection is None:
+        elif mandate is None and auto_platforms:
+            blockers.append("Partizan is applying the channel automation policy")
+        if (
+            DistributionPlatform.INSTAGRAM in auto_platforms
+            and connection is None
+        ):
             blockers.append("Meta access is not connected")
         if mandate is not None and mandate.status != GrowthMandateStatus.ACTIVE:
             blockers.append(f"Autopilot is {mandate.status.value.lower()}")
@@ -434,17 +447,18 @@ class CustomerAutopilotService:
         *,
         force_update: bool = False,
     ):
-        if not project.get("autopilot_spend_confirmed"):
-            return None
-        target_max_cac = project.get("autopilot_target_max_cac")
-        if target_max_cac is None:
-            return None
         try:
             existing = growth_mandate_service.get(product_id)
         except KeyError:
             existing = None
 
         auto_platforms = customer_channel_service.autonomous_platforms(project)
+        paid_auto = self._has_paid_auto_platform(auto_platforms)
+        target_max_cac = project.get("autopilot_target_max_cac")
+        if paid_auto and (
+            not project.get("autopilot_spend_confirmed") or target_max_cac is None
+        ):
+            return existing
         if project.get("autopilot_pause_reason") == "CUSTOMER":
             return existing
 
@@ -463,16 +477,18 @@ class CustomerAutopilotService:
         if not product.reference_links:
             return existing
         analytics = distribution_analytics_service.product_analytics(product_id)
-        balance = self._balance.summary(project_id, analytics.total_spend)
+        balance = self._balance.summary(project_id, self._provider_distribution_spend(analytics))
         safety_reason: str | None = None
         if (
             DistributionPlatform.INSTAGRAM in auto_platforms
             and paid_provider_connection_service.get_meta(product_id) is None
         ):
             safety_reason = "SETUP"
-        elif balance.funded_usd <= 0 or balance.remaining_acquisition_capacity_usd <= 0:
+        elif paid_auto and (
+            balance.funded_usd <= 0 or balance.remaining_acquisition_capacity_usd <= 0
+        ):
             safety_reason = "FUNDING"
-        elif not balance.settlement_ready:
+        elif paid_auto and not balance.settlement_ready:
             safety_reason = "FUNDING"
         if safety_reason is not None:
             if existing is not None:
@@ -488,35 +504,79 @@ class CustomerAutopilotService:
         if existing is not None and not force_update:
             return existing
 
+        if (
+            existing is not None
+            and DistributionActionType.PAID_CAMPAIGN in existing.allowed_actions
+            and not paid_auto
+        ):
+            self._pause_paid_execution_surface(
+                project_id,
+                product_id,
+                rail_reason="CHANNELS",
+                provider_reason=AUTOPILOT_PROVIDER_PAUSE_REASONS["CHANNELS"],
+            )
+
         distribution = audience_intelligence_service.get(product_id)
         try:
             distribution_play_service.get(product_id)
         except KeyError:
             distribution_play_service.generate(product, distribution)
 
-        total_cap = round(balance.acquisition_capacity_usd, 2)
-        remaining = round(balance.remaining_acquisition_capacity_usd, 2)
-        per_experiment = round(min(remaining, max(1.0, total_cap * 0.20)), 2)
-        daily = round(min(remaining, max(per_experiment, total_cap / 7)), 2)
+        allowed_actions: list[DistributionActionType] = []
+        if paid_auto:
+            allowed_actions.append(DistributionActionType.PAID_CAMPAIGN)
+        if DistributionPlatform.TELEGRAM in auto_platforms:
+            allowed_actions.extend(
+                [
+                    DistributionActionType.COMMENT,
+                    DistributionActionType.REPLY,
+                    DistributionActionType.STANDALONE_POST,
+                ]
+            )
+
+        if paid_auto:
+            total_cap = round(balance.acquisition_capacity_usd, 2)
+            remaining = round(balance.remaining_acquisition_capacity_usd, 2)
+            per_experiment = round(min(remaining, max(1.0, total_cap * 0.20)), 2)
+            daily = round(min(remaining, max(per_experiment, total_cap / 7)), 2)
+        else:
+            execution_fee = self._telegram_execution_fee_usd()
+            if balance.available_usd < execution_fee:
+                return existing
+            total_cap = round(balance.funded_usd, 6)
+            per_experiment = execution_fee
+            daily = total_cap
+
         mandate = growth_mandate_service.upsert(
             product_id,
             GrowthMandateUpsertRequest(
                 total_budget_cap=total_cap,
-                target_max_cac=float(target_max_cac),
+                target_max_cac=(
+                    float(target_max_cac) if target_max_cac is not None else None
+                ),
                 max_autonomous_spend_per_experiment=per_experiment,
                 max_autonomous_spend_per_day=daily,
                 max_concurrent_running_experiments=2,
                 allowed_platforms=auto_platforms,
-                allowed_actions=[DistributionActionType.PAID_CAMPAIGN],
+                allowed_actions=allowed_actions,
                 autonomous_prepare=True,
                 autonomous_approve=True,
-                autonomous_paid_activation=True,
+                autonomous_paid_activation=paid_auto,
                 approval_threshold=None,
             ),
         )
 
         current_pause_reason = str(project.get("autopilot_pause_reason") or "") or None
-        if current_pause_reason not in AUTOPILOT_AUTOMATIC_PAUSE_REASONS:
+        if (
+            not paid_auto
+            and current_pause_reason in AUTOPILOT_AUTOMATIC_PAUSE_REASONS
+        ):
+            mandate = growth_mandate_service.set_status(
+                product_id,
+                GrowthMandateStatus.ACTIVE,
+            )
+            project["autopilot_pause_reason"] = None
+        elif current_pause_reason not in AUTOPILOT_AUTOMATIC_PAUSE_REASONS:
             project["autopilot_pause_reason"] = None
         self._persist(project)
         return mandate
@@ -531,15 +591,43 @@ class CustomerAutopilotService:
     ) -> None:
         if reason not in AUTOPILOT_AUTOMATIC_PAUSE_REASONS:
             raise ValueError("Unsupported automatic Autopilot pause reason")
-        provider_reason = AUTOPILOT_PROVIDER_PAUSE_REASONS[reason]
+        paid_mandate = self._mandate_includes_paid(product_id)
         pause_failed = False
         project["autopilot_pause_reason"] = reason
         try:
             growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
         except (KeyError, RuntimeError, ValueError):
             pause_failed = True
+        if paid_mandate:
+            self._pause_paid_execution_surface(
+                project_id,
+                product_id,
+                rail_reason=reason,
+                provider_reason=AUTOPILOT_PROVIDER_PAUSE_REASONS[reason],
+            )
         try:
-            self._balance.pause_rail(project_id, reason)
+            self._persist(project)
+        except RuntimeError:
+            pause_failed = True
+        if pause_failed:
+            if paid_mandate:
+                raise ValueError(
+                    "Autopilot safety pause is fail-closed, but paid provider state "
+                    "requires reconciliation"
+                )
+            raise ValueError("Autopilot safety pause could not be confirmed")
+
+    def _pause_paid_execution_surface(
+        self,
+        project_id: UUID,
+        product_id: UUID,
+        *,
+        rail_reason: str,
+        provider_reason: str,
+    ) -> None:
+        pause_failed = False
+        try:
+            self._balance.pause_rail(project_id, rail_reason)
         except (KeyError, RuntimeError, ValueError):
             pause_failed = True
         try:
@@ -552,14 +640,32 @@ class CustomerAutopilotService:
             pause_failed = True
         if provider_pause is not None and provider_pause.requires_reconciliation:
             pause_failed = True
-        try:
-            self._persist(project)
-        except RuntimeError:
-            pause_failed = True
         if pause_failed:
             raise ValueError(
-                "Autopilot safety pause is fail-closed, but paid provider state requires reconciliation"
+                "Paid execution could not be confirmed paused; reconciliation is required"
             )
+
+    @staticmethod
+    def _mandate_includes_paid(product_id: UUID) -> bool:
+        try:
+            mandate = growth_mandate_service.get(product_id)
+        except KeyError:
+            return False
+        allowed_actions = getattr(mandate, "allowed_actions", None)
+        if allowed_actions is None:
+            # Legacy/test snapshots without action metadata are treated as paid
+            # so provider pause remains fail-closed.
+            return True
+        return DistributionActionType.PAID_CAMPAIGN in allowed_actions
+
+    @staticmethod
+    def _has_paid_auto_platform(
+        auto_platforms: list[DistributionPlatform],
+    ) -> bool:
+        return any(
+            platform in {DistributionPlatform.INSTAGRAM, DistributionPlatform.TIKTOK}
+            for platform in auto_platforms
+        )
 
     @staticmethod
     def _effective_automatic_pause_reason(project: dict, fallback: str) -> str:
@@ -633,12 +739,20 @@ class CustomerAutopilotService:
         return product
 
     @staticmethod
+    def _require_acquisition_destination(product_id: UUID):
+        product = product_intake_service.get_product(product_id)
+        if not product.reference_links:
+            raise ValueError("Add a product destination link before starting Autopilot")
+        return product
+
+    @staticmethod
     def _growth_view(balance: GrowthBalanceSummary) -> CustomerGrowthBalanceView:
         return CustomerGrowthBalanceView(
             funded_usd=balance.funded_usd,
             acquisition_spend_usd=balance.acquisition_spend_usd,
             management_fee_pct=balance.management_fee_pct,
             management_fee_usd=balance.management_fee_usd,
+            execution_fee_usd=balance.execution_fee_usd,
             used_usd=balance.used_usd,
             available_usd=balance.available_usd,
             acquisition_capacity_usd=balance.acquisition_capacity_usd,
@@ -646,6 +760,17 @@ class CustomerAutopilotService:
             settlement_ready=balance.settlement_ready,
             settlement_status=balance.settlement_status,
         )
+
+    @staticmethod
+    def _provider_distribution_spend(analytics) -> float:
+        costs = getattr(analytics, "total_costs", None)
+        if costs is not None and hasattr(costs, "distribution_spend"):
+            return float(costs.distribution_spend)
+        return float(getattr(analytics, "total_spend", 0.0) or 0.0)
+
+    @staticmethod
+    def _telegram_execution_fee_usd() -> float:
+        return float(get_settings().partizan_telegram_execution_fee_usd)
 
     @staticmethod
     def _experiment(item) -> CustomerAutopilotExperimentView:

@@ -26,7 +26,7 @@ from app.autonomy_service import (
 from app.distribution_execution_schemas import DistributionExperimentStatus
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_growth_manager_service import distribution_growth_manager_service
-from app.distribution_types import DistributionActionType
+from app.distribution_types import DistributionActionType, DistributionPlatform
 from app.execution_adapters import (
     AdapterExecutionOutcome,
     DistributionAdapterExecuteRequest,
@@ -35,6 +35,10 @@ from app.execution_adapters import (
 )
 from app.product_intake import product_intake_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.telegram_autonomous_execution import (
+    CustomerTelegramAutonomousExecutionService,
+    customer_telegram_autonomous_execution_service,
+)
 
 AUTONOMOUS_GROWTH_RUN_NAMESPACE = "autonomous_growth_run"
 AUTONOMOUS_GROWTH_DECISION_NAMESPACE = "autonomous_growth_decision"
@@ -95,6 +99,7 @@ class AutonomousGrowthSweepService:
         mandate_service: GrowthMandateService | None = None,
         drafting_service: DistributionActionDraftingService | None = None,
         adapter_service: DistributionExecutionAdapterService | None = None,
+        telegram_execution_service: CustomerTelegramAutonomousExecutionService | None = None,
         history_retention: int = 100,
     ) -> None:
         if history_retention < 1:
@@ -103,6 +108,9 @@ class AutonomousGrowthSweepService:
         self._mandate_service = mandate_service or growth_mandate_service
         self._drafting_service = drafting_service or distribution_action_drafting_service
         self._adapter_service = adapter_service or distribution_execution_adapter_service
+        self._telegram_execution_service = (
+            telegram_execution_service or customer_telegram_autonomous_execution_service
+        )
         self._history_retention = history_retention
         self._lock = Lock()
 
@@ -413,10 +421,17 @@ class AutonomousGrowthSweepService:
                             reasons=execution_check.reasons,
                         )
                     ]
-                execution = self._adapter_service.execute(
-                    approved.action.id,
-                    DistributionAdapterExecuteRequest(retry=False),
-                )
+                if play.platform == DistributionPlatform.TELEGRAM:
+                    execution = await self._telegram_execution_service.execute(
+                        product_id=mandate.product_id,
+                        action_id=approved.action.id,
+                        retry=False,
+                    )
+                else:
+                    execution = self._adapter_service.execute(
+                        approved.action.id,
+                        DistributionAdapterExecuteRequest(retry=False),
+                    )
             except (KeyError, RuntimeError, ValueError) as exc:
                 return decisions + [
                     self._record(

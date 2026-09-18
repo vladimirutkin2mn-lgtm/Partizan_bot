@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     stripe_launch_price_id: str | None = None
     partizan_launch_price_usd: int = 49
     partizan_managed_spend_fee_pct: int = 10
+    partizan_telegram_execution_fee_usd: float = 0.001
     growth_balance_settlement_provider: str = "unavailable"
     stripe_issuing_cardholder_id: str | None = None
     stripe_issuing_currency: str = "usd"

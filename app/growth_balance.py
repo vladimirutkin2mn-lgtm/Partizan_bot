@@ -19,12 +19,15 @@ from app.stripe_objects import stripe_field
 GROWTH_BALANCE_TOPUP_NAMESPACE = "customer_growth_balance_topups"
 GROWTH_BALANCE_RAIL_NAMESPACE = "customer_growth_balance_rails"
 GROWTH_BALANCE_TRANSACTION_NAMESPACE = "customer_growth_balance_transactions"
+GROWTH_BALANCE_SERVICE_CHARGE_NAMESPACE = "customer_growth_balance_service_charges"
 GROWTH_BALANCE_LOCK_NAMESPACE = "customer_growth_balance_locks"
 ADVERTISING_MERCHANT_CATEGORY = "advertising_services"
 _PENDING_LIQUIDITY_HOLD = timedelta(minutes=31)
 _LIQUIDITY_LOCK_TTL = timedelta(seconds=60)
 _LIQUIDITY_LOCK_KEY = "stripe_issuing_liquidity"
 _CENT = Decimal("0.01")
+_MICRO_USD = Decimal("0.000001")
+_MICROS_PER_CENT = 10_000
 
 
 @dataclass(frozen=True)
@@ -33,6 +36,7 @@ class GrowthBalanceSummary:
     acquisition_spend_usd: float
     management_fee_pct: int
     management_fee_usd: float
+    execution_fee_usd: float
     used_usd: float
     available_usd: float
     acquisition_capacity_usd: float
@@ -669,9 +673,16 @@ class GrowthBalanceService:
                 0,
             )
         fee_cents = self._fee_cents(spend_cents, fee_pct)
-        used_cents = spend_cents + fee_cents
-        available_cents = max(funded_cents - used_cents, 0)
-        capacity_cents = self._max_acquisition_cents(funded_cents, fee_pct)
+        execution_fee_micros = self._service_charge_micros(project_id)
+        funded_micros = funded_cents * _MICROS_PER_CENT
+        provider_cost_micros = (spend_cents + fee_cents) * _MICROS_PER_CENT
+        used_micros = provider_cost_micros + execution_fee_micros
+        available_micros = max(funded_micros - used_micros, 0)
+        effective_funded_cents = max(
+            funded_cents - (execution_fee_micros // _MICROS_PER_CENT),
+            0,
+        )
+        capacity_cents = self._max_acquisition_cents(effective_funded_cents, fee_pct)
         remaining_capacity_cents = max(capacity_cents - spend_cents, 0)
         settlement_ready, settlement_status = self._settlement.readiness(project_id)
         return GrowthBalanceSummary(
@@ -679,13 +690,70 @@ class GrowthBalanceService:
             acquisition_spend_usd=self._cents_to_usd(spend_cents),
             management_fee_pct=fee_pct,
             management_fee_usd=self._cents_to_usd(fee_cents),
-            used_usd=self._cents_to_usd(used_cents),
-            available_usd=self._cents_to_usd(available_cents),
+            execution_fee_usd=self._micros_to_usd(execution_fee_micros),
+            used_usd=self._micros_to_usd(used_micros),
+            available_usd=self._micros_to_usd(available_micros),
             acquisition_capacity_usd=self._cents_to_usd(capacity_cents),
             remaining_acquisition_capacity_usd=self._cents_to_usd(remaining_capacity_cents),
             settlement_ready=settlement_ready,
             settlement_status=settlement_status,
         )
+
+    def record_service_charge(
+        self,
+        project_id: UUID,
+        *,
+        charge_key: str,
+        amount_usd: float,
+        category: str,
+        acquisition_spend_usd: float,
+        metadata: dict | None = None,
+    ) -> bool:
+        amount_micros = self._usd_to_micros(amount_usd)
+        if amount_micros <= 0:
+            raise ValueError("Growth Balance service charge must be positive")
+        normalized_key = str(charge_key).strip()
+        if not normalized_key:
+            raise ValueError("Growth Balance service charge key is required")
+        storage_key = f"{project_id}:{normalized_key}"
+        existing = self._store.get(GROWTH_BALANCE_SERVICE_CHARGE_NAMESPACE, storage_key)
+        if existing is not None:
+            if (
+                str(existing.get("project_id")) != str(project_id)
+                or int(existing.get("amount_micros") or 0) != amount_micros
+                or str(existing.get("category") or "") != str(category)
+            ):
+                raise ValueError("Growth Balance service charge key was reused")
+            return False
+
+        before = self.summary(project_id, acquisition_spend_usd)
+        if self._usd_to_micros(before.available_usd, allow_zero=True) < amount_micros:
+            raise ValueError("Growth Balance does not have enough available funds")
+
+        payload = {
+            "project_id": str(project_id),
+            "charge_key": normalized_key,
+            "amount_micros": amount_micros,
+            "category": str(category),
+            "metadata": dict(metadata or {}),
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        if self._store.put_if_absent(
+            GROWTH_BALANCE_SERVICE_CHARGE_NAMESPACE,
+            storage_key,
+            payload,
+        ):
+            return True
+        existing = self._store.get(GROWTH_BALANCE_SERVICE_CHARGE_NAMESPACE, storage_key)
+        if existing is None:
+            raise RuntimeError("Growth Balance service charge reservation disappeared")
+        if (
+            str(existing.get("project_id")) != str(project_id)
+            or int(existing.get("amount_micros") or 0) != amount_micros
+            or str(existing.get("category") or "") != str(category)
+        ):
+            raise ValueError("Growth Balance service charge key was reused")
+        return False
 
     def confirm_meta_binding(self, project_id: UUID, ad_account_id: str) -> dict:
         project = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
@@ -737,6 +805,7 @@ class GrowthBalanceService:
             self._store.clear_namespace(GROWTH_BALANCE_TOPUP_NAMESPACE)
             self._store.clear_namespace(GROWTH_BALANCE_RAIL_NAMESPACE)
             self._store.clear_namespace(GROWTH_BALANCE_TRANSACTION_NAMESPACE)
+            self._store.clear_namespace(GROWTH_BALANCE_SERVICE_CHARGE_NAMESPACE)
             self._store.clear_namespace(GROWTH_BALANCE_LOCK_NAMESPACE)
 
     def _sync_project_rail(self, project_id: UUID) -> None:
@@ -850,6 +919,24 @@ class GrowthBalanceService:
     def _persist_project(self, project: dict) -> None:
         project["updated_at"] = datetime.now(UTC).isoformat()
         self._store.put(CUSTOMER_PROJECT_NAMESPACE, str(project["id"]), project)
+
+    def _service_charge_micros(self, project_id: UUID) -> int:
+        return sum(
+            max(int(item.get("amount_micros") or 0), 0)
+            for item in self._store.list_namespace(GROWTH_BALANCE_SERVICE_CHARGE_NAMESPACE)
+            if str(item.get("project_id") or "") == str(project_id)
+        )
+
+    @staticmethod
+    def _usd_to_micros(value: float, *, allow_zero: bool = False) -> int:
+        amount = Decimal(str(value)).quantize(_MICRO_USD, rounding=ROUND_HALF_UP)
+        if amount < 0 or (amount == 0 and not allow_zero):
+            raise ValueError("Growth Balance amount must be positive")
+        return int(amount * Decimal(1_000_000))
+
+    @staticmethod
+    def _micros_to_usd(value: int) -> float:
+        return float((Decimal(value) / Decimal(1_000_000)).quantize(_MICRO_USD))
 
     @staticmethod
     def _fee_cents(spend_cents: int, fee_pct: int) -> int:

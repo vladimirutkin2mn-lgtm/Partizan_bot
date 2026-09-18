@@ -36,7 +36,14 @@
   const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
   })[char]);
-  const money = (value) => `$${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  const money = (value) => {
+    const amount = Number(value || 0);
+    const subcent = amount > 0 && amount < 0.01;
+    return `${amount.toLocaleString(undefined, {
+      minimumFractionDigits: subcent ? 3 : 0,
+      maximumFractionDigits: subcent ? 3 : 2,
+    })}`;
+  };
   const roas = (value) => value == null ? '—' : `${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}×`;
 
   const setActiveTab = (name) => {
@@ -454,8 +461,11 @@
     $('metric-customers').textContent = String(overview.paid_customers);
     $('metric-cac').textContent = overview.cac_usd == null ? '—' : money(overview.cac_usd);
     $('metric-revenue').textContent = money(overview.revenue_usd);
-    $('metric-fee').textContent = money(balance.management_fee_usd);
-    $('metric-fee-note').textContent = `${balance.management_fee_pct}% of actual spend`;
+    const partizanFees = Number(balance.management_fee_usd || 0) + Number(balance.execution_fee_usd || 0);
+    $('metric-fee').textContent = money(partizanFees);
+    $('metric-fee-note').textContent = balance.execution_fee_usd > 0
+      ? `${balance.management_fee_pct}% of paid media + ${money(balance.execution_fee_usd)} channel execution`
+      : `${balance.management_fee_pct}% of actual paid-media spend`;
 
     $('balance-available').textContent = money(balance.available_usd);
     $('balance-capacity').textContent = money(balance.remaining_acquisition_capacity_usd);

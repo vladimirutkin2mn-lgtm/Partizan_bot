@@ -43,6 +43,20 @@ from app.telegram_client_publishing import (
 router = APIRouter(tags=["customer-channels"])
 
 
+def _refresh_autopilot_channel_policy_best_effort(
+    project_id: UUID,
+    customer_token: str,
+) -> None:
+    try:
+        project = customer_funnel_service.get_project_payload(project_id, customer_token)
+        if project.get("autopilot_pause_reason") != "CUSTOMER":
+            customer_autopilot_service.refresh_channel_policy(project_id, customer_token)
+    except (KeyError, RuntimeError, ValueError):
+        # The Telegram governance mutation remains authoritative and fail-closed.
+        # A later channel refresh/reconciliation can rebuild the Growth Mandate.
+        return
+
+
 class CustomerCommunityActionView(BaseModel):
     action_id: UUID
     experiment_id: UUID
@@ -248,6 +262,7 @@ def disconnect_customer_telegram_connection(
     try:
         result = customer_telegram_client_publish_service.disconnect(project_id, customer_token)
         customer_telegram_governance_service.revoke_automation(project_id, customer_token)
+        _refresh_autopilot_channel_policy_best_effort(project_id, customer_token)
         return result
     except CustomerTelegramClientPublishError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -279,11 +294,13 @@ def authorize_customer_telegram_automation(
 ) -> TelegramAutomationView:
     customer_token = _project_token(session_token, project_id)
     try:
-        return customer_telegram_governance_service.authorize_automation(
+        result = customer_telegram_governance_service.authorize_automation(
             project_id,
             customer_token,
             payload,
         )
+        _refresh_autopilot_channel_policy_best_effort(project_id, customer_token)
+        return result
     except CustomerTelegramClientPublishError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -298,7 +315,12 @@ def pause_customer_telegram_automation(
 ) -> TelegramAutomationView:
     customer_token = _project_token(session_token, project_id)
     try:
-        return customer_telegram_governance_service.pause_automation(project_id, customer_token)
+        result = customer_telegram_governance_service.pause_automation(
+            project_id,
+            customer_token,
+        )
+        _refresh_autopilot_channel_policy_best_effort(project_id, customer_token)
+        return result
     except CustomerTelegramClientPublishError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -313,7 +335,12 @@ def revoke_customer_telegram_automation(
 ) -> TelegramAutomationView:
     customer_token = _project_token(session_token, project_id)
     try:
-        return customer_telegram_governance_service.revoke_automation(project_id, customer_token)
+        result = customer_telegram_governance_service.revoke_automation(
+            project_id,
+            customer_token,
+        )
+        _refresh_autopilot_channel_policy_best_effort(project_id, customer_token)
+        return result
     except CustomerTelegramClientPublishError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

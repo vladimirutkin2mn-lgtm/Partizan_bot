@@ -306,6 +306,7 @@ class CustomerGrowthBalanceView(BaseModel):
     acquisition_spend_usd: float = Field(ge=0)
     management_fee_pct: int = Field(ge=0, le=100)
     management_fee_usd: float = Field(ge=0)
+    execution_fee_usd: float = Field(ge=0)
     used_usd: float = Field(ge=0)
     available_usd: float = Field(ge=0)
     acquisition_capacity_usd: float = Field(ge=0)
