@@ -127,21 +127,22 @@ class CustomerAutopilotService:
         if status == "ACTIVE":
             if not auto_platforms:
                 raise ValueError("Enable at least one Auto channel before resuming Partizan")
-            self._require_paid_destination(product_id)
+            self._require_acquisition_destination(product_id)
+            paid_auto = DistributionPlatform.INSTAGRAM in auto_platforms
             analytics = distribution_analytics_service.product_analytics(product_id)
             balance = self._balance.summary(project_id, analytics.total_spend)
-            if balance.remaining_acquisition_capacity_usd <= 0:
-                raise ValueError("Fund the Growth Balance before activating Autopilot")
-            if not balance.settlement_ready:
+            if paid_auto and balance.remaining_acquisition_capacity_usd <= 0:
+                raise ValueError("Fund the Growth Balance before activating Meta Autopilot")
+            if paid_auto and not balance.settlement_ready:
                 raise ValueError("Paid execution payment path is not ready yet")
             if (
-                DistributionPlatform.INSTAGRAM in auto_platforms
+                paid_auto
                 and paid_provider_connection_service.get_meta(product_id) is None
             ):
                 raise ValueError("Connect Meta before activating Meta acquisition")
 
             provider_resume = None
-            if provider_pause_reason is not None:
+            if paid_auto and provider_pause_reason is not None:
                 try:
                     provider_resume = customer_paid_campaign_lifecycle_service.resume_product(
                         product_id,
@@ -183,7 +184,8 @@ class CustomerAutopilotService:
                     )
 
             try:
-                self._balance.activate_rail(project_id)
+                if paid_auto:
+                    self._balance.activate_rail(project_id)
                 growth_mandate_service.set_status(product_id, GrowthMandateStatus.ACTIVE)
                 project["autopilot_pause_reason"] = None
                 self._persist(project)
@@ -197,11 +199,12 @@ class CustomerAutopilotService:
                     growth_mandate_service.set_status(product_id, GrowthMandateStatus.PAUSED)
                 except (KeyError, RuntimeError, ValueError):
                     rollback_requires_reconciliation = True
-                try:
-                    self._balance.pause_rail(project_id, rollback_pause_reason)
-                except (KeyError, RuntimeError, ValueError):
-                    rollback_requires_reconciliation = True
-                if provider_resume is not None and provider_resume.resumed_action_ids:
+                if paid_auto:
+                    try:
+                        self._balance.pause_rail(project_id, rollback_pause_reason)
+                    except (KeyError, RuntimeError, ValueError):
+                        rollback_requires_reconciliation = True
+                if paid_auto and provider_resume is not None and provider_resume.resumed_action_ids:
                     rollback = customer_paid_campaign_lifecycle_service.repause_actions(
                         product_id,
                         provider_resume.resumed_action_ids,
@@ -219,7 +222,7 @@ class CustomerAutopilotService:
                     raise ValueError(
                         "Autopilot resume failed and paid execution rollback requires reconciliation"
                     ) from exc
-                raise ValueError("Autopilot resume failed safely; retry when the rail is ready") from exc
+                raise ValueError("Autopilot resume failed safely; retry when setup is ready") from exc
             return self.overview(project_id, customer_token)
 
         if status == "PAUSED":
