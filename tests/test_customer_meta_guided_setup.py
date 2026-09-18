@@ -22,11 +22,13 @@ class _GuidedMetaStub:
         businesses: list[dict] | None = None,
         accounts: list[dict] | None = None,
         business_pages: list[dict] | None = None,
+        managed_pages: list[dict] | None = None,
         pages: list[dict] | None = None,
     ) -> None:
         self.business_rows = businesses or []
         self.account_rows = accounts or []
         self.business_page_rows = business_pages or []
+        self.managed_page_rows = managed_pages or []
         self.page_rows = pages or []
 
     def exchange_code(self, *, code: str, redirect_uri: str) -> str:
@@ -40,6 +42,9 @@ class _GuidedMetaStub:
 
     def business_pages(self, access_token: str, business_id: str) -> list[dict]:
         return list(self.business_page_rows)
+
+    def managed_pages(self, access_token: str) -> list[dict]:
+        return list(self.managed_page_rows)
 
     def ad_accounts(self, access_token: str) -> list[dict]:
         return list(self.account_rows)
@@ -168,6 +173,98 @@ def test_guided_meta_preflight_distinguishes_page_not_promotable_for_ad_account(
     assert view.business_page_names == ["Partizan"]
     assert view.promotable_page_count == 0
     assert "Do not create another Page" in view.message
+
+
+def test_guided_meta_preflight_accepts_single_ad_account_with_managed_advertisable_page() -> None:
+    store = get_runtime_store()
+    preview = _preview()
+    settings = _settings()
+    secret_store = ProviderSecretStore(store=store, settings=settings)
+    service = CustomerMetaGuidedSetupService(
+        store=store,
+        settings=settings,
+        client=_GuidedMetaStub(
+            businesses=[{"id": "biz_1", "name": "Partizan"}],
+            accounts=[{"id": "act_123", "account_id": "123", "name": "Partizan Ads"}],
+            business_pages=[{"id": "page_1", "name": "Partizan"}],
+            managed_pages=[
+                {
+                    "id": "page_1",
+                    "name": "Partizan",
+                    "tasks": ["ANALYZE", "ADVERTISE", "MANAGE"],
+                }
+            ],
+            pages=[],
+        ),
+        secret_store=secret_store,
+    )
+
+    _complete(service, preview.project_id, preview.customer_token)
+
+    view = service.view(preview.project_id, preview.customer_token)
+    assert view.status == "NOT_STARTED"
+    pending = store.get(CUSTOMER_META_PENDING_NAMESPACE, str(preview.project_id))
+    assert pending is not None
+    assert pending["ad_accounts"][0]["account_id"] == "123"
+    assert pending["pages_by_ad_account"]["123"] == [
+        {"id": "page_1", "name": "Partizan"}
+    ]
+
+
+def test_guided_meta_preflight_requires_advertise_task_for_managed_page_fallback() -> None:
+    store = get_runtime_store()
+    preview = _preview()
+    settings = _settings()
+    service = CustomerMetaGuidedSetupService(
+        store=store,
+        settings=settings,
+        client=_GuidedMetaStub(
+            businesses=[{"id": "biz_1", "name": "Partizan"}],
+            accounts=[{"id": "act_123", "account_id": "123", "name": "Partizan Ads"}],
+            business_pages=[{"id": "page_1", "name": "Partizan"}],
+            managed_pages=[
+                {"id": "page_1", "name": "Partizan", "tasks": ["ANALYZE", "MANAGE"]}
+            ],
+            pages=[],
+        ),
+        secret_store=ProviderSecretStore(store=store, settings=settings),
+    )
+
+    _complete(service, preview.project_id, preview.customer_token)
+
+    view = service.view(preview.project_id, preview.customer_token)
+    assert view.status == "PAGE_NEEDS_AD_ACCOUNT_ACCESS"
+    assert view.promotable_page_count == 0
+
+
+def test_guided_meta_preflight_does_not_guess_page_to_account_for_multiple_accounts() -> None:
+    store = get_runtime_store()
+    preview = _preview()
+    settings = _settings()
+    service = CustomerMetaGuidedSetupService(
+        store=store,
+        settings=settings,
+        client=_GuidedMetaStub(
+            businesses=[{"id": "biz_1", "name": "Partizan"}],
+            accounts=[
+                {"id": "act_123", "account_id": "123", "name": "Partizan Ads"},
+                {"id": "act_456", "account_id": "456", "name": "Other Ads"},
+            ],
+            business_pages=[{"id": "page_1", "name": "Partizan"}],
+            managed_pages=[
+                {"id": "page_1", "name": "Partizan", "tasks": ["ADVERTISE", "MANAGE"]}
+            ],
+            pages=[],
+        ),
+        secret_store=ProviderSecretStore(store=store, settings=settings),
+    )
+
+    _complete(service, preview.project_id, preview.customer_token)
+
+    view = service.view(preview.project_id, preview.customer_token)
+    assert view.status == "PAGE_NEEDS_AD_ACCOUNT_ACCESS"
+    assert view.ad_account_count == 2
+    assert view.promotable_page_count == 0
 
 
 def test_guided_meta_check_reuses_token_and_promotes_ready_assets() -> None:
