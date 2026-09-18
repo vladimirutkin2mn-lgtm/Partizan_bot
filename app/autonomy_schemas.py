@@ -20,7 +20,7 @@ class AutonomyDecision(StrEnum):
 
 
 class GrowthMandateUpsertRequest(BaseModel):
-    total_budget_cap: float = Field(ge=0)
+    total_budget_cap: float = Field(gt=0)
     target_max_cac: float | None = Field(default=None, gt=0)
     max_autonomous_spend_per_experiment: float = Field(ge=0)
     max_autonomous_spend_per_day: float = Field(ge=0)
@@ -36,11 +36,6 @@ class GrowthMandateUpsertRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_mandate(self) -> "GrowthMandateUpsertRequest":
-        if (
-            DistributionActionType.PAID_CAMPAIGN in self.allowed_actions
-            and self.total_budget_cap <= 0
-        ):
-            raise ValueError("Paid campaign mandates require a positive total_budget_cap")
         if self.max_autonomous_spend_per_experiment > self.total_budget_cap:
             raise ValueError(
                 "max_autonomous_spend_per_experiment cannot exceed total_budget_cap"
