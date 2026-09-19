@@ -343,6 +343,67 @@ def test_workspace_growth_balance_checkout_resumes_existing_open_stripe_session(
     assert response.json()["checkout_url"] == "https://checkout.stripe.test/resume-open"
 
 
+def test_workspace_growth_balance_replaces_open_checkout_when_amount_changes(
+    monkeypatch,
+) -> None:
+    client = TestClient(app)
+    preview, created = _register(client)
+    assert created.status_code == 200
+    calls: list[tuple[str, object]] = []
+
+    monkeypatch.setattr(
+        "app.customer_account_routes.growth_balance_service.active_pending_checkout",
+        lambda project_id: {
+            "session_id": "cs_old_50",
+            "project_id": str(project_id),
+            "amount_cents": 5000,
+            "state": "PENDING",
+        },
+    )
+    monkeypatch.setattr(
+        "app.customer_account_routes.retrieve_launch_checkout",
+        lambda **kwargs: SimpleNamespace(
+            id=kwargs["session_id"],
+            status="open",
+            payment_status="unpaid",
+            amount_total=5000,
+            url="https://checkout.stripe.test/old-50",
+        ),
+    )
+    monkeypatch.setattr(
+        "app.customer_account_routes.expire_checkout",
+        lambda **kwargs: calls.append(("expire", kwargs["session_id"])),
+    )
+    monkeypatch.setattr(
+        "app.customer_account_routes.growth_balance_service.close_pending_checkout",
+        lambda project_id, **kwargs: calls.append(("close", kwargs["session_id"])),
+    )
+    monkeypatch.setattr(
+        "app.customer_account_routes.growth_balance_service.prepare_checkout",
+        lambda project_id, customer_token, amount_usd: (2, None, 100),
+    )
+    monkeypatch.setattr(
+        "app.customer_account_routes.create_growth_balance_checkout",
+        lambda **kwargs: SimpleNamespace(
+            session_id="cs_new_1",
+            url="https://checkout.stripe.test/new-1",
+        ),
+    )
+    monkeypatch.setattr(
+        "app.customer_account_routes.growth_balance_service.mark_checkout_pending",
+        lambda *args, **kwargs: None,
+    )
+
+    response = client.post(
+        f"/customer/workspace/{preview.project_id}/growth-balance/checkout",
+        json={"amount_usd": 1},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["checkout_url"] == "https://checkout.stripe.test/new-1"
+    assert calls == [("expire", "cs_old_50"), ("close", "cs_old_50")]
+
+
 def test_customer_workspace_page_is_separate_from_internal_operator_app() -> None:
     client = TestClient(app)
     page = client.get("/workspace")
