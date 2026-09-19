@@ -360,15 +360,19 @@ def test_workspace_growth_balance_replaces_open_checkout_when_amount_changes(
             "state": "PENDING",
         },
     )
+    class StripeSessionFake:
+        def __getitem__(self, key):
+            return {
+                "id": "cs_old_50",
+                "status": "open",
+                "payment_status": "unpaid",
+                "amount_total": 5000,
+                "url": "https://checkout.stripe.test/old-50",
+            }[key]
+
     monkeypatch.setattr(
         "app.customer_account_routes.retrieve_launch_checkout",
-        lambda **kwargs: SimpleNamespace(
-            id=kwargs["session_id"],
-            status="open",
-            payment_status="unpaid",
-            amount_total=5000,
-            url="https://checkout.stripe.test/old-50",
-        ),
+        lambda **kwargs: StripeSessionFake(),
     )
     monkeypatch.setattr(
         "app.customer_account_routes.expire_checkout",
