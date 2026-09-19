@@ -17,7 +17,9 @@ from app.customer_billing import (
     construct_stripe_event,
     create_growth_balance_checkout,
     create_launch_checkout,
+    expire_checkout,
     retrieve_launch_checkout,
+    usd_to_cents,
 )
 from app.customer_funnel import (
     CUSTOMER_TOKEN_HEADER,
@@ -412,19 +414,42 @@ def create_growth_balance_topup_checkout(
 ) -> CheckoutResponse:
     token = _require_customer_token(customer_token)
     try:
+        requested_amount_cents = usd_to_cents(payload.amount_usd)
         pending = growth_balance_service.active_pending_checkout(project_id)
         if pending is not None:
             session_id = str(pending["session_id"])
             existing = retrieve_launch_checkout(settings=settings, session_id=session_id)
-            checkout_status = str(existing.get("status") or "").lower()
-            checkout_url = str(existing.get("url") or "")
-            if checkout_status == "open" and checkout_url:
+            checkout_status = str(stripe_field(existing, "status", "") or "").lower()
+            payment_status = str(
+                stripe_field(existing, "payment_status", "") or ""
+            ).lower()
+            checkout_url = str(stripe_field(existing, "url", "") or "")
+            pending_amount_cents = int(pending.get("amount_cents") or 0)
+            stripe_amount_cents = int(
+                stripe_field(existing, "amount_total", pending_amount_cents) or 0
+            )
+            same_amount = (
+                pending_amount_cents == requested_amount_cents
+                and stripe_amount_cents == requested_amount_cents
+            )
+            if checkout_status == "open" and same_amount and checkout_url:
                 return CheckoutResponse(checkout_url=checkout_url)
-            if checkout_status == "expired":
+            if checkout_status == "open" and not same_amount:
+                expire_checkout(settings=settings, session_id=session_id)
                 growth_balance_service.close_pending_checkout(
                     project_id,
                     session_id=session_id,
                     state="EXPIRED",
+                )
+            elif checkout_status == "expired":
+                growth_balance_service.close_pending_checkout(
+                    project_id,
+                    session_id=session_id,
+                    state="EXPIRED",
+                )
+            elif payment_status == "paid" or checkout_status == "complete":
+                raise ValueError(
+                    "The previous Growth Balance payment is completing; refresh the workspace shortly"
                 )
             else:
                 raise ValueError(
