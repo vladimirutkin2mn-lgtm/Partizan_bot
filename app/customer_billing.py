@@ -128,6 +128,11 @@ def retrieve_launch_checkout(*, settings: Settings, session_id: str):
     return stripe.checkout.Session.retrieve(session_id)
 
 
+def expire_checkout(*, settings: Settings, session_id: str):
+    _stripe_secret(settings)
+    return stripe.checkout.Session.expire(session_id)
+
+
 def construct_stripe_event(*, settings: Settings, payload: bytes, signature: str):
     if settings.stripe_webhook_secret is None:
         raise BillingConfigurationError("Stripe webhook is not configured")
