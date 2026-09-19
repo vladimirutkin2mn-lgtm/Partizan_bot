@@ -300,6 +300,49 @@ def test_logout_revokes_current_session() -> None:
     assert client.get(f"/customer/workspace/{preview.project_id}").status_code == 401
 
 
+def test_workspace_growth_balance_checkout_resumes_existing_open_stripe_session(
+    monkeypatch,
+) -> None:
+    client = TestClient(app)
+    preview, created = _register(client)
+    assert created.status_code == 200
+
+    monkeypatch.setattr(
+        "app.customer_account_routes.growth_balance_service.active_pending_checkout",
+        lambda project_id: {
+            "session_id": "cs_resume_open",
+            "project_id": str(project_id),
+            "amount_cents": 100,
+            "state": "PENDING",
+        },
+    )
+    monkeypatch.setattr(
+        "app.customer_account_routes.retrieve_launch_checkout",
+        lambda **kwargs: {
+            "id": kwargs["session_id"],
+            "status": "open",
+            "payment_status": "unpaid",
+            "url": "https://checkout.stripe.test/resume-open",
+        },
+    )
+
+    def should_not_prepare(*args, **kwargs):
+        raise AssertionError("open Stripe checkout must be resumed, not recreated")
+
+    monkeypatch.setattr(
+        "app.customer_account_routes.growth_balance_service.prepare_checkout",
+        should_not_prepare,
+    )
+
+    response = client.post(
+        f"/customer/workspace/{preview.project_id}/growth-balance/checkout",
+        json={"amount_usd": 1},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["checkout_url"] == "https://checkout.stripe.test/resume-open"
+
+
 def test_customer_workspace_page_is_separate_from_internal_operator_app() -> None:
     client = TestClient(app)
     page = client.get("/workspace")
