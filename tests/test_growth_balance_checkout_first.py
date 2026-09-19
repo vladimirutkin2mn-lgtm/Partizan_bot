@@ -131,6 +131,50 @@ def test_issuing_mode_still_respects_busy_global_liquidity_lock(monkeypatch) -> 
         service.prepare_checkout(preview.project_id, preview.customer_token, 1000)
 
 
+def test_abandoned_open_checkout_can_be_found_and_expired_before_retry(
+    monkeypatch,
+) -> None:
+    store = MemoryRuntimeStateStore()
+    funnel = CustomerFunnelService(store)
+    preview = _preview(funnel)
+    settlement = checkout_only_settlement(store)
+    service = GrowthBalanceService(store, settlement_service=settlement)
+    _install_checkout_first_liquidity_policy(service)
+    monkeypatch.setattr(growth_balance_module, "customer_funnel_service", funnel)
+
+    generation, _, amount_cents = service.prepare_checkout(
+        preview.project_id,
+        preview.customer_token,
+        1,
+    )
+    service.mark_checkout_pending(
+        preview.project_id,
+        preview.customer_token,
+        session_id="cs_abandoned_open",
+        amount_cents=amount_cents,
+        checkout_generation=generation,
+    )
+
+    pending = service.active_pending_checkout(preview.project_id)
+    assert pending is not None
+    assert pending["session_id"] == "cs_abandoned_open"
+
+    service.close_pending_checkout(
+        preview.project_id,
+        session_id="cs_abandoned_open",
+        state="EXPIRED",
+    )
+    assert service.active_pending_checkout(preview.project_id) is None
+
+    next_generation, _, next_amount_cents = service.prepare_checkout(
+        preview.project_id,
+        preview.customer_token,
+        1,
+    )
+    assert next_generation == 2
+    assert next_amount_cents == 100
+
+
 def test_paid_checkout_credits_balance_without_creating_fake_spend_rail() -> None:
     store = MemoryRuntimeStateStore()
     settlement = checkout_only_settlement(store)
