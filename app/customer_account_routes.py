@@ -296,6 +296,25 @@ def create_workspace_growth_balance_checkout(
 ) -> CheckoutResponse:
     _, customer_token = _project_access(session_token, project_id)
     try:
+        pending = growth_balance_service.active_pending_checkout(project_id)
+        if pending is not None:
+            session_id = str(pending["session_id"])
+            existing = retrieve_launch_checkout(settings=settings, session_id=session_id)
+            checkout_status = str(existing.get("status") or "").lower()
+            checkout_url = str(existing.get("url") or "")
+            if checkout_status == "open" and checkout_url:
+                return CheckoutResponse(checkout_url=checkout_url)
+            if checkout_status == "expired":
+                growth_balance_service.close_pending_checkout(
+                    project_id,
+                    session_id=session_id,
+                    state="EXPIRED",
+                )
+            else:
+                raise ValueError(
+                    "The previous Growth Balance checkout is finishing; refresh the workspace shortly"
+                )
+
         generation, stripe_customer_id, amount_cents = growth_balance_service.prepare_checkout(
             project_id,
             customer_token,

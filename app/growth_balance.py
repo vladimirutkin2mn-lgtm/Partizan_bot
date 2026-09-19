@@ -547,6 +547,62 @@ class GrowthBalanceService:
     def pending(self, session_id: str) -> dict | None:
         return self._store.get(GROWTH_BALANCE_TOPUP_NAMESPACE, session_id)
 
+    def active_pending_checkout(self, project_id: UUID) -> dict | None:
+        now = datetime.now(UTC)
+        rows = [
+            item
+            for item in self._store.list_namespace(GROWTH_BALANCE_TOPUP_NAMESPACE)
+            if str(item.get("project_id") or "") == str(project_id)
+            and item.get("state") == "PENDING"
+            and item.get("session_id")
+            and self._pending_is_active(item, now)
+        ]
+        if not rows:
+            return None
+        return max(
+            rows,
+            key=lambda item: int(item.get("checkout_generation") or 0),
+        )
+
+    def close_pending_checkout(
+        self,
+        project_id: UUID,
+        *,
+        session_id: str,
+        state: str,
+    ) -> None:
+        if state not in {"EXPIRED", "CANCELLED"}:
+            raise ValueError("Unsupported Growth Balance checkout terminal state")
+        record = self._store.get(GROWTH_BALANCE_TOPUP_NAMESPACE, session_id)
+        if record is None or str(record.get("project_id") or "") != str(project_id):
+            raise ValueError("Growth Balance Checkout Session is not linked to this project")
+        if record.get("state") == "PAID":
+            raise ValueError("Paid Growth Balance Checkout cannot be closed")
+        if record.get("state") != "PENDING":
+            return
+        now = datetime.now(UTC).isoformat()
+        record["state"] = state
+        record["updated_at"] = now
+        self._store.put(GROWTH_BALANCE_TOPUP_NAMESPACE, session_id, record)
+
+        generation = int(record.get("checkout_generation") or 0)
+        if generation <= 0:
+            return
+        reservation_key = self._reservation_key(project_id, generation)
+        reservation = self._store.get(GROWTH_BALANCE_TOPUP_NAMESPACE, reservation_key)
+        if (
+            reservation is not None
+            and str(reservation.get("session_id") or "") == session_id
+            and reservation.get("state") == "CHECKOUT_CREATED"
+        ):
+            reservation["state"] = state
+            reservation["updated_at"] = now
+            self._store.put(
+                GROWTH_BALANCE_TOPUP_NAMESPACE,
+                reservation_key,
+                reservation,
+            )
+
     def credit_paid_checkout(
         self,
         project_id: UUID,
