@@ -36,7 +36,6 @@ from app.customer_funnel import (
     customer_funnel_service,
 )
 from app.customer_meta_oauth import CustomerMetaOAuthError, customer_meta_oauth_service
-from app.stripe_objects import stripe_field
 from app.customer_schemas import (
     CheckoutResponse,
     CustomerAutopilotConfigureRequest,
@@ -55,6 +54,7 @@ from app.customer_schemas import (
 )
 from app.growth_balance import growth_balance_service
 from app.self_dogfood import self_dogfood_service
+from app.stripe_objects import stripe_field
 
 router = APIRouter(tags=["customer-account"])
 
