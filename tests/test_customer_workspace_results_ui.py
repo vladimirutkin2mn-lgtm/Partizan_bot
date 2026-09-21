@@ -23,8 +23,10 @@ def test_customer_workspace_exposes_project_scoped_distribution_results() -> Non
     assert 'id="distribution-results-card"' in html
     assert 'id="customer-economics"' in html
     assert 'id="managed-delivery"' in html
+    assert 'id="execution-log"' in html
     assert "/customer/workspace/${projectId}/distribution-economics" in html
     assert "/customer/workspace/${projectId}/managed-distribution/assignments" in html
+    assert "/customer/workspace/${projectId}/community-actions" in html
     assert "Customer cost" in html
     assert "Research fee" in html
     assert "Execution fee" in html
@@ -32,6 +34,10 @@ def test_customer_workspace_exposes_project_scoped_distribution_results() -> Non
     assert "Management fee" in html
     assert "Paid customers" in html
     assert "ROAS" in html
+    assert "Execution log" in html
+    assert "Open in Telegram" in html
+    assert "Verified present" in html
+    assert "moneyPrecise" in html
 
 
 def test_customer_workspace_managed_results_stay_read_only_and_customer_safe() -> None:
