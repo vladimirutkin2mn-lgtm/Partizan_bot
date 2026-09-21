@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -70,6 +71,13 @@ class CustomerCommunityActionView(BaseModel):
     content_text: str | None = None
     replies: int = 0
     removals: int = 0
+    execution_outcome: str | None = None
+    execution_message: str | None = None
+    executed_url: str | None = None
+    execution_at: datetime | None = None
+    observation_state: str | None = None
+    observation_checked_at: datetime | None = None
+    execution_fee_usd: float = 0.0
 
 
 class TelegramCustomerPublishRequest(BaseModel):
@@ -118,6 +126,31 @@ def _community_actions(project_id: UUID, customer_token: str) -> list[CustomerCo
         platform = item.action.platform.value
         if platform not in {"TELEGRAM", "REDDIT"}:
             continue
+
+        execution_outcome = None
+        execution_message = None
+        executed_url = None
+        execution_at = None
+        observation_state = None
+        observation_checked_at = None
+        if platform == "TELEGRAM":
+            receipt = customer_telegram_client_publish_service.get_receipt(item.action.id)
+            if receipt is not None:
+                execution_outcome = receipt.outcome.value
+                execution_message = receipt.message
+                executed_url = str(receipt.executed_url) if receipt.executed_url else None
+                execution_at = receipt.published_at or receipt.created_at
+            try:
+                observation = customer_telegram_governance_service.get_observation_internal(
+                    project_id,
+                    item.action.id,
+                )
+            except CustomerTelegramClientPublishError:
+                observation = None
+            if observation is not None:
+                observation_state = observation.latest.state.value
+                observation_checked_at = observation.latest.checked_at
+
         result.append(
             CustomerCommunityActionView(
                 action_id=item.action.id,
@@ -132,6 +165,13 @@ def _community_actions(project_id: UUID, customer_token: str) -> list[CustomerCo
                 content_text=item.action.content_text,
                 replies=item.replies,
                 removals=item.removals,
+                execution_outcome=execution_outcome,
+                execution_message=execution_message,
+                executed_url=executed_url,
+                execution_at=execution_at,
+                observation_state=observation_state,
+                observation_checked_at=observation_checked_at,
+                execution_fee_usd=float(item.costs.execution_fee),
             )
         )
     return result
