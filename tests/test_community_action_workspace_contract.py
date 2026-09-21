@@ -16,6 +16,8 @@ def test_customer_community_actions_require_explicit_review_and_publish() -> Non
     assert "/actions/${encodeURIComponent(action.action_id)}/observe" in source
     assert "/policy/confirm" not in source
     assert "confirm_policy_resolution: true" not in source
+    assert "Nothing publishes from this list automatically." not in source
+    assert "Telegram AUTO executions" in source
 
 
 def test_refresh_is_read_only_for_community_actions() -> None:
