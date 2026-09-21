@@ -106,6 +106,15 @@ class CustomerTelegramAutonomousExecutionService:
                     },
                 ),
             )
+            try:
+                await customer_telegram_governance_service.observe_publish_internal(
+                    project_id,
+                    action_id,
+                )
+            except CustomerTelegramClientPublishError:
+                # Publishing is already confirmed and charged. Observation is read-only
+                # evidence and must not turn a successful publish into a failed execution.
+                pass
         return DistributionAdapterExecutionView(
             receipt=ExecutionAdapterReceipt(
                 action_id=receipt.action_id,

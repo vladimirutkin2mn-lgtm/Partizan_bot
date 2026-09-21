@@ -349,10 +349,10 @@
       experiments.parentElement.insertBefore(inbox, experiments);
     }
     if (!actions.length) {
-      inbox.innerHTML = '<header><div><h4>Community actions</h4><p>Approved Telegram and Reddit actions will appear here before any customer-owned publish.</p></div></header><div class="community-action-empty">No prepared community action needs your review right now.</div>';
+      inbox.innerHTML = '<header><div><h4>Community actions</h4><p>Manual client-owned actions appear here for review. Telegram AUTO actions can execute within the automation limits you explicitly enabled and will appear in Activity after an execution attempt.</p></div></header><div class="community-action-empty">No manual community action needs your review right now.</div>';
       return;
     }
-    inbox.innerHTML = `<header><div><h4>Community actions</h4><p>Review exact approved content before publishing from your connected account. Nothing publishes from this list automatically.</p></div></header><div class="community-action-list">${actions.map((action) => {
+    inbox.innerHTML = `<header><div><h4>Community actions</h4><p>Review manual client-owned actions here. Telegram AUTO executions use the automation permission and daily cap you enabled; their delivered result and verification appear in Activity.</p></div></header><div class="community-action-list">${actions.map((action) => {
       const selectedMode = selectedModeFor(action.platform);
       const removed = Number(action.removals || 0) > 0 ? `${action.removals} removal signal${Number(action.removals) === 1 ? '' : 's'}` : 'not removed';
       return `<article class="community-action-card"><div><strong>${escapeHtml(action.opportunity_title || `${action.platform} community action`)}</strong><small>${escapeHtml(action.platform)} · ${escapeHtml(action.action_type)} · action ${escapeHtml(action.action_status)} · experiment ${escapeHtml(action.experiment_status)}</small><div class="community-action-meta"><span>Selected: ${escapeHtml(publisherModeLabel(selectedMode))}</span><span>Provenance: ${escapeHtml(publisherModeLabel(action.publisher_mode))}</span><span>${Number(action.replies || 0)} replies</span><span>${escapeHtml(removed)}</span></div></div><div class="community-action-actions">${communityActionButton(action)}</div></article>`;

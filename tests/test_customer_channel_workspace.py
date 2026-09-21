@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -50,6 +51,79 @@ def _registered_client() -> tuple[TestClient, object]:
     )
     assert response.status_code == 200
     return client, preview
+
+
+def test_community_actions_expose_telegram_execution_audit_evidence(monkeypatch) -> None:
+    client, preview = _registered_client()
+    store = get_runtime_store()
+    project = store.get(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id))
+    assert project is not None
+    product_id = uuid4()
+    action_id = uuid4()
+    experiment_id = uuid4()
+    project["product_id"] = str(product_id)
+    store.put(CUSTOMER_PROJECT_NAMESPACE, str(preview.project_id), project)
+
+    when = datetime(2026, 9, 21, 17, 0, tzinfo=UTC)
+    analytics = SimpleNamespace(
+        experiments=[
+            SimpleNamespace(
+                action=SimpleNamespace(
+                    id=action_id,
+                    platform=SimpleNamespace(value="TELEGRAM"),
+                    action_type=SimpleNamespace(value="STANDALONE_POST"),
+                    status=SimpleNamespace(value="EXECUTED"),
+                    target_url="https://t.me/example_group",
+                    content_text="Try the product from this Telegram post.",
+                ),
+                experiment=SimpleNamespace(
+                    id=experiment_id,
+                    status=SimpleNamespace(value="RUNNING"),
+                ),
+                publisher_mode=SimpleNamespace(value="CLIENT_OWNED"),
+                play=SimpleNamespace(opportunity_title="Telegram community seed"),
+                replies=2,
+                removals=0,
+                costs=SimpleNamespace(execution_fee=0.001),
+            )
+        ]
+    )
+    monkeypatch.setattr(
+        customer_channel_routes_module.distribution_analytics_service,
+        "product_analytics",
+        lambda _product_id: analytics,
+    )
+    monkeypatch.setattr(
+        customer_channel_routes_module.customer_telegram_client_publish_service,
+        "get_receipt",
+        lambda _action_id: SimpleNamespace(
+            outcome=SimpleNamespace(value="EXECUTED"),
+            message="Telegram confirmed the client-owned publish.",
+            executed_url="https://t.me/example_group/456",
+            published_at=when,
+            created_at=when,
+        ),
+    )
+    monkeypatch.setattr(
+        customer_channel_routes_module.customer_telegram_governance_service,
+        "get_observation_internal",
+        lambda _project_id, _action_id: SimpleNamespace(
+            latest=SimpleNamespace(
+                state=SimpleNamespace(value="PRESENT"),
+                checked_at=when,
+            )
+        ),
+    )
+
+    response = client.get(f"/customer/workspace/{preview.project_id}/community-actions")
+
+    assert response.status_code == 200
+    [item] = response.json()
+    assert item["execution_outcome"] == "EXECUTED"
+    assert item["executed_url"] == "https://t.me/example_group/456"
+    assert item["observation_state"] == "PRESENT"
+    assert item["execution_fee_usd"] == 0.001
+    assert item["content_text"] == "Try the product from this Telegram post."
 
 
 def test_channel_controls_require_customer_session() -> None:
