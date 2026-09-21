@@ -22,7 +22,7 @@
     .auth-new{margin:24px 0 0;padding-top:20px;border-top:1px solid var(--line);text-align:center;color:var(--muted);font-size:11px;line-height:1.5}
     .auth-new a{display:inline-block;margin-left:5px;color:var(--soft);font-weight:700;text-decoration:none}
     .auth-new a:hover{color:var(--accent)}
-    .customer-results-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:18px}.customer-results-block{padding:15px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.018)}.customer-results-block h3{margin:0 0 5px;font-size:13px}.customer-results-block>p{margin:0 0 12px;color:var(--muted);font-size:10px;line-height:1.55}.customer-economics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.customer-economics-grid div,.managed-assignment{padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.12)}.customer-economics-grid span,.managed-assignment span{display:block;color:var(--muted);font-size:9px}.customer-economics-grid strong{display:block;margin-top:3px;font-size:13px}.managed-assignment-list{display:grid;gap:8px}.managed-assignment-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.managed-assignment strong{font-size:11px}.managed-assignment-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}.managed-assignment-meta span{padding:3px 6px;border:1px solid var(--line);border-radius:999px}.managed-assignment-costs{display:flex;gap:12px;margin-top:9px}.managed-assignment-costs b{font-size:10px}.managed-assignment a{display:inline-block;margin-top:9px;font-size:10px;color:var(--accent);text-decoration:none}.customer-results-empty{color:var(--muted);font-size:10px;line-height:1.55}.customer-results-error{color:var(--warn);font-size:10px;line-height:1.55}
+    .customer-results-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:18px}.customer-results-block{padding:15px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.018)}.customer-results-block h3{margin:0 0 5px;font-size:13px}.customer-results-block>p{margin:0 0 12px;color:var(--muted);font-size:10px;line-height:1.55}.customer-economics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.customer-economics-grid div,.managed-assignment{padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.12)}.customer-economics-grid span,.managed-assignment span{display:block;color:var(--muted);font-size:9px}.customer-economics-grid strong{display:block;margin-top:3px;font-size:13px}.managed-assignment-list{display:grid;gap:8px}.managed-assignment-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.managed-assignment strong{font-size:11px}.managed-assignment-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}.managed-assignment-meta span{padding:3px 6px;border:1px solid var(--line);border-radius:999px}.managed-assignment-costs{display:flex;gap:12px;margin-top:9px}.managed-assignment-costs b{font-size:10px}.managed-assignment a{display:inline-block;margin-top:9px;font-size:10px;color:var(--accent);text-decoration:none}.execution-log-block{grid-column:1/-1}.execution-log-list{display:grid;gap:9px}.execution-log-item{padding:12px;border:1px solid var(--line);border-radius:11px;background:rgba(0,0,0,.12)}.execution-log-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.execution-log-head strong{font-size:11px}.execution-log-status{font-size:9px;font-weight:700}.execution-log-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}.execution-log-meta span,.execution-log-meta a{padding:3px 6px;border:1px solid var(--line);border-radius:999px;font-size:9px;color:var(--muted);text-decoration:none}.execution-log-meta a{color:var(--accent)}.execution-log-content{margin:9px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--soft);font-size:10px;line-height:1.5}.execution-log-result{margin-top:9px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}.execution-log-result span{font-size:9px;color:var(--muted)}.execution-log-result a{font-size:10px;color:var(--accent);text-decoration:none}.customer-results-empty{color:var(--muted);font-size:10px;line-height:1.55}.customer-results-error{color:var(--warn);font-size:10px;line-height:1.55}
     @media(max-width:700px){.auth-login{min-height:calc(100vh - 88px);padding:28px 0 56px}.auth-card{padding:26px 22px;border-radius:20px}.auth-card h1{font-size:34px}.auth-card .lede{margin-bottom:22px}.customer-results-grid{grid-template-columns:1fr}.customer-economics-grid{grid-template-columns:1fr 1fr}}
   </style>
 </head>
@@ -184,6 +184,7 @@
           <div class="customer-results-grid">
             <div class="customer-results-block"><h3>Observed customer economics</h3><p>Research, execution and distribution spend that counts toward your acquisition economics.</p><div id="customer-economics" class="customer-results-empty">Open Activity to load observed economics.</div></div>
             <div class="customer-results-block"><h3>Partizan managed delivery</h3><p>Assignments fulfilled through Partizan-managed or partner-managed inventory, without exposing internal publisher details.</p><div id="managed-delivery" class="customer-results-empty">No managed delivery loaded yet.</div></div>
+            <div class="customer-results-block execution-log-block"><h3>Execution log</h3><p>Customer-visible audit trail of what Partizan actually attempted or delivered: target, content, provider result, verification and charged execution cost.</p><div id="execution-log" class="customer-results-empty">No execution recorded yet.</div></div>
           </div>
         </section>
       </section>
@@ -244,8 +245,9 @@
       const workspace = document.getElementById('workspace');
       const economicsNode = document.getElementById('customer-economics');
       const managedNode = document.getElementById('managed-delivery');
+      const executionNode = document.getElementById('execution-log');
       const stateNode = document.getElementById('distribution-results-state');
-      if (!workspace || !economicsNode || !managedNode || !stateNode) return;
+      if (!workspace || !economicsNode || !managedNode || !executionNode || !stateNode) return;
 
       let loading = false;
       let queuedForceRefresh = false;
@@ -254,7 +256,12 @@
       const redditConnectedOnLoad = new URLSearchParams(window.location.search).get('reddit') === 'connected';
       const redditProjectIdOnLoad = currentProjectId();
       const nativeFetch = window.fetch.bind(window);
-      const money = (value) => `$${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+      const money = (value) => `${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+      const moneyPrecise = (value) => {
+        const amount = Number(value || 0);
+        const digits = amount > 0 && amount < 0.01 ? 3 : 2;
+        return `${amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: digits })}`;
+      };
       const ratio = (value) => value == null ? '—' : `${Number(value).toLocaleString('en-US', { maximumFractionDigits: 2 })}×`;
       const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>'"]/g, (char) => (
         char === '&' ? '&amp;' : char === '<' ? '&lt;' : char === '>' ? '&gt;' : char === "'" ? '&#39;' : '&quot;'
@@ -336,10 +343,10 @@
         const costs = data.costs;
         economicsNode.className = 'customer-economics-grid';
         economicsNode.innerHTML = [
-          ['Customer cost', money(costs.total)],
-          ['Research fee', money(costs.research_fee)],
-          ['Execution fee', money(costs.execution_fee)],
-          ['Distribution spend', money(costs.distribution_spend)],
+          ['Customer cost', moneyPrecise(costs.total)],
+          ['Research fee', moneyPrecise(costs.research_fee)],
+          ['Execution fee', moneyPrecise(costs.execution_fee)],
+          ['Distribution spend', moneyPrecise(costs.distribution_spend)],
           ['Paid customers', Number(data.paid_users || 0).toLocaleString()],
           ['Revenue', money(data.revenue)],
           ['CAC', data.cac == null ? '—' : money(data.cac)],
@@ -365,6 +372,52 @@
         }).join('');
       };
 
+      const renderExecutionLog = (actions) => {
+        const rows = (Array.isArray(actions) ? actions : [])
+          .filter((item) => item.platform === 'TELEGRAM' && item.execution_outcome)
+          .sort((left, right) => String(right.execution_at || '').localeCompare(String(left.execution_at || '')));
+        if (!rows.length) {
+          executionNode.className = 'customer-results-empty';
+          executionNode.textContent = 'No Telegram execution recorded yet.';
+          return;
+        }
+        const observationLabel = (state, outcome) => {
+          if (outcome !== 'EXECUTED') return 'Not published';
+          return ({
+            PRESENT: 'Verified present ✓',
+            REMOVED: 'Removed ⚠',
+            INACCESSIBLE: 'Inaccessible',
+            UNKNOWN: 'Verification unknown',
+          }[state] || 'Verification pending');
+        };
+        const executionLabel = (outcome) => ({
+          EXECUTED: 'Published ✓',
+          FAILED: 'Failed',
+          IN_PROGRESS: 'In progress',
+          UNAVAILABLE: 'Unavailable',
+        }[outcome] || outcome || 'Unknown');
+        const targetLabel = (url) => {
+          if (!url) return 'Target unavailable';
+          try {
+            const parsed = new URL(url);
+            return parsed.hostname === 't.me' ? `@${parsed.pathname.split('/').filter(Boolean)[0] || 'telegram'}` : url;
+          } catch (_) {
+            return url;
+          }
+        };
+        executionNode.className = 'execution-log-list';
+        executionNode.innerHTML = rows.map((item) => {
+          const target = item.target_url
+            ? `<a href="${escapeHtml(item.target_url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(targetLabel(item.target_url))}</a>`
+            : '<span>Target unavailable</span>';
+          const delivered = item.executed_url
+            ? `<a href="${escapeHtml(item.executed_url)}" target="_blank" rel="noopener noreferrer">Open in Telegram ↗</a>`
+            : '';
+          const checked = item.observation_checked_at ? ` · checked ${escapeHtml(dateLabel(item.observation_checked_at))}` : '';
+          return `<article class="execution-log-item"><div class="execution-log-head"><div><strong>${escapeHtml(item.platform)} · ${escapeHtml(item.action_type)}</strong><div class="execution-log-meta">${target}<span>${escapeHtml(dateLabel(item.execution_at) || 'Time unavailable')}</span></div></div><span class="execution-log-status">${escapeHtml(executionLabel(item.execution_outcome))}</span></div><p class="execution-log-content">${escapeHtml(item.content_text || 'No content stored')}</p><div class="execution-log-result"><span>${escapeHtml(observationLabel(item.observation_state, item.execution_outcome))}${checked}</span><span>Cost ${escapeHtml(moneyPrecise(item.execution_fee_usd))}</span>${delivered}</div>${item.execution_outcome !== 'EXECUTED' && item.execution_message ? `<p class="customer-results-error">${escapeHtml(item.execution_message)}</p>` : ''}</article>`;
+        }).join('');
+      };
+
       const renderFailure = (node, reason) => {
         node.className = 'customer-results-error';
         node.textContent = `Could not load this customer-safe result: ${reason}`;
@@ -380,16 +433,19 @@
         loading = true;
         stateNode.textContent = 'Loading';
         try {
-          const [economics, managed] = await Promise.allSettled([
+          const [economics, managed, executions] = await Promise.allSettled([
             getJson(`/customer/workspace/${projectId}/distribution-economics`),
             getJson(`/customer/workspace/${projectId}/managed-distribution/assignments`),
+            getJson(`/customer/workspace/${projectId}/community-actions`),
           ]);
           if (economics.status === 'fulfilled') renderEconomics(economics.value);
           else renderFailure(economicsNode, economics.reason.message);
           if (managed.status === 'fulfilled') renderManaged(managed.value);
           else renderFailure(managedNode, managed.reason.message);
+          if (executions.status === 'fulfilled') renderExecutionLog(executions.value);
+          else renderFailure(executionNode, executions.reason.message);
           loadedProjectId = projectId;
-          stateNode.textContent = economics.status === 'fulfilled' && managed.status === 'fulfilled' ? 'Observed' : 'Partial';
+          stateNode.textContent = economics.status === 'fulfilled' && managed.status === 'fulfilled' && executions.status === 'fulfilled' ? 'Observed' : 'Partial';
         } finally {
           loading = false;
           if (queuedForceRefresh) {
