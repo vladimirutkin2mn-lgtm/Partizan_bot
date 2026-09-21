@@ -361,6 +361,22 @@ class CustomerTelegramGovernanceService:
         action_id: UUID,
     ) -> TelegramPublishObservationView:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
+        return await self._observe_for_project(project_id, project, action_id)
+
+    async def observe_publish_internal(
+        self,
+        project_id: UUID,
+        action_id: UUID,
+    ) -> TelegramPublishObservationView:
+        project = self._internal_project(project_id)
+        return await self._observe_for_project(project_id, project, action_id)
+
+    async def _observe_for_project(
+        self,
+        project_id: UUID,
+        project: dict,
+        action_id: UUID,
+    ) -> TelegramPublishObservationView:
         self._require_action_ownership(project, action_id)
         blocker = self.observation_blocker()
         if blocker is not None:
@@ -414,6 +430,21 @@ class CustomerTelegramGovernanceService:
         action_id: UUID,
     ) -> TelegramPublishObservationView:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
+        return self._observation_for_project(project, action_id)
+
+    def get_observation_internal(
+        self,
+        project_id: UUID,
+        action_id: UUID,
+    ) -> TelegramPublishObservationView:
+        project = self._internal_project(project_id)
+        return self._observation_for_project(project, action_id)
+
+    def _observation_for_project(
+        self,
+        project: dict,
+        action_id: UUID,
+    ) -> TelegramPublishObservationView:
         self._require_action_ownership(project, action_id)
         record = self._store.get(CUSTOMER_TELEGRAM_OBSERVATION_NAMESPACE, str(action_id))
         if record is None:
