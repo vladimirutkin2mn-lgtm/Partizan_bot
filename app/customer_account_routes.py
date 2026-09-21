@@ -387,18 +387,18 @@ def verify_workspace_growth_balance_checkout(
         if pending is None:
             raise HTTPException(status_code=401, detail="Growth Balance Checkout Session is not pending")
         session = retrieve_launch_checkout(settings=settings, session_id=payload.session_id)
-        metadata = session.get("metadata") or {}
-        amount_total = int(session.get("amount_total") or 0)
-        currency = str(session.get("currency") or "").lower()
+        metadata = stripe_field(session, "metadata") or {}
+        amount_total = int(stripe_field(session, "amount_total", 0))
+        currency = str(stripe_field(session, "currency", "")).lower()
         verified = (
-            str(session.get("id") or "") == payload.session_id
-            and str(session.get("client_reference_id") or "") == str(project_id)
-            and str(metadata.get("partizan_project_id") or "") == str(project_id)
-            and metadata.get("partizan_entitlement") == "growth_balance_topup"
-            and int(metadata.get("partizan_amount_cents") or 0)
+            str(stripe_field(session, "id", "")) == payload.session_id
+            and str(stripe_field(session, "client_reference_id", "")) == str(project_id)
+            and str(stripe_field(metadata, "partizan_project_id", "")) == str(project_id)
+            and stripe_field(metadata, "partizan_entitlement") == "growth_balance_topup"
+            and int(stripe_field(metadata, "partizan_amount_cents", 0))
             == int(pending.get("amount_cents") or 0)
-            and session.get("mode") == "payment"
-            and session.get("payment_status") == "paid"
+            and stripe_field(session, "mode") == "payment"
+            and stripe_field(session, "payment_status") == "paid"
             and amount_total == int(pending.get("amount_cents") or 0)
             and currency == "usd"
         )
@@ -409,7 +409,11 @@ def verify_workspace_growth_balance_checkout(
             session_id=payload.session_id,
             amount_cents=amount_total,
             currency=currency,
-            stripe_customer_id=(str(session["customer"]) if session.get("customer") else None),
+            stripe_customer_id=(
+                str(stripe_field(stripe_field(session, "customer"), "id", stripe_field(session, "customer")))
+                if stripe_field(session, "customer")
+                else None
+            ),
         )
         if not credited:
             raise HTTPException(
