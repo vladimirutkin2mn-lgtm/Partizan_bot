@@ -408,6 +408,68 @@ def test_workspace_growth_balance_replaces_open_checkout_when_amount_changes(
     assert calls == [("expire", "cs_old_50"), ("close", "cs_old_50")]
 
 
+def test_workspace_growth_balance_verify_accepts_real_stripe_resource_shape(
+    monkeypatch,
+) -> None:
+    client = TestClient(app)
+    preview, created = _register(client)
+    assert created.status_code == 200
+    credited: dict[str, object] = {}
+
+    class StripeSessionFake:
+        def __getitem__(self, key):
+            return {
+                "id": "cs_paid_10",
+                "client_reference_id": str(preview.project_id),
+                "metadata": {
+                    "partizan_project_id": str(preview.project_id),
+                    "partizan_entitlement": "growth_balance_topup",
+                    "partizan_amount_cents": "1000",
+                },
+                "mode": "payment",
+                "payment_status": "paid",
+                "amount_total": 1000,
+                "currency": "usd",
+                "customer": "cus_paid_10",
+            }[key]
+
+    monkeypatch.setattr(
+        "app.customer_account_routes.growth_balance_service.pending",
+        lambda session_id: {
+            "session_id": session_id,
+            "project_id": str(preview.project_id),
+            "amount_cents": 1000,
+            "state": "PENDING",
+        },
+    )
+    monkeypatch.setattr(
+        "app.customer_account_routes.retrieve_launch_checkout",
+        lambda **kwargs: StripeSessionFake(),
+    )
+
+    def credit(project_id, **kwargs):
+        credited["project_id"] = project_id
+        credited.update(kwargs)
+        return True
+
+    monkeypatch.setattr(
+        "app.customer_account_routes.growth_balance_service.credit_paid_checkout",
+        credit,
+    )
+
+    response = client.post(
+        f"/customer/workspace/{preview.project_id}/growth-balance/verify",
+        json={"session_id": "cs_paid_10"},
+    )
+
+    assert response.status_code == 200
+    assert credited["project_id"] == preview.project_id
+    assert credited["session_id"] == "cs_paid_10"
+    assert credited["amount_cents"] == 1000
+    assert credited["currency"] == "usd"
+    assert credited["stripe_customer_id"] == "cus_paid_10"
+
+
 def test_customer_workspace_page_is_separate_from_internal_operator_app() -> None:
     client = TestClient(app)
     page = client.get("/workspace")
