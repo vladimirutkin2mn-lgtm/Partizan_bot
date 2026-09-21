@@ -32,10 +32,15 @@ class FakeGovernance:
     def __init__(self, receipt: TelegramClientPublishReceipt) -> None:
         self.receipt = receipt
         self.calls: list[tuple] = []
+        self.observation_calls: list[tuple] = []
 
     async def automated_publish_internal(self, project_id, action_id, payload):
         self.calls.append((project_id, action_id, payload.retry))
         return self.receipt
+
+    async def observe_publish_internal(self, project_id, action_id):
+        self.observation_calls.append((project_id, action_id))
+        return None
 
 
 class FakeDistributionExecution:
@@ -159,6 +164,7 @@ async def test_autonomous_telegram_routes_through_client_owned_governance(monkey
     assert result.receipt.adapter_name == "telegram-client-owned-autonomous"
     assert result.receipt.outcome.value == "EXECUTED"
     assert governance.calls == [(project_id, action_id, False)]
+    assert governance.observation_calls == [(project_id, action_id)]
     assert balance.summary(project_id, 0.0).execution_fee_usd == 0.001
     assert balance.summary(project_id, 0.0).available_usd == 0.999
     assert len(analytics.spend_by_id) == 1
@@ -229,6 +235,7 @@ async def test_failed_telegram_publish_does_not_charge_growth_balance(monkeypatc
     assert balance.summary(project_id, 0.0).execution_fee_usd == 0
     assert balance.summary(project_id, 0.0).available_usd == 1.0
     assert analytics.spend_by_id == {}
+    assert governance.observation_calls == []
 
 
 @pytest.mark.asyncio
