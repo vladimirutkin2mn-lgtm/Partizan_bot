@@ -73,6 +73,7 @@ class CustomerWorkspaceView(BaseModel):
     preview_research_message: str = ""
     preview_opportunity: CustomerFreeOpportunityView | None = None
     research_clarifications: list[CustomerClarificationView] = Field(default_factory=list)
+    research_diagnostics: dict = Field(default_factory=dict)
     autoresearch: GrowthAutoResearchOverviewView | None = None
     target_max_cac: float | None = None
     autonomous_spend_confirmed: bool = False
