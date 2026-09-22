@@ -1,12 +1,12 @@
 from typing import TypeVar
 
 import pytest
-from pydantic import BaseModel
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
 from app.icp_agent import ICPCandidate, ICPDimensionScores, ICPEngine
-from app.llm import LLMMessage, LLMProvider
 from app.icp_service import icp_service
+from app.llm import LLMMessage, LLMProvider
 from app.main import app
 from app.product_intake import product_intake_service
 
