@@ -35,9 +35,12 @@ def _safe_existing_map(store, product_id: UUID) -> dict:
     }
 
 
-def _find_target_project() -> tuple[dict, object] | tuple[None, None]:
+def _find_target_project() -> tuple[dict, object, str] | tuple[None, None, None]:
     store = get_runtime_store()
-    matches: list[tuple[dict, object]] = []
+    active: list[tuple[dict, object]] = []
+    exact_name: list[tuple[dict, object]] = []
+    telegram_auto: list[tuple[dict, object]] = []
+
     for project in store.list_namespace(CUSTOMER_PROJECT_NAMESPACE):
         if not isinstance(project, dict) or project.get("deleted_at"):
             continue
@@ -49,30 +52,61 @@ def _find_target_project() -> tuple[dict, object] | tuple[None, None]:
             product = product_intake_service.get_product(product_id)
         except (KeyError, TypeError, ValueError):
             continue
-        if str(product.name or "").strip().casefold() == TARGET_PRODUCT_NAME.casefold():
-            matches.append((project, product))
 
-    if len(matches) == 1:
-        return matches[0]
+        active.append((project, product))
+        if str(product.name or "").strip().casefold() == TARGET_PRODUCT_NAME.casefold():
+            exact_name.append((project, product))
+
+        preferences = project.get("channel_preferences")
+        publisher_modes = project.get("channel_publisher_modes")
+        telegram_mode = (
+            str(preferences.get("TELEGRAM") or "")
+            if isinstance(preferences, dict)
+            else ""
+        )
+        telegram_publisher = (
+            str(publisher_modes.get("TELEGRAM") or "")
+            if isinstance(publisher_modes, dict)
+            else ""
+        )
+        if (
+            telegram_mode == "AUTO"
+            and telegram_publisher == "CLIENT_OWNED"
+            and bool(project.get("launch_unlocked"))
+            and str(project.get("research_state") or "") == "READY"
+        ):
+            telegram_auto.append((project, product))
+
+    if len(exact_name) == 1:
+        project, product = exact_name[0]
+        return project, product, "EXACT_PRODUCT_NAME"
+
+    # The production dogfood project we are diagnosing is known to have Telegram
+    # in AUTO using the customer's own Telegram account. Use that operational
+    # fingerprint only when it resolves to exactly one active researched project.
+    if not exact_name and len(telegram_auto) == 1:
+        project, product = telegram_auto[0]
+        return project, product, "UNIQUE_TELEGRAM_AUTO_CLIENT_OWNED"
 
     print(
         json.dumps(
             {
                 "status": "TARGET_NOT_UNIQUE",
                 "target_product_name": TARGET_PRODUCT_NAME,
-                "match_count": len(matches),
-                "project_ids": sorted(str(item[0].get("id")) for item in matches),
+                "exact_name_match_count": len(exact_name),
+                "telegram_auto_client_owned_match_count": len(telegram_auto),
+                "active_product_project_count": len(active),
             },
             sort_keys=True,
         )
     )
-    return None, None
+    return None, None, None
 
 
 async def _run() -> int:
     store = get_runtime_store()
-    project, product = _find_target_project()
-    if project is None or product is None:
+    project, product, target_selector = _find_target_project()
+    if project is None or product is None or target_selector is None:
         return 2
 
     try:
@@ -142,6 +176,8 @@ async def _run() -> int:
         "status": "COMPLETED",
         "read_only": True,
         "target_product_name": TARGET_PRODUCT_NAME,
+        "target_selector": target_selector,
+        "resolved_product_name": str(product.name or ""),
         "project_id": str(project.get("id")),
         "product_id": str(product.id),
         "project_status": str(project.get("status") or ""),
