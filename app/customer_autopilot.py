@@ -138,7 +138,7 @@ class CustomerAutopilotService:
                     raise ValueError(
                         "Partizan has not found an eligible execution opportunity "
                         "for the enabled Auto channels yet"
-                    )
+                    ) from None
             paid_auto = self._has_paid_auto_platform(auto_platforms)
             if paid_auto:
                 self._require_paid_destination(product_id)
