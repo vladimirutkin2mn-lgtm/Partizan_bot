@@ -13,12 +13,12 @@
   <link rel="stylesheet" href="/site/assets/landing.v1.css">
 </head>
 <body>
-  <header class="nav-wrap">
-    <nav class="nav shell" aria-label="Main navigation">
+  <header class="site-header">
+    <nav class="nav container nav-inner" aria-label="Main navigation">
       <a class="brand" href="/" aria-label="Partizan home">
-        <span class="brand-mark">p</span><strong>partizan<span>.</span></strong>
+        <span class="brandmark">p</span><strong>partizan<span class="brand-dot">.</span></strong>
       </a>
-      <div class="nav-links">
+      <div class="main-nav">
         <a href="#how">How it works</a>
         <a href="#channels">Channels</a>
         <a href="#pricing">Pricing</a>
@@ -29,27 +29,25 @@
   </header>
 
   <main>
-    <section class="hero shell">
+    <section class="hero container">
       <div class="hero-copy reveal">
-        <span class="eyebrow">An always-learning way to grow</span>
-        <h1>Get your product in front of the right people.</h1>
-        <p class="hero-lede">Partizan finds your audience, tests ways to reach them, and learns what works. You choose the channels. It keeps finding the next move.</p>
+        <span class="eyebrow-pill">✦ An always-learning way to grow</span>
+        <h1>Get your product in front<br class="desktop-break"> of <span>the right people.</span></h1>
+        <p class="hero-description">Partizan finds your audience, tests ways to reach them, and learns what works. You choose the channels. It keeps finding the next move.</p>
         <form id="hero-scan-form" class="hero-form">
           <label for="hero-product-link">Your product link</label>
           <div class="hero-form-row">
-            <input id="hero-product-link" type="text" inputmode="url" placeholder="yourproduct.com" aria-label="Your product link">
+            <input id="hero-product-link" type="text" inputmode="url" placeholder="Your website, app, or Telegram link" aria-label="Your product link">
             <button class="button button-primary" type="submit">Find my audience <span>→</span></button>
           </div>
         </form>
-        <div class="hero-note"><span>Free product analysis</span><i></i><span>No card required</span><i></i><a href="/start">No link yet? Describe your product</a></div>
+        <div class="hero-helper"><span>✓ Free product analysis</span><span>✓ No card required</span></div><a class="text-link" href="/start">No link yet? Describe your product →</a>
       </div>
-      <div class="channel-strip reveal">
-        <span>Find your audience across</span>
-        <div><b>Meta</b><b>Telegram</b><b>Reddit</b><b>Google Ads</b><b>TikTok</b></div>
-      </div>
+      <p class="platform-label">Find your audience across</p>
+      <div class="platforms reveal"><span>∞ Meta</span><span>➤ Telegram</span><span>◉ Reddit</span><span>G Google Ads</span><span>♪ TikTok</span></div>
     </section>
 
-    <section class="section shell example-section">
+    <section class="showcase-section container">
       <div class="section-copy reveal">
         <span class="eyebrow">One product. A clearer next move.</span>
         <h2>See where Partizan could take you.</h2>
@@ -80,7 +78,7 @@
       </div>
     </section>
 
-    <section class="section section-tinted">
+    <section class="pain-section"><div class="container">
       <div class="shell">
         <div class="section-copy reveal">
           <span class="eyebrow">The hard part after you ship</span>
@@ -91,10 +89,10 @@
           <article class="reveal"><span>02</span><h3>“Where should I even start?”</h3><p>Five possible channels. Limited time and budget. Start with a clear hypothesis about where to reach people.</p><strong>Pick a useful first move.</strong></article>
           <article class="reveal"><span>03</span><h3>“Can someone keep this going?”</h3><p>Every result should lead somewhere. Partizan uses what it learns to shape the next test.</p><strong>Keep learning as you grow.</strong></article>
         </div>
-      </div>
+      </div></div>
     </section>
 
-    <section id="how" class="section shell">
+    <section id="how" class="how-section container">
       <div class="section-copy reveal">
         <span class="eyebrow">From your product to your next customers</span>
         <h2>Show us what you built. Partizan takes it from there.</h2>
@@ -118,8 +116,8 @@
       </div>
     </section>
 
-    <section id="channels" class="section control-section">
-      <div class="shell control-layout">
+    <section id="channels" class="control-section">
+      <div class="container control-layout">
         <div class="section-copy reveal">
           <span class="eyebrow">Automation, on your terms</span>
           <h2>Partizan does the work. You keep the controls.</h2>
@@ -139,7 +137,7 @@
       </div>
     </section>
 
-    <section class="section shell learning-section">
+    <section class="learning-section container">
       <div class="section-copy reveal">
         <span class="eyebrow">It keeps learning</span>
         <h2>A first test is just the beginning.</h2>
@@ -151,8 +149,8 @@
       </div>
     </section>
 
-    <section id="pricing" class="section pricing-section">
-      <div class="shell pricing-layout">
+    <section id="pricing" class="pricing-section">
+      <div class="container pricing-layout">
         <div class="section-copy reveal">
           <span class="eyebrow">Start small. Learn as you go.</span>
           <h2>Your budget. A clear way forward.</h2>
@@ -174,7 +172,7 @@
       </div>
     </section>
 
-    <section id="faq" class="section shell faq-section">
+    <section id="faq" class="faq-section container">
       <div class="section-copy reveal">
         <span class="eyebrow">A few things you might be wondering</span>
         <h2>Good questions. Straight answers.</h2>
@@ -190,8 +188,8 @@
       </div>
     </section>
 
-    <section class="final-cta">
-      <div class="shell final-inner reveal">
+    <section class="final-cta container">
+      <div class="final-inner reveal">
         <span class="eyebrow">Your next move starts here</span>
         <h2>You’ve built something.<br>Let’s find its people.</h2>
         <p>One link. A clearer audience. A first move to explore.</p>
@@ -201,7 +199,7 @@
     </section>
   </main>
 
-  <footer class="footer shell">
+  <footer class="site-footer container">
     <div class="footer-brand"><a class="brand" href="/" aria-label="Partizan home"><span class="brand-mark">p</span><strong>partizan<span>.</span></strong></a><p>Customer acquisition that keeps learning.</p></div>
     <nav class="footer-links"><a href="#how">How it works</a><a href="#pricing">Pricing</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/security">Security</a><a href="/contact">Contact</a></nav>
     <div class="footer-meta"><span>© 2026 Partizan Labs</span></div>
