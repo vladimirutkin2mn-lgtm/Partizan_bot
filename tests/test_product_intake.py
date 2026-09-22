@@ -32,6 +32,34 @@ class ScriptedProvider(LLMProvider):
         return response_model.model_validate(self.responses.pop(0))
 
 
+class FailingProvider(LLMProvider):
+    async def parse(
+        self,
+        messages: list[LLMMessage],
+        response_model: type[StructuredModelT],
+    ) -> StructuredModelT:
+        raise ConnectionError("provider unavailable")
+
+
+@pytest.mark.asyncio
+async def test_agent_falls_back_when_structured_provider_fails() -> None:
+    analysis = await ProductIntakeAgent(FailingProvider()).analyze(
+        brief=(
+            "Product: Pulse\n"
+            "Description: Analytics assistant for startup teams.\n"
+            "Problem: Teams struggle to understand metrics quickly.\n"
+            "Market: US\n"
+            "Goal: Acquire paid users"
+        ),
+        reference_links=[],
+    )
+
+    assert analysis.name
+    assert analysis.description
+    assert analysis.market == "US"
+    assert analysis.goal == "Acquire paid users"
+
+
 @pytest.mark.asyncio
 async def test_agent_extracts_structured_profile() -> None:
     provider = ScriptedProvider([{
