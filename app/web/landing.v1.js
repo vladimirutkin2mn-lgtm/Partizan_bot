@@ -4,7 +4,7 @@
   const updateAccountEntry = async () => {
     if (!accountLink) return;
     try {
-      const response = await fetch('/customer/account/me', { method:'GET', credentials:'same-origin', cache:'no-store', headers:{Accept:'application/json'} });
+      const response = await fetch('/customer/account/me', { method:'GET', credentials: 'same-origin', cache: 'no-store', headers:{Accept:'application/json'} });
       if (!response.ok) return;
       accountLink.textContent = 'Open workspace';
       accountLink.dataset.authenticated = 'true';
@@ -21,8 +21,8 @@
     event.preventDefault();
     const query = new URLSearchParams();
     query.set('budget', String(defaultBudget));
-    const product = heroProductLink?.value.trim();
-    if (product) query.set('product', product);
+    const productLink = heroProductLink?.value.trim();
+    if (productLink) query.set('product', productLink);
     window.location.assign(startDestination(query));
   });
   document.querySelectorAll('a[href^="/start"]').forEach((link) => link.addEventListener('click', (event) => {
