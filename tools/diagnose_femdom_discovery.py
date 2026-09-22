@@ -11,7 +11,10 @@ from app.audience_intelligence_service import (
     AUDIENCE_MAP_NAMESPACE,
     audience_intelligence_service,
 )
+from app.customer_channels import customer_channel_service
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
+from app.distribution_types import DistributionPlatform
+from app.telegram_client_publishing import customer_telegram_client_publish_service
 from app.growth_balance import GROWTH_BALANCE_TOPUP_NAMESPACE
 from app.icp_service import icp_service
 from app.platform_discovery import TelegramDiscoveryAdapter
@@ -172,6 +175,10 @@ async def _run() -> int:
     existing_map = _safe_existing_map(store, product.id)
 
     intake_state = product_intake_service.get_state(product.id)
+    effective_preferences = customer_channel_service._preferences(project)
+    effective_publisher_modes = customer_channel_service._publisher_modes(project)
+    autonomous_platforms = customer_channel_service.autonomous_platforms(project)
+    project_uuid = UUID(str(project.get("id")))
     paid_funding_cents = sum(
         int(item.get("amount_cents") or 0)
         for item in store.list_namespace(GROWTH_BALANCE_TOPUP_NAMESPACE)
@@ -226,6 +233,22 @@ async def _run() -> int:
                 "autopilot_target_max_cac": project.get("autopilot_target_max_cac"),
                 "autopilot_pause_reason": project.get("autopilot_pause_reason"),
                 "paid_growth_balance_usd": round(paid_funding_cents / 100, 2),
+                "effective_channel_preferences": {
+                    platform.value: mode
+                    for platform, mode in effective_preferences.items()
+                },
+                "effective_telegram_publisher_mode": (
+                    effective_publisher_modes[DistributionPlatform.TELEGRAM].value
+                ),
+                "autonomous_platforms": [
+                    platform.value for platform in autonomous_platforms
+                ],
+                "telegram_client_connected": (
+                    customer_telegram_client_publish_service.is_connected(project_uuid)
+                ),
+                "telegram_publish_readiness_blocker": (
+                    customer_telegram_client_publish_service.readiness_blocker()
+                ),
                 "existing_map": existing_map,
             },
             sort_keys=True,
