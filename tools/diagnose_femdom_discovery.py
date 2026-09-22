@@ -13,6 +13,7 @@ from app.audience_intelligence_service import (
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
 from app.growth_balance import GROWTH_BALANCE_TOPUP_NAMESPACE
 from app.icp_service import icp_service
+from app.platform_discovery import TelegramDiscoveryAdapter
 from app.product_intake import product_intake_service
 from app.runtime_store import get_runtime_store
 from app.search import get_search_provider
@@ -152,7 +153,7 @@ async def _run() -> int:
         )
         return 3
 
-    top_icps = list(icp_result.icps[:3])
+    top_icps = list(icp_result.icps[:1])
     if not top_icps:
         print(
             json.dumps(
@@ -174,8 +175,17 @@ async def _run() -> int:
     # query-building, normalization and native-enrichment path, but does NOT
     # persist a new audience map/opportunities and cannot itself create a play
     # or publish anything.
-    engine = AudienceIntelligenceEngine(get_search_provider())
-    seeds = await engine.discover(product=product, icps=top_icps)
+    engine = AudienceIntelligenceEngine(
+        get_search_provider(),
+        max_concurrency=1,
+        adapters=[TelegramDiscoveryAdapter()],
+    )
+    seeds = await engine.discover(
+        product=product,
+        icps=top_icps,
+        per_query_limit=5,
+        max_opportunities=10,
+    )
 
     diagnostics = audience_intelligence_service._diagnostics(engine)
     by_platform = Counter(item.platform.value for item in seeds)
