@@ -42,3 +42,10 @@
 /* Simplified Home keeps continuous testing inside Results. */
 .ar-overview{display:none!important}
 #autoresearch-results-open{margin-left:auto}
+
+
+/* HANDOFF FINAL PARITY */
+#activation-progress{display:none!important}
+.ws-recent .activity-list>div{padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important}
+.ws-recent .activity-list>div strong{font-weight:450!important;font-size:15px!important;color:#516957!important}
+.ws-recent .activity-list>div span{font-size:14px!important;color:#94a093!important;margin-top:5px!important;line-height:1.6!important}
