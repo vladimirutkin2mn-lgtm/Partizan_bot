@@ -36,11 +36,13 @@ class InMemoryAudienceIntelligenceService:
             DistributionOpportunityView(id=uuid4(), **seed.model_dump())
             for seed in seeds
         ]
+        diagnostics = self._diagnostics(engine)
         response = AudienceDistributionMapView(
             product_id=product.id,
             top_icp_count=len(top_icps),
             opportunity_count=len(opportunities),
             opportunities=opportunities,
+            diagnostics=diagnostics,
         )
         self._results[product.id] = response
         self._persist_map(response)
@@ -48,6 +50,66 @@ class InMemoryAudienceIntelligenceService:
             self._opportunities[opportunity.id] = opportunity
             self._persist_opportunity(opportunity)
         return response
+
+    @staticmethod
+    def _diagnostics(engine: AudienceIntelligenceEngine) -> dict:
+        attempts = engine.last_attempts
+        by_platform: dict[str, dict[str, int]] = {}
+        for attempt in attempts:
+            key = attempt.platform.value
+            bucket = by_platform.setdefault(
+                key,
+                {
+                    "queries": 0,
+                    "search_hits": 0,
+                    "normalized_candidates": 0,
+                    "enriched_candidates": 0,
+                    "search_errors": 0,
+                    "enrichment_errors": 0,
+                },
+            )
+            bucket["queries"] += 1
+            bucket["search_hits"] += attempt.search_hit_count
+            bucket["normalized_candidates"] += attempt.normalized_candidate_count
+            bucket["enriched_candidates"] += attempt.enriched_candidate_count
+            if attempt.search_error_type is not None:
+                bucket["search_errors"] += 1
+            if attempt.enrichment_error_type is not None:
+                bucket["enrichment_errors"] += 1
+
+        search_error_types = sorted(
+            {
+                attempt.search_error_type
+                for attempt in attempts
+                if attempt.search_error_type is not None
+            }
+        )
+        enrichment_error_types = sorted(
+            {
+                attempt.enrichment_error_type
+                for attempt in attempts
+                if attempt.enrichment_error_type is not None
+            }
+        )
+        return {
+            "query_count": len(attempts),
+            "search_hit_count": sum(item.search_hit_count for item in attempts),
+            "normalized_candidate_count": sum(
+                item.normalized_candidate_count for item in attempts
+            ),
+            "enriched_candidate_count": sum(
+                item.enriched_candidate_count for item in attempts
+            ),
+            "search_error_count": sum(
+                item.search_error_type is not None for item in attempts
+            ),
+            "enrichment_error_count": sum(
+                item.enrichment_error_type is not None for item in attempts
+            ),
+            "search_error_types": search_error_types,
+            "enrichment_error_types": enrichment_error_types,
+            "platforms": by_platform,
+        }
 
     def get(self, product_id: UUID) -> AudienceDistributionMapView:
         cached = self._results.get(product_id)
