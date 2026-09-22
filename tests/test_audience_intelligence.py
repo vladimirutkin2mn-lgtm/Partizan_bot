@@ -56,6 +56,10 @@ async def test_service_persists_zero_execution_opportunities_as_valid_research(
     monkeypatch,
 ) -> None:
     class EmptyEngine:
+        @property
+        def last_attempts(self):
+            return []
+
         async def discover(self, product, icps):
             del product, icps
             return []
@@ -82,6 +86,41 @@ async def test_service_persists_zero_execution_opportunities_as_valid_research(
     hydrated = service.get(product.id)
     assert hydrated.opportunity_count == 0
     assert hydrated.opportunities == []
+
+
+class FailingSearchProvider(SearchProvider):
+    async def search(self, discovery_query: DiscoveryQuery, limit: int = 5) -> list[SearchHit]:
+        del discovery_query, limit
+        raise TimeoutError("search timed out")
+
+
+@pytest.mark.asyncio
+async def test_discovery_records_search_attempt_diagnostics() -> None:
+    product = SimpleNamespace(market="US", language="English")
+    engine = AudienceIntelligenceEngine(PlatformAwareSearchProvider())
+
+    opportunities = await engine.discover(product, [_icp()])
+    attempts = engine.last_attempts
+
+    assert opportunities
+    assert attempts
+    assert sum(item.search_hit_count for item in attempts) > 0
+    assert sum(item.normalized_candidate_count for item in attempts) > 0
+    assert all(item.search_error_type is None for item in attempts)
+
+
+@pytest.mark.asyncio
+async def test_discovery_records_provider_failure_types_without_raising() -> None:
+    product = SimpleNamespace(market="US", language="English")
+    engine = AudienceIntelligenceEngine(FailingSearchProvider())
+
+    opportunities = await engine.discover(product, [_icp()])
+
+    assert opportunities == []
+    assert engine.last_attempts
+    assert all(item.search_hit_count == 0 for item in engine.last_attempts)
+    assert all(item.search_error_type == "TimeoutError" for item in engine.last_attempts)
+    assert {item.error_type for item in engine.last_failures} == {"TimeoutError"}
 
 
 @pytest.mark.asyncio

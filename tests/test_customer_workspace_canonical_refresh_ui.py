@@ -99,3 +99,11 @@ def test_needs_input_uses_answer_form_instead_of_misleading_continue_research_bu
     assert 'id="clarification-answer"' in WORKSPACE_JS
     assert "/clarifications" in WORKSPACE_JS
     assert "$('research-button').classList.toggle('hidden', hasPersistedClarification);" in WORKSPACE_JS
+
+
+def test_workspace_shows_audience_discovery_diagnostics() -> None:
+    assert 'research-diagnostics' in WORKSPACE_HTML
+    assert "renderResearchDiagnostics(data.research_diagnostics)" in WORKSPACE_JS
+    assert "Discovery diagnostic:" in WORKSPACE_JS
+    assert "no cited sources that cleared the evidence bar" in WORKSPACE_JS
+    assert "none normalized into a valid execution-platform target" in WORKSPACE_JS

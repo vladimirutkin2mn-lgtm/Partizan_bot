@@ -48,6 +48,7 @@ class AudienceDistributionMapView(BaseModel):
     top_icp_count: int = Field(ge=1)
     opportunity_count: int = Field(ge=0)
     opportunities: list[DistributionOpportunityView] = Field(default_factory=list)
+    diagnostics: dict = Field(default_factory=dict)
 
 
 class DistributionIdentityView(BaseModel):
