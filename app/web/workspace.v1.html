@@ -29,7 +29,7 @@
 <body>
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
   <header class="top shell">
-    <a class="brand" href="/"><span class="mark">P</span><span><strong>Partizan</strong><small>Workspace</small></span></a>
+    <a class="brand" href="/"><span class="mark">p</span><span><strong>partizan<span class="brand-dot">.</span></strong><small>Your growth</small></span></a>
     <div id="account-nav" class="account-nav hidden">
       <select id="project-switcher" class="project-switcher hidden" aria-label="Partizan project"></select>
       <span id="account-email"></span>
@@ -69,10 +69,11 @@
       </nav>
 
       <section class="tab-panel" data-tab-panel="overview">
-        <section class="hero-card panel compact-hero">
-          <div>
-            <span class="eyebrow">Customer acquisition</span>
-            <h1 id="workspace-status">Partizan is getting ready.</h1>
+        <section class="growth-head">
+          <div class="growth-title">
+            <span class="eyebrow">Your growth</span>
+            <h1>Your growth</h1>
+            <p id="workspace-status" class="growth-status">Partizan is getting ready.</p>
             <p id="workspace-summary" class="lede hidden" aria-hidden="true"></p>
             <div class="project-line"><span id="project-market">—</span><i></i><span id="project-goal">—</span></div>
           </div>
@@ -84,7 +85,7 @@
 
         <section id="activation-card" class="panel activation-card hidden">
           <div class="activation-head">
-            <div><span class="eyebrow">Get started</span><h2 id="activation-heading">Let's find your first users.</h2></div>
+            <div><span class="eyebrow">For your review</span><h2 id="activation-heading">Your next move</h2></div>
             <span id="activation-progress" class="status-pill">2 of 6</span>
           </div>
           <p id="activation-copy" class="section-copy">You should not have to choose a marketing channel or configure a campaign first. Partizan starts from your product, researches where people may already be and recommends the next useful move.</p>
@@ -114,9 +115,9 @@
           <article id="growth-balance-metric" class="growth-balance-metric">
             <div class="growth-balance-metric-main">
               <div class="growth-balance-value">
-                <span>Acquisition budget</span>
+                <span>Budget left</span>
                 <strong id="metric-balance">$0</strong>
-                <small>available</small>
+                <small>ready for the next useful move</small>
               </div>
               <button id="overview-fund-button" class="button button-primary growth-balance-cta" type="button" aria-describedby="overview-balance-benefit">
                 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7.5h14.5A1.5 1.5 0 0 1 20 9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18V7.5Zm0 0V6a1.5 1.5 0 0 1 1.5-1.5H16"/><path d="M15.5 12h4.5v4h-4.5a2 2 0 1 1 0-4Z"/></svg>
@@ -126,9 +127,9 @@
             </div>
             <div id="overview-balance-benefit" class="growth-balance-benefit"><i aria-hidden="true">✦</i><span>Fund a recommended paid test when needed</span></div>
           </article>
-          <article><span>Acquisition spend</span><strong id="metric-spend">$0</strong><small>across channels</small></article>
-          <article><span>Customers</span><strong id="metric-customers">0</strong><small>paid customers</small></article>
-          <article><span>CAC</span><strong id="metric-cac">—</strong><small>blended cost</small></article>
+          <article class="metric-spend-card"><span>Spent on growth</span><strong id="metric-spend">$0</strong><small>across allowed channels</small></article>
+          <article class="metric-customers-card"><span>Paying customers</span><strong id="metric-customers">0</strong><small>measured so far</small></article>
+          <article class="metric-cac-card"><span>CAC</span><strong id="metric-cac">—</strong><small>blended cost</small></article>
         </section>
 
         <section id="performance-overview" class="overview-grid">
