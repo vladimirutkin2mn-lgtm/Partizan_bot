@@ -295,6 +295,21 @@ async def _run() -> int:
             "title": item.title,
             "url": str(item.url),
             "relevance_score": item.relevance_score,
+            "native_research_status": str(
+                item.metadata.get("native_research_status") or ""
+            ),
+            "telegram_entity_id_present": bool(
+                item.metadata.get("telegram_entity_id")
+            ),
+            "action_target_url": (
+                str(item.metadata.get("action_target_url"))
+                if item.metadata.get("action_target_url")
+                else None
+            ),
+            "action_target_specific": bool(
+                item.metadata.get("action_target_specific")
+            ),
+            "surface_capabilities": item.metadata.get("surface_capabilities") or {},
         }
         for item in seeds[:8]
     ]
