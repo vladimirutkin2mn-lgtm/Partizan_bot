@@ -171,6 +171,7 @@ async def _run() -> int:
 
     existing_map = _safe_existing_map(store, product.id)
 
+    # Post-PR-397 production rerun.
     # Intentionally execute the same Telegram discovery stages one-by-one.
     # This remains read-only but makes stage failures explicit instead of
     # collapsing them into one top-level exception.
