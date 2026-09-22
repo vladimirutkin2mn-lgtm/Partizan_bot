@@ -169,6 +169,91 @@ async def _run() -> int:
 
     existing_map = _safe_existing_map(store, product.id)
 
+    # One bounded provider probe after the full diagnostic established that every
+    # discovery request failed with RateLimitError. Capture only non-sensitive
+    # 429 classification/rate-limit headers; do not print provider payloads.
+    probe_provider = get_search_provider()
+    probe_engine = AudienceIntelligenceEngine(probe_provider)
+    probe_requests = probe_engine.build_queries(product, top_icps[0])
+    if not probe_requests:
+        print(json.dumps({"status": "NO_PROBE_QUERY", "read_only": True}, sort_keys=True))
+        return 5
+
+    probe = probe_requests[0]
+    try:
+        probe_hits = await probe_provider.search(probe.discovery_query, limit=1)
+    except Exception as exc:
+        body = getattr(exc, "body", None)
+        error_body = body.get("error", body) if isinstance(body, dict) else {}
+        response = getattr(exc, "response", None)
+        headers = getattr(response, "headers", {}) or {}
+        safe_header_names = (
+            "retry-after",
+            "x-ratelimit-limit-requests",
+            "x-ratelimit-remaining-requests",
+            "x-ratelimit-reset-requests",
+            "x-ratelimit-limit-tokens",
+            "x-ratelimit-remaining-tokens",
+            "x-ratelimit-reset-tokens",
+        )
+        safe_headers = {
+            name: str(headers.get(name))
+            for name in safe_header_names
+            if headers.get(name) is not None
+        }
+        print(
+            json.dumps(
+                {
+                    "status": "PROBE_COMPLETED",
+                    "read_only": True,
+                    "target_product_name": TARGET_PRODUCT_NAME,
+                    "target_selector": target_selector,
+                    "project_id": str(project.get("id")),
+                    "product_id": str(product.id),
+                    "probe": {
+                        "query_count": 1,
+                        "hit_count": 0,
+                        "error_type": type(exc).__name__,
+                        "status_code": getattr(exc, "status_code", None),
+                        "provider_error_code": (
+                            error_body.get("code") if isinstance(error_body, dict) else None
+                        ),
+                        "provider_error_type": (
+                            error_body.get("type") if isinstance(error_body, dict) else None
+                        ),
+                        "provider_error_param": (
+                            error_body.get("param") if isinstance(error_body, dict) else None
+                        ),
+                        "rate_limit_headers": safe_headers,
+                    },
+                    "existing_map": existing_map,
+                },
+                sort_keys=True,
+            )
+        )
+        return 0
+
+    print(
+        json.dumps(
+            {
+                "status": "PROBE_COMPLETED",
+                "read_only": True,
+                "target_product_name": TARGET_PRODUCT_NAME,
+                "target_selector": target_selector,
+                "project_id": str(project.get("id")),
+                "product_id": str(product.id),
+                "probe": {
+                    "query_count": 1,
+                    "hit_count": len(probe_hits),
+                    "error_type": None,
+                },
+                "existing_map": existing_map,
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
     # Intentionally instantiate the engine directly instead of calling
     # audience_intelligence_service.discover(). This performs the same provider,
     # query-building, normalization and native-enrichment path, but does NOT
