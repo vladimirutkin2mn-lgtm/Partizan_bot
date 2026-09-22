@@ -53,8 +53,3 @@
     padding-inline: 10px;
   }
 }
-
-/* 2026 light product refresh */
-.nav-account-link{color:#435044}
-.nav-account-link:hover{color:#172118;background:#f0f4ed}
-.nav-account-link[data-authenticated="true"]{color:#527f17}

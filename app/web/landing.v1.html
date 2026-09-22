@@ -3,206 +3,284 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
-  <title>Partizan — customer acquisition that keeps learning</title>
-  <meta name="description" content="Partizan finds your audience, tests ways to reach them, and learns what works. You choose the channels. It keeps finding the next move.">
-  <meta name="theme-color" content="#f4f5f0">
-  <meta property="og:title" content="Get your product in front of the right people.">
-  <meta property="og:description" content="Partizan finds your audience, tests ways to reach them, and learns what works.">
+  <meta name="color-scheme" content="dark">
+  <title>Partizan — you built the product, now find the customers</title>
+  <meta name="description" content="You built the product. Partizan helps you figure out where to find the first users — even if you do not know marketing and only have $10 to start.">
+  <meta name="theme-color" content="#090b0f">
+  <meta property="og:title" content="You built the product. Now find the customers.">
+  <meta property="og:description" content="You do not need to learn marketing first. Show Partizan what you built and it helps you figure out where to start.">
   <meta property="og:type" content="website">
   <link rel="stylesheet" href="/site/assets/landing.v1.css">
 </head>
 <body>
-  <header class="site-header">
-    <nav class="nav container nav-inner" aria-label="Main navigation">
+  <div class="site-noise" aria-hidden="true"></div>
+  <div class="orb orb-a" aria-hidden="true"></div>
+  <div class="orb orb-b" aria-hidden="true"></div>
+
+  <header class="nav-wrap">
+    <nav class="nav shell" aria-label="Main navigation">
       <a class="brand" href="/" aria-label="Partizan home">
-        <span class="brandmark">p</span><strong>partizan<span class="brand-dot">.</span></strong>
+        <span class="brand-mark">P</span>
+        <span class="brand-copy"><strong>Partizan</strong><small>Customer acquisition</small></span>
       </a>
-      <div class="main-nav">
+      <div class="nav-links">
         <a href="#how">How it works</a>
-        <a href="#channels">Channels</a>
+        <a href="#results">Results</a>
         <a href="#pricing">Pricing</a>
-        <a href="#faq">FAQs</a>
+        <a href="#safety">Safety</a>
       </div>
       <a class="button button-nav" href="/start">Analyze my product <span>↗</span></a>
     </nav>
   </header>
 
   <main>
-    <section class="hero container">
+    <section class="hero shell hero-p0">
       <div class="hero-copy reveal">
-        <span class="eyebrow-pill">✦ An always-learning way to grow</span>
-        <h1>Get your product in front<br class="desktop-break"> of <span>the right people.</span></h1>
-        <p class="hero-description">Partizan finds your audience, tests ways to reach them, and learns what works. You choose the channels. It keeps finding the next move.</p>
-        <form id="hero-scan-form" class="hero-form">
-          <label for="hero-product-link">Your product link</label>
-          <div class="hero-form-row">
-            <input id="hero-product-link" type="text" inputmode="url" placeholder="Your website, app, or Telegram link" aria-label="Your product link">
-            <button class="button button-primary" type="submit">Find my audience <span>→</span></button>
-          </div>
+        <div class="eyebrow"><span class="pulse-dot"></span> For solo founders and small teams who built a product but do not know marketing yet</div>
+        <h1>You built the product.<br><em>Now find the customers.</em></h1>
+        <p class="hero-lede">Show Partizan what you built. A website, app, bot or even a short description is enough to start. It understands the product first, then figures out where to find users.</p>
+        <form id="hero-scan-form" class="hero-scan-form">
+          <label class="sr-only" for="hero-product-link">Your product link</label>
+          <input id="hero-product-link" type="text" inputmode="url" placeholder="Website, app, bot or product link" aria-label="Your product link">
+          <button class="button button-primary" type="submit">Analyze my product <span>→</span></button>
         </form>
-        <div class="hero-helper"><span>✓ Free product analysis</span><span>✓ No card required</span></div><a class="text-link" href="/start">No link yet? Describe your product →</a>
+        <div class="hero-actions hero-secondary-actions">
+          <a class="text-link" href="#how">See how it works <span>↓</span></a>
+        </div>
+        <p class="hero-no-card">Start free · No card required · No public link? Describe what you built instead.</p>
       </div>
-      <p class="platform-label">Find your audience across</p>
-      <div class="platforms reveal"><span>∞ Meta</span><span>➤ Telegram</span><span>◉ Reddit</span><span>G Google Ads</span><span>♪ TikTok</span></div>
     </section>
 
-    <section class="showcase-section container">
-      <div class="section-copy reveal">
-        <span class="eyebrow">One product. A clearer next move.</span>
-        <h2>See where Partizan could take you.</h2>
-        <p>One product in. A specific audience, message and place to start out.</p>
-      </div>
-      <div class="scenario-tabs reveal" role="tablist" aria-label="Example products">
-        <button class="scenario-tab active" type="button" data-scenario="telegram">Telegram bot</button>
-        <button class="scenario-tab" type="button" data-scenario="saas">SaaS</button>
-        <button class="scenario-tab" type="button" data-scenario="store">Online store</button>
-      </div>
-      <div class="workspace-demo reveal">
-        <div class="demo-top">
-          <a class="demo-brand" href="#" tabindex="-1"><span>p</span><strong>partizan.</strong></a>
-          <nav><b>Next move</b><span>Audience</span><span>Channels</span><span>Learnings</span></nav>
-        </div>
-        <div class="demo-body">
-          <div class="demo-head">
-            <div><span class="eyebrow">Your growth workspace</span><h3 id="demo-product">Daily English</h3><p id="demo-meta">Telegram bot · Example project</p></div>
-            <span class="demo-pill">First hypothesis</span>
+    <section class="section shell founder-problem density-tier-2">
+      <div class="founder-problem-layout">
+        <div class="problem-copy reveal">
+          <span class="kicker">The problem after you ship</span>
+          <h2>Building was only half the job.</h2>
+          <p>You built the product. Partizan helps answer the next three questions without making you learn every marketing channel first.</p>
+          <div class="problem-points">
+            <div><span>01</span><strong>Where do I find users?</strong></div>
+            <div><span>02</span><strong>Do I need ads?</strong></div>
+            <div><span>03</span><strong>What should I try first?</strong></div>
           </div>
-          <div class="hypothesis-grid">
-            <article><span>Who to reach</span><strong id="demo-audience">Busy adults who want a daily English habit.</strong><p id="demo-audience-copy">They want to practise speaking, but a full course rarely fits their day.</p><small id="demo-audience-tag">Language-learning audiences</small></article>
-            <article class="quote-card"><span>What to say</span><blockquote id="demo-message">“Five minutes of speaking. Right inside Telegram.”</blockquote><p>A specific promise to test.</p></article>
-            <article><span>Where to start</span><strong id="demo-channel">Telegram + Meta</strong><p id="demo-action">Test a five-minute speaking message with language-learning audiences.</p><button class="button button-soft" type="button">Explore this plan <span>→</span></button></article>
+        </div>
+        <div class="builder-flow reveal delay-1" aria-label="Partizan acquisition flow">
+          <div><span>Your product</span><strong>What you already built</strong></div>
+          <i>→</i>
+          <div class="builder-flow-core"><span>Partizan</span><strong>Figures out where to start</strong></div>
+          <i>→</i>
+          <div><span>Customer paths</span><strong>Communities · creators · search · paid · outreach</strong></div>
+          <i>→</i>
+          <div><span>Real signals</span><strong>Visits · signups · paying customers</strong></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="budget-story" class="section shell budget-story density-tier-2">
+      <div class="budget-story-layout">
+        <div class="budget-story-copy reveal">
+          <span class="kicker">Start with what you have</span>
+          <h2>Start with what you have.</h2>
+          <div class="budget-levels" aria-label="Example starting budgets">
+            <span class="active">$10</span><span>$50</span><span>$100</span><span>$500</span>
           </div>
-          <p class="demo-disclaimer">Example scenarios show the workflow. They are not customer results or live recommendations.</p>
+          <p>Partizan adapts the first move to the budget you actually have.</p>
+        </div>
+        <div class="anti-waste-panel reveal delay-1">
+          <span class="mini-kicker">Anti-waste principle</span>
+          <h3>Sometimes the best first move costs $0.</h3>
+          <p><strong>Partizan may tell you not to run ads yet.</strong> It may recommend communities, creators, directories or direct outreach before spending anything on ads.</p>
         </div>
       </div>
     </section>
 
-    <section class="pain-section"><div class="container">
-      <div class="shell">
-        <div class="section-copy reveal">
-          <span class="eyebrow">The hard part after you ship</span>
-          <h2>A great product. Now, where are the customers?</h2>
-        </div>
-        <div class="problem-grid">
-          <article class="reveal"><span>01</span><h3>“Who actually needs this?”</h3><p>Move from a broad idea of your audience to specific people, problems, and reasons to buy.</p><strong>Find the audience worth testing.</strong></article>
-          <article class="reveal"><span>02</span><h3>“Where should I even start?”</h3><p>Five possible channels. Limited time and budget. Start with a clear hypothesis about where to reach people.</p><strong>Pick a useful first move.</strong></article>
-          <article class="reveal"><span>03</span><h3>“Can someone keep this going?”</h3><p>Every result should lead somewhere. Partizan uses what it learns to shape the next test.</p><strong>Keep learning as you grow.</strong></article>
-        </div>
-      </div></div>
-    </section>
-
-    <section id="how" class="how-section container">
-      <div class="section-copy reveal">
-        <span class="eyebrow">From your product to your next customers</span>
-        <h2>Show us what you built. Partizan takes it from there.</h2>
+    <section id="results" class="section shell research-proof">
+      <div class="section-intro reveal">
+        <span class="kicker">Research proof</span>
+        <h2>See what Partizan actually finds.</h2>
+        <p>This example uses real public-web sources for the same kind of product. The structure mirrors what Partizan keeps in the workspace: where the audience is, why it matters, the evidence and what can actually happen next. Research evidence is not conversion evidence.</p>
       </div>
-      <div class="steps-stack">
-        <article class="step-card reveal">
-          <div class="step-number">01 <span>/ Understand</span></div>
-          <div><h3>Starts with your product. Finds who it’s for.</h3><p>Share a link or describe what you do. Partizan explores the problem you solve and the audiences most likely to care.</p></div>
-          <div class="step-detail"><span>Your website, app, or bot</span><strong>What you offer</strong><span>A clear customer benefit</span><strong>Who needs it</strong><span>Specific audience hypotheses</span><strong>Why they care</strong><span>A problem worth solving</span></div>
+      <div class="research-proof-grid">
+        <article class="research-opportunity reveal">
+          <div class="proof-card-head"><span class="proof-type">Community</span><span class="proof-status assisted">Assisted</span></div>
+          <h3>r/Freelancers</h3>
+          <p class="proof-rationale">Freelancers publicly describe bookkeeping, reconciliation and tax admin as time-consuming work they would rather avoid.</p>
+          <div class="proof-evidence"><span>Evidence</span><a href="https://www.reddit.com/r/Freelancers/comments/1tio2mo/bookkeeping_for_a_small_business_is_harder_than_i/" target="_blank" rel="noopener noreferrer">Recent bookkeeping discussion ↗</a></div>
+          <div class="proof-action"><span>Partizan would propose</span><strong>Test a helpful community angle around reducing finance admin.</strong></div>
         </article>
-        <article class="step-card reveal">
-          <div class="step-number">02 <span>/ Reach</span></div>
-          <div><h3>Finds a place to start. Prepares the next test.</h3><p>Audience, channel, message. Partizan puts the pieces together and works within the channels and budget you allow.</p></div>
-          <div class="experiment-card"><span>Example experiment</span><h4>A five-minute daily habit</h4><p>Reach English learners with one simple promise they can try today.</p><div><b>Audience: busy adults</b><b>Goal: first lesson</b><b>Channel selected by you</b></div></div>
+        <article class="research-opportunity reveal delay-1">
+          <div class="proof-card-head"><span class="proof-type">Creator</span><span class="proof-status assisted">Assisted</span></div>
+          <h3>Gabrielle Talks Money</h3>
+          <p class="proof-rationale">A CPA-led creator audience already consumes content about sole-proprietor bookkeeping and taxes — a strong audience-overlap signal for this product.</p>
+          <div class="proof-evidence"><span>Evidence</span><a href="https://www.youtube.com/watch?v=iEwkd2FM1bQ" target="_blank" rel="noopener noreferrer">Bookkeeping & tax content ↗</a></div>
+          <div class="proof-action"><span>Partizan would propose</span><strong>Prepare a creator outreach or small sponsored-test brief.</strong></div>
         </article>
-        <article class="step-card reveal">
-          <div class="step-number">03 <span>/ Improve</span></div>
-          <div><h3>Every result informs what happens next.</h3><p>Partizan follows the outcomes your product measures. It refines the audience, the message, and the next channel experiment.</p></div>
-          <div class="learning-loop"><span>The learning loop</span><ol><li><b>01</b> Form a hypothesis</li><li><b>02</b> Run an allowed test</li><li><b>03</b> Measure what happened</li><li><b>04</b> Refine the next move</li></ol></div>
+        <article class="research-opportunity reveal delay-2">
+          <div class="proof-card-head"><span class="proof-type">Search / SEO</span><span class="proof-status research">Research only</span></div>
+          <h3>“freelancer bookkeeping + taxes”</h3>
+          <p class="proof-rationale">Recurring public questions around bookkeeping, accounting and 1099 taxes reveal a concrete problem/search cluster worth researching before any paid-search integration exists.</p>
+          <div class="proof-evidence"><span>Evidence</span><a href="https://www.reddit.com/r/Freelancers/comments/1uvqhbp/taxes/" target="_blank" rel="noopener noreferrer">Recent tax-intent discussion ↗</a></div>
+          <div class="proof-action"><span>Partizan would propose</span><strong>Research a content/search test. No automatic publishing is implied.</strong></div>
         </article>
       </div>
+      <p class="research-proof-note">Public research can tell Partizan what is worth testing. Only measured visits, signups, paid customers and spend can tell it what won.</p>
+      <a class="button button-secondary proof-start-cta" href="/start">Analyze my product <span>→</span></a>
     </section>
 
-    <section id="channels" class="control-section">
-      <div class="container control-layout">
-        <div class="section-copy reveal">
-          <span class="eyebrow">Automation, on your terms</span>
-          <h2>Partizan does the work. You keep the controls.</h2>
-          <p>Keep the channels you want. Switch off the ones you don’t. Partizan adapts its next move to your choices.</p>
-          <ul class="control-points"><li>Choose from five marketing channels.</li><li>Set the acquisition budget.</li><li>Change direction when you need to.</li></ul>
-        </div>
-        <div class="control-demo reveal">
-          <div class="control-demo-head"><span>Where should Partizan work?</span><small>Interactive example</small></div>
-          <label class="channel-toggle"><div><strong>Meta</strong><small>Instagram & Facebook</small></div><span class="toggle-copy">On</span><input type="checkbox" checked data-channel="Meta"><i></i><b>Allow Meta</b></label>
-          <label class="channel-toggle"><div><strong>Telegram</strong><small>Interest-led audiences</small></div><span class="toggle-copy">On</span><input type="checkbox" checked data-channel="Telegram"><i></i><b>Allow Telegram</b></label>
-          <label class="channel-toggle"><div><strong>Reddit</strong><small>People with a shared problem</small></div><span class="toggle-copy">Off</span><input type="checkbox" data-channel="Reddit"><i></i><b>Allow Reddit</b></label>
-          <label class="channel-toggle"><div><strong>Google Ads</strong><small>People searching for a solution</small></div><span class="toggle-copy">On</span><input type="checkbox" checked data-channel="Google Ads"><i></i><b>Allow Google Ads</b></label>
-          <label class="channel-toggle"><div><strong>TikTok</strong><small>Discovery through short-form content</small></div><span class="toggle-copy">Off</span><input type="checkbox" data-channel="TikTok"><i></i><b>Allow TikTok</b></label>
-          <div class="next-channel"><span>Next channel to explore</span><strong id="next-channel-name">Telegram</strong><p id="next-channel-copy">Prepare a telegram bot audience test on Telegram.</p></div>
-          <p class="control-note">You choose where Partizan can look and test.</p>
+    <section class="trust-strip">
+      <div class="shell trust-inner">
+        <span>Research across</span>
+        <div class="ticker" aria-label="Acquisition surfaces Partizan can research">
+          <b>Meta Ads</b><b>TikTok</b><b>Reddit</b><b>Telegram</b><b>Creators</b><b>Communities</b><b>Outbound</b><b>Partnerships</b>
         </div>
       </div>
     </section>
 
-    <section class="learning-section container">
-      <div class="section-copy reveal">
-        <span class="eyebrow">It keeps learning</span>
-        <h2>A first test is just the beginning.</h2>
-        <p>The value builds as results come in. Here’s how one hypothesis becomes a better next question.</p>
+    <section id="how" class="section shell density-tier-3">
+      <div class="section-intro compact-intro reveal">
+        <span class="kicker">How it works</span>
+        <h2>Find → Try → Learn.</h2>
+        <p>Partizan finds where customers already are, makes the smallest useful move, then learns from real signals.</p>
       </div>
-      <div class="learning-card reveal">
-        <div class="learning-rail"><span class="active">01 · First test</span><span>02 · What we learned</span><span>03 · Next move</span></div>
-        <div class="learning-content"><span>Hypothesis</span><h3>A small daily commitment could be the stronger hook.</h3><p>For the example English bot, compare “learn English with AI” with “five minutes of speaking a day.” Measure the same first-lesson event.</p><small>Illustrative workflow</small></div>
-      </div>
-    </section>
-
-    <section id="pricing" class="pricing-section">
-      <div class="container pricing-layout">
-        <div class="section-copy reveal">
-          <span class="eyebrow">Start small. Learn as you go.</span>
-          <h2>Your budget. A clear way forward.</h2>
-          <p>Start with a free product analysis. Continue with an acquisition budget from $10.</p>
-          <div class="pricing-points"><span>No monthly subscription</span><span>Initial research included</span><span>Ongoing testing and learning</span><span>10% of actual acquisition spend</span></div>
-          <a class="button button-primary" href="/start">Start with free analysis <span>→</span></a>
-          <p class="research-plan">Just want a research plan? <strong>$49 once</strong></p>
-        </div>
-        <div class="fee-card reveal">
-          <span class="eyebrow">What would it cost?</span>
-          <h3>Fee example</h3>
-          <p>Illustrative acquisition spend</p>
-          <label for="fee-range">Acquisition spend <output id="fee-range-output">100</output></label>
-          <input id="fee-range" type="range" min="10" max="1000" step="10" value="100">
-          <div class="range-labels"><span>$10</span><span>$1,000</span></div>
-          <dl><div><dt>Acquisition spend</dt><dd id="fee-spend">$100</dd></div><div><dt>Partizan fee <small>10%</small></dt><dd id="fee-fee">$10</dd></div><div class="fee-total"><dt>Illustrative total</dt><dd id="fee-total">$110</dd></div></dl>
-          <small>Fee shown separately from acquisition spend. This is arithmetic, not a forecast of customers or revenue.</small>
-        </div>
+      <div class="loop-compact" aria-label="Find Try Learn loop">
+        <article class="loop-compact-step reveal">
+          <div class="loop-icon">◎</div>
+          <div><h3>Find</h3><p>Where your customers already are.</p></div>
+        </article>
+        <i aria-hidden="true">→</i>
+        <article class="loop-compact-step reveal delay-1">
+          <div class="loop-icon">↗</div>
+          <div><h3>Try</h3><p>Make the smallest useful move.</p></div>
+        </article>
+        <i aria-hidden="true">→</i>
+        <article class="loop-compact-step loop-compact-accent reveal delay-2">
+          <div class="loop-icon">✦</div>
+          <div><h3>Learn</h3><p>See what worked and decide what's next.</p></div>
+        </article>
       </div>
     </section>
 
-    <section id="faq" class="faq-section container">
-      <div class="section-copy reveal">
-        <span class="eyebrow">A few things you might be wondering</span>
-        <h2>Good questions. Straight answers.</h2>
+    <section id="channels" class="section section-wide density-tier-2">
+      <div class="shell channels-layout">
+        <div class="section-intro channels-copy reveal">
+          <span class="kicker">Start with the customer, not the channel</span>
+          <h2>Your customers could be <em>anywhere.</em></h2>
+          <p>Maybe you do not need Meta Ads. Partizan researches across channels before deciding where to start.</p>
+        </div>
+        <div class="channels-compact reveal delay-1">
+          <div class="channel-grid" aria-label="Acquisition channels">
+            <article><span>◉</span><strong>Paid</strong></article>
+            <article><span>✺</span><strong>Creators</strong></article>
+            <article><span>◌</span><strong>Communities</strong></article>
+            <article><span>↗</span><strong>Outreach</strong></article>
+            <article><span>⌘</span><strong>Search</strong></article>
+            <article><span>∞</span><strong>Partnerships</strong></article>
+          </div>
+          <p>Partizan researches across channels before deciding where to start.</p>
+          <details class="capability-details">
+            <summary>See current execution capabilities <span>→</span></summary>
+            <div class="capability-matrix">
+              <div class="capability-head"><span>Surface</span><span>Research</span><span>What Partizan can do now</span></div>
+              <div><strong>Instagram & Facebook</strong><b>✓</b><span>Account connection is available; paid actions still require the account, budget and permission to be ready.</span></div>
+              <div><strong>Reddit</strong><b>✓</b><span>Research and assisted paths; no silent autonomous posting.</span></div>
+              <div><strong>Creators</strong><b>✓</b><span>Research and assisted outreach preparation.</span></div>
+              <div><strong>Communities</strong><b>✓</b><span>Research with assisted/manual execution where appropriate.</span></div>
+              <div><strong>Search / SEO</strong><b>✓</b><span>Research only today.</span></div>
+              <div><strong>Partnerships</strong><b>✓</b><span>Research and assisted outreach; partner approval is still required.</span></div>
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section id="safety" class="section shell safety-section density-tier-3">
+      <div class="section-intro compact-intro reveal">
+        <span class="kicker">Safety</span>
+        <h2>You're always <em>in control.</em></h2>
+      </div>
+      <div class="safety-trust reveal delay-1">
+        <article><span>Your budget</span><strong>$10+</strong><p>Partizan cannot spend more than you allow.</p></article>
+        <article><span>Your customer-cost limit</span><strong>$30</strong><p>You define what a customer is worth.</p></article>
+        <article><span>Your permissions</span><strong>You choose access</strong><p>Partizan only acts inside granted permissions.</p></article>
+      </div>
+      <p class="safety-summary reveal">No surprise spend. No hidden access. No actions outside your limits.</p>
+      <details class="safety-details reveal">
+        <summary>How Partizan keeps you in control <span>→</span></summary>
+        <p>A budget is not permission to spend everywhere, and connecting an account is not permission to spend by itself. Partizan can keep researching when execution is unavailable; paid actions still require the real channel, account, budget and permission to be ready.</p>
+      </details>
+    </section>
+
+    <section id="pricing" class="section shell pricing-section">
+      <div class="section-intro reveal">
+        <span class="kicker">Pricing</span>
+        <h2>Start free. Then choose how far Partizan should go.</h2>
+        <p>The free product analysis shows what Partizan understood and one real researched opportunity before funding. The main path starts with any acquisition budget; research-only is available separately.</p>
+      </div>
+      <div class="pricing-grid pricing-grid-two">
+        <article class="pricing-card featured reveal">
+          <span class="price-label">Partizan with acquisition budget</span>
+          <strong class="price">From $10</strong>
+          <p>Research included. No monthly subscription. Partizan keeps learning and only asks for more access or budget when a specific next move needs it.</p>
+          <ul><li>One real opportunity before funding</li><li>Initial and continuous research</li><li>Eligible tests and measurement</li><li>10% of actual acquisition spend</li></ul>
+          <div class="price-example"><span>If Partizan actually puts $50 to work</span><strong>Partizan fee: $5</strong></div>
+          <a class="button button-primary" href="/start">Analyze my product →</a>
+        </article>
+        <article class="pricing-card reveal delay-1">
+          <span class="price-label">Prefer research only?</span>
+          <strong class="price">$49 <small>once</small></strong>
+          <p>A standalone full Acquisition Plan for founders who want deep research without ongoing testing or an acquisition budget.</p>
+          <ul><li>Deep market research</li><li>Named opportunities</li><li>Supporting evidence</li><li>No autonomous execution</li></ul>
+          <a class="button button-secondary" href="/start">Start with free product analysis →</a>
+        </article>
+      </div>
+    </section>
+
+    <section class="section shell faq-section density-tier-3">
+      <div class="section-intro reveal">
+        <span class="kicker">Questions</span>
+        <h2>What founders usually ask.</h2>
       </div>
       <div class="faq-list">
-        <details class="faq-item reveal"><summary>What can I promote with Partizan?<span>+</span></summary><p>Websites, apps, bots, SaaS products, online stores and other products with a clear action Partizan can measure.</p></details>
-        <details class="faq-item reveal"><summary>Do I need to know my target audience already?<span>+</span></summary><p>No. Product analysis creates the first audience hypotheses; you can correct them if Partizan misunderstood your product.</p></details>
-        <details class="faq-item reveal"><summary>Which channels can I use?<span>+</span></summary><p>Partizan can research across Meta, Telegram, Reddit, Google Ads and TikTok, while execution depends on the access and capabilities available for each channel.</p></details>
-        <details class="faq-item reveal"><summary>Can I turn a channel off?<span>+</span></summary><p>Yes. Your channel choices are boundaries: Partizan adapts future moves without deleting historical learnings.</p></details>
-        <details class="faq-item reveal"><summary>How does Partizan know what is working?<span>+</span></summary><p>It follows the outcome your product measures, then compares real visits, signups, customers, spend and other observed signals.</p></details>
-        <details class="faq-item reveal"><summary>Do I need a big advertising budget?<span>+</span></summary><p>No. You can start from $10, and the best first move may cost $0.</p></details>
-        <details class="faq-item reveal"><summary>What is live in this product?<span>+</span></summary><p>Research and customer-facing controls are live. Execution remains bounded by the actual channel, account, permission and budget available.</p></details>
+        <details class="faq-item reveal">
+          <summary>Is Partizan an analytics dashboard or an AI consultant?<span>+</span></summary>
+          <p>Neither. Partizan researches where customers are, prepares the next useful test, measures what happens and uses the result to decide what to try next.</p>
+        </details>
+        <details class="faq-item reveal delay-1">
+          <summary>Do I need a large marketing budget?<span>+</span></summary>
+          <p>No. You can start the product flow with a budget as small as $10. That does not mean Partizan will spend it on ads — research may point to a $0, assisted or manual first move instead.</p>
+        </details>
+        <details class="faq-item reveal delay-2">
+          <summary>Does it spend money without limits?<span>+</span></summary>
+          <p>No. You set the acquisition budget, customer-cost limit and allowed channels. Connecting an account or adding money never removes those boundaries.</p>
+        </details>
+        <details class="faq-item reveal">
+          <summary>Who is Partizan built for?<span>+</span></summary>
+          <p>Its primary beachhead is people who already built a product but do not know marketing yet — solo founders, technical founders and small teams without a marketing department.</p>
+        </details>
       </div>
     </section>
 
-    <section class="final-cta container">
-      <div class="final-inner reveal">
-        <span class="eyebrow">Your next move starts here</span>
-        <h2>You’ve built something.<br>Let’s find its people.</h2>
-        <p>One link. A clearer audience. A first move to explore.</p>
-        <a class="button button-dark" href="/start">Find my audience <span>→</span></a>
-        <small>Start free. Stay in control.</small>
+    <section class="final-cta">
+      <div class="shell final-inner reveal">
+        <span class="kicker">You already built the hard part.</span>
+        <h2>Let's find the first people<br><em>who need it.</em></h2>
+        <p>You do not need to become a marketer first. Start by showing Partizan what you built.</p>
+        <a class="button button-light" href="/start">Analyze my product <span>→</span></a>
       </div>
     </section>
   </main>
 
-  <footer class="site-footer container">
-    <div class="footer-brand"><a class="brand" href="/" aria-label="Partizan home"><span class="brand-mark">p</span><strong>partizan<span>.</span></strong></a><p>Customer acquisition that keeps learning.</p></div>
-    <nav class="footer-links"><a href="#how">How it works</a><a href="#pricing">Pricing</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/security">Security</a><a href="/contact">Contact</a></nav>
-    <div class="footer-meta"><span>© 2026 Partizan Labs</span></div>
+  <footer class="footer shell">
+    <div class="footer-brand">
+      <a class="brand" href="/" aria-label="Partizan home"><span class="brand-mark">P</span><span class="brand-copy"><strong>Partizan</strong><small>AI customer acquisition system</small></span></a>
+      <p>Partizan finds and tests ways to acquire customers.</p>
+    </div>
+    <nav class="footer-links" aria-label="Legal and company links">
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+      <a href="/security">Security</a>
+      <a href="/contact">Contact</a>
+    </nav>
+    <div class="footer-action"><a href="/start">Analyze my product ↗</a><small>© 2026 Partizan Labs</small></div>
   </footer>
 
   <script src="/site/assets/landing.v1.js" defer></script>

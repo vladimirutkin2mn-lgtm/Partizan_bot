@@ -262,7 +262,7 @@ if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
     printf '%s' "${revision}"
   }
 
-  marketing_revision="$(verify_release_surface '/?release='${PARTIZAN_RELEASE_SHA} 'x-partizan-marketing-revision' 'Get your product in front of the right people.' 'marketing')"
+  marketing_revision="$(verify_release_surface '/?release='${PARTIZAN_RELEASE_SHA} 'x-partizan-marketing-revision' 'You built the product.' 'marketing')"
   for asset in landing.v1.css landing.v1.js; do
     if ! grep -Fq "/site/assets/${asset}?v=${marketing_revision}" "${smoke_dir}/marketing.html"; then
       echo "Public smoke failed: homepage does not reference versioned ${asset}" >&2

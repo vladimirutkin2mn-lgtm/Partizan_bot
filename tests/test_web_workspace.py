@@ -19,23 +19,24 @@ def test_root_serves_marketing_site() -> None:
     assert len(marketing_revision) == 12
     html = response.text
     for anchor in (
-        "<title>Partizan — customer acquisition that keeps learning</title>",
+        "<title>Partizan — you built the product, now find the customers</title>",
         'href="/start?release=',
+        'id="budget-story"',
         'id="how"',
         'id="channels"',
+        'id="safety"',
         'id="pricing"',
-        'id="faq"',
-        'class="workspace-demo',
-        'class="control-demo',
         "/site/assets/landing.v1.css",
         "/site/assets/landing.v1.js",
     ):
         assert anchor in html
     assert 'href="/start"' not in html
     assert 'href="/app"' not in html
+    assert 'id="product-demo"' not in html
     assert "/site/assets/landing.v1.css?v=" in html
     assert "/site/assets/landing.account.v1.css?v=" in html
     assert "/site/assets/landing.v1.js?v=" in html
+
 
 def test_marketing_assets_are_allowlisted_and_served() -> None:
     css = client.get("/site/assets/landing.v1.css")
@@ -43,16 +44,14 @@ def test_marketing_assets_are_allowlisted_and_served() -> None:
 
     assert css.status_code == 200
     assert "text/css" in css.headers["content-type"]
-    assert "--accent" in css.text
     assert "--lime" in css.text
-    assert ".workspace-demo" in css.text
-    assert ".control-demo" in css.text
+    assert ".hero-console" in css.text
 
     assert javascript.status_code == 200
     assert "javascript" in javascript.headers["content-type"]
     assert "const defaultBudget = 10;" in javascript.text
     assert "IntersectionObserver" in javascript.text
-    assert "scenarios" in javascript.text
+
 
 def test_first_party_legal_and_security_pages_are_served() -> None:
     legal_css = client.get("/site/assets/legal.v1.css")
