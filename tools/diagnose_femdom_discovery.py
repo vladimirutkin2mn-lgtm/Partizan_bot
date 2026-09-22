@@ -170,35 +170,123 @@ async def _run() -> int:
 
     existing_map = _safe_existing_map(store, product.id)
 
-    # Intentionally instantiate the engine directly instead of calling
-    # audience_intelligence_service.discover(). This performs the same provider,
-    # query-building, normalization and native-enrichment path, but does NOT
-    # persist a new audience map/opportunities and cannot itself create a play
-    # or publish anything.
+    # Intentionally execute the same Telegram discovery stages one-by-one.
+    # This remains read-only but makes stage failures explicit instead of
+    # collapsing them into one top-level exception.
+    provider = get_search_provider()
+    adapter = TelegramDiscoveryAdapter()
     engine = AudienceIntelligenceEngine(
-        get_search_provider(),
+        provider,
         max_concurrency=1,
-        adapters=[TelegramDiscoveryAdapter()],
+        adapters=[adapter],
     )
-    seeds = await engine.discover(
-        product=product,
-        icps=top_icps,
-        per_query_limit=5,
-        max_opportunities=10,
-    )
+    icp = top_icps[0]
+    requests = adapter.build_requests(product, icp)
+    attempts: list[dict] = []
+    opportunity_map: dict = {}
+    stage_errors: list[dict] = []
 
-    diagnostics = audience_intelligence_service._diagnostics(engine)
-    by_platform = Counter(item.platform.value for item in seeds)
-    failures = sorted(
-        {
-            (
-                failure.platform.value,
-                failure.error_type,
-                str(failure.message).split(":", 1)[0],
+    for request_index, request in enumerate(requests, start=1):
+        try:
+            hits = await provider.search(request.discovery_query, limit=5)
+        except Exception as exc:
+            attempts.append(
+                {
+                    "request_index": request_index,
+                    "kind": request.kind.value,
+                    "search_hits": 0,
+                    "normalized_candidates": 0,
+                    "enriched_candidates": 0,
+                }
             )
-            for failure in engine.last_failures
-        }
-    )
+            stage_errors.append(
+                {
+                    "request_index": request_index,
+                    "stage": "search",
+                    "error_type": type(exc).__name__,
+                    "message": str(exc)[:240],
+                }
+            )
+            continue
+
+        try:
+            candidates = adapter.candidates(request, hits)
+        except Exception as exc:
+            attempts.append(
+                {
+                    "request_index": request_index,
+                    "kind": request.kind.value,
+                    "search_hits": len(hits),
+                    "normalized_candidates": 0,
+                    "enriched_candidates": 0,
+                }
+            )
+            stage_errors.append(
+                {
+                    "request_index": request_index,
+                    "stage": "normalize",
+                    "error_type": type(exc).__name__,
+                    "message": str(exc)[:240],
+                }
+            )
+            continue
+
+        normalized_count = len(candidates)
+        try:
+            enriched = await adapter.enrich_candidates(request, candidates)
+        except Exception as exc:
+            enriched = candidates
+            stage_errors.append(
+                {
+                    "request_index": request_index,
+                    "stage": "native_enrichment",
+                    "error_type": type(exc).__name__,
+                    "message": str(exc)[:240],
+                }
+            )
+
+        attempts.append(
+            {
+                "request_index": request_index,
+                "kind": request.kind.value,
+                "search_hits": len(hits),
+                "normalized_candidates": normalized_count,
+                "enriched_candidates": len(enriched),
+            }
+        )
+
+        for candidate_index, candidate in enumerate(enriched, start=1):
+            try:
+                seed = engine._candidate_to_seed(icp, candidate)
+            except Exception as exc:
+                stage_errors.append(
+                    {
+                        "request_index": request_index,
+                        "candidate_index": candidate_index,
+                        "stage": "score_and_seed",
+                        "error_type": type(exc).__name__,
+                        "message": str(exc)[:240],
+                    }
+                )
+                continue
+            try:
+                engine._merge(opportunity_map, seed)
+            except Exception as exc:
+                stage_errors.append(
+                    {
+                        "request_index": request_index,
+                        "candidate_index": candidate_index,
+                        "stage": "merge",
+                        "error_type": type(exc).__name__,
+                        "message": str(exc)[:240],
+                    }
+                )
+
+    seeds = sorted(
+        opportunity_map.values(),
+        key=lambda item: (-(item.relevance_score or 0), item.canonical_key),
+    )[:10]
+    by_platform = Counter(item.platform.value for item in seeds)
     sample_targets = [
         {
             "platform": item.platform.value,
@@ -224,17 +312,11 @@ async def _run() -> int:
         "icp_count_used": len(top_icps),
         "existing_map": existing_map,
         "diagnostic_rerun": {
+            "query_count": len(requests),
+            "attempts": attempts,
             "opportunity_count": len(seeds),
             "opportunities_by_platform": dict(sorted(by_platform.items())),
-            "diagnostics": diagnostics,
-            "provider_failures": [
-                {
-                    "platform": platform,
-                    "error_type": error_type,
-                    "stage": stage,
-                }
-                for platform, error_type, stage in failures
-            ],
+            "stage_errors": stage_errors,
             "sample_targets": sample_targets,
         },
     }
