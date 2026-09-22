@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import traceback
 from collections import Counter
 from uuid import UUID
 
@@ -181,7 +182,7 @@ async def _run() -> int:
         adapters=[adapter],
     )
     icp = top_icps[0]
-    requests = adapter.build_requests(product, icp)
+    requests = adapter.build_requests(product, icp)[:1]
     attempts: list[dict] = []
     opportunity_map: dict = {}
     stage_errors: list[dict] = []
@@ -328,6 +329,14 @@ def main() -> int:
     try:
         return asyncio.run(_run())
     except Exception as exc:
+        frames = [
+            {
+                "file": frame.filename.rsplit("/", 1)[-1],
+                "function": frame.name,
+                "line": frame.lineno,
+            }
+            for frame in traceback.extract_tb(exc.__traceback__)[-8:]
+        ]
         print(
             json.dumps(
                 {
@@ -335,6 +344,8 @@ def main() -> int:
                     "read_only": True,
                     "target_product_name": TARGET_PRODUCT_NAME,
                     "error_type": type(exc).__name__,
+                    "error_message": str(exc)[:240],
+                    "traceback": frames,
                 },
                 sort_keys=True,
             )
