@@ -171,6 +171,68 @@ async def _run() -> int:
 
     existing_map = _safe_existing_map(store, product.id)
 
+    intake_state = product_intake_service.get_state(product.id)
+    paid_funding_cents = sum(
+        int(item.get("amount_cents") or 0)
+        for item in store.list_namespace(GROWTH_BALANCE_TOPUP_NAMESPACE)
+        if isinstance(item, dict)
+        and str(item.get("project_id") or "") == str(project.get("id"))
+        and item.get("state") == "PAID"
+    )
+    preview = project.get("preview")
+    preview = preview if isinstance(preview, dict) else {}
+    questions = [
+        {
+            "field_name": str(getattr(item, "field_name", "") or ""),
+            "question": str(getattr(item, "question", "") or "")[:500],
+            "priority": getattr(item, "priority", None),
+        }
+        for item in getattr(intake_state, "questions", []) or []
+    ]
+    print(
+        json.dumps(
+            {
+                "status": "STATE_DIAGNOSTIC_COMPLETED",
+                "read_only": True,
+                "target_product_name": TARGET_PRODUCT_NAME,
+                "target_selector": target_selector,
+                "resolved_product_name": str(product.name or ""),
+                "project_id": str(project.get("id")),
+                "product_id": str(product.id),
+                "project_status": str(project.get("status") or ""),
+                "project_research_state": str(project.get("research_state") or ""),
+                "understanding_confirmed": bool(project.get("understanding_confirmed")),
+                "launch_unlocked": bool(project.get("launch_unlocked")),
+                "product_status": str(getattr(product.status, "value", product.status)),
+                "product_reference_link_count": len(product.reference_links or []),
+                "research_question_count": len(questions),
+                "research_questions": questions,
+                "preview_free_research_status": str(
+                    preview.get("free_research_status") or ""
+                ),
+                "channel_preferences": (
+                    project.get("channel_preferences")
+                    if isinstance(project.get("channel_preferences"), dict)
+                    else {}
+                ),
+                "channel_publisher_modes": (
+                    project.get("channel_publisher_modes")
+                    if isinstance(project.get("channel_publisher_modes"), dict)
+                    else {}
+                ),
+                "autopilot_spend_confirmed": bool(
+                    project.get("autopilot_spend_confirmed")
+                ),
+                "autopilot_target_max_cac": project.get("autopilot_target_max_cac"),
+                "autopilot_pause_reason": project.get("autopilot_pause_reason"),
+                "paid_growth_balance_usd": round(paid_funding_cents / 100, 2),
+                "existing_map": existing_map,
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
     # Post-PR-397 production rerun.
     # Intentionally execute the same Telegram discovery stages one-by-one.
     # This remains read-only but makes stage failures explicit instead of
