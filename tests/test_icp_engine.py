@@ -72,6 +72,24 @@ def _candidate(title: str, description: str, score: int = 8) -> ICPCandidate:
     )
 
 
+def test_icp_score_explanation_is_english() -> None:
+    engine = ICPEngine(None)
+    explanation = engine.explain_score(
+        ICPDimensionScores(
+            pain_intensity=9,
+            purchase_intent=8,
+            willingness_to_pay=7,
+            ease_of_targeting=6,
+            market_size=5,
+            competitive_headroom=4,
+            speed_of_validation=3,
+        )
+    )
+
+    assert explanation.startswith("Main drivers:")
+    assert "Main constraint:" in explanation
+
+
 @pytest.mark.asyncio
 async def test_icp_engine_falls_back_when_structured_provider_fails() -> None:
     engine = ICPEngine(FailingICPProvider())

@@ -54,23 +54,29 @@ class GapRule:
 GAP_RULES = (
     GapRule(
         field_name="problem_or_desire",
-        question="Какую главную проблему или желание пользователя закрывает продукт?",
+        question="What core problem or desire does this product solve for the user?",
         rationale=(
-            "Это определяет сегментацию, hooks и контекст, "
-            "в котором пользователь ищет решение."
+            "This determines segmentation, hooks, and the context in which "
+            "the user looks for a solution."
         ),
         priority=5,
     ),
     GapRule(
         field_name="market",
-        question="На какой рынок или географию целимся в первую очередь?",
-        rationale="Рынок меняет язык, конкурентов, доступные каналы и стоимость привлечения.",
+        question="Which market or geography should Partizan target first?",
+        rationale=(
+            "The market changes language, competitors, available channels, "
+            "and acquisition cost."
+        ),
         priority=5,
     ),
     GapRule(
         field_name="goal",
-        question="Какой измеримый маркетинговый результат нужен на первом этапе?",
-        rationale="Без цели нельзя ранжировать Growth Plays и оценивать успех эксперимента.",
+        question="What measurable marketing outcome should Partizan optimize for first?",
+        rationale=(
+            "A clear goal is required to rank Growth Plays and evaluate whether "
+            "an experiment worked."
+        ),
         priority=5,
     ),
 )
@@ -101,6 +107,8 @@ Rules:
 12. Infer product_type, business_model, language, pricing and geography only when supported.
     If they cannot be determined, leave them null and list genuinely material gaps in missing_information.
 13. confidence is your confidence in the normalized product understanding, from 0 to 1.
+14. Write every user-facing clarification question and rationale in English, regardless of the
+    language of the founder brief or source content.
 
 Return the requested structured schema only.
 """
@@ -206,10 +214,9 @@ class ProductIntakeAgent:
                 continue
             candidates[field_name] = ClarificationCandidate(
                 field_name=field_name,
-                question=f"Уточни противоречие: {contradiction}",
+                question=f"Clarify this contradiction: {contradiction}",
                 rationale=(
-                    "Противоречащие product facts могут привести "
-                    "к неверной marketing strategy."
+                    "Conflicting product facts can lead to an incorrect marketing strategy."
                 ),
                 priority=5,
             )

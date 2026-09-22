@@ -105,6 +105,28 @@ async def test_agent_limits_questions_to_three() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gap_rule_clarifications_are_english_even_for_russian_brief() -> None:
+    analysis = await ProductIntakeAgent(None).analyze(
+        brief="Продукт помогает пользователям быстрее принимать решения.",
+        reference_links=[],
+    )
+
+    assert analysis.clarifications
+    assert all(
+        not any("а" <= char.lower() <= "я" or char.lower() == "ё" for char in item.question)
+        for item in analysis.clarifications
+    )
+    assert all(
+        not any("а" <= char.lower() <= "я" or char.lower() == "ё" for char in item.rationale)
+        for item in analysis.clarifications
+    )
+    assert any(
+        item.question == "What measurable marketing outcome should Partizan optimize for first?"
+        for item in analysis.clarifications
+    )
+
+
+@pytest.mark.asyncio
 async def test_agent_surfaces_contradiction() -> None:
     provider = ScriptedProvider([{
         "name": "Pulse",
@@ -119,7 +141,13 @@ async def test_agent_surfaces_contradiction() -> None:
         brief="Pulse has inconsistent pricing details.",
         reference_links=[],
     )
-    assert any(q.field_name.startswith("contradiction_") for q in analysis.clarifications)
+    contradiction = next(
+        q for q in analysis.clarifications if q.field_name.startswith("contradiction_")
+    )
+    assert contradiction.question.startswith("Clarify this contradiction:")
+    assert contradiction.rationale == (
+        "Conflicting product facts can lead to an incorrect marketing strategy."
+    )
 
 
 def test_free_text_intake_requires_explicit_confirmation() -> None:
