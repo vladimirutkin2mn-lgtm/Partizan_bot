@@ -128,11 +128,17 @@ class CustomerAutopilotService:
         if status == "ACTIVE":
             if not auto_platforms:
                 raise ValueError("Enable at least one Auto channel before resuming Partizan")
-            if not self._has_eligible_execution_opportunity(product_id, auto_platforms):
-                raise ValueError(
-                    "Partizan has not found an eligible execution opportunity "
-                    "for the enabled Auto channels yet"
-                )
+            try:
+                growth_mandate_service.get(product_id)
+            except KeyError:
+                if not self._has_eligible_execution_opportunity(
+                    product_id,
+                    auto_platforms,
+                ):
+                    raise ValueError(
+                        "Partizan has not found an eligible execution opportunity "
+                        "for the enabled Auto channels yet"
+                    )
             paid_auto = self._has_paid_auto_platform(auto_platforms)
             if paid_auto:
                 self._require_paid_destination(product_id)
