@@ -29,6 +29,7 @@ from app.customer_schemas import (
 )
 from app.icp_service import icp_service
 from app.models import ProductProfileStatus
+from app.product_agent import GAP_RULES
 from app.product_intake import product_intake_service
 from app.product_source import (
     ProductSourceContext,
@@ -593,6 +594,35 @@ class CustomerFunnelService:
                 project["status"] = "UNLOCKED"
         self._persist(project)
         return True
+
+    def current_research_clarifications(
+        self,
+        project_id: UUID,
+        customer_token: str,
+    ) -> list[CustomerClarificationView]:
+        project = self._authorized_project(project_id, customer_token)
+        if str(project.get("research_state") or "") != "NEEDS_INPUT":
+            return []
+        product_id_raw = project.get("product_id")
+        if not product_id_raw:
+            return []
+        try:
+            state = product_intake_service.get_state(UUID(str(product_id_raw)))
+        except (KeyError, TypeError, ValueError):
+            return []
+
+        canonical_rules = {rule.field_name: rule for rule in GAP_RULES}
+        result: list[CustomerClarificationView] = []
+        for item in state.questions:
+            rule = canonical_rules.get(str(item.field_name))
+            result.append(
+                CustomerClarificationView(
+                    question_id=item.id,
+                    question=rule.question if rule is not None else item.question,
+                    rationale=rule.rationale if rule is not None else item.rationale,
+                )
+            )
+        return result
 
     async def start_deep_research(
         self,
