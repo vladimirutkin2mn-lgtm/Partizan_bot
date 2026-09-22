@@ -65,7 +65,11 @@ def test_customer_results_do_not_install_a_second_community_observer() -> None:
 def test_workspace_rerender_tolerates_optional_activation_markup() -> None:
     assert "if (!node) return;" in WORKSPACE_JS
     assert "if (state) state.textContent = stateText;" in WORKSPACE_JS
-    assert "const balanceBenefitText = balanceBenefit ? balanceBenefit.querySelector('span') : null;" in WORKSPACE_JS
+    assert (
+        "const balanceBenefitText = balanceBenefit ? "
+        "balanceBenefit.querySelector('span') : null;"
+        in WORKSPACE_JS
+    )
     assert "if (balanceBenefitText)" in WORKSPACE_JS
 
 
