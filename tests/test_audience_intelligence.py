@@ -56,6 +56,10 @@ async def test_service_persists_zero_execution_opportunities_as_valid_research(
     monkeypatch,
 ) -> None:
     class EmptyEngine:
+        @property
+        def last_attempts(self):
+            return []
+
         async def discover(self, product, icps):
             del product, icps
             return []
