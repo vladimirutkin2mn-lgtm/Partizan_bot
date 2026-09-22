@@ -316,7 +316,7 @@ body{background:linear-gradient(180deg,#fbfcf9 0,#f6f8f3 55%,#f1f5ee 100%)}
 }
 @media(max-width:700px){
   .shell{width:min(100% - 24px,1120px)}
-  .account-nav{gap:8px}.account-settings{display:none}
+  .account-nav{gap:8px}.account-settings{padding-inline:8px!important}
   .workspace-tabs{width:100%}.tab-button{flex:1}
   .hero-card{padding:18px 0 20px}
   .metric-grid-primary{grid-template-columns:1fr 1fr 1fr}
