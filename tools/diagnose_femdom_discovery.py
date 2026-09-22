@@ -292,7 +292,7 @@ async def _run() -> int:
         {
             "platform": item.platform.value,
             "title": item.title,
-            "url": item.url,
+            "url": str(item.url),
             "relevance_score": item.relevance_score,
         }
         for item in seeds[:8]
