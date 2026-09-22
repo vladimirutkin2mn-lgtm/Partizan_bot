@@ -1,7 +1,7 @@
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.schemas import ICPView, ProductProfileView
@@ -278,7 +278,11 @@ class TelegramDiscoveryAdapter(PlatformDiscoveryAdapter):
     ) -> tuple[str, str, str] | None:
         parts = urlsplit(url.strip())
         host = parts.netloc.lower().removeprefix("www.")
-        segments = [segment for segment in parts.path.split("/") if segment]
+        segments = [
+            unquote(segment)
+            for segment in parts.path.split("/")
+            if segment
+        ]
         if host not in {"t.me", "telegram.me"} or not segments:
             return None
         if segments[0] == "s" and len(segments) >= 2:
