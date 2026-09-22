@@ -60,3 +60,20 @@ def test_customer_results_do_not_install_a_second_community_observer() -> None:
     assert "const refreshLearning = async" not in WORKSPACE_HTML
     assert "const renderLearning = (data) =>" not in WORKSPACE_HTML
     assert "const renderOverviewSnapshot = (data) =>" not in WORKSPACE_HTML
+
+
+def test_workspace_rerender_tolerates_optional_activation_markup() -> None:
+    assert "if (!node) return;" in WORKSPACE_JS
+    assert "if (state) state.textContent = stateText;" in WORKSPACE_JS
+    assert "const balanceBenefitText = balanceBenefit ? balanceBenefit.querySelector('span') : null;" in WORKSPACE_JS
+    assert "if (balanceBenefitText)" in WORKSPACE_JS
+
+
+def test_paid_checkout_callback_is_consumed_before_follow_up_research_render() -> None:
+    block = WORKSPACE_JS.split("if (growthState === 'success' && sessionId)", 1)[1]
+    block = block.split("} else if (growthState === 'cancelled')", 1)[0]
+
+    cleanup = "window.history.replaceState({}, '', `/workspace?project=${encodeURIComponent(projectId)}`);"
+    assert cleanup in block
+    assert "await loadResearch(true);" in block
+    assert block.index(cleanup) < block.index("await loadResearch(true);")
