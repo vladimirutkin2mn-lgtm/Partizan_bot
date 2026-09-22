@@ -3,8 +3,11 @@ from uuid import uuid4
 
 import pytest
 
+import app.audience_intelligence_service as audience_service_module
 from app.audience_intelligence import AudienceIntelligenceEngine
+from app.audience_intelligence_service import InMemoryAudienceIntelligenceService
 from app.distribution_types import DistributionPlatform, OpportunityKind
+from app.runtime_store import MemoryRuntimeStateStore
 from app.search import DiscoveryQuery, SearchHit, SearchProvider, SourceClass
 
 
@@ -46,6 +49,39 @@ def _icp() -> SimpleNamespace:
         trigger="breakup or mixed signals",
         alternatives=["tarot", "dating advice"],
     )
+
+
+@pytest.mark.asyncio
+async def test_service_persists_zero_execution_opportunities_as_valid_research(
+    monkeypatch,
+) -> None:
+    class EmptyEngine:
+        async def discover(self, product, icps):
+            del product, icps
+            return []
+
+    monkeypatch.setattr(
+        audience_service_module,
+        "AudienceIntelligenceEngine",
+        lambda _provider: EmptyEngine(),
+    )
+    monkeypatch.setattr(
+        audience_service_module,
+        "get_search_provider",
+        lambda: object(),
+    )
+    store = MemoryRuntimeStateStore()
+    service = InMemoryAudienceIntelligenceService(store)
+    product = SimpleNamespace(id=uuid4())
+    icp_result = SimpleNamespace(icps=[_icp()])
+
+    result = await service.discover(product, icp_result)
+
+    assert result.opportunity_count == 0
+    assert result.opportunities == []
+    hydrated = service.get(product.id)
+    assert hydrated.opportunity_count == 0
+    assert hydrated.opportunities == []
 
 
 @pytest.mark.asyncio
