@@ -87,10 +87,11 @@
 
   const setActivationStep = (id, complete, current, stateText) => {
     const node = $(id);
+    if (!node) return;
     node.classList.toggle('complete', complete);
     node.classList.toggle('current', current);
     const state = node.querySelector('.activation-step-state');
-    state.textContent = stateText;
+    if (state) state.textContent = stateText;
   };
 
   const renderActivationPreview = (directions, opportunity, researchStatus = 'NOT_RUN', researchMessage = '') => {
@@ -474,9 +475,13 @@
     const funded = balance.funded_usd > 0;
     $('growth-balance-metric').classList.toggle('is-funded', funded);
     $('overview-fund-label').textContent = 'Add funds';
-    $('overview-balance-benefit').querySelector('span').textContent = funded
-      ? 'Available for recommended paid tests'
-      : 'Fund a recommended paid test when needed';
+    const balanceBenefit = $('overview-balance-benefit');
+    const balanceBenefitText = balanceBenefit ? balanceBenefit.querySelector('span') : null;
+    if (balanceBenefitText) {
+      balanceBenefitText.textContent = funded
+        ? 'Available for recommended paid tests'
+        : 'Fund a recommended paid test when needed';
+    }
     $('balance-state').textContent = funded ? 'Funded' : 'Not funded';
     $('balance-state').classList.toggle('good', funded);
     $('fund-button').textContent = 'Add funds for a paid test →';
@@ -657,10 +662,10 @@
           body: JSON.stringify({ session_id: sessionId }),
         });
         showNotice(`Acquisition budget funded. Available: ${money(overview.growth_balance.available_usd)}.`);
+        window.history.replaceState({}, '', `/workspace?project=${encodeURIComponent(projectId)}`);
         await loadWorkspace();
         await loadResearch(true);
         setActiveTab('overview');
-        window.history.replaceState({}, '', `/workspace?project=${encodeURIComponent(projectId)}`);
       } catch (error) {
         showNotice(error.message, true);
       }
