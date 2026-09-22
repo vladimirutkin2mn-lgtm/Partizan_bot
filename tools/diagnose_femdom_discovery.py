@@ -40,6 +40,7 @@ def _find_target_project() -> tuple[dict, object, str] | tuple[None, None, None]
     store = get_runtime_store()
     active: list[tuple[dict, object]] = []
     exact_name: list[tuple[dict, object]] = []
+    textual_match: list[tuple[dict, object]] = []
     dogfood_fingerprint: list[tuple[dict, object]] = []
 
     funded_cents_by_project: dict[str, int] = {}
@@ -70,6 +71,19 @@ def _find_target_project() -> tuple[dict, object, str] | tuple[None, None, None]
         if str(product.name or "").strip().casefold() == TARGET_PRODUCT_NAME.casefold():
             exact_name.append((project, product))
 
+        searchable_parts = [
+            str(project.get("brief") or ""),
+            str(project.get("product_link") or ""),
+            str(project.get("website_url") or ""),
+            str(getattr(product, "name", "") or ""),
+            str(getattr(product, "description", "") or ""),
+            str(getattr(product, "problem_or_desire", "") or ""),
+            str(getattr(product, "value_proposition", "") or ""),
+        ]
+        searchable_text = " ".join(searchable_parts).casefold()
+        if "femdom" in searchable_text or "fem dom" in searchable_text:
+            textual_match.append((project, product))
+
         preferences = project.get("channel_preferences")
         telegram_mode = (
             str(preferences.get("TELEGRAM") or "").upper()
@@ -89,6 +103,10 @@ def _find_target_project() -> tuple[dict, object, str] | tuple[None, None, None]
         project, product = exact_name[0]
         return project, product, "EXACT_PRODUCT_NAME"
 
+    if not exact_name and len(textual_match) == 1:
+        project, product = textual_match[0]
+        return project, product, "UNIQUE_FEMDOM_TEXT_MATCH"
+
     # The production FemDom dogfood project is known to have Telegram in AUTO,
     # exactly $10 of paid Growth Balance funding, launch unlocked, and completed
     # research. Use that operational fingerprint only when it resolves to one project.
@@ -102,6 +120,7 @@ def _find_target_project() -> tuple[dict, object, str] | tuple[None, None, None]
                 "status": "TARGET_NOT_UNIQUE",
                 "target_product_name": TARGET_PRODUCT_NAME,
                 "exact_name_match_count": len(exact_name),
+                "femdom_text_match_count": len(textual_match),
                 "telegram_auto_funded_10_usd_match_count": len(dogfood_fingerprint),
                 "active_product_project_count": len(active),
             },
