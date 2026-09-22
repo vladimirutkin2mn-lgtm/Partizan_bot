@@ -1,12 +1,26 @@
+from typing import TypeVar
+
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import BaseModel
 
 from app.icp_agent import ICPCandidate, ICPDimensionScores, ICPEngine
 from app.icp_service import icp_service
+from app.llm import LLMMessage, LLMProvider
 from app.main import app
 from app.product_intake import product_intake_service
 
 client = TestClient(app)
+StructuredModelT = TypeVar("StructuredModelT", bound=BaseModel)
+
+
+class FailingICPProvider(LLMProvider):
+    async def parse(
+        self,
+        messages: list[LLMMessage],
+        response_model: type[StructuredModelT],
+    ) -> StructuredModelT:
+        raise TimeoutError("structured provider timed out")
 
 
 @pytest.fixture(autouse=True)
@@ -56,6 +70,25 @@ def _candidate(title: str, description: str, score: int = 8) -> ICPCandidate:
         ),
         rationale=["Test hypothesis"],
     )
+
+
+@pytest.mark.asyncio
+async def test_icp_engine_falls_back_when_structured_provider_fails() -> None:
+    engine = ICPEngine(FailingICPProvider())
+
+    result = await engine.generate(
+        {
+            "name": "Oracle",
+            "description": "Personalized relationship readings",
+            "problem_or_desire": "Relationship uncertainty",
+            "value_proposition": "Personalized readings on demand",
+            "market": "US",
+            "goal": "Acquire paid users",
+        }
+    )
+
+    assert result.generated_count >= 10
+    assert len(result.ranked) >= 10
 
 
 def test_icp_generation_requires_confirmed_product() -> None:

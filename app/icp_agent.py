@@ -103,10 +103,13 @@ class ICPEngine:
         if self._provider is None:
             generation = self._fallback_generation(product_profile)
         else:
-            generation = await self._provider.parse(
-                messages=self._build_messages(product_profile),
-                response_model=ICPGeneration,
-            )
+            try:
+                generation = await self._provider.parse(
+                    messages=self._build_messages(product_profile),
+                    response_model=ICPGeneration,
+                )
+            except Exception:
+                generation = self._fallback_generation(product_profile)
         return self.rank(generation.candidates)
 
     def rank(self, candidates: list[ICPCandidate]) -> ICPRankingResult:

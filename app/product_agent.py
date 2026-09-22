@@ -122,10 +122,13 @@ class ProductIntakeAgent:
         if self._provider is None:
             analysis = self._fallback_analysis(brief, answers)
         else:
-            analysis = await self._provider.parse(
-                messages=self._build_messages(brief, reference_links, answers),
-                response_model=ProductAnalysis,
-            )
+            try:
+                analysis = await self._provider.parse(
+                    messages=self._build_messages(brief, reference_links, answers),
+                    response_model=ProductAnalysis,
+                )
+            except Exception:
+                analysis = self._fallback_analysis(brief, answers)
         analysis = self._normalize(analysis, brief)
         analysis.clarifications = self._select_clarifications(analysis, answered_fields)
         return analysis

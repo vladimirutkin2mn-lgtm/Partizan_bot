@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -772,6 +772,64 @@ async def test_free_proof_rejects_mock_search_provider() -> None:
             SimpleNamespace(),
             SimpleNamespace(icps=[SimpleNamespace()]),
         )
+
+
+@pytest.mark.asyncio
+async def test_deep_research_recovers_from_stale_product_state(monkeypatch) -> None:
+    service = CustomerFunnelService(MemoryRuntimeStateStore())
+    preview = service.create_preview(
+        CustomerPreviewRequest.model_validate(_preview_payload())
+    )
+    stale_product_id = uuid4()
+    replacement_product_id = uuid4()
+    project = service._store.get(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(preview.project_id),
+    )
+    assert project is not None
+    project["launch_unlocked"] = True
+    project["product_id"] = str(stale_product_id)
+    service._store.put(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(preview.project_id),
+        project,
+    )
+
+    async def create_replacement(_payload):
+        return SimpleNamespace(
+            product=SimpleNamespace(id=replacement_product_id),
+            clarifications=[],
+        )
+
+    monkeypatch.setattr(
+        "app.customer_funnel.product_intake_service.create_draft",
+        create_replacement,
+    )
+    monkeypatch.setattr(
+        "app.customer_funnel.product_intake_service.confirm",
+        lambda _product_id: None,
+    )
+
+    async def finish_research(current_project, product_id):
+        current_project["research_state"] = "READY"
+        service._persist(current_project)  # noqa: SLF001
+        return SimpleNamespace(product_id=product_id, state="READY")
+
+    monkeypatch.setattr(service, "_finish_research", finish_research)
+
+    result = await service.start_deep_research(
+        preview.project_id,
+        preview.customer_token,
+    )
+
+    assert result.product_id == replacement_product_id
+    recovered = service._store.get(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(preview.project_id),
+    )
+    assert recovered is not None
+    assert recovered["product_id"] == str(replacement_product_id)
+    assert recovered["research_state"] == "READY"
 
 
 def test_deep_research_is_blocked_before_payment_without_calling_product_intake(monkeypatch) -> None:
