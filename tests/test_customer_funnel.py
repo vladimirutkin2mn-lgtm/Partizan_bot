@@ -1025,19 +1025,23 @@ def test_landing_all_customer_ctas_route_to_start_not_internal_app() -> None:
 
     assert page.status_code == 200
     assert 'href="/app"' not in page.text
-    assert page.text.count('href="/start?release=') >= 5
-    assert "Start free. Then choose how far Partizan should go." in page.text
-    assert "You built the product." in page.text
-    assert "Start with what you have." in page.text
-    assert "$49 <small>once</small>" in page.text
+    assert page.text.count('href="/start?release=') >= 4
+    assert "Get your product in front of the right people." in page.text
+    assert "Partizan finds your audience, tests ways to reach them, and learns what works." in page.text
+    assert "Find your audience across" in page.text
+    for channel in ("Meta", "Telegram", "Reddit", "Google Ads", "TikTok"):
+        assert channel in page.text
+    assert "From your product to your next customers" in page.text
+    assert "Partizan does the work. You keep the controls." in page.text
+    assert "Start with a free product analysis. Continue with an acquisition budget from $10." in page.text
+    assert "$49 once" in page.text
     assert "10% of actual acquisition spend" in page.text
-    assert "Find → Try → Learn." in page.text
-    assert "You're always <em>in control.</em>" in page.text
-    assert "Partizan may tell you not to run ads yet." in page.text
-    assert "Sometimes the best first move costs $0." in page.text
+    assert "A first test is just the beginning." in page.text
 
     assert javascript.status_code == 200
     assert 'a[href^="/start"]' in javascript.text
     assert "startDestination" in javascript.text
     assert "query.set('release', startRelease)" in javascript.text
+    assert "hero-scan-form" in javascript.text
+    assert "query.set('product', productLink)" in javascript.text
     assert 'a.button-primary[href="/app"]' not in javascript.text

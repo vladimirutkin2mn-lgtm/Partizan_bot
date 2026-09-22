@@ -32,3 +32,20 @@
 .ar-loading{display:flex;gap:10px;align-items:center;color:var(--muted);font-size:12px}
 .ar-error{border-color:rgba(255,115,115,.32);color:#ffb0b0;font-size:12px;line-height:1.45}
 @media(max-width:820px){.ar-prelaunch-actions{align-items:stretch;flex-direction:column}.ar-prelaunch-actions .button{width:100%}.ar-overview-head{display:grid}.ar-overview-actions{justify-content:flex-start}.ar-overview-grid{grid-template-columns:1fr}.ar-hero{display:grid}.ar-actions{justify-content:flex-start}.ar-grid{grid-template-columns:1fr}.ar-variant-row{grid-template-columns:78px minmax(0,1fr)}.ar-source>div,.ar-history-row>div{display:grid}.ar-history-row span{text-align:left}}
+
+/* 2026 light product refresh */
+.ar-prelaunch,.ar-overview{border-color:rgba(92,139,28,.18);background:linear-gradient(135deg,#f5faee,#fff)}
+.ar-overview-grid>div,.ar-variant,.ar-source,.ar-history-row{border-color:var(--line);background:#f8faf6}
+.ar-source a{color:#527f17}.ar-source a:hover{color:#31500e}
+.ar-error{border-color:rgba(201,79,79,.25);color:#a63d3d}
+
+/* Simplified Home keeps continuous testing inside Results. */
+.ar-overview{display:none!important}
+#autoresearch-results-open{margin-left:auto}
+
+
+/* HANDOFF FINAL PARITY */
+#activation-progress{display:none!important}
+.ws-recent .activity-list>div{padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important}
+.ws-recent .activity-list>div strong{font-weight:450!important;font-size:15px!important;color:#516957!important}
+.ws-recent .activity-list>div span{font-size:14px!important;color:#94a093!important;margin-top:5px!important;line-height:1.6!important}

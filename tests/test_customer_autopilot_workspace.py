@@ -64,7 +64,8 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert "AI customer acquisition system" in workspace.text
     for href in ("/privacy", "/terms", "/security", "/contact"):
         assert f'href="{href}"' in workspace.text
-    assert "Let's find your first users." in workspace.text
+    assert "Your growth" in workspace.text
+    assert "For your review" in workspace.text
     assert (
         "You should not have to choose a marketing channel or configure a campaign first."
         in workspace.text
