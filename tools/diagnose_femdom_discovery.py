@@ -11,6 +11,7 @@ from app.audience_intelligence_service import (
     audience_intelligence_service,
 )
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
+from app.growth_balance import GROWTH_BALANCE_TOPUP_NAMESPACE
 from app.icp_service import icp_service
 from app.product_intake import product_intake_service
 from app.runtime_store import get_runtime_store
@@ -39,7 +40,19 @@ def _find_target_project() -> tuple[dict, object, str] | tuple[None, None, None]
     store = get_runtime_store()
     active: list[tuple[dict, object]] = []
     exact_name: list[tuple[dict, object]] = []
-    telegram_auto: list[tuple[dict, object]] = []
+    dogfood_fingerprint: list[tuple[dict, object]] = []
+
+    funded_cents_by_project: dict[str, int] = {}
+    for topup in store.list_namespace(GROWTH_BALANCE_TOPUP_NAMESPACE):
+        if not isinstance(topup, dict) or topup.get("state") != "PAID":
+            continue
+        project_id = str(topup.get("project_id") or "")
+        if not project_id:
+            continue
+        funded_cents_by_project[project_id] = (
+            funded_cents_by_project.get(project_id, 0)
+            + int(topup.get("amount_cents") or 0)
+        )
 
     for project in store.list_namespace(CUSTOMER_PROJECT_NAMESPACE):
         if not isinstance(project, dict) or project.get("deleted_at"):
@@ -58,35 +71,30 @@ def _find_target_project() -> tuple[dict, object, str] | tuple[None, None, None]
             exact_name.append((project, product))
 
         preferences = project.get("channel_preferences")
-        publisher_modes = project.get("channel_publisher_modes")
         telegram_mode = (
-            str(preferences.get("TELEGRAM") or "")
+            str(preferences.get("TELEGRAM") or "").upper()
             if isinstance(preferences, dict)
             else ""
         )
-        telegram_publisher = (
-            str(publisher_modes.get("TELEGRAM") or "")
-            if isinstance(publisher_modes, dict)
-            else ""
-        )
+        funded_cents = funded_cents_by_project.get(str(project.get("id") or ""), 0)
         if (
             telegram_mode == "AUTO"
-            and telegram_publisher == "CLIENT_OWNED"
+            and funded_cents == 1000
             and bool(project.get("launch_unlocked"))
             and str(project.get("research_state") or "") == "READY"
         ):
-            telegram_auto.append((project, product))
+            dogfood_fingerprint.append((project, product))
 
     if len(exact_name) == 1:
         project, product = exact_name[0]
         return project, product, "EXACT_PRODUCT_NAME"
 
-    # The production dogfood project we are diagnosing is known to have Telegram
-    # in AUTO using the customer's own Telegram account. Use that operational
-    # fingerprint only when it resolves to exactly one active researched project.
-    if not exact_name and len(telegram_auto) == 1:
-        project, product = telegram_auto[0]
-        return project, product, "UNIQUE_TELEGRAM_AUTO_CLIENT_OWNED"
+    # The production FemDom dogfood project is known to have Telegram in AUTO,
+    # exactly $10 of paid Growth Balance funding, launch unlocked, and completed
+    # research. Use that operational fingerprint only when it resolves to one project.
+    if not exact_name and len(dogfood_fingerprint) == 1:
+        project, product = dogfood_fingerprint[0]
+        return project, product, "UNIQUE_TELEGRAM_AUTO_FUNDED_10_USD"
 
     print(
         json.dumps(
@@ -94,7 +102,7 @@ def _find_target_project() -> tuple[dict, object, str] | tuple[None, None, None]
                 "status": "TARGET_NOT_UNIQUE",
                 "target_product_name": TARGET_PRODUCT_NAME,
                 "exact_name_match_count": len(exact_name),
-                "telegram_auto_client_owned_match_count": len(telegram_auto),
+                "telegram_auto_funded_10_usd_match_count": len(dogfood_fingerprint),
                 "active_product_project_count": len(active),
             },
             sort_keys=True,
