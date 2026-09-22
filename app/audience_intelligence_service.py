@@ -31,8 +31,6 @@ class InMemoryAudienceIntelligenceService:
 
         engine = AudienceIntelligenceEngine(get_search_provider())
         seeds = await engine.discover(product=product, icps=top_icps)
-        if not seeds:
-            raise RuntimeError("Audience Intelligence produced no MVP distribution opportunities")
 
         opportunities = [
             DistributionOpportunityView(id=uuid4(), **seed.model_dump())
