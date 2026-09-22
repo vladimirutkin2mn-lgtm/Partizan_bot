@@ -385,9 +385,8 @@
   };
 
   const activate = () => {
-    document.querySelectorAll('.tab-button').forEach((button) => {
-      button.classList.toggle('active', button.dataset.tab === 'experiments');
-    });
+    const resultsButton = document.querySelector('.tab-button[data-tab="activity"]');
+    if (resultsButton) resultsButton.click();
     document.querySelectorAll('[data-tab-panel]').forEach((panel) => {
       panel.classList.toggle('hidden', panel.dataset.tabPanel !== 'experiments');
     });
@@ -397,19 +396,18 @@
   const install = () => {
     const nav = document.querySelector('.workspace-tabs');
     const workspaceNode = $('workspace');
-    if (!nav || !workspaceNode || $('autoresearch-tab')) return;
+    if (!nav || !workspaceNode || $('autoresearch-panel')) return;
 
     const button = document.createElement('button');
-    button.id = 'autoresearch-tab';
-    button.className = 'tab-button';
+    button.id = 'autoresearch-results-open';
+    button.className = 'text-button';
     button.type = 'button';
-    button.dataset.tab = 'experiments';
     button.textContent = 'Tests';
-    const settings = nav.querySelector('[data-tab="settings"]');
-    nav.insertBefore(button, settings || null);
+    const resultsHead = workspaceNode.querySelector('[data-tab-panel="activity"] .experiments-card .section-head');
+    if (resultsHead) resultsHead.appendChild(button);
     button.addEventListener('click', activate);
 
-    nav.querySelectorAll('.tab-button:not(#autoresearch-tab)').forEach((item) => {
+    nav.querySelectorAll('.tab-button').forEach((item) => {
       item.addEventListener('click', () => {
         const panel = $('autoresearch-panel');
         if (panel) panel.classList.add('hidden');
@@ -455,7 +453,7 @@
     panel.innerHTML = `
       <section class="panel ar-hero">
         <div><span class="eyebrow">Continuous learning</span><h2>Continuous customer-acquisition tests</h2><p>Partizan proposes one small test at a time, waits for measured customer results, learns, then decides what to try next.</p></div>
-        <div class="ar-actions"><span id="autoresearch-status" class="status-pill">Loading</span><button id="autoresearch-control" class="button button-secondary hidden" type="button">Pause testing</button></div>
+        <div class="ar-actions"><button id="autoresearch-back" class="text-button" type="button">← Back to results</button><span id="autoresearch-status" class="status-pill">Loading</span><button id="autoresearch-control" class="button button-secondary hidden" type="button">Pause testing</button></div>
       </section>
       <div id="autoresearch-loading" class="panel ar-loading"><span class="spinner"></span><span>Loading continuous-learning state…</span></div>
       <div id="autoresearch-error" class="panel ar-error hidden"></div>
@@ -478,6 +476,8 @@
     });
 
     if (syncProjectId()) load().catch(() => {});
+
+    $('autoresearch-back').addEventListener('click', () => openWorkspaceTab('activity'));
 
     $('autoresearch-control').addEventListener('click', async () => {
       const control = $('autoresearch-control');
