@@ -624,6 +624,38 @@ class CustomerFunnelService:
             )
         return result
 
+    async def repair_stale_research(
+        self,
+        project_id: UUID,
+    ) -> CustomerResearchResponse:
+        """Resume a paid project stranded after its final clarification was accepted.
+
+        This is an internal maintenance path, not a customer authorization shortcut.
+        It only resumes projects that are already launch-entitled, still marked
+        NEEDS_INPUT, have a confirmed ProductProfile, and have no unanswered product
+        questions left.
+        """
+        project = self._load(project_id)
+        if project is None:
+            raise CustomerProjectNotFoundError(project_id)
+        self._require_launch_entitlement(project)
+        if project.get("research_state") == "READY":
+            return self._cached_research(project)
+        if project.get("research_state") != "NEEDS_INPUT":
+            raise ValueError("Project is not stranded in NEEDS_INPUT")
+
+        product_id_raw = project.get("product_id")
+        if not product_id_raw:
+            raise CustomerProjectNotFoundError("Deep research product is missing")
+        product_id = UUID(str(product_id_raw))
+        state = product_intake_service.get_state(product_id)
+        if state.questions:
+            raise ValueError("Project still has unanswered research clarifications")
+        if state.product.status != ProductProfileStatus.CONFIRMED:
+            raise ValueError("Product must already be confirmed before stale research repair")
+
+        return await self._finish_research(project, product_id)
+
     async def start_deep_research(
         self,
         project_id: UUID,
