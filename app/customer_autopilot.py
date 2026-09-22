@@ -128,6 +128,11 @@ class CustomerAutopilotService:
         if status == "ACTIVE":
             if not auto_platforms:
                 raise ValueError("Enable at least one Auto channel before resuming Partizan")
+            if not self._has_eligible_execution_opportunity(product_id, auto_platforms):
+                raise ValueError(
+                    "Partizan has not found an eligible execution opportunity "
+                    "for the enabled Auto channels yet"
+                )
             paid_auto = self._has_paid_auto_platform(auto_platforms)
             if paid_auto:
                 self._require_paid_destination(product_id)
@@ -359,6 +364,10 @@ class CustomerAutopilotService:
         product_id = UUID(str(product_id_raw))
         self._materialize_staged_meta(project, product_id)
         self._ensure_mandate_if_ready(project_id, project, product_id)
+        has_execution_opportunity = self._has_eligible_execution_opportunity(
+            product_id,
+            auto_platforms,
+        )
         product = product_intake_service.get_product(product_id)
         analytics = distribution_analytics_service.product_analytics(product_id)
         balance = self._balance.summary(project_id, self._provider_distribution_spend(analytics))
@@ -384,7 +393,13 @@ class CustomerAutopilotService:
         if paid_auto and not guardrails_saved:
             blockers.append("Maximum CAC and autonomous-spend guardrails are not saved")
         elif mandate is None and auto_platforms:
-            blockers.append("Partizan is applying the channel automation policy")
+            if not has_execution_opportunity:
+                blockers.append(
+                    "No eligible execution opportunity has been found yet "
+                    "for the enabled Auto channels"
+                )
+            else:
+                blockers.append("Partizan is applying the channel automation policy")
         if (
             DistributionPlatform.INSTAGRAM in auto_platforms
             and connection is None
@@ -517,6 +532,11 @@ class CustomerAutopilotService:
             )
 
         distribution = audience_intelligence_service.get(product_id)
+        if not any(
+            item.platform in auto_platforms
+            for item in distribution.opportunities
+        ):
+            return existing
         try:
             distribution_play_service.get(product_id)
         except KeyError:
@@ -657,6 +677,22 @@ class CustomerAutopilotService:
             # so provider pause remains fail-closed.
             return True
         return DistributionActionType.PAID_CAMPAIGN in allowed_actions
+
+    @staticmethod
+    def _has_eligible_execution_opportunity(
+        product_id: UUID,
+        auto_platforms: list[DistributionPlatform],
+    ) -> bool:
+        if not auto_platforms:
+            return False
+        try:
+            distribution = audience_intelligence_service.get(product_id)
+        except KeyError:
+            return False
+        return any(
+            item.platform in auto_platforms
+            for item in distribution.opportunities
+        )
 
     @staticmethod
     def _has_paid_auto_platform(
