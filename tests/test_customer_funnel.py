@@ -1041,3 +1041,78 @@ def test_landing_all_customer_ctas_route_to_start_not_internal_app() -> None:
     assert "startDestination" in javascript.text
     assert "query.set('release', startRelease)" in javascript.text
     assert 'a.button-primary[href="/app"]' not in javascript.text
+
+
+@pytest.mark.asyncio
+async def test_repair_stale_research_resumes_confirmed_project_without_questions(
+    monkeypatch,
+) -> None:
+    service = CustomerFunnelService(MemoryRuntimeStateStore())
+    preview = service.create_preview(CustomerPreviewRequest.model_validate(_preview_payload()))
+    product_id = uuid4()
+    project = service._store.get(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(preview.project_id),
+    )
+    assert project is not None
+    project["launch_unlocked"] = True
+    project["product_id"] = str(product_id)
+    project["research_state"] = "NEEDS_INPUT"
+    service._store.put(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(preview.project_id),
+        project,
+    )
+
+    monkeypatch.setattr(
+        "app.customer_funnel.product_intake_service.get_state",
+        lambda _product_id: SimpleNamespace(
+            product=SimpleNamespace(status=ProductProfileStatus.CONFIRMED),
+            questions=[],
+        ),
+    )
+
+    expected = SimpleNamespace(state="READY")
+    calls = []
+
+    async def finish_research(current_project, current_product_id):
+        calls.append((current_project["id"], current_product_id))
+        return expected
+
+    monkeypatch.setattr(service, "_finish_research", finish_research)
+
+    result = await service.repair_stale_research(preview.project_id)
+
+    assert result is expected
+    assert calls == [(str(preview.project_id), product_id)]
+
+
+@pytest.mark.asyncio
+async def test_repair_stale_research_refuses_unanswered_questions(monkeypatch) -> None:
+    service = CustomerFunnelService(MemoryRuntimeStateStore())
+    preview = service.create_preview(CustomerPreviewRequest.model_validate(_preview_payload()))
+    product_id = uuid4()
+    project = service._store.get(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(preview.project_id),
+    )
+    assert project is not None
+    project["launch_unlocked"] = True
+    project["product_id"] = str(product_id)
+    project["research_state"] = "NEEDS_INPUT"
+    service._store.put(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(preview.project_id),
+        project,
+    )
+
+    monkeypatch.setattr(
+        "app.customer_funnel.product_intake_service.get_state",
+        lambda _product_id: SimpleNamespace(
+            product=SimpleNamespace(status=ProductProfileStatus.CONFIRMED),
+            questions=[SimpleNamespace(id=uuid4())],
+        ),
+    )
+
+    with pytest.raises(ValueError, match="unanswered research clarifications"):
+        await service.repair_stale_research(preview.project_id)
