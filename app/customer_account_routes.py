@@ -6,6 +6,7 @@ from uuid import UUID
 import stripe
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 
+from app.audience_intelligence_service import audience_intelligence_service
 from app.config import Settings, get_settings
 from app.customer_account import (
     CUSTOMER_ACCOUNT_SESSION_COOKIE,
@@ -213,6 +214,15 @@ def get_customer_workspace(
             project_id,
             customer_token,
         )
+        research_diagnostics: dict = {}
+        product_id_raw = project_payload.get("product_id")
+        if product_id_raw:
+            try:
+                audience_map = audience_intelligence_service.get(UUID(str(product_id_raw)))
+            except (KeyError, TypeError, ValueError):
+                pass
+            else:
+                research_diagnostics = dict(audience_map.diagnostics)
         autopilot = customer_autopilot_service.overview(project_id, customer_token)
         if autopilot.meta.connected and not autopilot.meta.ad_account_name:
             autopilot.meta.ad_account_name = customer_meta_oauth_service.resolve_ad_account_name(
@@ -249,6 +259,7 @@ def get_customer_workspace(
         preview_research_message=str(preview_payload.get("free_research_message") or ""),
         preview_opportunity=preview_opportunity,
         research_clarifications=research_clarifications,
+        research_diagnostics=research_diagnostics,
         target_max_cac=float(target_max_cac_raw) if target_max_cac_raw is not None else None,
         autonomous_spend_confirmed=bool(project_payload.get("autopilot_spend_confirmed")),
     )
