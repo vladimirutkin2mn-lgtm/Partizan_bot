@@ -162,8 +162,8 @@ class ICPEngine:
         weakest = min(values.items(), key=lambda item: (item[1], item[0]))
         strong_text = ", ".join(f"{name}={score}/10" for name, score in strongest)
         return (
-            f"Главные драйверы: {strong_text}. "
-            f"Главное ограничение: {weakest[0]}={weakest[1]}/10."
+            f"Main drivers: {strong_text}. "
+            f"Main constraint: {weakest[0]}={weakest[1]}/10."
         )
 
     def _build_messages(self, product_profile: dict[str, Any]) -> list[LLMMessage]:
