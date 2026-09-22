@@ -139,6 +139,27 @@ def _product_and_icp() -> tuple[SimpleNamespace, SimpleNamespace]:
     return product, icp
 
 
+def test_telegram_normalizer_rejects_encoded_private_invite_links() -> None:
+    adapter = TelegramDiscoveryAdapter(use_default_research_connector=False)
+
+    assert adapter._normalize(
+        "https://t.me/+1lCgcudwvk9iODMy",
+        OpportunityKind.CHANNEL,
+    ) is None
+    assert adapter._normalize(
+        "https://t.me/%2B1lCgcudwvk9iODMy",
+        OpportunityKind.CHANNEL,
+    ) is None
+    assert adapter._normalize(
+        "https://t.me/founder_books",
+        OpportunityKind.CHANNEL,
+    ) == (
+        "channel:founder_books",
+        "https://t.me/founder_books",
+        "founder_books",
+    )
+
+
 @pytest.mark.asyncio
 async def test_connector_deduplicates_entity_and_keeps_freshest_snapshot() -> None:
     older = _snapshot(activity_at=datetime(2026, 9, 7, 8, 0, tzinfo=UTC))
