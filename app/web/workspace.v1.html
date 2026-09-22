@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light">
+  <meta name="color-scheme" content="dark">
   <title>Partizan Workspace</title>
   <meta name="description" content="Your Partizan customer acquisition workspace: performance, channels, activity and controls.">
   <link rel="stylesheet" href="/workspace/assets/workspace.v1.css">
@@ -33,7 +33,6 @@
     <div id="account-nav" class="account-nav hidden">
       <select id="project-switcher" class="project-switcher hidden" aria-label="Partizan project"></select>
       <span id="account-email"></span>
-      <button class="account-settings" type="button" data-tab="settings" data-open-tab="settings">Settings</button>
       <button id="logout-button" type="button">Sign out</button>
     </div>
   </header>
@@ -63,9 +62,10 @@
 
     <div id="workspace" class="hidden">
       <nav class="workspace-tabs" aria-label="Workspace sections">
-        <button class="tab-button active" type="button" data-tab="overview">Home</button>
-        <button class="tab-button" type="button" data-tab="activity">Results</button>
+        <button class="tab-button active" type="button" data-tab="overview">Overview</button>
         <button class="tab-button" type="button" data-tab="channels">Channels</button>
+        <button class="tab-button" type="button" data-tab="activity">Activity</button>
+        <button class="tab-button" type="button" data-tab="settings">Settings</button>
       </nav>
 
       <section class="tab-panel" data-tab-panel="overview">
@@ -92,9 +92,7 @@
             <div><span class="eyebrow">Your next step</span><button id="activation-primary" class="button button-primary" type="button">Open recommended move →</button></div>
             <p id="activation-note" class="note">Funding is not the next step unless this specific move needs paid budget.</p>
           </div>
-          <details class="activation-details">
-            <summary>See research & plan <span>→</span></summary>
-            <div id="activation-preview" class="activation-preview">
+          <div id="activation-preview" class="activation-preview">
             <div class="activation-preview-head"><span>From your product analysis</span><small id="activation-preview-label">Research evidence</small></div>
             <div id="activation-preview-opportunity" class="activation-preview-opportunity"></div>
             <div id="activation-preview-directions" class="activation-preview-directions"></div>
@@ -107,7 +105,6 @@
             <li id="activation-limit"><span class="activation-index">5</span><div><strong>Approve only what the move needs</strong><small>Add money or connect an account only when this specific action requires it.</small></div><span class="activation-step-state">If needed</span></li>
             <li id="activation-test"><span class="activation-index">6</span><div><strong>Try, measure and learn</strong><small>Real visits, signups and paying customers determine what Partizan should try next.</small></div><span class="activation-step-state">Next</span></li>
           </ol>
-          </details>
         </section>
 
         <section id="performance-metrics" class="metric-grid metric-grid-primary" aria-label="Acquisition results">
