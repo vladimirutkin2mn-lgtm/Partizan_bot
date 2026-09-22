@@ -1087,8 +1087,8 @@ body::before{background:linear-gradient(rgba(41,69,43,.026) 1px,transparent 1px)
 .brand-copy small,.hero-proof,.trust-inner>span{color:var(--muted-2)}
 .nav-links{color:var(--muted)}
 .nav-actions{display:flex;align-items:center;gap:9px}
-.nav-signin{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 13px;border-radius:11px;color:#435044;font-size:13px;font-weight:700}
-.nav-signin:hover{background:#f0f4ed;color:var(--text)}
+.nav-signin,.nav-account-link{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 13px;border-radius:11px;color:#435044;font-size:13px;font-weight:700}
+.nav-signin:hover,.nav-account-link:hover{background:#f0f4ed;color:var(--text)}
 .button-nav{border-color:var(--line);background:#172118;color:#fff}
 .button-nav:hover{background:#263229;border-color:#263229}
 .button-primary{background:var(--lime);color:#172118;box-shadow:0 12px 30px rgba(103,148,28,.12)}
@@ -1143,7 +1143,7 @@ body::before{background:linear-gradient(rgba(41,69,43,.026) 1px,transparent 1px)
   .nav-links{display:none}
   .nav{gap:10px}
   .nav-actions{margin-left:auto}
-  .nav-signin{padding:0 8px}
+  .nav-signin,.nav-account-link{padding:0 8px}
   .button-nav{padding:0 11px;font-size:12px}
 }
 
