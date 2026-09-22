@@ -406,7 +406,10 @@
       $('research-state').classList.add('warn');
       $('research-title').textContent = 'One useful clarification is needed';
       $('research-copy').textContent = 'Partizan asks only when one product detail materially changes the research.';
-      $('research-button').classList.remove('hidden');
+      const hasPersistedClarification = Array.isArray(data.research_clarifications)
+        && data.research_clarifications.length > 0;
+      $('research-button').textContent = 'Continue research →';
+      $('research-button').classList.toggle('hidden', hasPersistedClarification);
       return;
     }
     const previewResearchStatus = data.preview_research_status || 'NOT_RUN';
@@ -520,7 +523,17 @@
     $('resume-button').classList.toggle('hidden', !paused);
 
     renderResearchStatus(project, overview, data);
-    if (lastResearchResult) renderResearch(lastResearchResult);
+    if (
+      project.research_state === 'NEEDS_INPUT'
+      && Array.isArray(data.research_clarifications)
+      && data.research_clarifications.length
+    ) {
+      renderClarification(data.research_clarifications[0]);
+    } else if (lastResearchResult) {
+      renderResearch(lastResearchResult);
+    } else {
+      $('clarification').classList.add('hidden');
+    }
     $('loading').classList.add('hidden');
     $('login-gate').classList.add('hidden');
     $('workspace').classList.remove('hidden');
@@ -592,31 +605,38 @@
     });
   };
 
+  const renderClarification = (question) => {
+    if (!question) return false;
+    const box = $('clarification');
+    box.innerHTML = `<span class="eyebrow">One useful clarification</span><h3>${escapeHtml(question.question)}</h3><p>${escapeHtml(question.rationale)}</p><form id="clarification-form"><input id="clarification-answer" required placeholder="Your answer"><button class="button button-primary" type="submit">Continue →</button></form>`;
+    box.classList.remove('hidden');
+    $('research-results').classList.add('hidden');
+    $('clarification-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = event.submitter;
+      const answer = $('clarification-answer').value.trim();
+      if (!answer) return;
+      button.disabled = true;
+      try {
+        const next = await api(`/customer/workspace/${projectId}/clarifications`, {
+          method: 'POST',
+          body: JSON.stringify({ question_id: question.question_id, answer }),
+        });
+        renderResearch(next);
+        await refreshWorkspaceWithoutResearch();
+      } catch (error) {
+        showNotice(error.message, true);
+      } finally {
+        button.disabled = false;
+      }
+    });
+    return true;
+  };
+
   const renderResearch = (result) => {
     lastResearchResult = result;
     if (result.state === 'NEEDS_INPUT') {
-      const question = result.clarifications[0];
-      const box = $('clarification');
-      box.innerHTML = `<span class="eyebrow">One useful clarification</span><h3>${escapeHtml(question.question)}</h3><p>${escapeHtml(question.rationale)}</p><form id="clarification-form"><input id="clarification-answer" required placeholder="Your answer"><button class="button button-primary" type="submit">Continue →</button></form>`;
-      box.classList.remove('hidden');
-      $('research-results').classList.add('hidden');
-      $('clarification-form').addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const button = event.submitter;
-        button.disabled = true;
-        try {
-          const next = await api(`/customer/workspace/${projectId}/clarifications`, {
-            method: 'POST',
-            body: JSON.stringify({ question_id: question.question_id, answer: $('clarification-answer').value.trim() }),
-          });
-          renderResearch(next);
-          await refreshWorkspaceWithoutResearch();
-        } catch (error) {
-          showNotice(error.message, true);
-        } finally {
-          button.disabled = false;
-        }
-      });
+      renderClarification(result.clarifications[0]);
       return;
     }
 
@@ -672,7 +692,10 @@
     } else if (growthState === 'cancelled') {
       showNotice('acquisition budget checkout cancelled. No funds were added.');
       window.history.replaceState({}, '', `/workspace?project=${encodeURIComponent(projectId)}`);
-    } else if (initial.project.launch_unlocked && initial.project.research_state !== 'NOT_STARTED') {
+    } else if (
+      initial.project.launch_unlocked
+      && initial.project.research_state === 'READY'
+    ) {
       loadResearch(false).catch(() => {});
     }
 
