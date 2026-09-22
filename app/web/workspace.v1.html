@@ -28,17 +28,24 @@
 </head>
 <body>
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
-  <header class="top shell">
-    <a class="brand" href="/"><span class="mark">p</span><span><strong>partizan<span class="brand-dot">.</span></strong><small>Your growth</small></span></a>
-    <div id="account-nav" class="account-nav hidden">
-      <select id="project-switcher" class="project-switcher hidden" aria-label="Partizan project"></select>
-      <span id="account-email"></span>
-      <button class="account-settings" type="button" data-tab="settings" data-open-tab="settings">Settings</button>
-      <button id="logout-button" type="button">Sign out</button>
+  <header class="top ws-header">
+    <div class="ws-header-inner">
+      <a class="brand" href="/"><span class="mark">p</span><span><strong>partizan<span class="brand-dot">.</span></strong></span></a>
+      <nav class="workspace-tabs ws-nav" aria-label="Workspace sections">
+        <button class="tab-button active" type="button" data-tab="overview">Home</button>
+        <button class="tab-button" type="button" data-tab="activity">Results</button>
+        <button class="tab-button" type="button" data-tab="channels">Channels</button>
+      </nav>
+      <div id="account-nav" class="account-nav ws-account hidden">
+        <select id="project-switcher" class="project-switcher ws-project hidden" aria-label="Partizan project"></select>
+        <span id="account-email"></span>
+        <button class="account-settings ws-icon-button" type="button" data-tab="settings" data-open-tab="settings" aria-label="Open settings">⚙</button>
+        <button id="logout-button" type="button">Sign out</button>
+      </div>
     </div>
   </header>
 
-  <main class="shell workspace-main">
+  <main class="workspace-main rd-workspace-content">
     <section id="login-gate" class="login-gate auth-login hidden" aria-labelledby="workspace-login-title">
       <div class="auth-card">
         <span class="eyebrow">Welcome back</span>
@@ -61,40 +68,33 @@
 
     <section id="loading" class="loading-card"><span class="spinner"></span><div><strong>Opening your Partizan workspace…</strong><small>Your project, performance and channel controls are loading.</small></div></section>
 
-    <div id="workspace" class="hidden">
-      <nav class="workspace-tabs" aria-label="Workspace sections">
-        <button class="tab-button active" type="button" data-tab="overview">Home</button>
-        <button class="tab-button" type="button" data-tab="activity">Results</button>
-        <button class="tab-button" type="button" data-tab="channels">Channels</button>
-      </nav>
-
+    <div id="workspace" class="hidden ws-simple">
       <section class="tab-panel" data-tab-panel="overview">
-        <section class="growth-head">
-          <div class="growth-title">
-            <span class="eyebrow">Your growth</span>
+        <section class="ws-page-heading">
+          <div>
             <h1>Your growth</h1>
-            <p id="workspace-status" class="growth-status">Partizan is getting ready.</p>
+            <p id="workspace-status">Partizan is getting ready.</p>
             <p id="workspace-summary" class="lede hidden" aria-hidden="true"></p>
             <div class="project-line"><span id="project-market">—</span><i></i><span id="project-goal">—</span></div>
           </div>
           <div class="hero-actions">
-            <button id="pause-button" class="button button-secondary hidden" type="button">Pause Partizan</button>
-            <button id="resume-button" class="button button-primary hidden" type="button">Resume Partizan</button>
+            <button id="pause-button" class="ws-run-state hidden" type="button">Ⅱ <span>Partizan is working</span></button>
+            <button id="resume-button" class="ws-run-state paused hidden" type="button">▶ <span>Paused · resume</span></button>
           </div>
         </section>
 
-        <section id="activation-card" class="panel activation-card hidden">
-          <div class="activation-head">
-            <div><span class="eyebrow">For your review</span><h2 id="activation-heading">Your next move</h2></div>
-            <span id="activation-progress" class="status-pill">2 of 6</span>
+        <section id="activation-card" class="ws-next activation-card hidden">
+          <div class="activation-head"><div class="ws-next-label"><span class="ws-recent-check">→</span>
+            <span>For your review</span></div><div><h2 id="activation-heading">Your next move</h2>
+            <span id="activation-progress" class="status-pill">2 of 6</span></div>
           </div>
-          <p id="activation-copy" class="section-copy">You should not have to choose a marketing channel or configure a campaign first. Partizan starts from your product, researches where people may already be and recommends the next useful move.</p>
-          <div class="activation-action activation-action-primary">
-            <div><span class="eyebrow">Your next step</span><button id="activation-primary" class="button button-primary" type="button">Open recommended move →</button></div>
+          <p id="activation-copy" class="section-copy ws-next-copy">You should not have to choose a marketing channel or configure a campaign first. Partizan starts from your product, researches where people may already be and recommends the next useful move.</p>
+          <div class="activation-action activation-action-primary ws-next-bottom">
+            <div><button id="activation-primary" class="button button-primary" type="button">Review post →</button></div>
             <p id="activation-note" class="note">Funding is not the next step unless this specific move needs paid budget.</p>
           </div>
-          <details class="activation-details">
-            <summary>See research & plan <span>→</span></summary>
+          <details class="activation-details"><summary>Why this post? <span>→</span></summary><div class="activation-hidden-plan">
+            
             <div id="activation-preview" class="activation-preview">
             <div class="activation-preview-head"><span>From your product analysis</span><small id="activation-preview-label">Research evidence</small></div>
             <div id="activation-preview-opportunity" class="activation-preview-opportunity"></div>
@@ -107,42 +107,25 @@
             <li id="activation-channel"><span class="activation-index">4</span><div><strong id="activation-channel-title">Recommended first move</strong><small id="activation-channel-copy">Partizan will put the concrete action here as soon as research finds one.</small></div><span class="activation-step-state">Now</span></li>
             <li id="activation-limit"><span class="activation-index">5</span><div><strong>Approve only what the move needs</strong><small>Add money or connect an account only when this specific action requires it.</small></div><span class="activation-step-state">If needed</span></li>
             <li id="activation-test"><span class="activation-index">6</span><div><strong>Try, measure and learn</strong><small>Real visits, signups and paying customers determine what Partizan should try next.</small></div><span class="activation-step-state">Next</span></li>
-          </ol>
+          </ol></div>
           </details>
         </section>
 
-        <section id="performance-metrics" class="metric-grid metric-grid-primary" aria-label="Acquisition results">
-          <article id="growth-balance-metric" class="growth-balance-metric">
-            <div class="growth-balance-metric-main">
-              <div class="growth-balance-value">
-                <span>Budget left</span>
-                <strong id="metric-balance">$0</strong>
-                <small>ready for the next useful move</small>
-              </div>
-              <button id="overview-fund-button" class="button button-primary growth-balance-cta" type="button" aria-describedby="overview-balance-benefit">
-                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7.5h14.5A1.5 1.5 0 0 1 20 9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18V7.5Zm0 0V6a1.5 1.5 0 0 1 1.5-1.5H16"/><path d="M15.5 12h4.5v4h-4.5a2 2 0 1 1 0-4Z"/></svg>
-                <span id="overview-fund-label">Add funds</span>
-                <b aria-hidden="true">→</b>
-              </button>
-            </div>
-            <div id="overview-balance-benefit" class="growth-balance-benefit"><i aria-hidden="true">✦</i><span>Fund a recommended paid test when needed</span></div>
-          </article>
-          <article class="metric-spend-card"><span>Spent on growth</span><strong id="metric-spend">$0</strong><small>across allowed channels</small></article>
-          <article class="metric-customers-card"><span>Paying customers</span><strong id="metric-customers">0</strong><small>measured so far</small></article>
-          <article class="metric-cac-card"><span>CAC</span><strong id="metric-cac">—</strong><small>blended cost</small></article>
+        <section id="performance-metrics" class="ws-summary" aria-label="Project summary">
+          <div class="metric-customers-card"><span>Paying customers</span><strong id="metric-customers">0</strong><button class="ws-text-link" type="button" data-open-tab="activity">See results →</button></div>
+          <div class="metric-spend-card"><span>Spent on growth</span><strong id="metric-spend">$0</strong><span class="ws-metric-note">Across your channels</span></div>
+          <div id="growth-balance-metric" class="growth-balance-metric"><span>Budget left</span><strong id="metric-balance">$0</strong><button id="overview-fund-button" class="ws-text-link" type="button">Add funds +</button><span id="overview-fund-label" class="hidden">Add funds</span><span id="overview-balance-benefit" class="hidden"></span></div>
+          <div class="metric-cac-card hidden"><span>CAC</span><strong id="metric-cac">—</strong><small>blended cost</small></div>
         </section>
 
         <section id="performance-overview" class="overview-grid">
-          <article class="panel current-card">
-            <div class="section-head"><div><span class="eyebrow">Current work</span><h2>What Partizan is doing</h2></div><span id="work-state" class="status-pill">Waiting</span></div>
-            <div id="current-work" class="activity-list"></div>
-            <p id="blockers" class="note"></p>
+          <article class="ws-recent current-card">
+            <span class="ws-recent-check">✓</span>
+            <div><strong>Partizan is working on your next move.</strong><div id="current-work" class="activity-list"></div><p id="blockers" class="note"></p></div>
+            <button class="ws-text-link" type="button" data-open-tab="activity">Details →</button>
+            <span id="work-state" class="status-pill hidden">Waiting</span>
           </article>
-
-          <article class="panel channel-snapshot-card">
-            <div class="section-head"><div><span class="eyebrow">Channel performance</span><h2>Where the money is working</h2></div><button class="text-button" type="button" data-open-tab="channels">Manage →</button></div>
-            <div id="channel-snapshot" class="channel-snapshot"></div>
-          </article>
+          <article class="panel channel-snapshot-card hidden"><div id="channel-snapshot" class="channel-snapshot"></div></article>
         </section>
 
         <section id="performance-finance" class="panel overview-finance">
