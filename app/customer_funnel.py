@@ -607,10 +607,16 @@ class CustomerFunnelService:
         product_id_raw = project.get("product_id")
         if product_id_raw:
             product_id = UUID(str(product_id_raw))
-            state = product_intake_service.get_state(product_id)
-            if state.questions:
-                return self._needs_input(project, state.product.id, state.questions)
-            return await self._finish_research(project, state.product.id)
+            try:
+                state = product_intake_service.get_state(product_id)
+            except KeyError:
+                project["product_id"] = None
+                project["research_state"] = "NOT_STARTED"
+                self._persist(project)
+            else:
+                if state.questions:
+                    return self._needs_input(project, state.product.id, state.questions)
+                return await self._finish_research(project, state.product.id)
 
         product_link = str(project.get("product_link") or project.get("website_url") or "").strip()
         enriched_brief_parts = [
