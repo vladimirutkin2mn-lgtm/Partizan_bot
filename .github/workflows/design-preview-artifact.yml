@@ -1,0 +1,31 @@
+name: Design preview artifact
+on:
+  push:
+    branches:
+      - design/preview-v2-exact-20260922
+  workflow_dispatch:
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: partizan-design-preview-files
+          path: |
+            app/web/landing.v1.html
+            app/web/landing.v1.css
+            app/web/landing.account.v1.css
+            app/web/landing.v1.js
+            app/web/start.v1.css
+            app/web/start.v2.html
+            app/web/start.v2.css
+            app/web/goal-dropdown.v1.css
+            app/web/customer-account.v1.css
+            app/web/workspace.v1.html
+            app/web/workspace.v1.css
+            app/web/workspace.channels.v1.css
+            app/web/workspace.projects.v1.css
+            app/web/workspace.experiments.v1.css
+          if-no-files-found: error
+          retention-days: 1
