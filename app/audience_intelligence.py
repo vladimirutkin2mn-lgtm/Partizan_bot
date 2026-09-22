@@ -72,6 +72,17 @@ class PlatformDiscoveryFailure:
 
 
 @dataclass(frozen=True, slots=True)
+class PlatformDiscoveryAttempt:
+    platform: DistributionPlatform
+    query: str
+    search_hit_count: int
+    normalized_candidate_count: int
+    enriched_candidate_count: int
+    search_error_type: str | None = None
+    enrichment_error_type: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class AudienceEvidenceSummary:
     fit_ratio: float
     pain_ratio: float
@@ -113,10 +124,15 @@ class AudienceIntelligenceEngine:
         self._max_concurrency = max_concurrency
         self._adapters = adapters or default_platform_adapters()
         self._last_failures: list[PlatformDiscoveryFailure] = []
+        self._last_attempts: list[PlatformDiscoveryAttempt] = []
 
     @property
     def last_failures(self) -> list[PlatformDiscoveryFailure]:
         return list(self._last_failures)
+
+    @property
+    def last_attempts(self) -> list[PlatformDiscoveryAttempt]:
+        return list(self._last_attempts)
 
     async def discover(
         self,
@@ -143,6 +159,8 @@ class AudienceIntelligenceEngine:
             ICPView,
             PlatformDiscoveryRequest,
             list[PlatformCandidate],
+            int,
+            int,
             Exception | None,
             Exception | None,
         ]:
@@ -158,6 +176,7 @@ class AudienceIntelligenceEngine:
                 search_error = exc
 
             candidates = adapter.candidates(request, hits)
+            normalized_candidate_count = len(candidates)
             enrichment_error: Exception | None = None
             try:
                 candidates = await adapter.enrich_candidates(request, candidates)
@@ -165,17 +184,51 @@ class AudienceIntelligenceEngine:
                 # Native/platform enrichment is additional evidence. Never fabricate it and
                 # never discard valid generic public evidence when the native provider fails.
                 enrichment_error = exc
-            return icp, request, candidates, search_error, enrichment_error
+            return (
+                icp,
+                request,
+                candidates,
+                len(hits),
+                normalized_candidate_count,
+                search_error,
+                enrichment_error,
+            )
 
         batches = await asyncio.gather(
             *(run(icp, adapter, request) for icp, adapter, request in jobs)
         )
         self._last_failures = []
+        self._last_attempts = []
         opportunities: dict[
             tuple[str, DistributionPlatform, str], DistributionOpportunitySeed
         ] = {}
 
-        for icp, request, candidates, search_error, enrichment_error in batches:
+        for (
+            icp,
+            request,
+            candidates,
+            search_hit_count,
+            normalized_candidate_count,
+            search_error,
+            enrichment_error,
+        ) in batches:
+            self._last_attempts.append(
+                PlatformDiscoveryAttempt(
+                    platform=request.platform,
+                    query=request.discovery_query.query,
+                    search_hit_count=search_hit_count,
+                    normalized_candidate_count=normalized_candidate_count,
+                    enriched_candidate_count=len(candidates),
+                    search_error_type=(
+                        type(search_error).__name__ if search_error is not None else None
+                    ),
+                    enrichment_error_type=(
+                        type(enrichment_error).__name__
+                        if enrichment_error is not None
+                        else None
+                    ),
+                )
+            )
             if search_error is not None:
                 self._last_failures.append(
                     PlatformDiscoveryFailure(
