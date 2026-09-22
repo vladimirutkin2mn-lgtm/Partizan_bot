@@ -42,6 +42,53 @@ def _preview_payload() -> dict:
     }
 
 
+def test_current_research_clarification_survives_refresh_and_uses_canonical_english(
+    monkeypatch,
+) -> None:
+    service = CustomerFunnelService(MemoryRuntimeStateStore())
+    preview = service.create_preview(CustomerPreviewRequest.model_validate(_preview_payload()))
+    product_id = uuid4()
+    question_id = uuid4()
+    project = service._store.get(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(preview.project_id),
+    )
+    assert project is not None
+    project["product_id"] = str(product_id)
+    project["research_state"] = "NEEDS_INPUT"
+    service._store.put(  # noqa: SLF001
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(preview.project_id),
+        project,
+    )
+
+    monkeypatch.setattr(
+        "app.customer_funnel.product_intake_service.get_state",
+        lambda _product_id: SimpleNamespace(
+            questions=[
+                SimpleNamespace(
+                    id=question_id,
+                    field_name="goal",
+                    question="Какой измеримый маркетинговый результат нужен на первом этапе?",
+                    rationale="Старый русский текст.",
+                )
+            ]
+        ),
+    )
+
+    [question] = service.current_research_clarifications(
+        preview.project_id,
+        preview.customer_token,
+    )
+
+    assert question.question_id == question_id
+    assert question.question == "What measurable marketing outcome should Partizan optimize for first?"
+    assert question.rationale == (
+        "A clear goal is required to rank Growth Plays and evaluate whether "
+        "an experiment worked."
+    )
+
+
 def test_free_preview_is_deterministic_and_requires_no_llm_or_search() -> None:
     service = CustomerFunnelService(MemoryRuntimeStateStore())
     payload = CustomerPreviewRequest.model_validate(_preview_payload())
