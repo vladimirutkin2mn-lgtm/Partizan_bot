@@ -81,3 +81,21 @@ def test_paid_checkout_callback_is_consumed_before_follow_up_research_render() -
     assert cleanup in block
     assert "await loadResearch(true);" in block
     assert block.index(cleanup) < block.index("await loadResearch(true);")
+
+
+def test_needs_input_restores_persisted_clarification_without_restarting_research() -> None:
+    assert "data.research_clarifications" in WORKSPACE_JS
+    assert "renderClarification(data.research_clarifications[0])" in WORKSPACE_JS
+    assert "project.research_state === 'NEEDS_INPUT'" in WORKSPACE_JS
+
+    callback = WORKSPACE_JS.split("const handleCallbacks = async (initial) =>", 1)[1]
+    callback = callback.split("const openAccount = async", 1)[0]
+    assert "initial.project.research_state === 'READY'" in callback
+    assert "initial.project.research_state !== 'NOT_STARTED'" not in callback
+
+
+def test_needs_input_uses_answer_form_instead_of_misleading_continue_research_button() -> None:
+    assert "const renderClarification = (question) =>" in WORKSPACE_JS
+    assert 'id="clarification-answer"' in WORKSPACE_JS
+    assert "/clarifications" in WORKSPACE_JS
+    assert "$('research-button').classList.toggle('hidden', hasPersistedClarification);" in WORKSPACE_JS
