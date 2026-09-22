@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.customer_schemas import (
     CustomerAutopilotOverview,
+    CustomerClarificationView,
     CustomerDirectionView,
     CustomerFreeOpportunityView,
     CustomerProjectView,
@@ -71,6 +72,7 @@ class CustomerWorkspaceView(BaseModel):
     preview_research_status: str = "NOT_RUN"
     preview_research_message: str = ""
     preview_opportunity: CustomerFreeOpportunityView | None = None
+    research_clarifications: list[CustomerClarificationView] = Field(default_factory=list)
     autoresearch: GrowthAutoResearchOverviewView | None = None
     target_max_cac: float | None = None
     autonomous_spend_confirmed: bool = False
