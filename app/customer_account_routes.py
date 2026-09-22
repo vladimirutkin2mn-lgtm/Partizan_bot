@@ -209,6 +209,10 @@ def get_customer_workspace(
     try:
         project_payload = customer_funnel_service.get_project_payload(project_id, customer_token)
         project = customer_funnel_service.get_project(project_id, customer_token)
+        research_clarifications = customer_funnel_service.current_research_clarifications(
+            project_id,
+            customer_token,
+        )
         autopilot = customer_autopilot_service.overview(project_id, customer_token)
         if autopilot.meta.connected and not autopilot.meta.ad_account_name:
             autopilot.meta.ad_account_name = customer_meta_oauth_service.resolve_ad_account_name(
@@ -244,6 +248,7 @@ def get_customer_workspace(
         preview_research_status=str(preview_payload.get("free_research_status") or "NOT_RUN"),
         preview_research_message=str(preview_payload.get("free_research_message") or ""),
         preview_opportunity=preview_opportunity,
+        research_clarifications=research_clarifications,
         target_max_cac=float(target_max_cac_raw) if target_max_cac_raw is not None else None,
         autonomous_spend_confirmed=bool(project_payload.get("autopilot_spend_confirmed")),
     )
