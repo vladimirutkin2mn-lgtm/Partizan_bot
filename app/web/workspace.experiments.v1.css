@@ -38,3 +38,7 @@
 .ar-overview-grid>div,.ar-variant,.ar-source,.ar-history-row{border-color:var(--line);background:#f8faf6}
 .ar-source a{color:#527f17}.ar-source a:hover{color:#31500e}
 .ar-error{border-color:rgba(201,79,79,.25);color:#a63d3d}
+
+/* Simplified Home keeps continuous testing inside Results. */
+.ar-overview{display:none!important}
+#autoresearch-results-open{margin-left:auto}
