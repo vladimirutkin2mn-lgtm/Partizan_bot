@@ -390,8 +390,46 @@
       : '<div class="channel-snapshot-empty">No channel data yet.</div>';
   };
 
+  const renderResearchDiagnostics = (diagnostics) => {
+    const node = $('research-diagnostics');
+    if (!node) return;
+    const data = diagnostics && typeof diagnostics === 'object' ? diagnostics : {};
+    const queries = Number(data.query_count || 0);
+    if (!queries) {
+      node.textContent = '';
+      node.classList.add('hidden');
+      return;
+    }
+    const hits = Number(data.search_hit_count || 0);
+    const candidates = Number(data.normalized_candidate_count || 0);
+    const searchErrors = Number(data.search_error_count || 0);
+    const enrichmentErrors = Number(data.enrichment_error_count || 0);
+    const errorTypes = Array.isArray(data.search_error_types)
+      ? data.search_error_types.filter(Boolean).join(', ')
+      : '';
+    let diagnosis = '';
+    if (searchErrors === queries) {
+      diagnosis = `Search provider failed on all ${queries} attempts${errorTypes ? ` (${errorTypes})` : ''}.`;
+    } else if (hits === 0) {
+      diagnosis = 'The search provider returned no cited sources that cleared the evidence bar.';
+    } else if (candidates === 0) {
+      diagnosis = 'Search returned sources, but none normalized into a valid execution-platform target.';
+    } else {
+      diagnosis = 'Discovery returned usable targets; downstream execution eligibility determines what can run.';
+    }
+    const platformRows = Object.entries(data.platforms || {})
+      .map(([platform, row]) => {
+        const item = row || {};
+        return `${platform}: ${Number(item.search_hits || 0)} hits / ${Number(item.normalized_candidates || 0)} targets / ${Number(item.search_errors || 0)} errors`;
+      })
+      .join(' · ');
+    node.textContent = `Discovery diagnostic: ${queries} searches · ${hits} cited sources · ${candidates} usable targets · ${searchErrors} search errors · ${enrichmentErrors} enrichment errors. ${diagnosis}${platformRows ? ` ${platformRows}` : ''}`;
+    node.classList.remove('hidden');
+  };
+
   const renderResearchStatus = (project, overview, data) => {
     researchAction = 'full';
+    renderResearchDiagnostics(data.research_diagnostics);
     $('research-state').classList.remove('good', 'warn');
     if (project.research_state === 'READY') {
       $('research-state').textContent = 'Ready';
