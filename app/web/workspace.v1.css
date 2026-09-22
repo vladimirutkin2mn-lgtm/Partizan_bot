@@ -489,3 +489,17 @@ body{background:#fff}
   .ws-recent{align-items:flex-start!important;gap:11px;margin-top:21px}.ws-recent-check{width:26px;height:26px}.ws-recent strong{font-size:14px}.ws-recent p{font-size:14px;line-height:1.6}.product-legal-footer{width:calc(100% - 46px)!important;padding:19px 0 24px!important}
 }
 @media(max-width:360px){.ws-header-inner{padding-left:18px;padding-right:18px}.ws-project{max-width:128px}.ws-nav{gap:10px}.workspace-main.rd-workspace-content{padding-left:19px;padding-right:19px}.ws-summary{gap:9px}.ws-summary strong{font-size:28px}.ws-run-state{max-width:83px}.ws-next{padding-left:20px!important;padding-right:20px!important}}
+
+/* Handoff screenshot parity fixes */
+.ws-page-heading .project-line{display:none!important}
+.ws-project-initial{width:29px;height:29px;border-radius:7px;background:#f0f4ef;color:#6f806f;display:grid;place-items:center;font-size:13px;font-weight:600;flex-shrink:0}
+.ws-project{border:0!important;background:transparent!important;padding:0 2px!important;max-width:155px!important;color:#435448!important}
+.ws-icon-button{width:34px;height:34px;padding:0!important;display:grid;place-items:center}
+.ws-icon-button svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
+.activation-progress{display:none!important}
+.activation-details{display:none!important}
+.ws-next-bottom .note{display:inline-flex!important;align-items:center!important;color:#79906f!important;font-size:14px!important;max-width:none!important}
+.ws-recent>div>strong:first-child{display:none!important}
+.ws-recent .activity-list{margin:0!important}
+.ws-recent .activity-list>div{padding:0!important}
+@media(max-width:680px){.ws-project-initial{display:none}.ws-project{max-width:130px!important}}
