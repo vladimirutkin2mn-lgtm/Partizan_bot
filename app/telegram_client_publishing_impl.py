@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, HttpUrl, SecretStr, field_validator
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError
 from telethon.sessions import StringSession
+from telethon.tl import functions as telegram_functions
 from telethon.tl import types as telegram_types
 
 from app.channel_execution import PublisherMode
@@ -46,6 +47,7 @@ _DAILY_WINDOW = timedelta(hours=24)
 _MIN_PUBLISH_INTERVAL = timedelta(seconds=60)
 _MAX_PUBLISHES_PER_DAY = 10
 _MAX_CONTENT_LENGTH = 4000
+_MAX_PROFILE_ABOUT_LENGTH = 70
 _PHONE_PATTERN = re.compile(r"^\+[1-9][0-9]{7,15}$")
 _USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{5,32}$")
 
@@ -174,6 +176,12 @@ class TelegramPublishResult(BaseModel):
     executed_url: HttpUrl
 
 
+class TelegramProfileSnapshot(BaseModel):
+    about: str = Field(default="", max_length=512)
+    username: str | None = None
+    display_name: str | None = None
+
+
 @dataclass(frozen=True)
 class TelegramPublishTarget:
     username: str
@@ -192,6 +200,15 @@ class TelegramClientPublishTransport(Protocol):
         code: str,
         password: str | None,
     ) -> TelegramLoginCompleteResult: ...
+
+    async def profile(self, *, session: str) -> TelegramProfileSnapshot: ...
+
+    async def update_profile_about(
+        self,
+        *,
+        session: str,
+        about: str,
+    ) -> TelegramProfileSnapshot: ...
 
     async def publish(
         self,
@@ -267,6 +284,44 @@ class TelethonClientPublishTransport:
             raise
         except Exception as exc:
             raise self._safe_error(exc, "LOGIN_CONFIRM_FAILED") from None
+        finally:
+            await client.disconnect()
+
+    async def profile(self, *, session: str) -> TelegramProfileSnapshot:
+        client = self._client(session)
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                raise TelegramClientPublishTransportError("SESSION_NOT_AUTHORIZED")
+            return await self._profile_snapshot(client)
+        except TelegramClientPublishTransportError:
+            raise
+        except Exception as exc:
+            raise self._safe_error(exc, "PROFILE_READ_FAILED") from None
+        finally:
+            await client.disconnect()
+
+    async def update_profile_about(
+        self,
+        *,
+        session: str,
+        about: str,
+    ) -> TelegramProfileSnapshot:
+        client = self._client(session)
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                raise TelegramClientPublishTransportError("SESSION_NOT_AUTHORIZED")
+            await client(
+                telegram_functions.account.UpdateProfileRequest(
+                    about=about,
+                )
+            )
+            return await self._profile_snapshot(client)
+        except TelegramClientPublishTransportError:
+            raise
+        except Exception as exc:
+            raise self._safe_error(exc, "PROFILE_UPDATE_FAILED") from None
         finally:
             await client.disconnect()
 
@@ -346,6 +401,21 @@ class TelethonClientPublishTransport:
                 return int(value)
         return fallback
 
+    async def _profile_snapshot(self, client: TelegramClient) -> TelegramProfileSnapshot:
+        me = await client.get_me()
+        if me is None or not getattr(me, "id", None):
+            raise TelegramClientPublishTransportError("IDENTITY_NOT_AVAILABLE")
+        full = await client(telegram_functions.users.GetFullUserRequest(id=me))
+        about = str(getattr(getattr(full, "full_user", None), "about", "") or "")
+        first_name = str(getattr(me, "first_name", "") or "").strip()
+        last_name = str(getattr(me, "last_name", "") or "").strip()
+        display_name = " ".join(part for part in (first_name, last_name) if part) or None
+        return TelegramProfileSnapshot(
+            about=about,
+            username=(str(me.username) if getattr(me, "username", None) else None),
+            display_name=display_name,
+        )
+
     def _client(self, session: str = "") -> TelegramClient:
         api_id = self._settings.telegram_client_publish_api_id
         api_hash = self._settings.telegram_client_publish_api_hash
@@ -368,6 +438,7 @@ class TelethonClientPublishTransport:
             "PhoneCodeInvalidError": ("LOGIN_CODE_INVALID", None),
             "PhoneCodeExpiredError": ("LOGIN_CODE_EXPIRED", None),
             "PasswordHashInvalidError": ("TWO_FACTOR_PASSWORD_INVALID", None),
+            "AboutTooLongError": ("PROFILE_ABOUT_TOO_LONG", None),
         }
         code, restriction = mapping.get(name, (fallback, None))
         return TelegramClientPublishTransportError(code, restriction_signal=restriction)
@@ -530,6 +601,40 @@ class CustomerTelegramClientPublishService:
     def is_connected(self, project_id: UUID) -> bool:
         record = self._store.get(CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE, str(project_id))
         return bool(record and record.get("status") == TelegramConnectionStatus.ACTIVE.value)
+
+    async def profile_internal(self, project_id: UUID) -> TelegramProfileSnapshot:
+        self._require_ready()
+        session = self._active_session_internal(project_id)
+        return await self._transport.profile(session=session)
+
+    async def update_profile_about_internal(
+        self,
+        project_id: UUID,
+        about: str,
+    ) -> TelegramProfileSnapshot:
+        self._require_ready()
+        normalized = about.strip()
+        if len(normalized) > _MAX_PROFILE_ABOUT_LENGTH:
+            raise CustomerTelegramClientPublishError(
+                f"Telegram profile CTA exceeds {_MAX_PROFILE_ABOUT_LENGTH} characters"
+            )
+        session = self._active_session_internal(project_id)
+        return await self._transport.update_profile_about(
+            session=session,
+            about=normalized,
+        )
+
+    def _active_session_internal(self, project_id: UUID) -> str:
+        connection = self._store.get(CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE, str(project_id))
+        if connection is None or connection.get("status") != TelegramConnectionStatus.ACTIVE.value:
+            raise CustomerTelegramClientPublishError("Connect an authorised Telegram account first")
+        session_reference = str(connection.get("secret_reference") or "")
+        session = self._secret_store.get(session_reference) if session_reference else None
+        if session is None:
+            raise CustomerTelegramClientPublishError(
+                "The authorised Telegram session is no longer available"
+            )
+        return session
 
     def disconnect(
         self,

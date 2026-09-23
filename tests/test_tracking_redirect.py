@@ -350,3 +350,49 @@ def test_profile_route_rejects_cross_slot_binding(
 
     assert response.status_code == 409
     assert "location" not in response.headers
+
+def test_profile_route_uses_persisted_fallback_before_experiment_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    slot = SimpleNamespace(
+        id=uuid4(),
+        product_id=uuid4(),
+        metadata={
+            "profile_route_token": "stable-profile-token",
+            "profile_route_fallback_url": "https://product.example/start",
+        },
+    )
+    monkeypatch.setattr(
+        distribution_control_plane_service,
+        "find_slot_by_profile_token",
+        lambda token: slot,
+    )
+
+    response = client.get("/p/stable-profile-token", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "https://product.example/start"
+
+
+def test_profile_route_rejects_invalid_persisted_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    slot = SimpleNamespace(
+        id=uuid4(),
+        product_id=uuid4(),
+        metadata={
+            "profile_route_token": "stable-profile-token",
+            "profile_route_fallback_url": "javascript:alert(1)",
+        },
+    )
+    monkeypatch.setattr(
+        distribution_control_plane_service,
+        "find_slot_by_profile_token",
+        lambda token: slot,
+    )
+
+    response = client.get("/p/stable-profile-token", follow_redirects=False)
+
+    assert response.status_code == 409
+    assert "location" not in response.headers
+

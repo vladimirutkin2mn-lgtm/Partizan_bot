@@ -33,11 +33,23 @@ _tracking_builder = DistributionTrackingLinkBuilder()
 async def profile_tracking_redirect(profile_token: str) -> RedirectResponse:
     try:
         slot = distribution_control_plane_service.find_slot_by_profile_token(profile_token)
-        experiment_id = UUID(str(slot.metadata["active_profile_experiment_id"]))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Profile conversion route not found") from exc
+
+    active_experiment = str(slot.metadata.get("active_profile_experiment_id") or "").strip()
+    if not active_experiment:
+        fallback = str(slot.metadata.get("profile_route_fallback_url") or "").strip()
+        parts = urlsplit(fallback)
+        if parts.scheme not in {"http", "https"} or not parts.netloc:
+            raise HTTPException(status_code=409, detail="Profile conversion route is not active")
+        return RedirectResponse(url=fallback, status_code=302)
+
+    try:
+        experiment_id = UUID(active_experiment)
         experiment = distribution_execution_service.get_experiment(experiment_id)
         action = distribution_execution_service.get_action(experiment.action_id)
     except (KeyError, ValueError) as exc:
-        raise HTTPException(status_code=409, detail="Profile conversion route is not active") from exc
+        raise HTTPException(status_code=409, detail="Profile conversion binding is invalid") from exc
 
     if experiment.product_id != slot.product_id or action.campaign_slot_id != slot.id:
         raise HTTPException(status_code=409, detail="Profile conversion binding is invalid")
