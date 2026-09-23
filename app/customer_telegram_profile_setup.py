@@ -173,7 +173,7 @@ async def run(args: argparse.Namespace) -> dict:
     previous_about = profile.about
     desired_about = _build_about(
         previous_about,
-        product_name=str(product.name or args.expected_product_name),
+        product_name=args.expected_product_name,
         profile_route_url=profile_route_url,
     )
     attempt = {
