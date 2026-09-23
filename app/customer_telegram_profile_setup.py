@@ -22,7 +22,6 @@ from app.customer_telegram_rollout import (
 )
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_service import distribution_execution_service
-from app.runtime_store import get_runtime_store
 from app.telegram_client_publishing import (
     CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE,
     customer_telegram_client_publish_service,
