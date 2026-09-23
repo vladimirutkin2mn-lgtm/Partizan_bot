@@ -10,7 +10,11 @@ from app.conversion_scenarios import ConversionMechanism
 from app.distribution_execution_service import distribution_execution_service
 
 
-def _action(*, tracking_url: str = "https://partizan.example/r/abc123", text: str = "Useful") -> SimpleNamespace:
+def _action(
+    *,
+    tracking_url: str = "https://partizan.example/r/abc123",
+    text: str = "Useful",
+) -> SimpleNamespace:
     return SimpleNamespace(
         tracking_url=tracking_url,
         content_text=text,
