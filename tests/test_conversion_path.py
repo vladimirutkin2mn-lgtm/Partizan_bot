@@ -26,31 +26,35 @@ def _identity(profile_config: dict | None = None) -> SimpleNamespace:
 
 
 def test_profile_click_requires_verified_profile_handoff() -> None:
+    profile_route = "https://partizan.example/p/stable123"
     assessment = conversion_path_validator.assess(
         mechanism=ConversionMechanism.PROFILE_CLICK,
         action=_action(),
         identity=_identity(),
         slot=SimpleNamespace(),
+        profile_route_url=profile_route,
     )
 
     assert assessment.status == ConversionPathStatus.SETUP_REQUIRED
     assert assessment.send_eligible is False
-    assert assessment.required_profile_url == "https://partizan.example/r/abc123"
+    assert assessment.required_profile_url == profile_route
     assert any("profile conversion CTA" in item for item in assessment.blockers)
 
 
 def test_profile_click_is_ready_when_profile_points_to_exact_tracking_url() -> None:
     tracking_url = "https://partizan.example/r/abc123"
+    profile_route = "https://partizan.example/p/stable123"
     assessment = conversion_path_validator.assess(
         mechanism=ConversionMechanism.PROFILE_CLICK,
         action=_action(tracking_url=tracking_url),
         identity=_identity(
             {
                 "conversion_profile_verified": True,
-                "conversion_profile_url": tracking_url,
+                "conversion_profile_url": profile_route,
             }
         ),
         slot=SimpleNamespace(),
+        profile_route_url=profile_route,
     )
 
     assert assessment.status == ConversionPathStatus.READY
@@ -59,16 +63,18 @@ def test_profile_click_is_ready_when_profile_points_to_exact_tracking_url() -> N
 
 
 def test_reply_engagement_still_requires_measurable_product_handoff() -> None:
+    profile_route = "https://partizan.example/p/stable123"
     assessment = conversion_path_validator.assess(
         mechanism=ConversionMechanism.REPLY_ENGAGEMENT,
         action=_action(),
         identity=_identity(),
         slot=SimpleNamespace(),
+        profile_route_url=profile_route,
     )
 
     assert assessment.status == ConversionPathStatus.SETUP_REQUIRED
     assert "Public reply engagement" in assessment.steps
-    assert assessment.required_profile_url
+    assert assessment.required_profile_url == profile_route
 
 
 def test_brand_search_is_blocked_without_verified_attribution() -> None:
