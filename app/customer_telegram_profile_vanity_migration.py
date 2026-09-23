@@ -56,6 +56,27 @@ def _desired_about(product_name: str, vanity_url: str) -> str:
     return f"{product_name.strip()} ↓\n{vanity_url}"
 
 
+async def _wait_for_exact_about(
+    project_id: UUID,
+    expected_about: str,
+    *,
+    attempts: int = 4,
+    delay_seconds: float = 1.0,
+):
+    observed = None
+    for index in range(attempts):
+        observed = await customer_telegram_client_publish_service.profile_internal(project_id)
+        if observed.about.strip() == expected_about:
+            return observed
+        if index + 1 < attempts:
+            await asyncio.sleep(delay_seconds)
+    actual = observed.about if observed is not None else ""
+    raise ValueError(
+        "Telegram did not confirm the exact short FemDom profile CTA; "
+        f"observed_about={actual!r}"
+    )
+
+
 async def run(args: argparse.Namespace) -> dict:
     store, _, product, _, _, _ = _load_exact_target(args)
     connection = store.get(CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE, str(args.project_id))
@@ -128,13 +149,15 @@ async def run(args: argparse.Namespace) -> dict:
     mutated = False
     try:
         slot = distribution_control_plane_service.set_profile_route_alias(slot.id, VANITY_ALIAS)
-        updated = await customer_telegram_client_publish_service.update_profile_about_internal(
+        await customer_telegram_client_publish_service.update_profile_about_internal(
             args.project_id,
             desired_about,
         )
         mutated = True
-        if updated.about.strip() != desired_about:
-            raise ValueError("Telegram did not confirm the exact short FemDom profile CTA")
+        updated = await _wait_for_exact_about(
+            args.project_id,
+            desired_about,
+        )
 
         identity = distribution_control_plane_service.set_identity_profile_conversion(
             identity.id,
