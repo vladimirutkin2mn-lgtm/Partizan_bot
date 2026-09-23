@@ -24,6 +24,9 @@ class DistributionExecutionPrepareRequest(BaseModel):
     disclosure_included: bool = False
     ai_disclosure_included: bool = False
     community_policy_constraints_confirmed: bool = False
+    conversion_mechanism: str | None = Field(default=None, max_length=64)
+    draft_variant: str | None = Field(default=None, max_length=80)
+    expected_user_next_step: str | None = Field(default=None, max_length=500)
 
 
 class DistributionActionEditRequest(BaseModel):
