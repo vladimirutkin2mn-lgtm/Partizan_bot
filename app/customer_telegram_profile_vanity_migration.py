@@ -7,8 +7,6 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from app.config import get_settings
-from app.conversion_path import conversion_path_validator
-from app.conversion_scenarios import ConversionMechanism
 from app.customer_telegram_preview import (
     PREVIEW_SCHEMA_VERSION,
     TELEGRAM_PREVIEW_NAMESPACE,
