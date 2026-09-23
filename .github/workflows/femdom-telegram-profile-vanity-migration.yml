@@ -1,0 +1,96 @@
+name: Migrate FemDom Telegram profile to vanity URL
+
+on:
+  workflow_run:
+    workflows: ["Deploy production"]
+    types: [completed]
+
+concurrency:
+  group: femdom-telegram-profile-vanity-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - name: Resolve deployed release
+        id: release
+        env:
+          DEPLOYED_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          if [[ ! "${DEPLOYED_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Unable to resolve deployed release"
+            exit 1
+          fi
+          echo "sha=${DEPLOYED_SHA}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.sha }}
+
+      - name: Refuse stale production release
+        id: freshness
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        shell: bash
+        run: |
+          current_main_sha="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [[ "${RELEASE_SHA}" != "${current_main_sha}" ]]; then
+            echo "migration_allowed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping stale FemDom profile vanity migration"
+            exit 0
+          fi
+          echo "migration_allowed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Require production migration configuration
+        if: ${{ steps.freshness.outputs.migration_allowed == 'true' }}
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          missing=()
+          [[ -z "${DEPLOY_HOST}" ]] && missing+=(DEPLOY_HOST)
+          [[ -z "${DEPLOY_SSH_KEY}" ]] && missing+=(DEPLOY_SSH_KEY)
+          [[ -z "${DEPLOY_SSH_KNOWN_HOSTS}" ]] && missing+=(DEPLOY_SSH_KNOWN_HOSTS)
+          [[ -z "${DEPLOY_PATH}" ]] && missing+=(DEPLOY_PATH)
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing production migration configuration: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Start SSH agent
+        if: ${{ steps.freshness.outputs.migration_allowed == 'true' }}
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Pin production host key
+        if: ${{ steps.freshness.outputs.migration_allowed == 'true' }}
+        env:
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Migrate exact FemDom profile CTA
+        if: ${{ steps.freshness.outputs.migration_allowed == 'true' }}
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}"             "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python -m app.customer_telegram_profile_vanity_migration               --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0               --expected-product-id 52d7e59e-5ac5-4363-b829-c93e33e48272               --expected-product-name FemDom               --expected-telegram-entity-id 1642699396               --expected-handle a_sfera"
