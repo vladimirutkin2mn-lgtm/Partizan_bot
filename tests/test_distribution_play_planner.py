@@ -59,6 +59,20 @@ def _identity(platform: DistributionPlatform, theme: str) -> DistributionIdentit
     )
 
 
+def _client_owned_telegram_identity(theme: str = "Telegram community") -> DistributionIdentityView:
+    identity = _identity(DistributionPlatform.TELEGRAM, theme)
+    return identity.model_copy(
+        update={
+            "profile_config": {
+                "publisher_mode": "CLIENT_OWNED",
+                "customer_project_id": str(uuid4()),
+            }
+        }
+    )
+
+
+
+
 def test_planner_uses_only_four_mvp_platforms_and_keeps_setup_blockers_visible() -> None:
     product = _product()
     icp_id = uuid4()
@@ -267,7 +281,7 @@ def test_telegram_comment_requires_verified_native_comment_target() -> None:
         kind=OpportunityKind.CHANNEL,
         title="Verified Telegram channel",
     )
-    identity = _identity(DistributionPlatform.TELEGRAM, "Telegram community")
+    identity = _client_owned_telegram_identity()
     blocked_map = AudienceDistributionMapView(
         product_id=product.id,
         top_icp_count=1,
@@ -344,7 +358,7 @@ def test_telegram_standalone_post_requires_verified_publisher_permission() -> No
         opportunity_count=1,
         opportunities=[opportunity],
     )
-    identity = _identity(DistributionPlatform.TELEGRAM, "Telegram community")
+    identity = _client_owned_telegram_identity()
 
     post = next(
         play
