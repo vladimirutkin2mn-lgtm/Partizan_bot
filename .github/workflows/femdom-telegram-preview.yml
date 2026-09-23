@@ -100,3 +100,18 @@ jobs:
               --expected-product-name FemDom \
               --expected-telegram-entity-id 1642699396 \
               --expected-handle a_sfera"
+
+      - name: Read current Telegram profile and prepare conversion bio preview
+        if: ${{ steps.freshness.outputs.preview_allowed == 'true' }}
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python -m app.customer_telegram_profile_preview \
+              --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0 \
+              --expected-product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+              --expected-product-name FemDom \
+              --expected-telegram-entity-id 1642699396 \
+              --expected-handle a_sfera"
