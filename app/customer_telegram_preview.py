@@ -11,6 +11,7 @@ from app.action_drafting import distribution_action_drafting_service
 from app.autonomous_controlled_growth import AUTONOMOUS_GROWTH_ADVISORY_LOCK_KEY
 from app.autonomy_schemas import GrowthMandateStatus
 from app.autonomy_service import growth_mandate_service
+from app.config import get_settings
 from app.conversion_path import conversion_path_validator
 from app.customer_telegram_rollout import (
     _ensure_customer_identity,
@@ -29,7 +30,7 @@ from app.telegram_client_governance import (
 from app.telegram_client_publishing import CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE
 
 TELEGRAM_PREVIEW_NAMESPACE = "customer_telegram_publish_preview"
-PREVIEW_SCHEMA_VERSION = 3
+PREVIEW_SCHEMA_VERSION = 4
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -95,6 +96,7 @@ def _render_preview(record: dict) -> dict:
         "opportunity_id": str(record["opportunity_id"]),
         "play_id": str(record["play_id"]),
         "target_url": str(record["target_url"]),
+        "profile_route_url": str(record.get("profile_route_url") or ""),
         "variant_count": len(rendered_variants),
         "variants": rendered_variants,
         "prepared_at": str(record["prepared_at"]),
@@ -152,6 +154,13 @@ async def run(args: argparse.Namespace) -> dict:
 
     identity = _ensure_customer_identity(args.project_id, product, connection)
     play = _generate_exact_play(product, distribution, identity, opportunity)
+    slot = distribution_control_plane_service.find_active_slot(identity.id, product.id)
+    slot = distribution_control_plane_service.ensure_profile_route(slot.id)
+    profile_token = str(slot.metadata.get("profile_route_token") or "").strip()
+    public_base = get_settings().partizan_public_base_url
+    if public_base is None or not profile_token:
+        raise ValueError("Stable public profile conversion route is not available")
+    profile_route_url = f"{str(public_base).rstrip('/')}/p/{profile_token}"
 
     with postgres_session_advisory_lock(AUTONOMOUS_GROWTH_ADVISORY_LOCK_KEY) as acquired:
         if not acquired:
@@ -191,6 +200,7 @@ async def run(args: argparse.Namespace) -> dict:
                 action=plan.action,
                 identity=action_identity,
                 slot=action_slot,
+                profile_route_url=profile_route_url,
             )
             distribution_execution_service.attach_conversion_path(
                 plan.action.id,
@@ -224,6 +234,7 @@ async def run(args: argparse.Namespace) -> dict:
             "opportunity_id": str(opportunity.id),
             "play_id": str(play.id),
             "target_url": target_url,
+            "profile_route_url": profile_route_url,
             "variants": variant_records,
             "prepared_at": datetime.now(UTC).isoformat(),
         }
