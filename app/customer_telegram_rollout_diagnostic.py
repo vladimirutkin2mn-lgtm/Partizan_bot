@@ -6,11 +6,11 @@ from uuid import UUID
 
 from app.customer_channels import customer_channel_service
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
+from app.customer_telegram_rollout import ROLLOUT_NAMESPACE, _marker_key
 from app.distribution_execution_service import distribution_execution_service
 from app.runtime_store import get_runtime_store
 from app.telegram_client_governance import customer_telegram_governance_service
 from app.telegram_client_publishing import customer_telegram_client_publish_service
-from app.customer_telegram_rollout import ROLLOUT_NAMESPACE, _marker_key
 
 
 def build_parser() -> argparse.ArgumentParser:
