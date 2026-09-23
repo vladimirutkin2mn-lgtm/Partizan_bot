@@ -11,6 +11,7 @@ from app.action_drafting import distribution_action_drafting_service
 from app.autonomous_controlled_growth import AUTONOMOUS_GROWTH_ADVISORY_LOCK_KEY
 from app.autonomy_schemas import GrowthMandateStatus
 from app.autonomy_service import growth_mandate_service
+from app.conversion_path import conversion_path_validator
 from app.customer_telegram_rollout import (
     _ensure_customer_identity,
     _generate_exact_play,
@@ -18,6 +19,7 @@ from app.customer_telegram_rollout import (
     _validate_draft,
 )
 from app.database_advisory_lock import postgres_session_advisory_lock
+from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_types import DistributionActionStatus
 from app.telegram_client_governance import (
@@ -27,7 +29,7 @@ from app.telegram_client_governance import (
 from app.telegram_client_publishing import CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE
 
 TELEGRAM_PREVIEW_NAMESPACE = "customer_telegram_publish_preview"
-PREVIEW_SCHEMA_VERSION = 2
+PREVIEW_SCHEMA_VERSION = 3
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -77,6 +79,10 @@ def _render_preview(record: dict) -> dict:
                 "context_text": str(action.content_payload.get("context_text") or ""),
                 "content_text": str(action.content_text or ""),
                 "content_sha256": str(item["content_sha256"]),
+                "conversion_path": action.content_payload.get("conversion_path"),
+                "send_eligible": bool(
+                    (action.content_payload.get("conversion_path") or {}).get("send_eligible")
+                ),
                 "published": False,
             }
         )
@@ -164,6 +170,32 @@ async def run(args: argparse.Namespace) -> dict:
             _validate_draft(product, plan, target_url)
             if plan.action.status != DistributionActionStatus.PREPARED:
                 raise ValueError("Human-preview action must remain PREPARED")
+
+            action_identity = (
+                distribution_control_plane_service.get_identity(
+                    plan.action.distribution_identity_id
+                )
+                if plan.action.distribution_identity_id is not None
+                else None
+            )
+            action_slot = next(
+                (
+                    item
+                    for item in distribution_control_plane_service.list_campaign_slots(product.id)
+                    if item.id == plan.action.campaign_slot_id
+                ),
+                None,
+            )
+            assessment = conversion_path_validator.assess(
+                mechanism=prepared.brief.conversion_mechanism,
+                action=plan.action,
+                identity=action_identity,
+                slot=action_slot,
+            )
+            distribution_execution_service.attach_conversion_path(
+                plan.action.id,
+                assessment.as_dict(),
+            )
 
             mechanism = prepared.brief.conversion_mechanism.value
             variant_name = prepared.brief.variant_name
