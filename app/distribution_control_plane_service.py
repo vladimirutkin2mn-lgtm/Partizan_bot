@@ -228,6 +228,22 @@ class InMemoryDistributionControlPlaneService:
             return updated
         return slot
 
+    def set_profile_route_fallback(
+        self,
+        slot_id: UUID,
+        fallback_url: str,
+    ) -> CampaignSlotView:
+        slot = self._get_slot(slot_id)
+        normalized = fallback_url.strip()
+        if not normalized:
+            raise ValueError("Profile route fallback URL is required")
+        metadata = dict(slot.metadata)
+        metadata["profile_route_fallback_url"] = normalized
+        updated = slot.model_copy(update={"metadata": metadata})
+        self._slots[slot.id] = updated
+        self._persist_slot(updated)
+        return updated
+
     def find_slot_by_profile_token(self, token: str) -> CampaignSlotView:
         self._hydrate_slots()
         matches = [
