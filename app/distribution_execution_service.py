@@ -145,6 +145,12 @@ class InMemoryDistributionExecutionService:
         }
         if payload.title is not None:
             content_payload["title"] = payload.title.strip()
+        if payload.conversion_mechanism is not None:
+            content_payload["conversion_mechanism"] = payload.conversion_mechanism.strip()
+        if payload.draft_variant is not None:
+            content_payload["draft_variant"] = payload.draft_variant.strip()
+        if payload.expected_user_next_step is not None:
+            content_payload["expected_user_next_step"] = payload.expected_user_next_step.strip()
 
         operational_metadata = {
             "distribution_play_id": str(play.id),
