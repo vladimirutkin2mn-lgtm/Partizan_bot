@@ -94,6 +94,7 @@ class TelegramClientObservationTransport(Protocol):
         session: str,
         target_username: str,
         message_id: int,
+        comment_to_message_id: int | None = None,
     ) -> TelegramRemoteObservationResult: ...
 
 
@@ -109,6 +110,7 @@ class TelethonClientObservationTransport:
         session: str,
         target_username: str,
         message_id: int,
+        comment_to_message_id: int | None = None,
     ) -> TelegramRemoteObservationResult:
         client: TelegramClient | None = None
         try:
@@ -127,6 +129,22 @@ class TelethonClientObservationTransport:
                     provider_code="COMMUNITY_TARGET_REQUIRED",
                     restriction_signal="COMMUNITY_NOT_ACCESSIBLE",
                 )
+            if comment_to_message_id is not None:
+                async for message in client.iter_messages(
+                    entity,
+                    reply_to=comment_to_message_id,
+                    limit=100,
+                ):
+                    if int(getattr(message, "id", 0) or 0) == message_id:
+                        return TelegramRemoteObservationResult(
+                            state=TelegramRemoteMessageState.PRESENT
+                        )
+                return TelegramRemoteObservationResult(
+                    state=TelegramRemoteMessageState.REMOVED,
+                    provider_code="COMMENT_NOT_FOUND",
+                    restriction_signal="MESSAGE_REMOVED_OR_UNAVAILABLE",
+                )
+
             message = await client.get_messages(entity, ids=message_id)
             if message is None or isinstance(message, telegram_types.MessageEmpty):
                 return TelegramRemoteObservationResult(
@@ -421,11 +439,17 @@ class CustomerTelegramGovernanceService:
                 "Telegram publish receipt is missing its remote observation identifiers"
             )
         session = self._customer_session(project_id)
-        result = await self._observation_transport.observe(
-            session=session,
-            target_username=target_username,
-            message_id=remote_message_id,
+        comment_to_message_id = int(
+            receipt.metadata.get("comment_to_message_id") or 0
         )
+        observe_kwargs = {
+            "session": session,
+            "target_username": target_username,
+            "message_id": remote_message_id,
+        }
+        if comment_to_message_id > 0:
+            observe_kwargs["comment_to_message_id"] = comment_to_message_id
+        result = await self._observation_transport.observe(**observe_kwargs)
         event = TelegramPublishObservationEvent(
             state=result.state,
             checked_at=datetime.now(UTC),
