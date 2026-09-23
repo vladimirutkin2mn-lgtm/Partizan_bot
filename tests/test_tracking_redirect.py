@@ -1,4 +1,6 @@
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -266,3 +268,85 @@ def test_public_base_url_rejects_path_query_and_non_http_origins() -> None:
     ):
         with pytest.raises(ValueError):
             Settings(_env_file=None, partizan_public_base_url=invalid)
+
+
+def test_profile_route_redirects_only_to_bound_slot_experiment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    slot_id = uuid4()
+    product_id = uuid4()
+    experiment_id = uuid4()
+    action_id = uuid4()
+    slot = SimpleNamespace(
+        id=slot_id,
+        product_id=product_id,
+        metadata={"active_profile_experiment_id": str(experiment_id)},
+    )
+    experiment = SimpleNamespace(
+        id=experiment_id,
+        product_id=product_id,
+        action_id=action_id,
+        tracking_url="https://partizan.example/r/selected",
+    )
+    action = SimpleNamespace(campaign_slot_id=slot_id)
+
+    monkeypatch.setattr(
+        distribution_control_plane_service,
+        "find_slot_by_profile_token",
+        lambda token: slot,
+    )
+    monkeypatch.setattr(
+        distribution_execution_service,
+        "get_experiment",
+        lambda value: experiment,
+    )
+    monkeypatch.setattr(
+        distribution_execution_service,
+        "get_action",
+        lambda value: action,
+    )
+
+    response = client.get("/p/stable-profile-token", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "https://partizan.example/r/selected"
+
+
+def test_profile_route_rejects_cross_slot_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    product_id = uuid4()
+    experiment_id = uuid4()
+    slot = SimpleNamespace(
+        id=uuid4(),
+        product_id=product_id,
+        metadata={"active_profile_experiment_id": str(experiment_id)},
+    )
+    experiment = SimpleNamespace(
+        id=experiment_id,
+        product_id=product_id,
+        action_id=uuid4(),
+        tracking_url="https://partizan.example/r/selected",
+    )
+    action = SimpleNamespace(campaign_slot_id=uuid4())
+
+    monkeypatch.setattr(
+        distribution_control_plane_service,
+        "find_slot_by_profile_token",
+        lambda token: slot,
+    )
+    monkeypatch.setattr(
+        distribution_execution_service,
+        "get_experiment",
+        lambda value: experiment,
+    )
+    monkeypatch.setattr(
+        distribution_execution_service,
+        "get_action",
+        lambda value: action,
+    )
+
+    response = client.get("/p/stable-profile-token", follow_redirects=False)
+
+    assert response.status_code == 409
+    assert "location" not in response.headers
