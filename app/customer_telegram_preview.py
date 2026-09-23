@@ -11,7 +11,6 @@ from app.action_drafting import distribution_action_drafting_service
 from app.autonomous_controlled_growth import AUTONOMOUS_GROWTH_ADVISORY_LOCK_KEY
 from app.autonomy_schemas import GrowthMandateStatus
 from app.autonomy_service import growth_mandate_service
-from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
 from app.customer_telegram_rollout import (
     _ensure_customer_identity,
     _generate_exact_play,
@@ -21,7 +20,6 @@ from app.customer_telegram_rollout import (
 from app.database_advisory_lock import postgres_session_advisory_lock
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_types import DistributionActionStatus
-from app.runtime_store import get_runtime_store
 from app.telegram_client_governance import (
     TelegramAutomationStatus,
     customer_telegram_governance_service,
@@ -48,7 +46,7 @@ def _preview_key(project_id: UUID, entity_id: int) -> str:
 
 
 def _content_hash(target_url: str, content_text: str) -> str:
-    material = f"{target_url}\n{content_text}".encode("utf-8")
+    material = f"{target_url}\n{content_text}".encode()
     return hashlib.sha256(material).hexdigest()
 
 
