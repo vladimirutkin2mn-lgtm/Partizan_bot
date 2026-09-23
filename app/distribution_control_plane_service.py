@@ -1,5 +1,5 @@
-from datetime import UTC, datetime
 import re
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from app.audience_intelligence_service import audience_intelligence_service
