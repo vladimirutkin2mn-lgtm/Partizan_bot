@@ -614,8 +614,6 @@ class CustomerTelegramClientPublishService:
     ) -> TelegramProfileSnapshot:
         self._require_ready()
         normalized = about.strip()
-        if not normalized:
-            raise CustomerTelegramClientPublishError("Telegram profile CTA cannot be empty")
         if len(normalized) > _MAX_PROFILE_ABOUT_LENGTH:
             raise CustomerTelegramClientPublishError(
                 f"Telegram profile CTA exceeds {_MAX_PROFILE_ABOUT_LENGTH} characters"
