@@ -256,6 +256,51 @@ class CustomerChannelService:
         self._persist(project)
         return self.list(project_id, customer_token)
 
+    def enable_telegram_auto_internal(self, project_id: UUID) -> dict:
+        project = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
+        if project is None:
+            raise ValueError("Customer project not found")
+
+        preferences = self._preferences(project)
+        publisher_modes = self._publisher_modes(project)
+        if publisher_modes[DistributionPlatform.TELEGRAM] != PublisherMode.CLIENT_OWNED:
+            raise ValueError(
+                "Telegram AUTO requires CLIENT_OWNED publisher mode before internal activation"
+            )
+
+        telegram_connected = customer_telegram_client_publish_service.is_connected(project_id)
+        automation = customer_telegram_governance_service.automation_status_internal(project_id)
+        settlement_ready = bool(self._balance.rail_view(project_id).get("settlement_ready"))
+        telegram_balance_available_usd = self._balance.summary(
+            project_id,
+            self._provider_distribution_spend(project),
+        ).available_usd
+        execution_ready, blocker = self._execution_readiness(
+            DistributionPlatform.TELEGRAM,
+            project_id=project_id,
+            meta_connected=self._meta_connected(project),
+            settlement_ready=settlement_ready,
+            telegram_connected=telegram_connected,
+            telegram_publisher_mode=publisher_modes[DistributionPlatform.TELEGRAM],
+            telegram_automation_status=automation.status,
+            telegram_automation_ready=automation.readiness_ok,
+            telegram_automation_blockers=automation.blockers,
+            telegram_balance_available_usd=telegram_balance_available_usd,
+        )
+        if not execution_ready:
+            raise ValueError(f"Telegram AUTO is not ready: {blocker}")
+
+        preferences[DistributionPlatform.TELEGRAM] = "AUTO"
+        project[CHANNEL_PREFERENCES_KEY] = {
+            platform.value: mode for platform, mode in preferences.items()
+        }
+        project[CHANNEL_PUBLISHER_MODES_KEY] = {
+            platform.value: mode.value for platform, mode in publisher_modes.items()
+        }
+        project["telegram_auto_enabled_at"] = datetime.now(UTC).isoformat()
+        self._persist(project)
+        return project
+
     def autonomous_platforms(self, project: dict) -> list[DistributionPlatform]:
         """Return customer AUTO intent that is currently eligible for runtime consideration."""
 
