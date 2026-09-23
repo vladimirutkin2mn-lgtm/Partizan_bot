@@ -56,6 +56,10 @@ def _desired_about(product_name: str, vanity_url: str) -> str:
     return f"{product_name.strip()} ↓\n{vanity_url}"
 
 
+def _normalized_about(value: str) -> str:
+    return " ".join(value.split())
+
+
 async def _wait_for_exact_about(
     project_id: UUID,
     expected_about: str,
@@ -66,7 +70,7 @@ async def _wait_for_exact_about(
     observed = None
     for index in range(attempts):
         observed = await customer_telegram_client_publish_service.profile_internal(project_id)
-        if observed.about.strip() == expected_about:
+        if _normalized_about(observed.about) == _normalized_about(expected_about):
             return observed
         if index + 1 < attempts:
             await asyncio.sleep(delay_seconds)
@@ -103,7 +107,7 @@ async def run(args: argparse.Namespace) -> dict:
     desired_about = _desired_about(args.expected_product_name, vanity_url)
     profile = await customer_telegram_client_publish_service.profile_internal(args.project_id)
 
-    if profile.about.strip() == desired_about:
+    if _normalized_about(profile.about) == _normalized_about(desired_about):
         slot = distribution_control_plane_service.set_profile_route_alias(slot.id, VANITY_ALIAS)
         identity = distribution_control_plane_service.set_identity_profile_conversion(
             identity.id,
@@ -126,7 +130,7 @@ async def run(args: argparse.Namespace) -> dict:
             "published": False,
         }
 
-    if profile.about.strip() != expected_previous_about:
+    if _normalized_about(profile.about) != _normalized_about(expected_previous_about):
         raise ValueError(
             "Telegram bio changed since the approved preview; refusing to overwrite it"
         )
