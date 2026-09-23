@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+import re
 from uuid import UUID, uuid4
 
 from app.audience_intelligence_service import audience_intelligence_service
@@ -23,6 +24,7 @@ from app.runtime_store import RuntimeStateStore, get_runtime_store
 DISTRIBUTION_IDENTITY_NAMESPACE = "distribution_identity"
 COMMUNITY_POLICY_NAMESPACE = "community_policy"
 CAMPAIGN_SLOT_NAMESPACE = "campaign_slot"
+_PROFILE_ROUTE_ALIAS_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{1,47}$")
 
 
 class InMemoryDistributionControlPlaneService:
@@ -243,6 +245,41 @@ class InMemoryDistributionControlPlaneService:
         self._slots[slot.id] = updated
         self._persist_slot(updated)
         return updated
+
+    def set_profile_route_alias(
+        self,
+        slot_id: UUID,
+        alias: str,
+    ) -> CampaignSlotView:
+        slot = self._get_slot(slot_id)
+        normalized = alias.strip().lower()
+        if not _PROFILE_ROUTE_ALIAS_PATTERN.fullmatch(normalized):
+            raise ValueError("Profile route alias must be a lowercase URL-safe slug")
+        self._hydrate_slots()
+        for candidate in self._slots.values():
+            if candidate.id == slot.id:
+                continue
+            if str(candidate.metadata.get("profile_route_alias") or "").strip().lower() == normalized:
+                raise ValueError("Profile route alias is already in use")
+
+        metadata = dict(slot.metadata)
+        metadata["profile_route_alias"] = normalized
+        updated = slot.model_copy(update={"metadata": metadata})
+        self._slots[slot.id] = updated
+        self._persist_slot(updated)
+        return updated
+
+    def find_slot_by_profile_alias(self, alias: str) -> CampaignSlotView:
+        normalized = alias.strip().lower()
+        self._hydrate_slots()
+        matches = [
+            slot
+            for slot in self._slots.values()
+            if str(slot.metadata.get("profile_route_alias") or "").strip().lower() == normalized
+        ]
+        if len(matches) != 1:
+            raise KeyError(normalized)
+        return matches[0]
 
     def find_slot_by_profile_token(self, token: str) -> CampaignSlotView:
         self._hydrate_slots()
