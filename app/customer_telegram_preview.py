@@ -27,11 +27,15 @@ from app.telegram_client_governance import (
 from app.telegram_client_publishing import CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE
 
 TELEGRAM_PREVIEW_NAMESPACE = "customer_telegram_publish_preview"
+PREVIEW_SCHEMA_VERSION = 2
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Prepare one exact Telegram comment for human review without publishing it."
+        description=(
+            "Prepare conversion-oriented Telegram comment variants for human review "
+            "without publishing them."
+        )
     )
     parser.add_argument("--project-id", type=UUID, required=True)
     parser.add_argument("--expected-product-id", type=UUID, required=True)
@@ -42,30 +46,75 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _preview_key(project_id: UUID, entity_id: int) -> str:
-    return f"{project_id}:{entity_id}"
+    return f"{project_id}:{entity_id}:v{PREVIEW_SCHEMA_VERSION}"
 
 
-def _content_hash(target_url: str, content_text: str) -> str:
-    material = f"{target_url}\n{content_text}".encode()
+def _content_hash(
+    target_url: str,
+    conversion_mechanism: str,
+    variant_name: str,
+    content_text: str,
+) -> str:
+    material = (
+        f"{target_url}\n{conversion_mechanism}\n{variant_name}\n{content_text}"
+    ).encode()
     return hashlib.sha256(material).hexdigest()
 
 
-def _render_preview(record: dict, action) -> dict:
+def _render_preview(record: dict) -> dict:
+    rendered_variants: list[dict] = []
+    for item in record.get("variants", []):
+        action = distribution_execution_service.get_action(UUID(str(item["action_id"])))
+        rendered_variants.append(
+            {
+                "conversion_mechanism": str(item["conversion_mechanism"]),
+                "variant_name": str(item["variant_name"]),
+                "objective": str(item["objective"]),
+                "expected_user_next_step": str(item["expected_user_next_step"]),
+                "action_id": str(item["action_id"]),
+                "action_status": action.status.value,
+                "target_url": str(action.target_url or ""),
+                "context_text": str(action.content_payload.get("context_text") or ""),
+                "content_text": str(action.content_text or ""),
+                "content_sha256": str(item["content_sha256"]),
+                "published": False,
+            }
+        )
+
     return {
+        "schema_version": PREVIEW_SCHEMA_VERSION,
         "status": str(record["status"]),
         "project_id": str(record["project_id"]),
         "product_id": str(record["product_id"]),
         "opportunity_id": str(record["opportunity_id"]),
         "play_id": str(record["play_id"]),
-        "action_id": str(record["action_id"]),
-        "action_status": action.status.value,
-        "target_url": str(action.target_url or ""),
-        "context_text": str(action.content_payload.get("context_text") or ""),
-        "content_text": str(action.content_text or ""),
-        "content_sha256": str(record["content_sha256"]),
+        "target_url": str(record["target_url"]),
+        "variant_count": len(rendered_variants),
+        "variants": rendered_variants,
         "prepared_at": str(record["prepared_at"]),
         "published": False,
     }
+
+
+def _validate_existing_preview(record: dict) -> None:
+    if int(record.get("schema_version") or 0) != PREVIEW_SCHEMA_VERSION:
+        raise ValueError("Existing preview uses a stale schema version")
+    variants = record.get("variants")
+    if not isinstance(variants, list) or not variants:
+        raise ValueError("Existing preview has no prepared variants")
+
+    for item in variants:
+        action = distribution_execution_service.get_action(UUID(str(item["action_id"])))
+        if action.status != DistributionActionStatus.PREPARED:
+            raise ValueError("Existing preview action is no longer PREPARED")
+        expected_hash = _content_hash(
+            str(action.target_url or ""),
+            str(item["conversion_mechanism"]),
+            str(item["variant_name"]),
+            str(action.content_text or ""),
+        )
+        if expected_hash != str(item.get("content_sha256") or ""):
+            raise ValueError("Existing preview content hash no longer matches the prepared action")
 
 
 async def run(args: argparse.Namespace) -> dict:
@@ -88,16 +137,8 @@ async def run(args: argparse.Namespace) -> dict:
 
     existing = store.get(TELEGRAM_PREVIEW_NAMESPACE, preview_key)
     if existing is not None and str(existing.get("status") or "") == "AWAITING_USER_APPROVAL":
-        action = distribution_execution_service.get_action(UUID(str(existing["action_id"])))
-        if action.status != DistributionActionStatus.PREPARED:
-            raise ValueError("Existing preview action is no longer PREPARED")
-        expected_hash = _content_hash(
-            str(action.target_url or ""),
-            str(action.content_text or ""),
-        )
-        if expected_hash != str(existing.get("content_sha256") or ""):
-            raise ValueError("Existing preview content hash no longer matches the prepared action")
-        return _render_preview(existing, action)
+        _validate_existing_preview(existing)
+        return _render_preview(existing)
 
     connection = store.get(CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE, str(args.project_id))
     if connection is None or str(connection.get("status") or "").upper() != "ACTIVE":
@@ -110,31 +151,52 @@ async def run(args: argparse.Namespace) -> dict:
         if not acquired:
             raise ValueError("Autonomous growth is already running; refusing concurrent preview")
 
-        plan = await distribution_action_drafting_service.auto_prepare(
+        prepared_variants = await distribution_action_drafting_service.auto_prepare_variants(
             product=product,
             play=play,
         )
-        _validate_draft(product, plan, target_url)
-        if plan.action.status != DistributionActionStatus.PREPARED:
-            raise ValueError("Human-preview action must remain PREPARED")
+        if not prepared_variants:
+            raise ValueError("No conversion-oriented Telegram variants were prepared")
 
-        content_sha256 = _content_hash(
-            target_url,
-            str(plan.action.content_text or ""),
-        )
+        variant_records: list[dict] = []
+        for prepared in prepared_variants:
+            plan = prepared.plan
+            _validate_draft(product, plan, target_url)
+            if plan.action.status != DistributionActionStatus.PREPARED:
+                raise ValueError("Human-preview action must remain PREPARED")
+
+            mechanism = prepared.brief.conversion_mechanism.value
+            variant_name = prepared.brief.variant_name
+            content_text = str(plan.action.content_text or "")
+            variant_records.append(
+                {
+                    "conversion_mechanism": mechanism,
+                    "variant_name": variant_name,
+                    "objective": prepared.brief.objective,
+                    "expected_user_next_step": prepared.brief.expected_user_next_step,
+                    "action_id": str(plan.action.id),
+                    "content_sha256": _content_hash(
+                        target_url,
+                        mechanism,
+                        variant_name,
+                        content_text,
+                    ),
+                }
+            )
+
         record = {
+            "schema_version": PREVIEW_SCHEMA_VERSION,
             "status": "AWAITING_USER_APPROVAL",
             "project_id": str(args.project_id),
             "product_id": str(product.id),
             "opportunity_id": str(opportunity.id),
             "play_id": str(play.id),
-            "action_id": str(plan.action.id),
             "target_url": target_url,
-            "content_sha256": content_sha256,
+            "variants": variant_records,
             "prepared_at": datetime.now(UTC).isoformat(),
         }
         store.put(TELEGRAM_PREVIEW_NAMESPACE, preview_key, record)
-        return _render_preview(record, plan.action)
+        return _render_preview(record)
 
 
 def main() -> int:
