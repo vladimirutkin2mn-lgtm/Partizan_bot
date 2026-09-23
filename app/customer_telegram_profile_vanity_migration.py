@@ -95,6 +95,8 @@ async def run(args: argparse.Namespace) -> dict:
             slot=slot,
             profile_route_url=vanity_url,
         )
+        preview["profile_route_url"] = vanity_url
+        store.put(TELEGRAM_PREVIEW_NAMESPACE, preview_key, preview)
         return {
             "status": "already_migrated",
             "profile_about": profile.about,
@@ -145,6 +147,8 @@ async def run(args: argparse.Namespace) -> dict:
             slot=slot,
             profile_route_url=vanity_url,
         )
+        preview["profile_route_url"] = vanity_url
+        store.put(TELEGRAM_PREVIEW_NAMESPACE, preview_key, preview)
         rendered = _render_preview(preview)
         if not rendered["variants"] or not all(
             bool(item.get("send_eligible")) for item in rendered["variants"]
@@ -180,6 +184,8 @@ async def run(args: argparse.Namespace) -> dict:
                 slot=slot,
                 profile_route_url=previous_route,
             )
+            preview["profile_route_url"] = previous_route
+            store.put(TELEGRAM_PREVIEW_NAMESPACE, preview_key, preview)
         except Exception:
             pass
         if mutated:
