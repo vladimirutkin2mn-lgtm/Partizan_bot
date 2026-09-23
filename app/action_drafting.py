@@ -86,10 +86,34 @@ class ActionTargetSelector:
         )
 
     def _candidate_targets(self, opportunity: DistributionOpportunityView) -> list[dict]:
-        enrichment = opportunity.metadata.get("enrichment", {})
-        raw_targets = enrichment.get("action_targets", [])
         candidates: list[dict] = []
         seen: set[str] = set()
+
+        if opportunity.platform == DistributionPlatform.TELEGRAM:
+            native_url = str(opportunity.metadata.get("action_target_url") or "").strip()
+            if native_url and self._is_action_target(opportunity.platform, native_url):
+                recent_context = opportunity.metadata.get("recent_context")
+                recent_context = recent_context if isinstance(recent_context, list) else []
+                matched = next(
+                    (
+                        item
+                        for item in recent_context
+                        if isinstance(item, dict) and str(item.get("url") or "") == native_url
+                    ),
+                    None,
+                )
+                candidates.append(
+                    {
+                        "url": native_url,
+                        "title": opportunity.title,
+                        "snippet": str((matched or {}).get("text") or ""),
+                        "source": "telegram_native.action_target_url",
+                    }
+                )
+                seen.add(native_url)
+
+        enrichment = opportunity.metadata.get("enrichment", {})
+        raw_targets = enrichment.get("action_targets", [])
         for raw in raw_targets:
             if not isinstance(raw, dict) or not raw.get("url"):
                 continue
@@ -202,6 +226,8 @@ Non-negotiable rules:
 8. For STANDALONE_POST, provide a concise title that is suitable for the target community.
 9. Do not claim a platform rule permits something unless the applied CommunityPolicy explicitly says so.
 10. Keep the draft compatible with an approval-gated assisted/manual execution flow.
+11. If the product or target is adult-oriented, keep comments/replies non-explicit and professional.
+    Do not echo graphic sexual language from the source context.
 Return only the requested structured schema.
 """
 

@@ -300,6 +300,30 @@ def test_telegram_comment_accepts_concrete_public_post_target() -> None:
         "A public post asks readers how they distinguish facts from assumptions.",
         kind="CHANNEL",
     )
+    opportunity = audience_intelligence_service.find_opportunity(telegram["id"])
+    metadata = dict(opportunity.metadata)
+    metadata.update(
+        {
+            "native_research_status": "VERIFIED",
+            "action_target_specific": True,
+            "action_target_url": "https://t.me/relationship_daily/321",
+            "surface_capabilities": {
+                "comment": "AVAILABLE",
+                "reply": "UNKNOWN",
+                "standalone_post": "UNAVAILABLE",
+                "publisher_permission_verified": False,
+            },
+            "recent_context": [
+                {
+                    "url": "https://t.me/relationship_daily/321",
+                    "text": "A public post asks readers how they distinguish facts from assumptions.",
+                }
+            ],
+        }
+    )
+    audience_intelligence_service.update_opportunity(
+        opportunity.model_copy(update={"metadata": metadata})
+    )
     identity = _identity("TELEGRAM", "CHANNEL", ["COMMENT"])
     _slot(product_id, identity["id"])
     comment = next(

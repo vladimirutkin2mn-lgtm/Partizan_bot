@@ -59,6 +59,20 @@ def _identity(platform: DistributionPlatform, theme: str) -> DistributionIdentit
     )
 
 
+def _client_owned_telegram_identity(theme: str = "Telegram community") -> DistributionIdentityView:
+    identity = _identity(DistributionPlatform.TELEGRAM, theme)
+    return identity.model_copy(
+        update={
+            "profile_config": {
+                "publisher_mode": "CLIENT_OWNED",
+                "customer_project_id": str(uuid4()),
+            }
+        }
+    )
+
+
+
+
 def test_planner_uses_only_four_mvp_platforms_and_keeps_setup_blockers_visible() -> None:
     product = _product()
     icp_id = uuid4()
@@ -256,3 +270,105 @@ def test_paid_tactic_is_deduplicated_per_icp_and_platform() -> None:
 
     assert len(paid) == 1
     assert paid[0].opportunity_id == opportunities[0].id
+
+
+def test_telegram_comment_requires_verified_native_comment_target() -> None:
+    product = _product()
+    icp_id = uuid4()
+    base = _opportunity(
+        icp_id=icp_id,
+        platform=DistributionPlatform.TELEGRAM,
+        kind=OpportunityKind.CHANNEL,
+        title="Verified Telegram channel",
+    )
+    identity = _client_owned_telegram_identity()
+    blocked_map = AudienceDistributionMapView(
+        product_id=product.id,
+        top_icp_count=1,
+        opportunity_count=1,
+        opportunities=[base],
+    )
+
+    blocked = next(
+        play
+        for play in DistributionPlayPlanner().plan(
+            product=product,
+            distribution_map=blocked_map,
+            identities=[identity],
+        )
+        if play.tactic_id == "telegram_channel_comment"
+    )
+    assert blocked.status == DistributionPlayStatus.BLOCKED
+    assert any("native research" in reason.lower() for reason in blocked.blockers)
+
+    verified = base.model_copy(
+        update={
+            "metadata": {
+                "native_research_status": "VERIFIED",
+                "action_target_specific": True,
+                "action_target_url": "https://t.me/example_channel/42",
+                "surface_capabilities": {
+                    "comment": "AVAILABLE",
+                    "reply": "UNKNOWN",
+                    "standalone_post": "UNAVAILABLE",
+                    "publisher_permission_verified": False,
+                },
+            }
+        }
+    )
+    ready_map = blocked_map.model_copy(update={"opportunities": [verified]})
+    ready = next(
+        play
+        for play in DistributionPlayPlanner().plan(
+            product=product,
+            distribution_map=ready_map,
+            identities=[identity],
+        )
+        if play.tactic_id == "telegram_channel_comment"
+    )
+    assert ready.status == DistributionPlayStatus.READY
+    assert ready.selected_identity_id == identity.id
+
+
+def test_telegram_standalone_post_requires_verified_publisher_permission() -> None:
+    product = _product()
+    icp_id = uuid4()
+    base = _opportunity(
+        icp_id=icp_id,
+        platform=DistributionPlatform.TELEGRAM,
+        kind=OpportunityKind.GROUP,
+        title="Public Telegram group",
+    )
+    opportunity = base.model_copy(
+        update={
+            "metadata": {
+                "native_research_status": "VERIFIED",
+                "surface_capabilities": {
+                    "comment": "UNKNOWN",
+                    "reply": "AVAILABLE",
+                    "standalone_post": "AVAILABLE",
+                    "publisher_permission_verified": False,
+                },
+            }
+        }
+    )
+    distribution_map = AudienceDistributionMapView(
+        product_id=product.id,
+        top_icp_count=1,
+        opportunity_count=1,
+        opportunities=[opportunity],
+    )
+    identity = _client_owned_telegram_identity()
+
+    post = next(
+        play
+        for play in DistributionPlayPlanner().plan(
+            product=product,
+            distribution_map=distribution_map,
+            identities=[identity],
+        )
+        if play.tactic_id == "telegram_group_post"
+    )
+
+    assert post.status == DistributionPlayStatus.BLOCKED
+    assert any("publisher permission" in reason.lower() for reason in post.blockers)

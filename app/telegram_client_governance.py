@@ -235,6 +235,22 @@ class CustomerTelegramGovernanceService:
         payload: TelegramAutomationAuthorizationRequest,
     ) -> TelegramAutomationView:
         project = customer_funnel_service.get_project_payload(project_id, customer_token)
+        return self._authorize_automation_for_project(project_id, project, payload)
+
+    def authorize_automation_internal(
+        self,
+        project_id: UUID,
+        payload: TelegramAutomationAuthorizationRequest,
+    ) -> TelegramAutomationView:
+        project = self._internal_project(project_id)
+        return self._authorize_automation_for_project(project_id, project, payload)
+
+    def _authorize_automation_for_project(
+        self,
+        project_id: UUID,
+        project: dict,
+        payload: TelegramAutomationAuthorizationRequest,
+    ) -> TelegramAutomationView:
         if not payload.confirm_client_owned_execution:
             raise CustomerTelegramClientPublishError(
                 "Explicit confirmation is required before enabling Telegram automation"
@@ -252,7 +268,7 @@ class CustomerTelegramGovernanceService:
             "revoked_at": None,
         }
         self._store.put(CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE, str(project_id), record)
-        return self.automation_status(project_id, customer_token)
+        return self._automation_view(project_id, project)
 
     def pause_automation(
         self,
@@ -269,6 +285,18 @@ class CustomerTelegramGovernanceService:
         record["paused_at"] = datetime.now(UTC).isoformat()
         self._store.put(CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE, str(project_id), record)
         return self.automation_status(project_id, customer_token)
+
+    def pause_automation_internal(self, project_id: UUID) -> TelegramAutomationView:
+        project = self._internal_project(project_id)
+        record = self._store.get(CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE, str(project_id))
+        if record is None:
+            return self._automation_view(project_id, project)
+        if record.get("status") == TelegramAutomationStatus.REVOKED.value:
+            return self._automation_view(project_id, project)
+        record["status"] = TelegramAutomationStatus.PAUSED.value
+        record["paused_at"] = datetime.now(UTC).isoformat()
+        self._store.put(CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE, str(project_id), record)
+        return self._automation_view(project_id, project)
 
     def revoke_automation(
         self,

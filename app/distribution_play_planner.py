@@ -256,6 +256,66 @@ class DistributionPlayPlanner:
             return plays
         return plays[:max_plays]
 
+    def _telegram_native_execution_reasons(
+        self,
+        opportunity: DistributionOpportunityView,
+        action_type: DistributionActionType,
+        *,
+        identity: DistributionIdentityView | None,
+    ) -> list[str]:
+        if opportunity.platform != DistributionPlatform.TELEGRAM:
+            return []
+        if action_type == DistributionActionType.PAID_CAMPAIGN:
+            return []
+
+        # Native surface capability gating is mandatory for client-owned automation.
+        # Existing manual/customer-review and Telegram Bot API flows retain their
+        # established identity/adapter authorization model.
+        profile_config = (
+            identity.profile_config
+            if identity is not None and isinstance(identity.profile_config, dict)
+            else {}
+        )
+        if str(profile_config.get("publisher_mode") or "").upper() != "CLIENT_OWNED":
+            return []
+
+        metadata = opportunity.metadata if isinstance(opportunity.metadata, dict) else {}
+        if str(metadata.get("native_research_status") or "").upper() != "VERIFIED":
+            return ["Telegram native research must be VERIFIED before community execution"]
+
+        capabilities = metadata.get("surface_capabilities")
+        capabilities = capabilities if isinstance(capabilities, dict) else {}
+        action_target = str(metadata.get("action_target_url") or "").strip()
+        action_target_specific = bool(metadata.get("action_target_specific"))
+
+        if action_type == DistributionActionType.COMMENT:
+            reasons = []
+            if str(capabilities.get("comment") or "").upper() != "AVAILABLE":
+                reasons.append("Telegram comment surface is not verified AVAILABLE")
+            if not action_target_specific or not action_target:
+                reasons.append("Telegram comment requires a specific native message target")
+            return reasons
+
+        if action_type == DistributionActionType.REPLY:
+            reasons = []
+            if str(capabilities.get("reply") or "").upper() != "AVAILABLE":
+                reasons.append("Telegram reply surface is not verified AVAILABLE")
+            if not action_target_specific or not action_target:
+                reasons.append("Telegram reply requires a specific native message target")
+            return reasons
+
+        if action_type == DistributionActionType.STANDALONE_POST:
+            reasons = []
+            if str(capabilities.get("standalone_post") or "").upper() != "AVAILABLE":
+                reasons.append("Telegram standalone-post surface is not verified AVAILABLE")
+            if capabilities.get("publisher_permission_verified") is not True:
+                reasons.append(
+                    "Telegram standalone posting requires verified publisher permission"
+                )
+            return reasons
+
+        return []
+
     def _templates_for(
         self,
         opportunity: DistributionOpportunityView,
@@ -296,9 +356,20 @@ class DistributionPlayPlanner:
             has_direct_product_link=template.has_direct_product_link,
             has_product_mention=template.has_product_mention,
         )
-        blockers = list(dict.fromkeys(decision.reasons))
+        blockers = list(
+            dict.fromkeys(
+                [
+                    *decision.reasons,
+                    *self._telegram_native_execution_reasons(
+                        opportunity,
+                        template.action_type,
+                        identity=selection.identity if selection else None,
+                    ),
+                ]
+            )
+        )
         status = (
-            DistributionPlayStatus.READY if decision.allowed else DistributionPlayStatus.BLOCKED
+            DistributionPlayStatus.READY if not blockers else DistributionPlayStatus.BLOCKED
         )
         cost_min, cost_max = self._cap_cost(
             template.estimated_cost_min,

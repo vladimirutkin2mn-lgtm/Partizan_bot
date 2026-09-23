@@ -425,3 +425,33 @@ def test_reset_clears_governance_state(monkeypatch) -> None:
     service.reset()
     assert store.list_namespace(CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE) == []
     assert store.list_namespace(CUSTOMER_TELEGRAM_OBSERVATION_NAMESPACE) == []
+
+
+def test_internal_automation_authorization_and_pause_reuse_live_gates(monkeypatch) -> None:
+    store, project, _, _, publish_service = _fixture(monkeypatch)
+    service = _service(store)
+    project_id = project["project_id"]
+
+    publish_service.blocker = "Telegram publishing paused"
+    with pytest.raises(CustomerTelegramClientPublishError, match="paused"):
+        service.authorize_automation_internal(
+            project_id,
+            TelegramAutomationAuthorizationRequest(
+                confirm_client_owned_execution=True,
+                max_publishes_per_day=1,
+            ),
+        )
+
+    publish_service.blocker = None
+    authorized = service.authorize_automation_internal(
+        project_id,
+        TelegramAutomationAuthorizationRequest(
+            confirm_client_owned_execution=True,
+            max_publishes_per_day=1,
+        ),
+    )
+    assert authorized.status == TelegramAutomationStatus.ENABLED
+    assert authorized.max_publishes_per_day == 1
+
+    paused = service.pause_automation_internal(project_id)
+    assert paused.status == TelegramAutomationStatus.PAUSED

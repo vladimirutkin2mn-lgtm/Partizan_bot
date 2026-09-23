@@ -188,3 +188,48 @@ def test_telegram_auto_fails_closed_when_connection_or_live_readiness_disappears
     telegram = next(item for item in rows if item.platform == DistributionPlatform.TELEGRAM)
     assert telegram.execution_ready is False
     assert "requires reconnection" in str(telegram.execution_blocker)
+
+
+def test_internal_telegram_auto_enable_and_disable_reuse_execution_readiness(monkeypatch) -> None:
+    store = MemoryRuntimeStateStore()
+    project_id = uuid4()
+    store.put(
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(project_id),
+        {
+            "id": str(project_id),
+            "channel_preferences": {"TELEGRAM": "RESEARCH_ONLY"},
+            "channel_publisher_modes": {"TELEGRAM": "CLIENT_OWNED"},
+        },
+    )
+    store.put(
+        GROWTH_BALANCE_TOPUP_NAMESPACE,
+        "telegram-internal-balance",
+        {
+            "project_id": str(project_id),
+            "amount_cents": 100,
+            "currency": "usd",
+            "state": "PAID",
+        },
+    )
+    publishing = FakeTelegramPublishing()
+    governance = FakeTelegramGovernance()
+    governance.status = TelegramAutomationStatus.ENABLED
+    monkeypatch.setattr(channels, "customer_funnel_service", StoreBackedFunnel(store))
+    monkeypatch.setattr(channels, "customer_telegram_client_publish_service", publishing)
+    monkeypatch.setattr(channels, "customer_telegram_governance_service", governance)
+    service = CustomerChannelService(
+        store=store,
+        settings=SimpleNamespace(
+            meta_oauth_public_ready=False,
+            partizan_telegram_execution_fee_usd=0.001,
+        ),
+    )
+
+    enabled = service.enable_telegram_auto_internal(project_id)
+    assert enabled["channel_preferences"]["TELEGRAM"] == "AUTO"
+    assert service.autonomous_platforms(enabled) == [DistributionPlatform.TELEGRAM]
+
+    disabled = service.disable_telegram_auto_internal(project_id)
+    assert disabled["channel_preferences"]["TELEGRAM"] == "RESEARCH_ONLY"
+    assert service.autonomous_platforms(disabled) == []
