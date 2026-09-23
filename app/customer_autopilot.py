@@ -95,6 +95,22 @@ class CustomerAutopilotService:
             )
         return self.overview(project_id, customer_token)
 
+    def refresh_channel_policy_internal(self, project_id: UUID):
+        project = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
+        if project is None:
+            raise ValueError("Customer project not found")
+        product_id_raw = project.get("product_id")
+        if project.get("research_state") != "READY" or not product_id_raw:
+            raise ValueError("Customer project research is not READY")
+        product_id = UUID(str(product_id_raw))
+        self._materialize_staged_meta(project, product_id)
+        return self._ensure_mandate_if_ready(
+            project_id,
+            project,
+            product_id,
+            force_update=True,
+        )
+
     def reconcile_safety_policy(self, product_id: UUID | None = None) -> int:
         reconciled = 0
         for project in self._store.list_namespace(CUSTOMER_PROJECT_NAMESPACE):
