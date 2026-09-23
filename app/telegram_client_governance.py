@@ -286,6 +286,18 @@ class CustomerTelegramGovernanceService:
         self._store.put(CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE, str(project_id), record)
         return self.automation_status(project_id, customer_token)
 
+    def pause_automation_internal(self, project_id: UUID) -> TelegramAutomationView:
+        project = self._internal_project(project_id)
+        record = self._store.get(CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE, str(project_id))
+        if record is None:
+            return self._automation_view(project_id, project)
+        if record.get("status") == TelegramAutomationStatus.REVOKED.value:
+            return self._automation_view(project_id, project)
+        record["status"] = TelegramAutomationStatus.PAUSED.value
+        record["paused_at"] = datetime.now(UTC).isoformat()
+        self._store.put(CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE, str(project_id), record)
+        return self._automation_view(project_id, project)
+
     def revoke_automation(
         self,
         project_id: UUID,
