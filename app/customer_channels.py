@@ -301,6 +301,19 @@ class CustomerChannelService:
         self._persist(project)
         return project
 
+    def disable_telegram_auto_internal(self, project_id: UUID) -> dict:
+        project = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
+        if project is None:
+            raise ValueError("Customer project not found")
+        preferences = self._preferences(project)
+        preferences[DistributionPlatform.TELEGRAM] = "RESEARCH_ONLY"
+        project[CHANNEL_PREFERENCES_KEY] = {
+            platform.value: mode for platform, mode in preferences.items()
+        }
+        project["telegram_auto_disabled_at"] = datetime.now(UTC).isoformat()
+        self._persist(project)
+        return project
+
     def autonomous_platforms(self, project: dict) -> list[DistributionPlatform]:
         """Return customer AUTO intent that is currently eligible for runtime consideration."""
 
