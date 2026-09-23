@@ -29,13 +29,25 @@ router = APIRouter(tags=["tracking"])
 _tracking_builder = DistributionTrackingLinkBuilder()
 
 
+@router.get("/femdom", include_in_schema=False)
+async def femdom_profile_redirect() -> RedirectResponse:
+    try:
+        slot = distribution_control_plane_service.find_slot_by_profile_alias("femdom")
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Profile conversion route not found") from exc
+    return _profile_slot_redirect(slot)
+
+
 @router.get("/p/{profile_token}", include_in_schema=False)
 async def profile_tracking_redirect(profile_token: str) -> RedirectResponse:
     try:
         slot = distribution_control_plane_service.find_slot_by_profile_token(profile_token)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Profile conversion route not found") from exc
+    return _profile_slot_redirect(slot)
 
+
+def _profile_slot_redirect(slot) -> RedirectResponse:
     active_experiment = str(slot.metadata.get("active_profile_experiment_id") or "").strip()
     if not active_experiment:
         fallback = str(slot.metadata.get("profile_route_fallback_url") or "").strip()
