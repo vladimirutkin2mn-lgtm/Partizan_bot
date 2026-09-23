@@ -244,6 +244,22 @@ class InMemoryDistributionExecutionService:
         experiment = self.get_experiment(updated.experiment_id)
         return DistributionExecutionPlanView(action=updated, experiment=experiment)
 
+    def attach_conversion_path(
+        self,
+        action_id: UUID,
+        assessment: dict,
+    ) -> DistributionActionView:
+        action = self.get_action(action_id)
+        if action.status != DistributionActionStatus.PREPARED:
+            raise ValueError("Conversion path can only be attached to a PREPARED action")
+        content_payload = dict(action.content_payload)
+        content_payload["conversion_path"] = dict(assessment)
+        content_payload["conversion_path_status"] = str(assessment.get("status") or "")
+        updated = action.model_copy(update={"content_payload": content_payload})
+        self._actions[action_id] = updated
+        self._persist_action(updated)
+        return updated
+
     def approve(self, action_id: UUID) -> DistributionExecutionPlanView:
         action = self.get_action(action_id)
         require_customer_bound_mutation_scope(action, "approval")
@@ -548,6 +564,19 @@ class InMemoryDistributionExecutionService:
             )
 
     def _validate_action_ready_for_approval(self, action: DistributionActionView) -> None:
+        if action.content_payload.get("conversion_mechanism"):
+            conversion_status = str(
+                action.content_payload.get("conversion_path_status") or ""
+            ).upper()
+            if conversion_status != "READY":
+                path = action.content_payload.get("conversion_path")
+                blockers = path.get("blockers") if isinstance(path, dict) else []
+                detail = "; ".join(str(item) for item in (blockers or []))
+                suffix = f": {detail}" if detail else ""
+                raise ValueError(
+                    "Conversion path must be READY before action approval" + suffix
+                )
+
         if action.action_type in {
             DistributionActionType.COMMENT,
             DistributionActionType.REPLY,
