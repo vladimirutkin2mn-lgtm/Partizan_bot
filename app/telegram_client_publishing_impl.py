@@ -289,16 +289,16 @@ class TelethonClientPublishTransport:
             message = await client.send_message(
                 entity,
                 text,
-                reply_to=target.reply_to_message_id,
+                **self._send_message_thread_kwargs(action_type, target),
             )
             published_at = message.date
             if published_at.tzinfo is None:
                 published_at = published_at.replace(tzinfo=UTC)
             return TelegramPublishResult(
-                peer_id=int(entity.id),
+                peer_id=self._message_peer_id(message, fallback=int(entity.id)),
                 message_id=int(message.id),
                 published_at=published_at,
-                executed_url=f"https://t.me/{target.username}/{message.id}",
+                executed_url=self._executed_url(action_type, target, int(message.id)),
             )
         except TelegramClientPublishTransportError:
             raise
@@ -306,6 +306,45 @@ class TelethonClientPublishTransport:
             raise self._safe_error(exc, "PUBLISH_FAILED") from None
         finally:
             await client.disconnect()
+
+    def _send_message_thread_kwargs(
+        self,
+        action_type: DistributionActionType,
+        target: TelegramPublishTarget,
+    ) -> dict[str, int]:
+        if action_type == DistributionActionType.COMMENT:
+            if target.reply_to_message_id is None:
+                raise TelegramClientPublishTransportError("COMMENT_TARGET_REQUIRED")
+            return {"comment_to": target.reply_to_message_id}
+        if action_type == DistributionActionType.REPLY:
+            if target.reply_to_message_id is None:
+                raise TelegramClientPublishTransportError("REPLY_TARGET_REQUIRED")
+            return {"reply_to": target.reply_to_message_id}
+        return {}
+
+    def _executed_url(
+        self,
+        action_type: DistributionActionType,
+        target: TelegramPublishTarget,
+        message_id: int,
+    ) -> str:
+        if (
+            action_type == DistributionActionType.COMMENT
+            and target.reply_to_message_id is not None
+        ):
+            return (
+                f"https://t.me/{target.username}/{target.reply_to_message_id}"
+                f"?comment={message_id}"
+            )
+        return f"https://t.me/{target.username}/{message_id}"
+
+    def _message_peer_id(self, message, *, fallback: int) -> int:
+        peer = getattr(message, "peer_id", None)
+        for attribute in ("channel_id", "chat_id", "user_id"):
+            value = getattr(peer, attribute, None)
+            if value is not None:
+                return int(value)
+        return fallback
 
     def _client(self, session: str = "") -> TelegramClient:
         api_id = self._settings.telegram_client_publish_api_id
@@ -659,6 +698,11 @@ class CustomerTelegramClientPublishService:
                     "remote_peer_id": result.peer_id,
                     "remote_message_id": result.message_id,
                     "reply_to_message_id": target.reply_to_message_id,
+                    "comment_to_message_id": (
+                        target.reply_to_message_id
+                        if action.action_type == DistributionActionType.COMMENT
+                        else None
+                    ),
                     "telegram_user_id": connection.get("telegram_user_id"),
                     "restriction_signal": None,
                 },
