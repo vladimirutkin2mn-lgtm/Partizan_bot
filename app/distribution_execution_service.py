@@ -296,6 +296,15 @@ class InMemoryDistributionExecutionService:
         if not decision.allowed:
             raise ValueError("; ".join(decision.reasons))
 
+        mechanism = str(action.content_payload.get("conversion_mechanism") or "").upper()
+        if mechanism in {"PROFILE_CLICK", "REPLY_ENGAGEMENT"}:
+            if action.campaign_slot_id is None:
+                raise ValueError("Profile-based conversion requires a CampaignSlot")
+            distribution_control_plane_service.bind_profile_experiment(
+                action.campaign_slot_id,
+                experiment.id,
+            )
+
         return self._set_approved(action, experiment)
 
     def approve_outreach(self, action_id: UUID) -> DistributionExecutionPlanView:

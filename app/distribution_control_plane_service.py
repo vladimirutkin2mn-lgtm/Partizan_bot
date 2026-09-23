@@ -215,6 +215,59 @@ class InMemoryDistributionControlPlaneService:
             slots = [slot for slot in slots if slot.product_id == product_id]
         return sorted(slots, key=lambda slot: str(slot.id))
 
+    def ensure_profile_route(self, slot_id: UUID) -> CampaignSlotView:
+        slot = self._get_slot(slot_id)
+        metadata = dict(slot.metadata)
+        token = str(metadata.get("profile_route_token") or "").strip()
+        if not token:
+            token = uuid4().hex[:24]
+            metadata["profile_route_token"] = token
+            updated = slot.model_copy(update={"metadata": metadata})
+            self._slots[slot.id] = updated
+            self._persist_slot(updated)
+            return updated
+        return slot
+
+    def find_slot_by_profile_token(self, token: str) -> CampaignSlotView:
+        self._hydrate_slots()
+        matches = [
+            slot
+            for slot in self._slots.values()
+            if str(slot.metadata.get("profile_route_token") or "") == token
+        ]
+        if len(matches) != 1:
+            raise KeyError(token)
+        return matches[0]
+
+    def bind_profile_experiment(
+        self,
+        slot_id: UUID,
+        experiment_id: UUID,
+    ) -> CampaignSlotView:
+        slot = self._get_slot(slot_id)
+        metadata = dict(slot.metadata)
+        metadata["active_profile_experiment_id"] = str(experiment_id)
+        updated = slot.model_copy(update={"metadata": metadata})
+        self._slots[slot.id] = updated
+        self._persist_slot(updated)
+        return updated
+
+    def set_identity_profile_conversion(
+        self,
+        identity_id: UUID,
+        *,
+        profile_url: str,
+        verified: bool,
+    ) -> DistributionIdentityView:
+        identity = self.get_identity(identity_id)
+        config = dict(identity.profile_config)
+        config["conversion_profile_url"] = profile_url
+        config["conversion_profile_verified"] = verified
+        updated = identity.model_copy(update={"profile_config": config})
+        self._identities[identity.id] = updated
+        self._persist_identity(updated)
+        return updated
+
     def find_active_slot(
         self,
         identity_id: UUID,

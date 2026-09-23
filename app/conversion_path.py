@@ -48,6 +48,7 @@ class ConversionPathValidator:
         action: DistributionActionView,
         identity: DistributionIdentityView | None,
         slot: CampaignSlotView | None,
+        profile_route_url: str | None = None,
     ) -> ConversionPathAssessment:
         tracking_url = str(action.tracking_url or "").strip()
 
@@ -85,6 +86,8 @@ class ConversionPathValidator:
                 blockers.append("No ACTIVE CampaignSlot is attached to this action")
             if not tracking_url:
                 blockers.append("Prepared action has no attributable tracking URL")
+            if not profile_route_url:
+                blockers.append("No stable Partizan profile conversion route is configured")
 
             profile_config = (
                 identity.profile_config
@@ -95,9 +98,9 @@ class ConversionPathValidator:
             configured_url = str(profile_config.get("conversion_profile_url") or "").strip()
             if not verified:
                 blockers.append("Telegram profile conversion CTA has not been verified")
-            if tracking_url and configured_url != tracking_url:
+            if profile_route_url and configured_url != profile_route_url:
                 blockers.append(
-                    "Telegram profile conversion CTA does not point to this experiment tracking URL"
+                    "Telegram profile conversion CTA does not point to the stable Partizan profile route"
                 )
 
             prefix = (
@@ -114,16 +117,17 @@ class ConversionPathValidator:
                 ),
                 steps=(
                     *prefix,
-                    "Partizan tracked link",
+                    "Stable Partizan profile route",
+                    "Selected experiment tracking link",
                     "Product entry",
                     "SIGNUP / ACTIVATED / PAID",
                 ),
                 measurement=(
-                    "Profile itself is not observable by Partizan; first measurable step is VISIT "
-                    "through the experiment tracking URL, followed by server-side conversions"
+                    "Profile itself is not observable by Partizan; the stable profile route forwards "
+                    "to the selected experiment, where VISIT and downstream conversions are attributed"
                 ),
                 blockers=tuple(blockers),
-                required_profile_url=tracking_url or None,
+                required_profile_url=profile_route_url or None,
             )
 
         if mechanism == ConversionMechanism.BRAND_SEARCH:
