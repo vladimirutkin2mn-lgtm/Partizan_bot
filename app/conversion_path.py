@@ -67,8 +67,7 @@ class ConversionPathValidator:
                 ),
                 steps=(
                     "Community contribution",
-                    "Stable Partizan profile route",
-                    "Selected experiment tracking link",
+                    "Partizan tracked link",
                     "Product entry",
                     "SIGNUP / ACTIVATED / PAID",
                 ),
@@ -118,7 +117,8 @@ class ConversionPathValidator:
                 ),
                 steps=(
                     *prefix,
-                    "Partizan tracked link",
+                    "Stable Partizan profile route",
+                    "Selected experiment tracking link",
                     "Product entry",
                     "SIGNUP / ACTIVATED / PAID",
                 ),
