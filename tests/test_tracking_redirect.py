@@ -396,3 +396,43 @@ def test_profile_route_rejects_invalid_persisted_fallback(
     assert response.status_code == 409
     assert "location" not in response.headers
 
+def test_femdom_vanity_route_uses_same_profile_slot_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    slot = SimpleNamespace(
+        id=uuid4(),
+        product_id=uuid4(),
+        metadata={
+            "profile_route_alias": "femdom",
+            "profile_route_fallback_url": "https://product.example/start",
+        },
+    )
+    monkeypatch.setattr(
+        distribution_control_plane_service,
+        "find_slot_by_profile_alias",
+        lambda alias: slot,
+    )
+
+    response = client.get("/femdom", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == "https://product.example/start"
+
+
+def test_femdom_vanity_route_returns_404_when_alias_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def missing(alias: str):
+        raise KeyError(alias)
+
+    monkeypatch.setattr(
+        distribution_control_plane_service,
+        "find_slot_by_profile_alias",
+        missing,
+    )
+
+    response = client.get("/femdom", follow_redirects=False)
+
+    assert response.status_code == 404
+    assert "location" not in response.headers
+
