@@ -260,10 +260,23 @@ class DistributionPlayPlanner:
         self,
         opportunity: DistributionOpportunityView,
         action_type: DistributionActionType,
+        *,
+        identity: DistributionIdentityView | None,
     ) -> list[str]:
         if opportunity.platform != DistributionPlatform.TELEGRAM:
             return []
         if action_type == DistributionActionType.PAID_CAMPAIGN:
+            return []
+
+        # Native surface capability gating is mandatory for client-owned automation.
+        # Existing manual/customer-review and Telegram Bot API flows retain their
+        # established identity/adapter authorization model.
+        profile_config = (
+            identity.profile_config
+            if identity is not None and isinstance(identity.profile_config, dict)
+            else {}
+        )
+        if str(profile_config.get("publisher_mode") or "").upper() != "CLIENT_OWNED":
             return []
 
         metadata = opportunity.metadata if isinstance(opportunity.metadata, dict) else {}
@@ -350,6 +363,7 @@ class DistributionPlayPlanner:
                     *self._telegram_native_execution_reasons(
                         opportunity,
                         template.action_type,
+                        identity=selection.identity if selection else None,
                     ),
                 ]
             )
