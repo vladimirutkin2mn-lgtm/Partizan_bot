@@ -4,6 +4,10 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, Field, HttpUrl
 
 from app.audience_intelligence_service import audience_intelligence_service
+from app.conversion_scenarios import (
+    DraftVariantBrief,
+    conversion_scenario_planner,
+)
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_schemas import (
     DistributionExecutionPlanView,
@@ -34,6 +38,12 @@ class DistributionContentDraft(BaseModel):
     rationale: str = Field(min_length=5, max_length=2000)
     disclosure_included: bool = False
     ai_disclosure_included: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedDraftVariant:
+    brief: DraftVariantBrief
+    plan: DistributionExecutionPlanView
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,14 +229,17 @@ Non-negotiable rules:
 4. Do not write cold direct messages. The allowed action type is supplied explicitly.
 5. Community comments/replies should be useful in their own right.
    Do not include a product link unless it is explicitly allowed.
-6. If an applied community policy requires disclosure, include a clear short disclosure.
+6. When a Conversion brief is supplied, optimize for that explicit conversion mechanism instead
+   of writing a merely polite or generic contribution. The conversion path must still obey every
+   community and platform constraint.
+7. If an applied community policy requires disclosure, include a clear short disclosure.
    Set disclosure_included=true only when that disclosure is actually present.
-7. If the policy requires AI-content disclosure, include it.
+8. If the policy requires AI-content disclosure, include it.
    Set ai_disclosure_included=true only when that disclosure is actually present.
-8. For STANDALONE_POST, provide a concise title that is suitable for the target community.
-9. Do not claim a platform rule permits something unless the applied CommunityPolicy explicitly says so.
-10. Keep the draft compatible with an approval-gated assisted/manual execution flow.
-11. If the product or target is adult-oriented, keep comments/replies non-explicit and professional.
+9. For STANDALONE_POST, provide a concise title that is suitable for the target community.
+10. Do not claim a platform rule permits something unless the applied CommunityPolicy explicitly says so.
+11. Keep the draft compatible with an approval-gated assisted/manual execution flow.
+12. If the product or target is adult-oriented, keep comments/replies non-explicit and professional.
     Do not echo graphic sexual language from the source context.
 Return only the requested structured schema.
 """
@@ -244,6 +257,7 @@ class DistributionActionComposer:
         opportunity: DistributionOpportunityView,
         target: SelectedActionTarget,
         policy: CommunityPolicyView | None,
+        variant: DraftVariantBrief | None = None,
     ) -> DistributionContentDraft:
         self._validate_ai_policy(policy)
         if self._provider is None:
@@ -253,6 +267,7 @@ class DistributionActionComposer:
                 opportunity=opportunity,
                 target=target,
                 policy=policy,
+                variant=variant,
             )
         template = next(item for item in TACTIC_CATALOG if item.tactic_id == play.tactic_id)
         marketing_task = marketing_task_for_action(
@@ -277,6 +292,8 @@ class DistributionActionComposer:
                         f"{policy.model_dump(mode='json') if policy else None}\n"
                         f"Tactic allows direct product link: {template.has_direct_product_link}\n"
                         f"Tactic includes product mention: {template.has_product_mention}\n"
+                        f"Conversion brief: "
+                        f"{self._variant_prompt(variant) if variant else None}\n"
                     ),
                 ),
             ],
@@ -291,6 +308,7 @@ class DistributionActionComposer:
         opportunity: DistributionOpportunityView,
         target: SelectedActionTarget,
         policy: CommunityPolicyView | None,
+        variant: DraftVariantBrief | None = None,
     ) -> DistributionContentDraft:
         context = target.context_text[:8000]
         disclosure_required = bool(policy and policy.disclosure_required)
@@ -312,12 +330,31 @@ class DistributionActionComposer:
             DistributionActionType.COMMENT,
             DistributionActionType.REPLY,
         }:
-            content = (
-                f"{disclosure_prefix}One useful angle here is to separate the immediate question "
-                "from the underlying decision you are trying to make. Writing down the evidence "
-                "for each interpretation can make the next step much clearer."
-            )
-            rationale = "Value-first response grounded in the selected public discussion context."
+            if variant is not None and variant.conversion_mechanism.value == "PROFILE_CLICK":
+                content = (
+                    f"{disclosure_prefix}A useful distinction here is between the visible rule and "
+                    "the decision it helps a participant make. The strongest guidance usually makes "
+                    "both explicit, so people can judge fit before they commit."
+                )
+                rationale = (
+                    "Distinctive value-first contribution designed to earn legitimate profile curiosity."
+                )
+            elif variant is not None and variant.conversion_mechanism.value == "REPLY_ENGAGEMENT":
+                content = (
+                    f"{disclosure_prefix}A useful distinction here is between the visible rule and "
+                    "the decision it helps a participant make. Which part tends to create the most "
+                    "uncertainty for people before they decide whether to participate?"
+                )
+                rationale = (
+                    "Value-first contribution with one substantive question to create a natural reply."
+                )
+            else:
+                content = (
+                    f"{disclosure_prefix}One useful angle here is to separate the immediate question "
+                    "from the underlying decision you are trying to make. Writing down the evidence "
+                    "for each interpretation can make the next step much clearer."
+                )
+                rationale = "Value-first response grounded in the selected public discussion context."
         elif play.action_type == DistributionActionType.STANDALONE_POST:
             title = f"A practical framework for {opportunity.title}"[:300]
             product_reference = product.value_proposition or product.description
@@ -354,6 +391,16 @@ class DistributionActionComposer:
             disclosure_included=disclosure_required,
             ai_disclosure_included=ai_disclosure_required,
         )
+
+    @staticmethod
+    def _variant_prompt(variant: DraftVariantBrief) -> dict[str, str]:
+        return {
+            "conversion_mechanism": variant.conversion_mechanism.value,
+            "variant_name": variant.variant_name,
+            "objective": variant.objective,
+            "expected_user_next_step": variant.expected_user_next_step,
+            "instructions": variant.instructions,
+        }
 
     def _validate_ai_policy(self, policy: CommunityPolicyView | None) -> None:
         if "AI_CONTENT_PROHIBITED" in self._constraints(policy):
@@ -407,6 +454,54 @@ class DistributionActionDraftingService:
                 ai_disclosure_included=draft.ai_disclosure_included,
             ),
         )
+
+    async def auto_prepare_variants(
+        self,
+        *,
+        product: ProductProfileView,
+        play: DistributionPlayView,
+        destination_url: HttpUrl | None = None,
+    ) -> list[PreparedDraftVariant]:
+        if play.status != DistributionPlayStatus.READY:
+            raise ValueError("Only READY DistributionPlay objects can be auto-prepared")
+        opportunity = audience_intelligence_service.find_opportunity(play.opportunity_id)
+        target = self._selector.select(play, opportunity)
+        policy = self._applied_policy(play, opportunity)
+        template = next(item for item in TACTIC_CATALOG if item.tactic_id == play.tactic_id)
+        briefs = conversion_scenario_planner.variants(
+            play=play,
+            opportunity=opportunity,
+            policy=policy,
+            template=template,
+        )
+        prepared: list[PreparedDraftVariant] = []
+        for brief in briefs:
+            draft = await self._composer.compose(
+                product=product,
+                play=play,
+                opportunity=opportunity,
+                target=target,
+                policy=policy,
+                variant=brief,
+            )
+            plan = distribution_execution_service.prepare(
+                product,
+                play,
+                DistributionExecutionPrepareRequest(
+                    destination_url=destination_url,
+                    target_url=target.url,
+                    title=draft.title,
+                    context_text=draft.context_text,
+                    content_text=draft.content_text,
+                    disclosure_included=draft.disclosure_included,
+                    ai_disclosure_included=draft.ai_disclosure_included,
+                    conversion_mechanism=brief.conversion_mechanism.value,
+                    draft_variant=brief.variant_name,
+                    expected_user_next_step=brief.expected_user_next_step,
+                ),
+            )
+            prepared.append(PreparedDraftVariant(brief=brief, plan=plan))
+        return prepared
 
     def _applied_policy(
         self,
