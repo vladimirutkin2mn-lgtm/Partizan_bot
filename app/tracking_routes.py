@@ -4,7 +4,7 @@ import logging
 import re
 from typing import Annotated
 from urllib.parse import urlsplit
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -27,6 +27,21 @@ _logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["tracking"])
 _tracking_builder = DistributionTrackingLinkBuilder()
+
+
+@router.get("/p/{profile_token}", include_in_schema=False)
+async def profile_tracking_redirect(profile_token: str) -> RedirectResponse:
+    try:
+        slot = distribution_control_plane_service.find_slot_by_profile_token(profile_token)
+        experiment_id = UUID(str(slot.metadata["active_profile_experiment_id"]))
+        experiment = distribution_execution_service.get_experiment(experiment_id)
+        action = distribution_execution_service.get_action(experiment.action_id)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="Profile conversion route is not active") from exc
+
+    if experiment.product_id != slot.product_id or action.campaign_slot_id != slot.id:
+        raise HTTPException(status_code=409, detail="Profile conversion binding is invalid")
+    return RedirectResponse(url=str(experiment.tracking_url), status_code=302)
 
 
 @router.get("/r/{referral_token}", include_in_schema=False)
