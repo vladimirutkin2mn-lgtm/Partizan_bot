@@ -185,7 +185,7 @@ if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
   fi
 
   for marker in \
-    'Show Partizan what you built.' \
+    'id="preview-form"' \
     'Product link' \
     'Analyze my product' \
     'Likely first audiences' \
@@ -262,7 +262,7 @@ if [[ -n "${PARTIZAN_PUBLIC_URL}" ]]; then
     printf '%s' "${revision}"
   }
 
-  marketing_revision="$(verify_release_surface '/?release='${PARTIZAN_RELEASE_SHA} 'x-partizan-marketing-revision' 'You built the product.' 'marketing')"
+  marketing_revision="$(verify_release_surface '/?release='${PARTIZAN_RELEASE_SHA} 'x-partizan-marketing-revision' 'id="hero-scan-form"' 'marketing')"
   for asset in landing.v1.css landing.v1.js; do
     if ! grep -Fq "/site/assets/${asset}?v=${marketing_revision}" "${smoke_dir}/marketing.html"; then
       echo "Public smoke failed: homepage does not reference versioned ${asset}" >&2
