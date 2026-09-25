@@ -50,7 +50,7 @@ def test_workspace_loads_versioned_new_project_assets() -> None:
     assert "Setup appears only after you choose" in javascript.text
     assert "data-journey-channel-button" in javascript.text
     assert '#channel-snapshot [data-platform=' in javascript.text
-    assert '.tab-button[data-tab="overview"]' in javascript.text
+    assert '.tab-button[data-tab="channels"]' in javascript.text
     assert '.tab-button[data-tab="activity"]' in javascript.text
     assert "channel-mode-select" not in javascript.text
     assert "customer_token" not in javascript.text
@@ -74,7 +74,7 @@ def test_distribution_choice_replaces_the_six_step_activation_ladder() -> None:
     assert ".channel-connect-button, .channel-toggle" in js
     assert "openChannelChoice" in js
     assert "channel-mode-select" not in js
-    assert '.tab-button[data-tab="channels"]' not in js
+    assert '.tab-button[data-tab="channels"]' in js
 
 
 def test_meta_connect_ui_fails_closed_when_customer_oauth_is_unavailable() -> None:

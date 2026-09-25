@@ -42,6 +42,14 @@ jobs:
           for javascript in app/web/*.js; do
             node --check "${javascript}"
           done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Check customer design interactions
+        run: |
+          npm ci --ignore-scripts
+          npm run test:design
       - name: Check production shell scripts
         run: |
           bash -n tools/deploy_prod_remote.sh

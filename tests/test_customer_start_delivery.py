@@ -26,7 +26,9 @@ def test_customer_start_is_no_store_and_references_custom_goal_assets() -> None:
     assert '/start/assets/goal-dropdown.v1.js' in response.text
     assert '/start/assets/customer-account.v1.css' in response.text
     assert '<select id="goal">' in response.text
-    assert "AI customer acquisition system" in response.text
+    assert "© 2026 Partizan Labs" in response.text
+    assert f"/start/assets/design.v1.css?v={onboarding_revision}" in response.text
+    assert f"/start/assets/start.design.v1.js?v={onboarding_revision}" in response.text
     for href in ("/privacy", "/terms", "/security", "/contact"):
         assert f'href="{href}"' in response.text
 
@@ -52,19 +54,19 @@ def test_customer_start_makes_partizan_work_before_goal_and_budget() -> None:
     javascript = client.get("/start/assets/start.v2.js")
 
     assert page.status_code == 200
-    assert "Step 1 · Start free · no card required" in page.text
-    assert "Show Partizan what you built." in page.text
+    assert "A small first step" in page.text
+    assert "Show Partizan<br>what you built." in page.text
     assert "Product link" in page.text
     assert "No public link? Describe what you built" in page.text
     assert 'id="brief-fallback" class="brief-fallback hidden"' in page.text
     assert "Step 2 · Partizan understands it" in page.text
-    assert "We think you built:" in page.text
+    assert "Here’s what we understood." in page.text
     assert "Looks right" in page.text
     assert "Step 3 · Your outcome" in page.text
-    assert "What would success look like?" in page.text
+    assert "What would success<br>look like?" in page.text
     assert '<option value="Get first users">First users</option>' in page.text
     assert "Step 4 · Your boundary" in page.text
-    assert "How much can you comfortably test with?" in page.text
+    assert "How much can you<br>comfortably test with?" in page.text
     assert 'data-budget="10"' in page.text
     assert 'data-budget="50"' in page.text
     assert 'data-budget="100"' in page.text
@@ -75,8 +77,8 @@ def test_customer_start_makes_partizan_work_before_goal_and_budget() -> None:
     assert "fake" not in page.text.lower()
     assert 'id="product-link" type="text" inputmode="url"' in page.text
     assert "t.me/yourbot" in page.text
-    assert "App Store" in page.text
-    assert "GitHub" in page.text
+    assert "Telegram bot" in page.text
+    assert 'id="product-brief-tab"' in page.text
     assert 'id="intake-clarification-step"' in page.text
     assert 'id="product-clarification-form"' in page.text
     assert "Product understanding · fill the gaps" in page.text

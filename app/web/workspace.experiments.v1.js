@@ -119,6 +119,7 @@
   const runPreResearchAction = (action) => {
     if (action === 'fund') {
       openWorkspaceTab('settings');
+      window.dispatchEvent(new CustomEvent('partizan:reveal-control', { detail: { id: 'fund-form' } }));
       const form = $('fund-form');
       if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
       const amount = $('fund-amount');
@@ -126,6 +127,7 @@
       return;
     }
     openWorkspaceTab('activity');
+    window.dispatchEvent(new CustomEvent('partizan:reveal-control', { detail: { selector: '.research-card' } }));
     const card = document.querySelector('.research-card');
     if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
     const button = $('research-button');
