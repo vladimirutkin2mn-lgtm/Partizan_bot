@@ -270,61 +270,6 @@ class TelegramClientPublishTransport(Protocol):
         link: str,
     ) -> TelegramChannelInviteSnapshot: ...
 
-    async def create_channel_invite(
-        self,
-        *,
-        session: str,
-        channel_username: str,
-        title: str,
-    ) -> TelegramChannelInviteSnapshot:
-        client = self._client(session)
-        try:
-            await client.connect()
-            if not await client.is_user_authorized():
-                raise TelegramClientPublishTransportError("SESSION_NOT_AUTHORIZED")
-            entity = await self._channel_entity(client, channel_username)
-            invite = await client(
-                telegram_functions.messages.ExportChatInviteRequest(
-                    peer=entity,
-                    title=title,
-                )
-            )
-            return self._invite_snapshot(invite)
-        except TelegramClientPublishTransportError:
-            raise
-        except Exception as exc:
-            raise self._safe_error(exc, "CHANNEL_INVITE_CREATE_FAILED") from None
-        finally:
-            await client.disconnect()
-
-    async def channel_invite(
-        self,
-        *,
-        session: str,
-        channel_username: str,
-        link: str,
-    ) -> TelegramChannelInviteSnapshot:
-        client = self._client(session)
-        try:
-            await client.connect()
-            if not await client.is_user_authorized():
-                raise TelegramClientPublishTransportError("SESSION_NOT_AUTHORIZED")
-            entity = await self._channel_entity(client, channel_username)
-            result = await client(
-                telegram_functions.messages.GetExportedChatInviteRequest(
-                    peer=entity,
-                    link=link,
-                )
-            )
-            invite = getattr(result, "invite", result)
-            return self._invite_snapshot(invite)
-        except TelegramClientPublishTransportError:
-            raise
-        except Exception as exc:
-            raise self._safe_error(exc, "CHANNEL_INVITE_READ_FAILED") from None
-        finally:
-            await client.disconnect()
-
     async def publish(
         self,
         *,
@@ -508,6 +453,61 @@ class TelethonClientPublishTransport:
             raise
         except Exception as exc:
             raise self._safe_error(exc, "PROFILE_PHOTO_RESTORE_FAILED") from None
+        finally:
+            await client.disconnect()
+
+    async def create_channel_invite(
+        self,
+        *,
+        session: str,
+        channel_username: str,
+        title: str,
+    ) -> TelegramChannelInviteSnapshot:
+        client = self._client(session)
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                raise TelegramClientPublishTransportError("SESSION_NOT_AUTHORIZED")
+            entity = await self._channel_entity(client, channel_username)
+            invite = await client(
+                telegram_functions.messages.ExportChatInviteRequest(
+                    peer=entity,
+                    title=title,
+                )
+            )
+            return self._invite_snapshot(invite)
+        except TelegramClientPublishTransportError:
+            raise
+        except Exception as exc:
+            raise self._safe_error(exc, "CHANNEL_INVITE_CREATE_FAILED") from None
+        finally:
+            await client.disconnect()
+
+    async def channel_invite(
+        self,
+        *,
+        session: str,
+        channel_username: str,
+        link: str,
+    ) -> TelegramChannelInviteSnapshot:
+        client = self._client(session)
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                raise TelegramClientPublishTransportError("SESSION_NOT_AUTHORIZED")
+            entity = await self._channel_entity(client, channel_username)
+            result = await client(
+                telegram_functions.messages.GetExportedChatInviteRequest(
+                    peer=entity,
+                    link=link,
+                )
+            )
+            invite = getattr(result, "invite", result)
+            return self._invite_snapshot(invite)
+        except TelegramClientPublishTransportError:
+            raise
+        except Exception as exc:
+            raise self._safe_error(exc, "CHANNEL_INVITE_READ_FAILED") from None
         finally:
             await client.disconnect()
 
