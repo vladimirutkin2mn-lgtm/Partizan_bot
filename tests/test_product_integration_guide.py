@@ -60,7 +60,15 @@ def test_guide_is_tied_to_product_and_public_base_url() -> None:
     assert payload["verification_endpoint"] == f"{expected_event}/verify"
     assert payload["event_key_header"] == "X-Partizan-Event-Key"
     assert payload["attribution_fields"] == ["experiment_id", "action_id", "referral_token"]
-    assert payload["event_types"] == ["VISIT", "SIGNUP", "ACTIVATED", "PAID"]
+    assert payload["event_types"] == [
+        "VISIT",
+        "JOIN",
+        "BOT_START",
+        "SIGNUP",
+        "ACTIVATED",
+        "PAID",
+    ]
+    assert any("BOT_START" in item and "referral_token" in item for item in payload["checklist"])
 
     snippets = payload["snippets"]
     for snippet in snippets.values():
