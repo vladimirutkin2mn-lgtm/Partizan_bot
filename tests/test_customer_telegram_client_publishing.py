@@ -29,6 +29,9 @@ from app.telegram_client_publishing import (
     TelegramPublishResult,
     customer_telegram_client_publish_service,
 )
+from app.telegram_profile_conversion_pack import (
+    telegram_profile_conversion_pack_service,
+)
 
 APPROVED_TARGET = "https://t.me/relationship_group"
 APPROVED_CONTENT = "A useful relationship reflection for the group."
@@ -137,6 +140,7 @@ def reset_state():
     distribution_control_plane_service.reset()
     distribution_execution_service.reset()
     customer_telegram_client_publish_service.reset()
+    telegram_profile_conversion_pack_service.reset()
     get_runtime_store().clear_namespace(PROVIDER_SECRET_NAMESPACE)
     try:
         yield
@@ -491,6 +495,39 @@ def test_approved_client_owned_publish_records_remote_receipt_without_session_se
 
     action = distribution_execution_service.get_action(UUID(action_id))
     assert action.status.value == "EXECUTED"
+
+
+def test_customer_publish_waits_for_bound_profile_pack_to_be_applied() -> None:
+    transport = FakeTelegramClientTransport()
+    _enable_client_publish(transport)
+    client, preview = _registered_client()
+    _connect(client, preview.project_id)
+    product_id, action_id = _product_and_action()
+    _bind_project_to_product(preview.project_id, product_id)
+    _select_client_owned(client, preview.project_id)
+
+    created = client.post(
+        f"/customer/workspace/{preview.project_id}/telegram/profile-packs",
+        json={
+            "action_id": action_id,
+            "name": "Oracle profile",
+            "display_name": "Founder | Oracle",
+            "bio": "Oracle ↓\nhttps://t.me/oracle_demo",
+            "cta_type": "TELEGRAM_PUBLIC_LINK",
+            "cta_value": "https://t.me/oracle_demo",
+        },
+    )
+    assert created.status_code == 201
+    assert created.json()["status"] == "DRAFT"
+
+    response = client.post(
+        f"/customer/workspace/{preview.project_id}/telegram/actions/{action_id}/publish",
+        json=_confirmed_publish_payload(),
+    )
+
+    assert response.status_code == 409
+    assert "profile pack" in response.json()["detail"].lower()
+    assert transport.publish_calls == []
 
 
 def test_provider_restriction_is_recorded_and_action_stays_approved() -> None:

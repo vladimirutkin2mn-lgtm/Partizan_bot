@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 from pydantic import BaseModel
 
 from app.customer_account import (
@@ -39,6 +39,18 @@ from app.telegram_client_publishing import (
     TelegramLoginStartRequest,
     TelegramPublishRequest,
     customer_telegram_client_publish_service,
+)
+from app.telegram_profile_conversion_pack import (
+    TelegramProfilePackApplyRequest,
+    TelegramProfilePackApprovalRequest,
+    TelegramProfilePackCreateRequest,
+    TelegramProfilePackError,
+    TelegramProfilePackPreview,
+    TelegramProfilePackRollbackRequest,
+    TelegramProfilePackStatus,
+    TelegramProfilePackUpdateRequest,
+    TelegramProfilePackView,
+    telegram_profile_conversion_pack_service,
 )
 
 router = APIRouter(tags=["customer-channels"])
@@ -77,6 +89,8 @@ class CustomerCommunityActionView(BaseModel):
     execution_at: datetime | None = None
     observation_state: str | None = None
     observation_checked_at: datetime | None = None
+    profile_pack_id: UUID | None = None
+    profile_pack_status: str | None = None
     execution_fee_usd: float = 0.0
 
 
@@ -133,6 +147,8 @@ def _community_actions(project_id: UUID, customer_token: str) -> list[CustomerCo
         execution_at = None
         observation_state = None
         observation_checked_at = None
+        profile_pack_id = None
+        profile_pack_status = None
         if platform == "TELEGRAM":
             receipt = customer_telegram_client_publish_service.get_receipt(item.action.id)
             if receipt is not None:
@@ -150,6 +166,17 @@ def _community_actions(project_id: UUID, customer_token: str) -> list[CustomerCo
             if observation is not None:
                 observation_state = observation.latest.state.value
                 observation_checked_at = observation.latest.checked_at
+            try:
+                profile_pack = telegram_profile_conversion_pack_service.for_action(
+                    project_id,
+                    customer_token,
+                    item.action.id,
+                )
+            except TelegramProfilePackError:
+                profile_pack = None
+            if profile_pack is not None:
+                profile_pack_id = profile_pack.id
+                profile_pack_status = profile_pack.status.value
 
         result.append(
             CustomerCommunityActionView(
@@ -171,6 +198,8 @@ def _community_actions(project_id: UUID, customer_token: str) -> list[CustomerCo
                 execution_at=execution_at,
                 observation_state=observation_state,
                 observation_checked_at=observation_checked_at,
+                profile_pack_id=profile_pack_id,
+                profile_pack_status=profile_pack_status,
                 execution_fee_usd=float(item.costs.execution_fee),
             )
         )
@@ -309,6 +338,210 @@ def disconnect_customer_telegram_connection(
 
 
 @router.get(
+    "/customer/workspace/{project_id}/telegram/profile-packs",
+    response_model=list[TelegramProfilePackView],
+)
+def list_customer_telegram_profile_packs(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> list[TelegramProfilePackView]:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return telegram_profile_conversion_pack_service.list(project_id, customer_token)
+    except TelegramProfilePackError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/profile-packs",
+    response_model=TelegramProfilePackView,
+    status_code=201,
+)
+def create_customer_telegram_profile_pack(
+    project_id: UUID,
+    payload: TelegramProfilePackCreateRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramProfilePackView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return telegram_profile_conversion_pack_service.create(
+            project_id,
+            customer_token,
+            payload,
+        )
+    except TelegramProfilePackError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}",
+    response_model=TelegramProfilePackView,
+)
+def get_customer_telegram_profile_pack(
+    project_id: UUID,
+    pack_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramProfilePackView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return telegram_profile_conversion_pack_service.get(
+            project_id,
+            customer_token,
+            pack_id,
+        )
+    except TelegramProfilePackError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}",
+    response_model=TelegramProfilePackView,
+)
+def update_customer_telegram_profile_pack(
+    project_id: UUID,
+    pack_id: UUID,
+    payload: TelegramProfilePackUpdateRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramProfilePackView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return telegram_profile_conversion_pack_service.update_draft(
+            project_id,
+            customer_token,
+            pack_id,
+            payload,
+        )
+    except TelegramProfilePackError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/preview",
+    response_model=TelegramProfilePackPreview,
+)
+async def preview_customer_telegram_profile_pack(
+    project_id: UUID,
+    pack_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramProfilePackPreview:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return await telegram_profile_conversion_pack_service.preview(
+            project_id,
+            customer_token,
+            pack_id,
+        )
+    except (TelegramProfilePackError, CustomerTelegramClientPublishError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/avatar",
+)
+def get_customer_telegram_profile_pack_avatar(
+    project_id: UUID,
+    pack_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> Response:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        content, mime_type, _ = telegram_profile_conversion_pack_service.avatar_bytes(
+            project_id,
+            customer_token,
+            pack_id,
+        )
+        return Response(content=content, media_type=mime_type)
+    except TelegramProfilePackError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/approve",
+    response_model=TelegramProfilePackView,
+)
+def approve_customer_telegram_profile_pack(
+    project_id: UUID,
+    pack_id: UUID,
+    payload: TelegramProfilePackApprovalRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramProfilePackView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return telegram_profile_conversion_pack_service.approve(
+            project_id,
+            customer_token,
+            pack_id,
+            payload,
+        )
+    except TelegramProfilePackError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/apply",
+    response_model=TelegramProfilePackView,
+)
+async def apply_customer_telegram_profile_pack(
+    project_id: UUID,
+    pack_id: UUID,
+    payload: TelegramProfilePackApplyRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramProfilePackView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return await telegram_profile_conversion_pack_service.apply(
+            project_id,
+            customer_token,
+            pack_id,
+            payload,
+        )
+    except (TelegramProfilePackError, CustomerTelegramClientPublishError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/rollback",
+    response_model=TelegramProfilePackView,
+)
+async def rollback_customer_telegram_profile_pack(
+    project_id: UUID,
+    pack_id: UUID,
+    payload: TelegramProfilePackRollbackRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramProfilePackView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return await telegram_profile_conversion_pack_service.rollback(
+            project_id,
+            customer_token,
+            pack_id,
+            payload,
+        )
+    except TelegramProfilePackError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}",
+    response_model=TelegramProfilePackView,
+)
+def archive_customer_telegram_profile_pack(
+    project_id: UUID,
+    pack_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramProfilePackView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return telegram_profile_conversion_pack_service.archive(
+            project_id,
+            customer_token,
+            pack_id,
+        )
+    except TelegramProfilePackError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
     "/customer/workspace/{project_id}/telegram/automation",
     response_model=TelegramAutomationView,
 )
@@ -402,6 +635,19 @@ async def publish_customer_telegram_action(
         (item for item in _community_actions(project_id, customer_token) if item.action_id == action_id),
         None,
     )
+    try:
+        profile_pack = telegram_profile_conversion_pack_service.for_action(
+            project_id,
+            customer_token,
+            action_id,
+        )
+    except TelegramProfilePackError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if profile_pack is not None and profile_pack.status != TelegramProfilePackStatus.APPLIED:
+        raise HTTPException(
+            status_code=409,
+            detail="Apply the reviewed Telegram profile pack before publishing this action",
+        )
     if (
         reviewed is None
         or payload.expected_target_url is None
