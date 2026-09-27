@@ -15,7 +15,6 @@ from app.telegram_client_publishing import (
     customer_telegram_client_publish_service,
 )
 from app.telegram_profile_conversion_pack import (
-    TelegramProfilePackError,
     TelegramProfilePackStatus,
     telegram_profile_conversion_pack_service,
 )
