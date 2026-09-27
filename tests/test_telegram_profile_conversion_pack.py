@@ -3,7 +3,11 @@ from uuid import uuid4
 
 import pytest
 
-from app.distribution_types import DistributionActionStatus, DistributionPlatform
+from app.distribution_types import (
+    DistributionActionStatus,
+    DistributionActionType,
+    DistributionPlatform,
+)
 from app.runtime_store import MemoryRuntimeStateStore
 from app.telegram_client_publishing import TelegramProfileSnapshot
 from app.telegram_profile_conversion_pack import (
@@ -90,6 +94,9 @@ def _service():
         status=DistributionActionStatus.APPROVED,
         experiment_id=experiment_id,
         campaign_slot_id=campaign_id,
+        action_type=DistributionActionType.COMMENT,
+        target_url="https://t.me/example/1",
+        content_text="Useful comment",
     )
     experiment = SimpleNamespace(id=experiment_id, product_id=product_id)
     mutations = FakeMutationService()
