@@ -81,7 +81,7 @@ On fulfillment, the internal managed observation records:
 
 Publisher/account identifiers remain internal and are not exposed through the customer-safe managed assignment view.
 
-A later allocation policy can learn from these dimensions, but this slice does not auto-rank or auto-select a winning political-style "best" identity; it only provides clean experimental metadata and collision-free assignment.
+A later allocation policy can learn from these dimensions, but this slice does not auto-select a winning identity; it only provides clean experimental metadata and collision-free assignment.
 
 ## Anti-abuse boundary
 
