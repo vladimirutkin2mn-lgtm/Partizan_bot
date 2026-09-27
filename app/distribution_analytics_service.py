@@ -545,6 +545,8 @@ class InMemoryDistributionAnalyticsService:
     ) -> ExperimentMetricsView:
         spend = costs.customer_total
         visits = sum(event.event_type == "VISIT" for event in events)
+        joins = self._count_metric(events, "JOIN")
+        bot_starts = self._count_metric(events, "BOT_START")
         signups = self._unique_conversions(events, "SIGNUP")
         activated = self._unique_conversions(events, "ACTIVATED")
         paid_users = self._unique_conversions(events, "PAID")
@@ -556,6 +558,8 @@ class InMemoryDistributionAnalyticsService:
         return ExperimentMetricsView(
             spend=spend,
             visits=visits,
+            joins=joins,
+            bot_starts=bot_starts,
             signups=signups,
             activated_users=activated,
             paid_users=paid_users,
@@ -691,6 +695,23 @@ class InMemoryDistributionAnalyticsService:
 
     def _removal_count(self, events: list[DistributionAttributedEvent]) -> int:
         return 1 if any(event.event_type == "REMOVED" for event in events) else 0
+
+    def _count_metric(
+        self,
+        events: list[DistributionAttributedEvent],
+        event_type: str,
+    ) -> int:
+        matching = [event for event in events if event.event_type == event_type]
+        explicit_counts = [
+            int(event.properties["count"])
+            for event in matching
+            if isinstance(event.properties.get("count"), int)
+            and not isinstance(event.properties.get("count"), bool)
+            and event.properties["count"] >= 0
+        ]
+        if explicit_counts:
+            return max(explicit_counts)
+        return self._unique_conversions(events, event_type)
 
     def _unique_conversions(
         self,
