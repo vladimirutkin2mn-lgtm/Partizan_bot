@@ -17,6 +17,10 @@ from app.distribution_execution_service import distribution_execution_service
 from app.distribution_types import DistributionPlatform
 from app.provider_secret_store import ProviderSecretStore, provider_secret_store
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.telegram_native_attribution import (
+    TelegramNativeAttributionError,
+    telegram_native_attribution_service,
+)
 from app.telegram_client_publishing import (
     CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE,
     CUSTOMER_TELEGRAM_PUBLISH_GUARD_NAMESPACE,
@@ -69,6 +73,10 @@ class TelegramPublishObservationView(BaseModel):
     target_username: str
     latest: TelegramPublishObservationEvent
     history: list[TelegramPublishObservationEvent] = Field(default_factory=list)
+    native_join_count: int | None = Field(default=None, ge=0)
+    native_join_delta: int | None = Field(default=None, ge=0)
+    native_attribution_pending: bool | None = None
+    native_attribution_synced_at: datetime | None = None
 
 
 class TelegramAutomationAuthorizationRequest(BaseModel):
@@ -473,6 +481,31 @@ class CustomerTelegramGovernanceService:
             }
         )
         self._store.put(CUSTOMER_TELEGRAM_OBSERVATION_NAMESPACE, str(action_id), record)
+        try:
+            native = await telegram_native_attribution_service.sync_for_action_internal(
+                project_id,
+                action_id,
+            )
+        except TelegramNativeAttributionError:
+            native = None
+        if native is not None:
+            record.update(
+                {
+                    "native_join_count": native.join_count,
+                    "native_join_delta": native.last_delta_joins,
+                    "native_attribution_pending": native.analytics_pending,
+                    "native_attribution_synced_at": (
+                        native.last_synced_at.isoformat()
+                        if native.last_synced_at is not None
+                        else None
+                    ),
+                }
+            )
+            self._store.put(
+                CUSTOMER_TELEGRAM_OBSERVATION_NAMESPACE,
+                str(action_id),
+                record,
+            )
         return TelegramPublishObservationView.model_validate(record)
 
     def get_observation(
