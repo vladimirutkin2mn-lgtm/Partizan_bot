@@ -962,11 +962,14 @@ class CustomerTelegramClientPublishService:
                 "Telegram invite title must be between 1 and 32 characters"
             )
         session = self._active_session_internal(project_id)
-        return await self._transport.create_channel_invite(
-            session=session,
-            channel_username=channel_username,
-            title=normalized_title,
-        )
+        try:
+            return await self._transport.create_channel_invite(
+                session=session,
+                channel_username=channel_username,
+                title=normalized_title,
+            )
+        except TelegramClientPublishTransportError as exc:
+            raise CustomerTelegramClientPublishError(exc.code) from exc
 
     async def channel_invite_internal(
         self,
@@ -979,11 +982,14 @@ class CustomerTelegramClientPublishService:
         if not normalized_link:
             raise CustomerTelegramClientPublishError("Telegram invite link is required")
         session = self._active_session_internal(project_id)
-        return await self._transport.channel_invite(
-            session=session,
-            channel_username=channel_username,
-            link=normalized_link,
-        )
+        try:
+            return await self._transport.channel_invite(
+                session=session,
+                channel_username=channel_username,
+                link=normalized_link,
+            )
+        except TelegramClientPublishTransportError as exc:
+            raise CustomerTelegramClientPublishError(exc.code) from exc
 
     def _active_session_internal(self, project_id: UUID) -> str:
         connection = self._store.get(CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE, str(project_id))
