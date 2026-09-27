@@ -22,6 +22,7 @@ from app.runtime_store import get_runtime_store
 from app.telegram_client_publishing import (
     CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE,
     CustomerTelegramClientPublishError,
+    TelegramChannelInviteSnapshot,
     TelegramClientIdentity,
     TelegramClientPublishTransportError,
     TelegramLoginCompleteResult,
@@ -29,6 +30,7 @@ from app.telegram_client_publishing import (
     TelegramPublishResult,
     customer_telegram_client_publish_service,
 )
+from app.telegram_native_attribution import telegram_native_attribution_service
 from app.telegram_profile_conversion_pack import (
     telegram_profile_conversion_pack_service,
 )
@@ -42,6 +44,10 @@ class FakeTelegramClientTransport:
         self.begin_calls: list[str] = []
         self.complete_calls: list[dict] = []
         self.publish_calls: list[dict] = []
+        self.invite_create_calls: list[dict] = []
+        self.invite_read_calls: list[dict] = []
+        self.invite_usage = 0
+        self.invite_requested = 0
         self.require_password = False
         self.publish_error: TelegramClientPublishTransportError | None = None
 
@@ -82,6 +88,48 @@ class FakeTelegramClientTransport:
                 username="founder_account",
                 display_name="Founder Account",
             ),
+        )
+
+    async def create_channel_invite(
+        self,
+        *,
+        session: str,
+        channel_username: str,
+        title: str,
+    ) -> TelegramChannelInviteSnapshot:
+        self.invite_create_calls.append(
+            {
+                "session": session,
+                "channel_username": channel_username,
+                "title": title,
+            }
+        )
+        return TelegramChannelInviteSnapshot(
+            link="https://t.me/+nativeExperimentInvite",
+            usage=self.invite_usage,
+            requested=self.invite_requested,
+            revoked=False,
+        )
+
+    async def channel_invite(
+        self,
+        *,
+        session: str,
+        channel_username: str,
+        link: str,
+    ) -> TelegramChannelInviteSnapshot:
+        self.invite_read_calls.append(
+            {
+                "session": session,
+                "channel_username": channel_username,
+                "link": link,
+            }
+        )
+        return TelegramChannelInviteSnapshot(
+            link=link,
+            usage=self.invite_usage,
+            requested=self.invite_requested,
+            revoked=False,
         )
 
     async def publish(
@@ -141,6 +189,7 @@ def reset_state():
     distribution_execution_service.reset()
     customer_telegram_client_publish_service.reset()
     telegram_profile_conversion_pack_service.reset()
+    telegram_native_attribution_service.reset()
     get_runtime_store().clear_namespace(PROVIDER_SECRET_NAMESPACE)
     try:
         yield
@@ -495,6 +544,54 @@ def test_approved_client_owned_publish_records_remote_receipt_without_session_se
 
     action = distribution_execution_service.get_action(UUID(action_id))
     assert action.status.value == "EXECUTED"
+
+
+def test_customer_can_provision_native_channel_attribution_before_profile_review() -> None:
+    transport = FakeTelegramClientTransport()
+    _enable_client_publish(transport)
+    client, preview = _registered_client()
+    _connect(client, preview.project_id)
+    product_id, action_id = _product_and_action()
+    _bind_project_to_product(preview.project_id, product_id)
+    _select_client_owned(client, preview.project_id)
+
+    created = client.post(
+        f"/customer/workspace/{preview.project_id}/telegram/profile-packs",
+        json={
+            "action_id": action_id,
+            "name": "Oracle profile",
+            "display_name": "Founder | Oracle",
+            "bio": "Oracle ↓\nhttps://t.me/oracle_demo",
+            "cta_type": "TELEGRAM_PUBLIC_LINK",
+            "cta_value": "https://t.me/oracle_demo",
+        },
+    )
+    assert created.status_code == 201
+    pack_id = created.json()["id"]
+    original_fingerprint = created.json()["fingerprint"]
+
+    provisioned = client.post(
+        f"/customer/workspace/{preview.project_id}/telegram/profile-packs/"
+        f"{pack_id}/native-attribution/provision"
+    )
+
+    assert provisioned.status_code == 200
+    attribution = provisioned.json()
+    assert attribution["status"] == "READY"
+    assert attribution["channel_username"] == "oracle_demo"
+    assert attribution["native_url"] == "https://t.me/+nativeExperimentInvite"
+    assert transport.invite_create_calls[0]["session"] == "authorised-customer-session-secret"
+
+    refreshed = client.get(
+        f"/customer/workspace/{preview.project_id}/telegram/profile-packs/{pack_id}"
+    )
+    assert refreshed.status_code == 200
+    profile_pack = refreshed.json()
+    assert profile_pack["status"] == "DRAFT"
+    assert profile_pack["cta_type"] == "TELEGRAM_CHANNEL_INVITE"
+    assert profile_pack["cta_value"] == "https://t.me/+nativeExperimentInvite"
+    assert "https://t.me/+nativeExperimentInvite" in profile_pack["bio"]
+    assert profile_pack["fingerprint"] != original_fingerprint
 
 
 def test_customer_publish_waits_for_bound_profile_pack_to_be_applied() -> None:

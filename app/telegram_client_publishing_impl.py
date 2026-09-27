@@ -180,6 +180,13 @@ class TelegramPublishResult(BaseModel):
     executed_url: HttpUrl
 
 
+class TelegramChannelInviteSnapshot(BaseModel):
+    link: str = Field(min_length=5, max_length=500)
+    usage: int = Field(default=0, ge=0)
+    requested: int = Field(default=0, ge=0)
+    revoked: bool = False
+
+
 class TelegramProfilePhotoReference(BaseModel):
     photo_id: int
     access_hash: int
@@ -246,6 +253,22 @@ class TelegramClientPublishTransport(Protocol):
         session: str,
         avatar: TelegramProfilePhotoReference | None,
     ) -> TelegramProfileSnapshot: ...
+
+    async def create_channel_invite(
+        self,
+        *,
+        session: str,
+        channel_username: str,
+        title: str,
+    ) -> TelegramChannelInviteSnapshot: ...
+
+    async def channel_invite(
+        self,
+        *,
+        session: str,
+        channel_username: str,
+        link: str,
+    ) -> TelegramChannelInviteSnapshot: ...
 
     async def publish(
         self,
@@ -433,6 +456,61 @@ class TelethonClientPublishTransport:
         finally:
             await client.disconnect()
 
+    async def create_channel_invite(
+        self,
+        *,
+        session: str,
+        channel_username: str,
+        title: str,
+    ) -> TelegramChannelInviteSnapshot:
+        client = self._client(session)
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                raise TelegramClientPublishTransportError("SESSION_NOT_AUTHORIZED")
+            entity = await self._channel_entity(client, channel_username)
+            invite = await client(
+                telegram_functions.messages.ExportChatInviteRequest(
+                    peer=entity,
+                    title=title,
+                )
+            )
+            return self._invite_snapshot(invite)
+        except TelegramClientPublishTransportError:
+            raise
+        except Exception as exc:
+            raise self._safe_error(exc, "CHANNEL_INVITE_CREATE_FAILED") from None
+        finally:
+            await client.disconnect()
+
+    async def channel_invite(
+        self,
+        *,
+        session: str,
+        channel_username: str,
+        link: str,
+    ) -> TelegramChannelInviteSnapshot:
+        client = self._client(session)
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                raise TelegramClientPublishTransportError("SESSION_NOT_AUTHORIZED")
+            entity = await self._channel_entity(client, channel_username)
+            result = await client(
+                telegram_functions.messages.GetExportedChatInviteRequest(
+                    peer=entity,
+                    link=link,
+                )
+            )
+            invite = getattr(result, "invite", result)
+            return self._invite_snapshot(invite)
+        except TelegramClientPublishTransportError:
+            raise
+        except Exception as exc:
+            raise self._safe_error(exc, "CHANNEL_INVITE_READ_FAILED") from None
+        finally:
+            await client.disconnect()
+
     async def publish(
         self,
         *,
@@ -509,6 +587,32 @@ class TelethonClientPublishTransport:
                 return int(value)
         return fallback
 
+    async def _channel_entity(
+        self,
+        client: TelegramClient,
+        channel_username: str,
+    ):
+        normalized = channel_username.strip().lstrip("@")
+        if not _USERNAME_PATTERN.fullmatch(normalized):
+            raise TelegramClientPublishTransportError("CHANNEL_USERNAME_INVALID")
+        entity = await client.get_entity(f"@{normalized}")
+        if not isinstance(entity, telegram_types.Channel):
+            raise TelegramClientPublishTransportError("CHANNEL_TARGET_REQUIRED")
+        return entity
+
+    def _invite_snapshot(self, invite) -> TelegramChannelInviteSnapshot:
+        link = str(getattr(invite, "link", "") or "").strip()
+        if not link:
+            raise TelegramClientPublishTransportError("CHANNEL_INVITE_NOT_AVAILABLE")
+        usage = getattr(invite, "usage", None)
+        requested = getattr(invite, "requested", None)
+        return TelegramChannelInviteSnapshot(
+            link=link,
+            usage=int(usage or 0),
+            requested=int(requested or 0),
+            revoked=bool(getattr(invite, "revoked", False)),
+        )
+
     async def _profile_snapshot(self, client: TelegramClient) -> TelegramProfileSnapshot:
         me = await client.get_me()
         if me is None or not getattr(me, "id", None):
@@ -578,6 +682,10 @@ class TelethonClientPublishTransport:
             "FirstNameInvalidError": ("PROFILE_NAME_INVALID", None),
             "ImageProcessFailedError": ("PROFILE_PHOTO_INVALID", None),
             "PhotoCropSizeSmallError": ("PROFILE_PHOTO_TOO_SMALL", None),
+            "ChatAdminRequiredError": ("CHANNEL_ADMIN_REQUIRED", None),
+            "InviteHashExpiredError": ("CHANNEL_INVITE_EXPIRED", None),
+            "UsernameInvalidError": ("CHANNEL_USERNAME_INVALID", None),
+            "UsernameNotOccupiedError": ("CHANNEL_NOT_FOUND", None),
         }
         code, restriction = mapping.get(name, (fallback, None))
         return TelegramClientPublishTransportError(code, restriction_signal=restriction)
@@ -839,6 +947,49 @@ class CustomerTelegramClientPublishService:
             session=session,
             avatar=avatar,
         )
+
+    async def create_channel_invite_internal(
+        self,
+        project_id: UUID,
+        channel_username: str,
+        *,
+        title: str,
+    ) -> TelegramChannelInviteSnapshot:
+        self._require_ready()
+        normalized_title = " ".join(title.split())
+        if not normalized_title or len(normalized_title) > 32:
+            raise CustomerTelegramClientPublishError(
+                "Telegram invite title must be between 1 and 32 characters"
+            )
+        session = self._active_session_internal(project_id)
+        try:
+            return await self._transport.create_channel_invite(
+                session=session,
+                channel_username=channel_username,
+                title=normalized_title,
+            )
+        except TelegramClientPublishTransportError as exc:
+            raise CustomerTelegramClientPublishError(exc.code) from exc
+
+    async def channel_invite_internal(
+        self,
+        project_id: UUID,
+        channel_username: str,
+        link: str,
+    ) -> TelegramChannelInviteSnapshot:
+        self._require_ready()
+        normalized_link = link.strip()
+        if not normalized_link:
+            raise CustomerTelegramClientPublishError("Telegram invite link is required")
+        session = self._active_session_internal(project_id)
+        try:
+            return await self._transport.channel_invite(
+                session=session,
+                channel_username=channel_username,
+                link=normalized_link,
+            )
+        except TelegramClientPublishTransportError as exc:
+            raise CustomerTelegramClientPublishError(exc.code) from exc
 
     def _active_session_internal(self, project_id: UUID) -> str:
         connection = self._store.get(CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE, str(project_id))

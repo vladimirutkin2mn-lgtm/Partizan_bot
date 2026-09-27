@@ -381,6 +381,50 @@ async def test_observation_records_present_then_removed_without_secret_leak(monk
 
 
 @pytest.mark.asyncio
+async def test_observation_refreshes_native_join_attribution_best_effort(monkeypatch) -> None:
+    store, project, action, _, _ = _fixture(monkeypatch)
+    service = _service(
+        store,
+        [TelegramRemoteObservationResult(state=TelegramRemoteMessageState.PRESENT)],
+    )
+
+    class FakeNativeAttribution:
+        def __init__(self) -> None:
+            self.calls = []
+
+        async def sync_for_action_internal(self, project_id, action_id):
+            self.calls.append((project_id, action_id))
+            return SimpleNamespace(
+                join_count=5,
+                last_delta_joins=2,
+                analytics_pending=False,
+                last_synced_at=datetime(2026, 9, 27, 12, 0, tzinfo=UTC),
+            )
+
+    native = FakeNativeAttribution()
+    monkeypatch.setattr(governance, "telegram_native_attribution_service", native)
+
+    view = await service.observe_publish(
+        project["project_id"],
+        "customer-token",
+        action.id,
+    )
+
+    assert native.calls == [(project["project_id"], action.id)]
+    assert view.native_join_count == 5
+    assert view.native_join_delta == 2
+    assert view.native_attribution_pending is False
+    assert view.native_attribution_synced_at == datetime(
+        2026,
+        9,
+        27,
+        12,
+        0,
+        tzinfo=UTC,
+    )
+
+
+@pytest.mark.asyncio
 async def test_observation_records_restriction_and_denies_cross_project_access(monkeypatch) -> None:
     store, project, action, _, _ = _fixture(monkeypatch)
     transport = FakeObservationTransport(
