@@ -199,6 +199,32 @@ class TelegramNativeAttributionService:
         pack_id: UUID,
     ) -> TelegramNativeAttributionView:
         current = self.get(project_id, customer_token, pack_id)
+        return await self._sync_view(current)
+
+    async def sync_for_action_internal(
+        self,
+        project_id: UUID,
+        action_id: UUID,
+    ) -> TelegramNativeAttributionView | None:
+        matches: list[TelegramNativeAttributionView] = []
+        for payload in self._store.list_namespace(TELEGRAM_NATIVE_ATTRIBUTION_NAMESPACE):
+            if (
+                str(payload.get("project_id") or "") == str(project_id)
+                and str(payload.get("action_id") or "") == str(action_id)
+            ):
+                try:
+                    matches.append(self._view(payload))
+                except ValueError:
+                    continue
+        if not matches:
+            return None
+        matches.sort(key=lambda item: (item.updated_at, str(item.id)), reverse=True)
+        return await self._sync_view(matches[0])
+
+    async def _sync_view(
+        self,
+        current: TelegramNativeAttributionView,
+    ) -> TelegramNativeAttributionView:
         if current.status not in {
             TelegramNativeAttributionStatus.READY,
             TelegramNativeAttributionStatus.REVOKED,
@@ -208,7 +234,7 @@ class TelegramNativeAttributionService:
             )
         try:
             invite = await self._publish.channel_invite_internal(
-                project_id,
+                current.project_id,
                 current.channel_username,
                 current.native_url,
             )
