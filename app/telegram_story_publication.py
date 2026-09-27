@@ -498,6 +498,15 @@ class TelegramStoryPublicationService:
         if self._store.ephemeral:
             self._store.clear_namespace(TELEGRAM_STORY_PUBLICATION_NAMESPACE)
 
+    def _payload(self, publication_id: UUID) -> dict:
+        payload = self._store.get(
+            TELEGRAM_STORY_PUBLICATION_NAMESPACE,
+            str(publication_id),
+        )
+        if payload is None:
+            raise TelegramStoryPublicationError("Telegram story publication not found")
+        return payload
+
     def _payload_for_project(
         self,
         project_id: UUID,
