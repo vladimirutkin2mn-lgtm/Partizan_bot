@@ -349,6 +349,39 @@ def test_different_managed_accounts_cannot_target_same_opportunity_concurrently(
     assert retry.status_code == 201, retry.text
 
 
+def test_fulfilled_target_stays_in_cooldown_for_other_managed_accounts() -> None:
+    managed_distribution_service._settings.managed_distribution_public_ready = True
+    first_identity = _identity("Relationship advice")
+    second_identity = _identity("Relationship advice")
+    _register(first_identity["id"], label="Publisher A", capacity=3)
+    _register(second_identity["id"], label="Publisher B", capacity=3)
+    first_product = _product("Oracle A")
+    second_product = _product("Oracle B")
+    target_key = "instagram:post:cooldown-42"
+
+    reserved = client.post(
+        f"/v1/products/{first_product}/managed-distribution/assignments",
+        json=_selection_payload(target_conflict_key=target_key),
+    )
+    assert reserved.status_code == 201, reserved.text
+    action_id = _prepare_approved_comment(first_product, first_identity["id"])
+    fulfilled = client.post(
+        f"/v1/managed-distribution/assignments/{reserved.json()['id']}/fulfill",
+        json={
+            "action_id": action_id,
+            "external_reference": "managed-cooldown-result",
+        },
+    )
+    assert fulfilled.status_code == 200, fulfilled.text
+
+    blocked = client.post(
+        f"/v1/products/{second_product}/managed-distribution/assignments",
+        json=_selection_payload(target_conflict_key=target_key),
+    )
+    assert blocked.status_code == 409
+    assert "No eligible managed publisher" in blocked.json()["detail"]
+
+
 def test_active_assignment_prevents_same_publisher_from_serving_conflicting_client() -> None:
     managed_distribution_service._settings.managed_distribution_public_ready = True
     identity = _identity()
