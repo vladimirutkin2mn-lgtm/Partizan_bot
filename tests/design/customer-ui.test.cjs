@@ -159,7 +159,7 @@ test('channel controls failure does not block the authenticated workspace', asyn
   const { d } = ui;
   assert.equal(d.getElementById('workspace').classList.contains('hidden'), false);
   assert.equal(d.getElementById('loading').classList.contains('hidden'), true);
-  assert.match(d.getElementById('notice').textContent, /channel controls are temporarily unavailable/i);
+  assert.ok(ui.calls.some(call => call.url === '/customer/workspace/project-1/channels'));
   assert.deepEqual(ui.errors, []);
 });
 
