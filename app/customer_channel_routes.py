@@ -61,6 +61,12 @@ from app.telegram_profile_learning import (
     TelegramProfileLearningView,
     telegram_profile_learning_service,
 )
+from app.telegram_story_signal import (
+    TelegramStorySignalAttachRequest,
+    TelegramStorySignalError,
+    TelegramStorySignalView,
+    telegram_story_signal_service,
+)
 
 router = APIRouter(tags=["customer-channels"])
 
@@ -655,6 +661,48 @@ def get_customer_telegram_profile_learning(
         return telegram_profile_learning_service.overview(project_id, customer_token)
     except TelegramProfilePackError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/story-signal",
+    response_model=TelegramStorySignalView,
+)
+def attach_customer_telegram_story_signal(
+    project_id: UUID,
+    pack_id: UUID,
+    payload: TelegramStorySignalAttachRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramStorySignalView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return telegram_story_signal_service.attach(
+            project_id,
+            customer_token,
+            pack_id,
+            payload,
+        )
+    except (TelegramStorySignalError, TelegramProfilePackError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/story-signal",
+    response_model=TelegramStorySignalView,
+)
+def get_customer_telegram_story_signal(
+    project_id: UUID,
+    pack_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramStorySignalView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return telegram_story_signal_service.get(
+            project_id,
+            customer_token,
+            pack_id,
+        )
+    except (TelegramStorySignalError, TelegramProfilePackError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get(
