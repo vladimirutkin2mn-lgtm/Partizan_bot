@@ -85,6 +85,8 @@ def _register(
     capacity: int = 3,
     outcome_score: float = 70,
     last_activity_at: str | None = None,
+    persona: str | None = None,
+    profile_strategy_key: str | None = None,
 ) -> dict:
     response = client.post(
         "/v1/managed-distribution/publishers",
@@ -99,6 +101,8 @@ def _register(
             "daily_action_capacity": capacity,
             "prior_outcome_score": outcome_score,
             "last_activity_at": last_activity_at,
+            "persona": persona,
+            "profile_strategy_key": profile_strategy_key,
             "management_authorization_confirmed": True,
             "partner_reference": partner_reference,
         },
@@ -107,8 +111,8 @@ def _register(
     return response.json()
 
 
-def _selection_payload() -> dict:
-    return {
+def _selection_payload(**overrides) -> dict:
+    payload = {
         "platform": "INSTAGRAM",
         "action_type": "COMMENT",
         "opportunity_kind": "CREATOR_ACCOUNT",
@@ -116,6 +120,8 @@ def _selection_payload() -> dict:
         "language": "English",
         "conflict_group": "relationship-apps",
     }
+    payload.update(overrides)
+    return payload
 
 
 def _prepare_approved_comment(product_id: str, identity_id: str) -> str:
@@ -230,6 +236,152 @@ def test_selection_uses_fit_activity_outcomes_health_and_capacity() -> None:
     ]
 
 
+def test_managed_publisher_persona_and_profile_strategy_are_selection_dimensions() -> None:
+    expert = _identity("Relationship advice")
+    casual = _identity("Relationship advice")
+    _register(
+        expert["id"],
+        label="Expert publisher",
+        persona="EXPERT",
+        profile_strategy_key="expert-v1",
+    )
+    casual_publisher = _register(
+        casual["id"],
+        label="Casual publisher",
+        persona="CASUAL_HUMAN",
+        profile_strategy_key="casual-v2",
+    )
+
+    preview = client.post(
+        "/v1/managed-distribution/selection/preview",
+        json=_selection_payload(
+            persona="CASUAL_HUMAN",
+            profile_strategy_key="casual-v2",
+            message_strategy="thoughtful_question",
+            experiment_arm="casual-v2__thoughtful-question",
+        ),
+    )
+
+    assert preview.status_code == 200, preview.text
+    rows = preview.json()
+    assert len(rows) == 1
+    assert rows[0]["managed_publisher_id"] == casual_publisher["id"]
+    assert rows[0]["persona"] == "CASUAL_HUMAN"
+    assert rows[0]["profile_strategy_key"] == "casual-v2"
+
+
+def test_assignment_persists_managed_experiment_arm_metadata() -> None:
+    managed_distribution_service._settings.managed_distribution_public_ready = True
+    identity = _identity()
+    publisher = _register(
+        identity["id"],
+        persona="EXPERT",
+        profile_strategy_key="expert-native-cta-v1",
+    )
+    product_id = _product()
+
+    reserved = client.post(
+        f"/v1/products/{product_id}/managed-distribution/assignments",
+        json=_selection_payload(
+            target_conflict_key="instagram:post:example-123",
+            persona="EXPERT",
+            profile_strategy_key="expert-native-cta-v1",
+            message_strategy="expertise_signal",
+            experiment_arm="expert__native-cta__expertise-signal",
+        ),
+    )
+
+    assert reserved.status_code == 201, reserved.text
+    assignment = reserved.json()
+    assert assignment["managed_publisher_id"] == publisher["id"]
+    assert assignment["persona"] == "EXPERT"
+    assert assignment["profile_strategy_key"] == "expert-native-cta-v1"
+    assert assignment["message_strategy"] == "expertise_signal"
+    assert assignment["experiment_arm"] == "expert__native-cta__expertise-signal"
+    assert assignment["target_conflict_key"] == "instagram:post:example-123"
+
+    slot = next(
+        item
+        for item in distribution_control_plane_service.list_campaign_slots(
+            product_intake_service.get_product(product_id).id
+        )
+        if str(item.id) == assignment["campaign_slot_id"]
+    )
+    assert slot.metadata["persona"] == "EXPERT"
+    assert slot.metadata["profile_strategy_key"] == "expert-native-cta-v1"
+    assert slot.metadata["message_strategy"] == "expertise_signal"
+    assert slot.metadata["experiment_arm"] == "expert__native-cta__expertise-signal"
+    assert slot.metadata["target_conflict_key"] == "instagram:post:example-123"
+
+
+def test_different_managed_accounts_cannot_target_same_opportunity_concurrently() -> None:
+    managed_distribution_service._settings.managed_distribution_public_ready = True
+    first_identity = _identity("Relationship advice")
+    second_identity = _identity("Relationship advice")
+    _register(first_identity["id"], label="Publisher A", persona="EXPERT")
+    _register(second_identity["id"], label="Publisher B", persona="CASUAL_HUMAN")
+    first_product = _product("Oracle A")
+    second_product = _product("Oracle B")
+    target_key = "instagram:post:shared-opportunity-42"
+
+    first = client.post(
+        f"/v1/products/{first_product}/managed-distribution/assignments",
+        json=_selection_payload(target_conflict_key=target_key),
+    )
+    assert first.status_code == 201, first.text
+
+    second = client.post(
+        f"/v1/products/{second_product}/managed-distribution/assignments",
+        json=_selection_payload(target_conflict_key=target_key),
+    )
+    assert second.status_code == 409
+    assert "No eligible managed publisher" in second.json()["detail"]
+
+    released = client.delete(
+        f"/v1/managed-distribution/assignments/{first.json()['id']}"
+    )
+    assert released.status_code == 200
+
+    retry = client.post(
+        f"/v1/products/{second_product}/managed-distribution/assignments",
+        json=_selection_payload(target_conflict_key=target_key),
+    )
+    assert retry.status_code == 201, retry.text
+
+
+def test_fulfilled_target_stays_in_cooldown_for_other_managed_accounts() -> None:
+    managed_distribution_service._settings.managed_distribution_public_ready = True
+    first_identity = _identity("Relationship advice")
+    _register(first_identity["id"], label="Publisher A", capacity=3)
+    first_product = _product("Oracle A")
+    target_key = "instagram:post:cooldown-42"
+
+    reserved = client.post(
+        f"/v1/products/{first_product}/managed-distribution/assignments",
+        json=_selection_payload(target_conflict_key=target_key),
+    )
+    assert reserved.status_code == 201, reserved.text
+    action_id = _prepare_approved_comment(first_product, first_identity["id"])
+    fulfilled = client.post(
+        f"/v1/managed-distribution/assignments/{reserved.json()['id']}/fulfill",
+        json={
+            "action_id": action_id,
+            "external_reference": "managed-cooldown-result",
+        },
+    )
+    assert fulfilled.status_code == 200, fulfilled.text
+
+    second_identity = _identity("Relationship advice")
+    _register(second_identity["id"], label="Publisher B", capacity=3)
+    second_product = _product("Oracle B")
+    blocked = client.post(
+        f"/v1/products/{second_product}/managed-distribution/assignments",
+        json=_selection_payload(target_conflict_key=target_key),
+    )
+    assert blocked.status_code == 409
+    assert "No eligible managed publisher" in blocked.json()["detail"]
+
+
 def test_active_assignment_prevents_same_publisher_from_serving_conflicting_client() -> None:
     managed_distribution_service._settings.managed_distribution_public_ready = True
     identity = _identity()
@@ -304,6 +456,8 @@ def test_fulfillment_records_separate_costs_internal_audit_and_capacity() -> Non
     ]
     assert managed_observation["assignment_id"] == assignment["id"]
     assert "managed_publisher_id" not in managed_observation
+    assert managed_observation["persona"] is None
+    assert managed_observation["experiment_arm"] is None
     assert managed_distribution_service.capacity_remaining_24h(
         UUID(publisher["id"])
     ) == 0
