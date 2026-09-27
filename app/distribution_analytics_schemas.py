@@ -30,6 +30,7 @@ DistributionEventType = Literal[
     "VISIT",
     "JOIN",
     "BOT_START",
+    "STORY_VIEW",
     "SIGNUP",
     "ACTIVATED",
     "PAID",
@@ -55,7 +56,7 @@ class DistributionAnalyticsEventCreate(BaseModel):
             raise ValueError("At least one distribution attribution identifier is required")
         if self.event_type != "PAID" and self.revenue != 0:
             raise ValueError("revenue is only allowed for PAID events")
-        if self.event_type in {"REPLY", "JOIN"}:
+        if self.event_type in {"REPLY", "JOIN", "STORY_VIEW"}:
             count = self.properties.get("count")
             if count is not None and (
                 not isinstance(count, int)
