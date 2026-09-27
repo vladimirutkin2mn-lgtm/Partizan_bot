@@ -571,10 +571,8 @@ def test_customer_can_provision_native_channel_attribution_before_profile_review
     original_fingerprint = created.json()["fingerprint"]
 
     provisioned = client.post(
-        (
-            f"/customer/workspace/{preview.project_id}/telegram/profile-packs/"
-            f"{pack_id}/native-attribution/provision"
-        )
+        f"/customer/workspace/{preview.project_id}/telegram/profile-packs/"
+        f"{pack_id}/native-attribution/provision"
     )
 
     assert provisioned.status_code == 200
