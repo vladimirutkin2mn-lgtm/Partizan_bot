@@ -169,3 +169,103 @@ PR 1 does not:
 - create channel invite links;
 - create stories;
 - implement the Partizan-managed account pool.
+
+
+## ProfileConversionPack lifecycle
+
+PR 2 adds the customer-facing aggregate that sits above the raw mutation layer.
+
+A pack is bound to one Telegram distribution action and therefore inherits:
+
+- customer project;
+- product;
+- distribution experiment;
+- campaign slot when present.
+
+The current customer-owned lifecycle is:
+
+`DRAFT -> READY -> APPLIED -> ROLLED_BACK`
+
+A pack may also be `ARCHIVED` when it is not applied.
+
+### Exact review contract
+
+Each pack has a deterministic fingerprint over:
+
+- project/product/action/experiment identity;
+- mode;
+- name;
+- display name;
+- bio;
+- CTA type and value;
+- avatar SHA-256;
+- story flag.
+
+Approval requires the browser to send the exact fingerprint it reviewed. Editing a DRAFT or READY pack resets approval and produces a new fingerprint. Apply requires the same fingerprint to still be both current and approved.
+
+This mirrors the exact-review protection already used by Telegram publishing.
+
+### Customer-owned pack API
+
+The customer workspace exposes:
+
+- `GET /customer/workspace/{project_id}/telegram/profile-packs`
+- `POST /customer/workspace/{project_id}/telegram/profile-packs`
+- `GET /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}`
+- `PUT /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}`
+- `GET /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/preview`
+- `GET /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/avatar`
+- `POST /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/approve`
+- `POST /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/apply`
+- `POST /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/rollback`
+- `DELETE /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}`
+
+Avatar bytes remain internal state. Customer responses expose only safe metadata plus an authenticated preview path.
+
+### Native CTA rules
+
+A customer-owned pack must contain the exact CTA URL in the Telegram bio.
+
+Supported CTA classes are:
+
+- Telegram channel invite;
+- Telegram public link;
+- Telegram bot deep link;
+- Partizan tracked redirect;
+- external URL.
+
+Telegram-native CTA types are validated to use Telegram hosts. Invite links must use an invite form, and bot links must carry a `start` parameter.
+
+Native Telegram measurement is implemented in the next attribution slice; PR 2 establishes the typed contract now.
+
+### Publish coupling
+
+Profile preparation and message publication are still separate operations.
+
+If no profile pack is associated with a Telegram action, existing publishing behavior is unchanged.
+
+If a non-archived pack exists for an action, customer-owned publication is blocked until that reviewed pack reaches `APPLIED`. This prevents the customer from reviewing one profile treatment and accidentally publishing while a different profile is live.
+
+### Avatar storage
+
+The PR 2 MVP accepts JPEG, PNG and WebP avatar bytes as base64 input with:
+
+- MIME/signature consistency checks;
+- 5 MiB pack-level safety limit;
+- SHA-256 fingerprinting;
+- authenticated preview delivery.
+
+The raw image content is never returned in the normal pack JSON response.
+
+### Deferred by design
+
+PR 2 defines but does not yet activate:
+
+- Partizan-managed account packs;
+- Telegram stories;
+- automatic profile-pack generation;
+- native invite-link creation;
+- bot-start attribution;
+- multi-armed-bandit allocation.
+
+Those remain separate tracked slices so that profile mutation, approval and attribution can be reviewed independently.
