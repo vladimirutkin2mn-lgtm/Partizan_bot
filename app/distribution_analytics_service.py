@@ -556,6 +556,7 @@ class InMemoryDistributionAnalyticsService:
         visits = sum(event.event_type == "VISIT" for event in events)
         joins = self._count_metric(events, "JOIN")
         bot_starts = self._count_metric(events, "BOT_START")
+        story_views = self._count_metric(events, "STORY_VIEW")
         signups = self._unique_conversions(events, "SIGNUP")
         activated = self._unique_conversions(events, "ACTIVATED")
         paid_users = self._unique_conversions(events, "PAID")
@@ -569,6 +570,7 @@ class InMemoryDistributionAnalyticsService:
             visits=visits,
             joins=joins,
             bot_starts=bot_starts,
+            story_views=story_views,
             signups=signups,
             activated_users=activated,
             paid_users=paid_users,
