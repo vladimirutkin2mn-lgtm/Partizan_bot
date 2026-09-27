@@ -17,10 +17,6 @@ from app.distribution_execution_service import distribution_execution_service
 from app.distribution_types import DistributionPlatform
 from app.provider_secret_store import ProviderSecretStore, provider_secret_store
 from app.runtime_store import RuntimeStateStore, get_runtime_store
-from app.telegram_native_attribution import (
-    TelegramNativeAttributionError,
-    telegram_native_attribution_service,
-)
 from app.telegram_client_publishing import (
     CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE,
     CUSTOMER_TELEGRAM_PUBLISH_GUARD_NAMESPACE,
@@ -30,6 +26,10 @@ from app.telegram_client_publishing import (
     TelegramConnectionStatus,
     TelegramPublishRequest,
     customer_telegram_client_publish_service,
+)
+from app.telegram_native_attribution import (
+    TelegramNativeAttributionError,
+    telegram_native_attribution_service,
 )
 
 CUSTOMER_TELEGRAM_OBSERVATION_NAMESPACE = "customer_telegram_publish_observation"
