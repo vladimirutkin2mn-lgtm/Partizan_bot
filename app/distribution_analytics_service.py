@@ -194,7 +194,16 @@ class InMemoryDistributionAnalyticsService:
 
     def product_analytics(self, product_id: UUID) -> DistributionProductAnalyticsView:
         experiments = distribution_execution_service.list_experiments(product_id)
-        analytics = [self.experiment_analytics(item.id) for item in experiments]
+        analytics: list[DistributionExperimentAnalyticsView] = []
+        for item in experiments:
+            try:
+                analytics.append(self.experiment_analytics(item.id))
+            except KeyError:
+                # Aggregate/product reads must remain available when a legacy or
+                # partially-cleaned experiment points to an action/play that no
+                # longer exists. Direct experiment reads stay strict so the
+                # integrity problem is still observable and repairable.
+                continue
         total_spend = round(sum(item.metrics.spend for item in analytics), 3)
         total_paid_users = sum(item.metrics.paid_users for item in analytics)
         total_revenue = round(sum(item.metrics.revenue for item in analytics), 2)
