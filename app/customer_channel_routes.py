@@ -57,6 +57,10 @@ from app.telegram_profile_conversion_pack import (
     TelegramProfilePackView,
     telegram_profile_conversion_pack_service,
 )
+from app.telegram_profile_learning import (
+    TelegramProfileLearningView,
+    telegram_profile_learning_service,
+)
 
 router = APIRouter(tags=["customer-channels"])
 
@@ -635,6 +639,21 @@ async def sync_customer_telegram_native_attribution(
         TelegramProfilePackError,
         CustomerTelegramClientPublishError,
     ) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/telegram/profile-learning",
+    response_model=TelegramProfileLearningView,
+)
+def get_customer_telegram_profile_learning(
+    project_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramProfileLearningView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return telegram_profile_learning_service.overview(project_id, customer_token)
+    except TelegramProfilePackError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
