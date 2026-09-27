@@ -11,10 +11,35 @@
   let activationOpportunityUrl = null;
   let researchAction = 'full';
 
+  const WORKSPACE_BOOT_TIMEOUT_MS = 15000;
+  const CHANNEL_BOOT_TIMEOUT_MS = 10000;
+
   const api = async (path, options = {}) => {
-    const headers = new Headers(options.headers || {});
-    if (options.body != null) headers.set('Content-Type', 'application/json');
-    const response = await fetch(path, { ...options, headers, credentials: 'same-origin' });
+    const { timeoutMs = 0, ...requestOptions } = options;
+    const headers = new Headers(requestOptions.headers || {});
+    if (requestOptions.body != null) headers.set('Content-Type', 'application/json');
+    const controller = !requestOptions.signal && timeoutMs > 0 ? new AbortController() : null;
+    const timeout = controller
+      ? window.setTimeout(() => controller.abort(), timeoutMs)
+      : null;
+    let response;
+    try {
+      response = await fetch(path, {
+        ...requestOptions,
+        headers,
+        credentials: 'same-origin',
+        signal: controller ? controller.signal : requestOptions.signal,
+      });
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        const timeoutError = new Error('Partizan took too long to load this workspace. Please try again.');
+        timeoutError.status = 408;
+        throw timeoutError;
+      }
+      throw error;
+    } finally {
+      if (timeout != null) window.clearTimeout(timeout);
+    }
     let payload = {};
     try { payload = await response.json(); } catch (_) { payload = {}; }
     if (!response.ok) {
@@ -315,7 +340,26 @@
     switcher.classList.toggle('hidden', account.projects.length < 2);
   };
 
+  const setWorkspaceLoadingState = () => {
+    $('workspace-loading-spinner').classList.remove('hidden');
+    $('workspace-loading-title').textContent = 'Opening your Partizan workspace…';
+    $('workspace-loading-copy').textContent = 'Your project, performance and channel controls are loading.';
+    $('workspace-loading-actions').classList.add('hidden');
+  };
+
+  const showWorkspaceLoadFailure = (error) => {
+    $('login-gate').classList.add('hidden');
+    $('workspace').classList.add('hidden');
+    $('loading').classList.remove('hidden');
+    $('workspace-loading-spinner').classList.add('hidden');
+    $('workspace-loading-title').textContent = 'We could not open your workspace.';
+    $('workspace-loading-copy').textContent = error?.message
+      || 'Partizan could not load this project. Try again in a moment.';
+    $('workspace-loading-actions').classList.remove('hidden');
+  };
+
   const showLoginGate = (message = '') => {
+    setWorkspaceLoadingState();
     $('loading').classList.add('hidden');
     $('workspace').classList.add('hidden');
     $('account-nav').classList.add('hidden');
@@ -324,6 +368,7 @@
   };
 
   const hideLoginGate = () => {
+    setWorkspaceLoadingState();
     $('login-gate').classList.add('hidden');
     $('loading').classList.remove('hidden');
   };
@@ -581,10 +626,22 @@
   };
 
   const loadWorkspace = async () => {
-    const [data, channels] = await Promise.all([
-      api(`/customer/workspace/${projectId}`),
-      api(`/customer/workspace/${projectId}/channels`),
-    ]);
+    const data = await api(
+      `/customer/workspace/${projectId}`,
+      { timeoutMs: WORKSPACE_BOOT_TIMEOUT_MS },
+    );
+    let channels = workspace?.channels || [];
+    try {
+      channels = await api(
+        `/customer/workspace/${projectId}/channels`,
+        { timeoutMs: CHANNEL_BOOT_TIMEOUT_MS },
+      );
+    } catch (error) {
+      showNotice(
+        `Workspace opened, but channel controls are temporarily unavailable. ${error.message}`,
+        true,
+      );
+    }
     data.channels = channels;
     renderWorkspace(data);
     window.dispatchEvent(new CustomEvent('partizan:workspace-ready', {
@@ -760,7 +817,7 @@
     account = accountData;
     if (!account.projects.length) {
       window.location.replace('/start');
-      return;
+      return null;
     }
     if (!projectId) projectId = account.projects[0].project_id;
     if (!account.projects.some((item) => item.project_id === projectId)) {
@@ -769,8 +826,14 @@
     hideLoginGate();
     renderAccountNav();
     window.history.replaceState({}, '', `/workspace?project=${encodeURIComponent(projectId)}${window.location.search.includes('growth_balance=') || window.location.search.includes('meta=') ? `&${window.location.search.slice(1).replace(/^project=[^&]*&?/, '')}` : ''}`);
-    const initial = await loadWorkspace();
-    await handleCallbacks(initial);
+    try {
+      const initial = await loadWorkspace();
+      await handleCallbacks(initial);
+      return initial;
+    } catch (error) {
+      showWorkspaceLoadFailure(error);
+      return null;
+    }
   };
 
   $('workspace-login-form').addEventListener('submit', async (event) => {
@@ -984,7 +1047,7 @@
     }
   });
 
-  $('logout-button').addEventListener('click', async () => {
+  const signOut = async () => {
     try { await api('/customer/account/logout', { method: 'POST' }); } catch (_) { /* ignore */ }
     account = null;
     workspace = null;
@@ -992,6 +1055,23 @@
     lastResearchResult = null;
     window.history.replaceState({}, '', '/workspace');
     showLoginGate();
+  };
+
+  $('logout-button').addEventListener('click', signOut);
+  $('workspace-loading-signout').addEventListener('click', signOut);
+  $('workspace-loading-retry').addEventListener('click', async () => {
+    if (!account || !projectId) {
+      showLoginGate();
+      return;
+    }
+    setWorkspaceLoadingState();
+    $('loading').classList.remove('hidden');
+    try {
+      const initial = await loadWorkspace();
+      await handleCallbacks(initial);
+    } catch (error) {
+      showWorkspaceLoadFailure(error);
+    }
   });
 
   const bootstrap = async () => {
