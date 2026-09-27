@@ -570,6 +570,30 @@ async def provision_customer_telegram_native_attribution(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.post(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/native-attribution/provision-bot",
+    response_model=TelegramNativeAttributionView,
+)
+async def provision_customer_telegram_bot_start_attribution(
+    project_id: UUID,
+    pack_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramNativeAttributionView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return await telegram_native_attribution_service.provision_bot_start(
+            project_id,
+            customer_token,
+            pack_id,
+        )
+    except (
+        TelegramNativeAttributionError,
+        TelegramProfilePackError,
+        CustomerTelegramClientPublishError,
+    ) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.get(
     "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/native-attribution",
     response_model=TelegramNativeAttributionView,
