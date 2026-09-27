@@ -205,7 +205,42 @@ Customer endpoints:
 
 `story_views` is exposed alongside profile/message/CTA learning, but it is intentionally not promoted into the deepest conversion signal: a story view is weaker evidence than a product visit, join, bot start, signup or paid conversion.
 
-Actual story creation/publishing remains a separate adapter milestone because it mutates a public Telegram surface and must preserve the same approval and rollback discipline as profile changes.
+Actual story creation/publishing is implemented as a separate reviewed workflow because it mutates a public Telegram surface and must preserve the same approval and rollback discipline as profile changes.
+
+### Reviewed story publication
+
+The customer-owned story publisher supports image stories for the connected Telegram user account.
+
+Lifecycle:
+
+`DRAFT -> READY -> PUBLISHED -> DELETED`
+
+A story draft is bound to the exact applied ProfileConversionPack and stores a deterministic fingerprint over:
+
+- project/product/profile-pack/action/experiment identity;
+- the profile-pack fingerprint;
+- caption;
+- image SHA-256;
+- no-forward setting;
+- 24-hour story period.
+
+Approval requires the exact reviewed fingerprint. Publishing requires a second explicit confirmation, the same approved fingerprint, and the bound ProfileConversionPack to still be `APPLIED`.
+
+On successful Telegram publication Partizan reads the returned Telegram `story_id` and automatically attaches the story to the proxy-signal layer. Observation reads Telegram's story counters and updates cumulative `STORY_VIEW` analytics. Delete is an explicit operation and performs a final best-effort observation before removing the story.
+
+Customer endpoints:
+
+- `POST /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/story-publications`
+- `GET /customer/workspace/{project_id}/telegram/story-publications/{publication_id}`
+- `GET /customer/workspace/{project_id}/telegram/story-publications/{publication_id}/image`
+- `POST /customer/workspace/{project_id}/telegram/story-publications/{publication_id}/approve`
+- `POST /customer/workspace/{project_id}/telegram/story-publications/{publication_id}/publish`
+- `POST /customer/workspace/{project_id}/telegram/story-publications/{publication_id}/observe`
+- `POST /customer/workspace/{project_id}/telegram/story-publications/{publication_id}/delete`
+
+The first publication adapter is deliberately limited to image stories, public story privacy, a 24-hour period and the connected customer account itself. Video stories, channel stories and richer media areas remain separate follow-ups.
+
+No story publication is coupled to Telegram comment publishing. A story can only be published by calling the explicit story publish operation after review.
 
 ## Non-goals of PR 1
 

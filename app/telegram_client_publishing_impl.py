@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import re
+import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -187,6 +188,18 @@ class TelegramChannelInviteSnapshot(BaseModel):
     revoked: bool = False
 
 
+class TelegramStoryPublishResult(BaseModel):
+    story_id: int = Field(gt=0)
+    published_at: datetime
+
+
+class TelegramStoryViewsSnapshot(BaseModel):
+    story_id: int = Field(gt=0)
+    views_count: int = Field(default=0, ge=0)
+    forwards_count: int = Field(default=0, ge=0)
+    reactions_count: int = Field(default=0, ge=0)
+
+
 class TelegramProfilePhotoReference(BaseModel):
     photo_id: int
     access_hash: int
@@ -269,6 +282,31 @@ class TelegramClientPublishTransport(Protocol):
         channel_username: str,
         link: str,
     ) -> TelegramChannelInviteSnapshot: ...
+
+    async def publish_story(
+        self,
+        *,
+        session: str,
+        content: bytes,
+        filename: str,
+        caption: str,
+        period_seconds: int,
+        noforwards: bool,
+    ) -> TelegramStoryPublishResult: ...
+
+    async def story_views(
+        self,
+        *,
+        session: str,
+        story_id: int,
+    ) -> TelegramStoryViewsSnapshot: ...
+
+    async def delete_story(
+        self,
+        *,
+        session: str,
+        story_id: int,
+    ) -> None: ...
 
     async def publish(
         self,
@@ -511,6 +549,104 @@ class TelethonClientPublishTransport:
         finally:
             await client.disconnect()
 
+    async def publish_story(
+        self,
+        *,
+        session: str,
+        content: bytes,
+        filename: str,
+        caption: str,
+        period_seconds: int,
+        noforwards: bool,
+    ) -> TelegramStoryPublishResult:
+        client = self._client(session)
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                raise TelegramClientPublishTransportError("SESSION_NOT_AUTHORIZED")
+            uploaded = await client.upload_file(content, file_name=filename)
+            random_id = secrets.randbits(63)
+            result = await client(
+                telegram_functions.stories.SendStoryRequest(
+                    peer=telegram_types.InputPeerSelf(),
+                    media=telegram_types.InputMediaUploadedPhoto(file=uploaded),
+                    caption=caption or None,
+                    privacy_rules=[telegram_types.InputPrivacyValueAllowAll()],
+                    random_id=random_id,
+                    period=period_seconds,
+                    noforwards=noforwards,
+                )
+            )
+            story_id = self._story_id_from_updates(result, random_id=random_id)
+            return TelegramStoryPublishResult(
+                story_id=story_id,
+                published_at=datetime.now(UTC),
+            )
+        except TelegramClientPublishTransportError:
+            raise
+        except Exception as exc:
+            raise self._safe_error(exc, "STORY_PUBLISH_FAILED") from None
+        finally:
+            await client.disconnect()
+
+    async def story_views(
+        self,
+        *,
+        session: str,
+        story_id: int,
+    ) -> TelegramStoryViewsSnapshot:
+        client = self._client(session)
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                raise TelegramClientPublishTransportError("SESSION_NOT_AUTHORIZED")
+            result = await client(
+                telegram_functions.stories.GetStoriesViewsRequest(
+                    peer=telegram_types.InputPeerSelf(),
+                    id=[story_id],
+                )
+            )
+            views = list(getattr(result, "views", []) or [])
+            if not views:
+                raise TelegramClientPublishTransportError("STORY_NOT_FOUND")
+            item = views[0]
+            return TelegramStoryViewsSnapshot(
+                story_id=story_id,
+                views_count=int(getattr(item, "views_count", 0) or 0),
+                forwards_count=int(getattr(item, "forwards_count", 0) or 0),
+                reactions_count=int(getattr(item, "reactions_count", 0) or 0),
+            )
+        except TelegramClientPublishTransportError:
+            raise
+        except Exception as exc:
+            raise self._safe_error(exc, "STORY_VIEWS_READ_FAILED") from None
+        finally:
+            await client.disconnect()
+
+    async def delete_story(
+        self,
+        *,
+        session: str,
+        story_id: int,
+    ) -> None:
+        client = self._client(session)
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                raise TelegramClientPublishTransportError("SESSION_NOT_AUTHORIZED")
+            await client(
+                telegram_functions.stories.DeleteStoriesRequest(
+                    peer=telegram_types.InputPeerSelf(),
+                    id=[story_id],
+                )
+            )
+        except TelegramClientPublishTransportError:
+            raise
+        except Exception as exc:
+            raise self._safe_error(exc, "STORY_DELETE_FAILED") from None
+        finally:
+            await client.disconnect()
+
     async def publish(
         self,
         *,
@@ -586,6 +722,25 @@ class TelethonClientPublishTransport:
             if value is not None:
                 return int(value)
         return fallback
+
+    def _story_id_from_updates(self, result, *, random_id: int) -> int:
+        updates = list(getattr(result, "updates", []) or [])
+        for update in updates:
+            if (
+                type(update).__name__ == "UpdateStoryID"
+                and int(getattr(update, "random_id", -1)) == random_id
+            ):
+                story_id = int(getattr(update, "id", 0) or 0)
+                if story_id > 0:
+                    return story_id
+        for update in updates:
+            if type(update).__name__ != "UpdateStory":
+                continue
+            story = getattr(update, "story", None)
+            story_id = int(getattr(story, "id", 0) or 0)
+            if story_id > 0:
+                return story_id
+        raise TelegramClientPublishTransportError("STORY_ID_NOT_CONFIRMED")
 
     async def _channel_entity(
         self,
@@ -686,6 +841,14 @@ class TelethonClientPublishTransport:
             "InviteHashExpiredError": ("CHANNEL_INVITE_EXPIRED", None),
             "UsernameInvalidError": ("CHANNEL_USERNAME_INVALID", None),
             "UsernameNotOccupiedError": ("CHANNEL_NOT_FOUND", None),
+            "BoostsRequiredError": ("STORY_BOOSTS_REQUIRED", None),
+            "MediaCaptionTooLongError": ("STORY_CAPTION_TOO_LONG", None),
+            "MediaEmptyError": ("STORY_MEDIA_EMPTY", None),
+            "MediaFileInvalidError": ("STORY_MEDIA_INVALID", None),
+            "MediaTypeInvalidError": ("STORY_MEDIA_TYPE_INVALID", None),
+            "StoryIdEmptyError": ("STORY_NOT_FOUND", None),
+            "StoriesNeverCreatedError": ("STORY_NOT_FOUND", None),
+            "StoryPeriodInvalidError": ("STORY_PERIOD_INVALID", None),
         }
         code, restriction = mapping.get(name, (fallback, None))
         return TelegramClientPublishTransportError(code, restriction_signal=restriction)
@@ -987,6 +1150,70 @@ class CustomerTelegramClientPublishService:
                 session=session,
                 channel_username=channel_username,
                 link=normalized_link,
+            )
+        except TelegramClientPublishTransportError as exc:
+            raise CustomerTelegramClientPublishError(exc.code) from exc
+
+    async def publish_story_internal(
+        self,
+        project_id: UUID,
+        *,
+        content: bytes,
+        filename: str,
+        caption: str = "",
+        period_seconds: int = 86400,
+        noforwards: bool = False,
+    ) -> TelegramStoryPublishResult:
+        self._require_ready()
+        if not content:
+            raise CustomerTelegramClientPublishError("Telegram story image is required")
+        if period_seconds != 86400:
+            raise CustomerTelegramClientPublishError(
+                "Customer-owned story publishing currently supports a 24-hour period only"
+            )
+        session = self._active_session_internal(project_id)
+        try:
+            return await self._transport.publish_story(
+                session=session,
+                content=content,
+                filename=filename,
+                caption=caption,
+                period_seconds=period_seconds,
+                noforwards=noforwards,
+            )
+        except TelegramClientPublishTransportError as exc:
+            raise CustomerTelegramClientPublishError(exc.code) from exc
+
+    async def story_views_internal(
+        self,
+        project_id: UUID,
+        story_id: int,
+    ) -> TelegramStoryViewsSnapshot:
+        self._require_ready()
+        if story_id <= 0:
+            raise CustomerTelegramClientPublishError("Telegram story id is invalid")
+        session = self._active_session_internal(project_id)
+        try:
+            return await self._transport.story_views(
+                session=session,
+                story_id=story_id,
+            )
+        except TelegramClientPublishTransportError as exc:
+            raise CustomerTelegramClientPublishError(exc.code) from exc
+
+    async def delete_story_internal(
+        self,
+        project_id: UUID,
+        story_id: int,
+    ) -> None:
+        self._require_ready()
+        if story_id <= 0:
+            raise CustomerTelegramClientPublishError("Telegram story id is invalid")
+        session = self._active_session_internal(project_id)
+        try:
+            await self._transport.delete_story(
+                session=session,
+                story_id=story_id,
             )
         except TelegramClientPublishTransportError as exc:
             raise CustomerTelegramClientPublishError(exc.code) from exc

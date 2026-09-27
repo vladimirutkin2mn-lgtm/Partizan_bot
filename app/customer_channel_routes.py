@@ -61,6 +61,15 @@ from app.telegram_profile_learning import (
     TelegramProfileLearningView,
     telegram_profile_learning_service,
 )
+from app.telegram_story_publication import (
+    TelegramStoryPublicationApprovalRequest,
+    TelegramStoryPublicationCreateRequest,
+    TelegramStoryPublicationDeleteRequest,
+    TelegramStoryPublicationError,
+    TelegramStoryPublicationPublishRequest,
+    TelegramStoryPublicationView,
+    telegram_story_publication_service,
+)
 from app.telegram_story_signal import (
     TelegramStorySignalAttachRequest,
     TelegramStorySignalError,
@@ -660,6 +669,167 @@ def get_customer_telegram_profile_learning(
     try:
         return telegram_profile_learning_service.overview(project_id, customer_token)
     except TelegramProfilePackError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/story-publications",
+    response_model=TelegramStoryPublicationView,
+    status_code=201,
+)
+def create_customer_telegram_story_publication(
+    project_id: UUID,
+    pack_id: UUID,
+    payload: TelegramStoryPublicationCreateRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramStoryPublicationView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return telegram_story_publication_service.create(
+            project_id,
+            customer_token,
+            pack_id,
+            payload,
+        )
+    except (TelegramStoryPublicationError, TelegramProfilePackError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/telegram/story-publications/{publication_id}",
+    response_model=TelegramStoryPublicationView,
+)
+def get_customer_telegram_story_publication(
+    project_id: UUID,
+    publication_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramStoryPublicationView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return telegram_story_publication_service.get(
+            project_id,
+            customer_token,
+            publication_id,
+        )
+    except (TelegramStoryPublicationError, TelegramProfilePackError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/telegram/story-publications/{publication_id}/image",
+)
+def get_customer_telegram_story_publication_image(
+    project_id: UUID,
+    publication_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> Response:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        content, mime_type, _ = telegram_story_publication_service.image_bytes(
+            project_id,
+            customer_token,
+            publication_id,
+        )
+        return Response(content=content, media_type=mime_type)
+    except (TelegramStoryPublicationError, TelegramProfilePackError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/story-publications/{publication_id}/approve",
+    response_model=TelegramStoryPublicationView,
+)
+def approve_customer_telegram_story_publication(
+    project_id: UUID,
+    publication_id: UUID,
+    payload: TelegramStoryPublicationApprovalRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramStoryPublicationView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return telegram_story_publication_service.approve(
+            project_id,
+            customer_token,
+            publication_id,
+            payload,
+        )
+    except (TelegramStoryPublicationError, TelegramProfilePackError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/story-publications/{publication_id}/publish",
+    response_model=TelegramStoryPublicationView,
+)
+async def publish_customer_telegram_story(
+    project_id: UUID,
+    publication_id: UUID,
+    payload: TelegramStoryPublicationPublishRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramStoryPublicationView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return await telegram_story_publication_service.publish(
+            project_id,
+            customer_token,
+            publication_id,
+            payload,
+        )
+    except (
+        TelegramStoryPublicationError,
+        TelegramProfilePackError,
+        CustomerTelegramClientPublishError,
+    ) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/story-publications/{publication_id}/observe",
+    response_model=TelegramStoryPublicationView,
+)
+async def observe_customer_telegram_story(
+    project_id: UUID,
+    publication_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramStoryPublicationView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return await telegram_story_publication_service.observe(
+            project_id,
+            customer_token,
+            publication_id,
+        )
+    except (
+        TelegramStoryPublicationError,
+        TelegramProfilePackError,
+        CustomerTelegramClientPublishError,
+    ) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/story-publications/{publication_id}/delete",
+    response_model=TelegramStoryPublicationView,
+)
+async def delete_customer_telegram_story(
+    project_id: UUID,
+    publication_id: UUID,
+    payload: TelegramStoryPublicationDeleteRequest,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramStoryPublicationView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return await telegram_story_publication_service.delete(
+            project_id,
+            customer_token,
+            publication_id,
+            payload,
+        )
+    except (
+        TelegramStoryPublicationError,
+        TelegramProfilePackError,
+        CustomerTelegramClientPublishError,
+    ) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
