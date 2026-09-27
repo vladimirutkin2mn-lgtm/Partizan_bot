@@ -21,13 +21,13 @@ from app.distribution_execution_service import (
 )
 from app.distribution_growth_manager_service import distribution_growth_manager_service
 from app.distribution_play_service import distribution_play_service
+from app.distribution_types import AttributionLevel
 from app.icp_service import icp_service
 from app.main import app
 from app.managed_distribution import managed_distribution_service
 from app.opportunity_enrichment import opportunity_enrichment_service
 from app.product_intake import product_intake_service
 from app.runtime_store import get_runtime_store
-from app.distribution_types import AttributionLevel
 
 client = TestClient(app)
 
