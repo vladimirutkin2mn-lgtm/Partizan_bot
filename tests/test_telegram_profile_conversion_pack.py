@@ -16,6 +16,7 @@ from app.telegram_profile_conversion_pack import (
     TelegramProfilePackError,
     TelegramProfilePackRollbackRequest,
     TelegramProfilePackStatus,
+    TelegramProfilePackUpdateRequest,
 )
 
 
@@ -134,20 +135,15 @@ def test_pack_starts_as_draft_and_fingerprint_changes_when_draft_changes() -> No
         project_id,
         "customer-token",
         created.id,
-        created.model_dump(
-            include={
-                "name",
-                "display_name",
-                "bio",
-                "cta_type",
-                "cta_value",
-                "story_enabled",
-            }
-        )
-        | {
-            "name": "FemDom stronger profile",
-            "keep_existing_avatar": False,
-        },
+        TelegramProfilePackUpdateRequest(
+            name="FemDom stronger profile",
+            display_name=created.display_name,
+            bio=created.bio,
+            cta_type=created.cta_type,
+            cta_value=created.cta_value,
+            keep_existing_avatar=False,
+            story_enabled=False,
+        ),
     )
 
     assert updated.status == TelegramProfilePackStatus.DRAFT
