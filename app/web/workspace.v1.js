@@ -65,6 +65,7 @@
 
   const openFundingControls = () => {
     setActiveTab('settings');
+    window.dispatchEvent(new CustomEvent('partizan:reveal-control', { detail: { id: 'fund-form' } }));
     const form = $('fund-form');
     if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
     const amount = $('fund-amount');
@@ -79,6 +80,7 @@
 
   const openResearchControls = () => {
     setActiveTab('activity');
+    window.dispatchEvent(new CustomEvent('partizan:reveal-control', { detail: { selector: '.research-card' } }));
     const card = document.querySelector('.research-card');
     if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
     const button = $('research-button');
@@ -741,6 +743,7 @@
     if (metaState === 'connected') {
       try {
         setActiveTab('settings');
+        window.dispatchEvent(new CustomEvent('partizan:reveal-control', { detail: { id: 'meta-options-form' } }));
         await loadMetaOptions();
         showNotice('Meta authorized. Choose the ad account Partizan should use.');
       } catch (error) {
@@ -748,6 +751,7 @@
       }
     } else if (metaState === 'error') {
       setActiveTab('settings');
+      window.dispatchEvent(new CustomEvent('partizan:reveal-control', { detail: { id: 'meta-options-form' } }));
       showNotice('Meta connection was not completed.', true);
     }
   };

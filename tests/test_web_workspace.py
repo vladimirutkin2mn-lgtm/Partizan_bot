@@ -19,12 +19,12 @@ def test_root_serves_marketing_site() -> None:
     assert len(marketing_revision) == 12
     html = response.text
     for anchor in (
-        "<title>Partizan — you built the product, now find the customers</title>",
+        "<title>Partizan — Find your audience. Keep learning.</title>",
         'href="/start?release=',
-        'id="budget-story"',
-        'id="how"',
+        'id="example"',
+        'id="how-it-works"',
         'id="channels"',
-        'id="safety"',
+        'id="faq"',
         'id="pricing"',
         "/site/assets/landing.v1.css",
         "/site/assets/landing.v1.js",
@@ -44,8 +44,8 @@ def test_marketing_assets_are_allowlisted_and_served() -> None:
 
     assert css.status_code == 200
     assert "text/css" in css.headers["content-type"]
-    assert "--lime" in css.text
-    assert ".hero-console" in css.text
+    assert "--green" in css.text
+    assert ".workspace-demo" in css.text
 
     assert javascript.status_code == 200
     assert "javascript" in javascript.headers["content-type"]

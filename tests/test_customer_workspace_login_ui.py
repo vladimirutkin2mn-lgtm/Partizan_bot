@@ -10,8 +10,8 @@ def test_customer_workspace_login_is_compact_and_focused() -> None:
 
     assert response.status_code == 200
     html = response.text
-    assert 'class="login-gate auth-login hidden"' in html
-    assert 'class="auth-card"' in html
+    assert 'class="login-gate rd-auth hidden"' in html
+    assert 'class="auth-card rd-auth-form"' in html
     assert 'id="workspace-login-form"' in html
     assert 'id="workspace-login-email"' in html
     assert 'id="workspace-login-password"' in html
@@ -25,6 +25,10 @@ def test_customer_workspace_login_is_compact_and_focused() -> None:
 def test_customer_workspace_login_has_full_width_auth_controls() -> None:
     html = client.get("/workspace").text
 
-    assert ".auth-card{width:min(100%,470px)" in html
-    assert ".auth-field input{width:100%;height:48px" in html
-    assert ".auth-submit{width:100%;height:48px" in html
+    css = client.get("/workspace/assets/design.v1.css").text
+    assert "rd-auth-story" in html
+    assert "auth-submit rd-btn rd-full" in html
+    assert ".rd-auth{max-width:1110px" in css
+    assert ".rd-auth-story{display:none}" in css
+    assert 'autocomplete="current-password"' in html
+    assert "Explore demo workspace" not in html

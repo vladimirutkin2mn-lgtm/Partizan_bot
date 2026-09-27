@@ -53,7 +53,8 @@ def test_public_deploy_smoke_verifies_exact_current_onboarding_release() -> None
 
     assert 'X-Partizan-Release-SHA'.casefold() in deploy.casefold()
     assert 'x-partizan-onboarding-revision' in deploy.casefold()
-    assert 'Show Partizan what you built.' in deploy
+    assert 'id="preview-form"' in deploy
+    assert 'id="hero-scan-form"' in deploy
     assert 'Likely first audiences' in deploy
     assert "'Paste your product.'" in deploy
     assert "'Product website'" in deploy

@@ -40,6 +40,8 @@ _ASSETS = {
     "outreach-autosend.v1.js": "text/javascript; charset=utf-8",
 }
 _LANDING_ASSETS = {
+    "design.v1.css": "text/css; charset=utf-8",
+    "design.native.v1.css": "text/css; charset=utf-8",
     "landing.v1.css": "text/css; charset=utf-8",
     "landing.account.v1.css": "text/css; charset=utf-8",
     "legal.v1.css": "text/css; charset=utf-8",
@@ -72,6 +74,9 @@ def _release_headers(settings: Settings, *, revision_name: str, revision: str) -
 
 
 _START_ASSETS = {
+    "design.v1.css": "text/css; charset=utf-8",
+    "design.native.v1.css": "text/css; charset=utf-8",
+    "start.design.v1.js": "text/javascript; charset=utf-8",
     "start.v1.css": "text/css; charset=utf-8",
     "start.autopilot.v1.css": "text/css; charset=utf-8",
     "start.v2.css": "text/css; charset=utf-8",
@@ -84,6 +89,9 @@ _START_ASSETS = {
 
 _START_ASSET_REVISION = _content_revision("start.v2.html", *_START_ASSETS)
 _CUSTOMER_WORKSPACE_ASSETS = {
+    "design.v1.css": "text/css; charset=utf-8",
+    "design.native.v1.css": "text/css; charset=utf-8",
+    "workspace.design.v1.js": "text/javascript; charset=utf-8",
     "workspace.v1.css": "text/css; charset=utf-8",
     "workspace.v1.js": "text/javascript; charset=utf-8",
     "workspace.meta-oauth-errors.v1.js": "text/javascript; charset=utf-8",
@@ -143,6 +151,8 @@ _LANDING_ASSET_REVISION = _content_revision(
 )
 _LEGAL_ASSET_REVISION = _content_revision(
     "legal.v1.css",
+    "design.v1.css",
+    "design.native.v1.css",
     *_LEGAL_PAGES.values(),
 )
 _APP_ASSET_REVISION = _content_revision("index.v2.html", *_ASSETS)
@@ -151,15 +161,7 @@ _LANDING_SCRIPT_MARKER = '<script src="/site/assets/landing.v1.js" defer></scrip
 _LANDING_ACCOUNT_STYLESHEET = (
     '<link rel="stylesheet" href="/site/assets/landing.account.v1.css">'
 )
-_LANDING_START_CTA = (
-    '<a class="button button-nav" href="/start">Analyze my product <span>↗</span></a>'
-)
-_LANDING_NAV_ACTIONS = (
-    '<div class="nav-actions">'
-    '<a id="nav-account-link" class="nav-account-link" href="/workspace">Sign in</a>'
-    f"{_LANDING_START_CTA}"
-    "</div>"
-)
+_LANDING_ACCOUNT_MARKER = 'id="nav-account-link"'
 
 router = APIRouter(tags=["web"])
 router.include_router(tracking_router)
@@ -173,7 +175,7 @@ async def marketing_site(
     if (
         _LANDING_STYLESHEET_MARKER not in html
         or _LANDING_SCRIPT_MARKER not in html
-        or _LANDING_START_CTA not in html
+        or _LANDING_ACCOUNT_MARKER not in html
     ):
         raise HTTPException(status_code=500, detail="Marketing navigation marker missing")
     landing_stylesheet = _LANDING_STYLESHEET_MARKER.replace(
@@ -194,10 +196,13 @@ async def marketing_site(
         1,
     )
     html = html.replace(_LANDING_SCRIPT_MARKER, landing_script, 1)
-    html = html.replace(_LANDING_START_CTA, _LANDING_NAV_ACTIONS, 1)
     html = html.replace(
         'href="/start"',
         f'href="/start?release={_START_ASSET_REVISION}"',
+    )
+    html = html.replace(
+        'href="/start?mode=describe"',
+        f'href="/start?release={_START_ASSET_REVISION}&amp;mode=describe"',
     )
     return HTMLResponse(
         html,
@@ -220,10 +225,11 @@ async def marketing_asset(asset_name: str) -> FileResponse:
 
 def _legal_page(filename: str, settings: Settings) -> HTMLResponse:
     html = (_WEB_DIR / filename).read_text(encoding="utf-8")
-    html = html.replace(
-        "/site/assets/legal.v1.css",
-        f"/site/assets/legal.v1.css?v={_LEGAL_ASSET_REVISION}",
-    )
+    for asset in ("legal.v1.css", "design.v1.css", "design.native.v1.css"):
+        html = html.replace(
+            f"/site/assets/{asset}",
+            f"/site/assets/{asset}?v={_LEGAL_ASSET_REVISION}",
+        )
     return HTMLResponse(
         html,
         media_type="text/html; charset=utf-8",

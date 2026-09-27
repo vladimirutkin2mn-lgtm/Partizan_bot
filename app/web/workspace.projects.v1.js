@@ -165,8 +165,8 @@
   };
 
   const focusOverviewChannelControl = (item) => {
-    const overviewTab = document.querySelector('.tab-button[data-tab="overview"]');
-    if (overviewTab) overviewTab.click();
+    const channelsTab = document.querySelector('.tab-button[data-tab="channels"]');
+    if (channelsTab) channelsTab.click();
     window.setTimeout(() => {
       const row = document.querySelector(`#channel-snapshot [data-platform="${CSS.escape(item.channel.platform)}"]`);
       if (!row) return;
@@ -191,6 +191,7 @@
       }
       const activityTab = document.querySelector('.tab-button[data-tab="activity"]');
       if (activityTab) activityTab.click();
+      window.dispatchEvent(new CustomEvent('partizan:reveal-control', { detail: { selector: '.research-card' } }));
       const researchCard = document.querySelector('.research-card');
       if (researchCard) researchCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;

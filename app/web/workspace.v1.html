@@ -1,9 +1,7 @@
-<!doctype html>
-<html lang="en">
-<head>
+<!DOCTYPE html><html lang="en"><head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="light">
   <title>Partizan Workspace</title>
   <meta name="description" content="Your Partizan customer acquisition workspace: performance, channels, activity and controls.">
   <link rel="stylesheet" href="/workspace/assets/workspace.v1.css">
@@ -25,62 +23,59 @@
     .customer-results-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:18px}.customer-results-block{padding:15px;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.018)}.customer-results-block h3{margin:0 0 5px;font-size:13px}.customer-results-block>p{margin:0 0 12px;color:var(--muted);font-size:10px;line-height:1.55}.customer-economics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.customer-economics-grid div,.managed-assignment{padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.12)}.customer-economics-grid span,.managed-assignment span{display:block;color:var(--muted);font-size:9px}.customer-economics-grid strong{display:block;margin-top:3px;font-size:13px}.managed-assignment-list{display:grid;gap:8px}.managed-assignment-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.managed-assignment strong{font-size:11px}.managed-assignment-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}.managed-assignment-meta span{padding:3px 6px;border:1px solid var(--line);border-radius:999px}.managed-assignment-costs{display:flex;gap:12px;margin-top:9px}.managed-assignment-costs b{font-size:10px}.managed-assignment a{display:inline-block;margin-top:9px;font-size:10px;color:var(--accent);text-decoration:none}.execution-log-block{grid-column:1/-1}.execution-log-list{display:grid;gap:9px}.execution-log-item{padding:12px;border:1px solid var(--line);border-radius:11px;background:rgba(0,0,0,.12)}.execution-log-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.execution-log-head strong{font-size:11px}.execution-log-status{font-size:9px;font-weight:700}.execution-log-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}.execution-log-meta span,.execution-log-meta a{padding:3px 6px;border:1px solid var(--line);border-radius:999px;font-size:9px;color:var(--muted);text-decoration:none}.execution-log-meta a{color:var(--accent)}.execution-log-content{margin:9px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--soft);font-size:10px;line-height:1.5}.execution-log-result{margin-top:9px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}.execution-log-result span{font-size:9px;color:var(--muted)}.execution-log-result a{font-size:10px;color:var(--accent);text-decoration:none}.customer-results-empty{color:var(--muted);font-size:10px;line-height:1.55}.customer-results-error{color:var(--warn);font-size:10px;line-height:1.55}
     @media(max-width:700px){.auth-login{min-height:calc(100vh - 88px);padding:28px 0 56px}.auth-card{padding:26px 22px;border-radius:20px}.auth-card h1{font-size:34px}.auth-card .lede{margin-bottom:22px}.customer-results-grid{grid-template-columns:1fr}.customer-economics-grid{grid-template-columns:1fr 1fr}}
   </style>
-</head>
-<body>
-  <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
-  <header class="top shell">
-    <a class="brand" href="/"><span class="mark">P</span><span><strong>Partizan</strong><small>Workspace</small></span></a>
-    <div id="account-nav" class="account-nav hidden">
+<link rel="stylesheet" href="/workspace/assets/design.v1.css"><link rel="stylesheet" href="/workspace/assets/design.native.v1.css"></head>
+<body class="rd-surface ws-simple">
+
+  <header class="ws-header"><div class="ws-header-inner"><a class="brand" href="/" aria-label="Partizan home"><span class="brandmark">p</span><span>partizan<span class="brand-dot">.</span></span></a><nav class="workspace-tabs ws-nav hidden" aria-label="Workspace sections">
+        <button class="tab-button active" type="button" data-tab="overview">Home</button><button class="tab-button" type="button" data-tab="activity">Results</button>
+        <button class="tab-button" type="button" data-tab="channels">Channels</button>
+
+        <button class="tab-button" type="button" data-tab="settings" aria-label="Open settings"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M4 7h9m4 0h3M4 17h3m4 0h9"></path><circle cx="15" cy="7" r="2"></circle><circle cx="9" cy="17" r="2"></circle></svg></button>
+      </nav><div class="ws-account"><details id="project-menu" class="design-project-menu"><summary class="ws-project"><span class="ws-project-initial" aria-hidden="true">P</span><span id="design-project-name">Your projects</span><span aria-hidden="true">⌄</span></summary><div id="account-nav" class="account-nav hidden">
       <select id="project-switcher" class="project-switcher hidden" aria-label="Partizan project"></select>
       <span id="account-email"></span>
       <button id="logout-button" type="button">Sign out</button>
-    </div>
-  </header>
+    </div></details></div><nav class="design-auth-nav" aria-label="Public navigation"><a href="/">Back to site</a><a href="/workspace">Sign in →</a></nav></div></header>
 
-  <main class="shell workspace-main">
-    <section id="login-gate" class="login-gate auth-login hidden" aria-labelledby="workspace-login-title">
-      <div class="auth-card">
-        <span class="eyebrow">Welcome back</span>
+  <main class="rd-workspace-content">
+    <section id="login-gate" class="login-gate rd-auth hidden" aria-labelledby="workspace-login-title"><aside class="rd-auth-story"><div><span class="rd-eyebrow">Your next customers are out there</span><h2>Pick up where<br>you left off.</h2><p>Your product, your channels and every lesson learned. Together in one place.</p></div><div class="rd-auth-preview"><div><strong>Daily English</strong><span class="rd-badge">Sample project</span></div><span class="rd-eyebrow">Your next move</span><h3>Make five minutes a daily habit.</h3><p>A focused community test, built around the people most likely to try your product.</p><div style="font-size:13px;color:#bdd7c5;margin-bottom:0">✓ Ready for your review</div></div></aside>
+      <div class="auth-card rd-auth-form">
+        <span class="rd-eyebrow">Welcome back</span>
         <h1 id="workspace-login-title">Sign in to Partizan.</h1>
         <p class="lede">Continue to your customer acquisition workspace.</p>
         <form id="workspace-login-form" class="workspace-login-form auth-fields">
-          <div class="auth-field">
+          <div class="auth-field rd-field">
             <label for="workspace-login-email">Email</label>
-            <input id="workspace-login-email" type="email" autocomplete="email" required placeholder="you@company.com">
+            <input id="workspace-login-email" type="email" autocomplete="email" required="" placeholder="you@company.com">
           </div>
-          <div class="auth-field">
+          <div class="auth-field rd-field">
             <label for="workspace-login-password">Password</label>
-            <input id="workspace-login-password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required placeholder="Your password">
+            <input id="workspace-login-password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required="" placeholder="Your password">
           </div>
-          <button class="button button-primary auth-submit" type="submit">Sign in →</button>
+          <button class="button button-primary auth-submit rd-btn rd-full" type="submit">Sign in →</button>
         </form>
-        <p class="auth-new">New to Partizan?<a href="/start">Analyze your product →</a></p>
+        <p class="auth-new rd-auth-links">New to Partizan?<a href="/start">Analyze your product →</a></p>
       </div>
     </section>
 
     <section id="loading" class="loading-card"><span class="spinner"></span><div><strong>Opening your Partizan workspace…</strong><small>Your project, performance and channel controls are loading.</small></div></section>
 
-    <div id="workspace" class="hidden">
-      <nav class="workspace-tabs" aria-label="Workspace sections">
-        <button class="tab-button active" type="button" data-tab="overview">Overview</button>
-        <button class="tab-button" type="button" data-tab="channels">Channels</button>
-        <button class="tab-button" type="button" data-tab="activity">Activity</button>
-        <button class="tab-button" type="button" data-tab="settings">Settings</button>
-      </nav>
-
-      <section class="tab-panel" data-tab-panel="overview">
-        <section class="hero-card panel compact-hero">
+    <div id="workspace" class="hidden"><section class="ws-page-heading">
           <div>
-            <span class="eyebrow">Customer acquisition</span>
-            <h1 id="workspace-status">Partizan is getting ready.</h1>
+
+            <h1 id="design-page-title">Your growth</h1><p id="workspace-status">Partizan is getting ready.</p><p id="design-page-subtitle" hidden=""></p>
             <p id="workspace-summary" class="lede hidden" aria-hidden="true"></p>
-            <div class="project-line"><span id="project-market">—</span><i></i><span id="project-goal">—</span></div>
+
           </div>
           <div class="hero-actions">
-            <button id="pause-button" class="button button-secondary hidden" type="button">Pause Partizan</button>
-            <button id="resume-button" class="button button-primary hidden" type="button">Resume Partizan</button>
+            <button id="pause-button" class="button button-secondary hidden ws-run-state" type="button">Pause Partizan</button>
+            <button id="resume-button" class="button button-primary hidden ws-run-state" type="button">Resume Partizan</button>
           </div>
-        </section>
+        </section><nav id="design-results-nav" class="design-results-nav hidden" aria-label="Results sections"><button type="button" data-design-result="progress">Progress</button><button type="button" data-design-result="research">Research</button><button type="button" data-design-result="tests">Tests</button><button type="button" data-design-result="history">History</button></nav>
+
+
+      <section class="tab-panel" data-tab-panel="overview"><div class="ws-summary" aria-label="Project summary"><div><span>Paying customers</span><strong data-mirror="metric-customers">—</strong><button type="button" data-open-tab="activity">See results →</button></div><div><span>Spent on growth</span><strong data-mirror="metric-spend" data-currency="">—</strong><span class="ws-metric-note">Across your channels</span></div><div><span>Budget left</span><strong data-mirror="metric-balance" data-currency="">—</strong><button id="design-add-funds" type="button">Add funds ＋</button></div></div><section class="ws-next"><div class="ws-next-label"><span class="rd-mark" aria-hidden="true">p</span><span>Your next move</span></div><h2 id="design-next-title">Finding your next move.</h2><p id="design-next-copy">Your latest research and progress will appear here.</p><div class="ws-next-bottom"><button id="design-review" class="rd-btn" type="button">Review next move →</button><button type="button" class="ws-text-link" data-design-result="research">View research</button></div></section><div class="ws-recent"><span class="ws-recent-check" aria-hidden="true">✓</span><div><strong id="design-recent-title">Your workspace is ready.</strong><p id="design-recent-copy">Research, actions and results stay together.</p></div><button type="button" class="ws-text-link" data-design-result="history">Details →</button></div>
+
 
         <section id="activation-card" class="panel activation-card hidden">
           <div class="activation-head">
@@ -107,7 +102,7 @@
           </ol>
         </section>
 
-        <section id="performance-metrics" class="metric-grid metric-grid-primary" aria-label="Acquisition results">
+        <section id="performance-metrics" class="metric-grid metric-grid-primary" aria-label="Acquisition results" data-design-group="progress">
           <article id="growth-balance-metric" class="growth-balance-metric">
             <div class="growth-balance-metric-main">
               <div class="growth-balance-value">
@@ -116,7 +111,7 @@
                 <small>available</small>
               </div>
               <button id="overview-fund-button" class="button button-primary growth-balance-cta" type="button" aria-describedby="overview-balance-benefit">
-                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7.5h14.5A1.5 1.5 0 0 1 20 9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18V7.5Zm0 0V6a1.5 1.5 0 0 1 1.5-1.5H16"/><path d="M15.5 12h4.5v4h-4.5a2 2 0 1 1 0-4Z"/></svg>
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7.5h14.5A1.5 1.5 0 0 1 20 9v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18V7.5Zm0 0V6a1.5 1.5 0 0 1 1.5-1.5H16"></path><path d="M15.5 12h4.5v4h-4.5a2 2 0 1 1 0-4Z"></path></svg>
                 <span id="overview-fund-label">Add funds</span>
                 <b aria-hidden="true">→</b>
               </button>
@@ -141,10 +136,10 @@
           </article>
         </section>
 
-        <section id="performance-finance" class="panel overview-finance">
+        <section id="performance-finance" class="panel overview-finance" data-design-group="progress">
           <div><span>Revenue</span><strong id="metric-revenue">$0</strong><small>attributed</small></div>
           <div><span>Partizan fee</span><strong id="metric-fee">$0</strong><small id="metric-fee-note">10% of actual spend</small></div>
-          <div class="overview-finance-action"><span>Controls</span><strong>Budget & limits</strong><button class="text-button" type="button" data-open-tab="settings">Open settings →</button></div>
+          <div class="overview-finance-action"><span>Controls</span><strong>Budget &amp; limits</strong><button class="text-button" type="button" data-open-tab="settings">Open settings →</button></div>
         </section>
       </section>
 
@@ -164,8 +159,8 @@
         </section>
       </section>
 
-      <section class="tab-panel hidden" data-tab-panel="activity">
-        <section class="panel research-card">
+      <section class="tab-panel hidden" data-tab-panel="activity"><div class="project-line" data-design-group="progress"><span id="project-market">—</span><i></i><span id="project-goal">—</span></div>
+        <section class="panel research-card" data-design-group="research">
           <div class="section-head"><div><span class="eyebrow">Market research</span><h2 id="research-title">One researched opportunity is already available</h2></div><span id="research-state" class="status-pill">Free proof ready</span></div>
           <p id="research-copy" class="section-copy">Research starts before spend. The full market map is optional; acquisition budget is only for recommended paid tests.</p>
           <p id="research-diagnostics" class="section-copy hidden"></p>
@@ -175,13 +170,13 @@
           <div id="research-results" class="research-results hidden"></div>
         </section>
 
-        <section class="panel experiments-card">
-          <div class="section-head"><div><span class="eyebrow">Tests & decisions</span><h2>Learning history</h2></div></div>
+        <section class="panel experiments-card" data-design-group="history">
+          <div class="section-head"><div><span class="eyebrow">Tests &amp; decisions</span><h2>Learning history</h2></div></div>
           <div class="history-grid"><div><h3>Tests</h3><div id="experiments" class="activity-list"></div></div><div><h3>Recent decisions</h3><div id="decisions" class="activity-list"></div></div></div>
         </section>
 
-        <section id="distribution-results-card" class="panel customer-results-card">
-          <div class="section-head"><div><span class="eyebrow">Distribution results</span><h2>Economics & execution history</h2><p class="section-copy">Customer-visible economics and delivery evidence live here: what Partizan executed, where it went, whether it is still present and what it cost. Internal operating costs and publisher identities stay private.</p></div><span id="distribution-results-state" class="status-pill">Read only</span></div>
+        <section id="distribution-results-card" class="panel customer-results-card" data-design-group="progress">
+          <div class="section-head"><div><span class="eyebrow">Distribution results</span><h2>Economics &amp; execution history</h2><p class="section-copy">Customer-visible economics and delivery evidence live here: what Partizan executed, where it went, whether it is still present and what it cost. Internal operating costs and publisher identities stay private.</p></div><span id="distribution-results-state" class="status-pill">Read only</span></div>
           <div class="customer-results-grid">
             <div class="customer-results-block"><h3>Observed customer economics</h3><p>Research, execution and distribution spend that counts toward your acquisition economics.</p><div id="customer-economics" class="customer-results-empty">Open Activity to load observed economics.</div></div>
             <div class="customer-results-block"><h3>Partizan managed delivery</h3><p>Assignments fulfilled through Partizan-managed or partner-managed inventory, without exposing internal publisher details.</p><div id="managed-delivery" class="customer-results-empty">No managed delivery loaded yet.</div></div>
@@ -199,7 +194,7 @@
             <div class="balance-mini"><span><b id="balance-capacity">$0</b> acquisition capacity</span><span><b id="balance-used">$0</b> used</span></div>
             <form id="fund-form" class="inline-form">
               <label for="fund-amount">Add funds</label>
-              <div class="money-field"><span>$</span><input id="fund-amount" type="number" min="1" max="100000" step="1" value="10" required></div>
+              <div class="money-field"><span>$</span><input id="fund-amount" type="number" min="1" max="100000" step="1" value="10" required=""></div>
               <button id="fund-button" class="button button-primary" type="submit">Add funds securely →</button>
             </form>
             <p id="balance-note" class="note"></p>
@@ -209,8 +204,8 @@
             <div class="section-head"><div><span class="eyebrow">Your limit</span><h2>What's the most you'd pay for one new customer?</h2></div><span class="status-pill">Maximum CAC</span></div>
             <p class="section-copy">You set the number. Partizan can choose eligible tests, but it cannot decide what a customer is worth to your business.</p>
             <form id="guardrail-form" class="guardrail-form">
-              <div><label for="max-cac">Maximum CAC <small>cost per acquired customer</small></label><div class="money-field"><span>$</span><input id="max-cac" type="number" min="1" max="100000" step="1" value="30" required></div></div>
-              <label class="check-row"><input id="spend-confirm" type="checkbox" required><span>I authorize eligible paid tests within this acquisition budget and this customer-cost limit.</span></label>
+              <div><label for="max-cac">Maximum CAC <small>cost per acquired customer</small></label><div class="money-field"><span>$</span><input id="max-cac" type="number" min="1" max="100000" step="1" value="30" required=""></div></div>
+              <label class="check-row"><input id="spend-confirm" type="checkbox" required=""><span>I authorize eligible paid tests within this acquisition budget and this customer-cost limit.</span></label>
               <button class="button button-secondary" type="submit">Save limit</button>
             </form>
           </article>
@@ -220,13 +215,13 @@
           <div class="section-head"><div><span class="eyebrow">Integrations</span><h2>Account access</h2></div><span id="meta-state" class="status-pill">Not connected</span></div>
           <p class="section-copy">Connecting an account grants access only. It never authorizes spend by itself.</p>
           <div class="integration-card">
-            <div><strong>Instagram & Facebook</strong><small id="meta-detail">No account access yet.</small></div>
+            <div><strong>Instagram &amp; Facebook</strong><small id="meta-detail">No account access yet.</small></div>
             <button id="meta-connect" class="button button-secondary" type="button">Connect Meta →</button>
           </div>
           <form id="meta-options-form" class="meta-options hidden">
-            <div><label for="meta-account">Ad account</label><select id="meta-account" required></select></div>
-            <div><label for="meta-page">Facebook Page</label><select id="meta-page" required></select></div>
-            <div><label for="meta-country">Target country</label><input id="meta-country" maxlength="2" value="US" required></div>
+            <div><label for="meta-account">Ad account</label><select id="meta-account" required=""></select></div>
+            <div><label for="meta-page">Facebook Page</label><select id="meta-page" required=""></select></div>
+            <div><label for="meta-country">Target country</label><input id="meta-country" maxlength="2" value="US" required=""></div>
             <button class="button button-primary" type="submit">Use this Meta account</button>
           </form>
           <p class="note">Other channels stay in Research only or Off until their customer-facing execution path is production-ready.</p>
@@ -236,10 +231,7 @@
 
     <div id="notice" class="notice hidden" role="status"></div>
   </main>
-  <footer class="product-legal-footer workspace-legal-footer">
-    <span>Partizan · AI customer acquisition system</span>
-    <nav aria-label="Legal links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/security">Security</a><a href="/contact">Contact</a></nav>
-  </footer>
+  <footer class="rd-legal-footer"><span>© 2026 Partizan Labs</span><nav aria-label="Legal links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/security">Security</a><a href="/contact">Contact</a></nav></footer>
   <script src="/workspace/assets/workspace.v1.js" defer></script>
   <script>
     (() => {
@@ -462,5 +454,5 @@
       });
     })();
   </script>
-</body>
-</html>
+
+<script src="/workspace/assets/workspace.design.v1.js" defer=""></script><dialog id="design-next-dialog" class="design-dialog" aria-labelledby="design-dialog-title"><div class="design-dialog-head"><h2 id="design-dialog-title">Your next move</h2><button id="design-close-review" type="button" aria-label="Close next move">×</button></div><div id="design-next-content"></div></dialog></body></html>

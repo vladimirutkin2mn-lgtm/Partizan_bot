@@ -60,8 +60,8 @@ def test_autonomous_execution_controls_live_in_customer_workspace_not_start() ->
     assert "One real opportunity researched" in workspace.text
     assert "Research starts before spend." in workspace.text
     assert "Fund a recommended paid test when needed" in workspace.text
-    assert "Tests & decisions" in workspace.text
-    assert "AI customer acquisition system" in workspace.text
+    assert "Tests &amp; decisions" in workspace.text
+    assert "© 2026 Partizan Labs" in workspace.text
     for href in ("/privacy", "/terms", "/security", "/contact"):
         assert f'href="{href}"' in workspace.text
     assert "Let's find your first users." in workspace.text

@@ -1026,15 +1026,15 @@ def test_landing_all_customer_ctas_route_to_start_not_internal_app() -> None:
     assert page.status_code == 200
     assert 'href="/app"' not in page.text
     assert page.text.count('href="/start?release=') >= 5
-    assert "Start free. Then choose how far Partizan should go." in page.text
-    assert "You built the product." in page.text
-    assert "Start with what you have." in page.text
-    assert "$49 <small>once</small>" in page.text
+    assert "Start with a free product analysis." in page.text
+    assert "Get your product" in page.text
+    assert "the right people." in page.text
+    assert "Just want a research plan? $49 once" in page.text
     assert "10% of actual acquisition spend" in page.text
-    assert "Find → Try → Learn." in page.text
-    assert "You're always <em>in control.</em>" in page.text
-    assert "Partizan may tell you not to run ads yet." in page.text
-    assert "Sometimes the best first move costs $0." in page.text
+    assert "THE LEARNING LOOP" in page.text
+    assert "You keep the controls." in page.text
+    assert "No monthly subscription." in page.text
+    assert "Research alone does not prove" in page.text
 
     assert javascript.status_code == 200
     assert 'a[href^="/start"]' in javascript.text
