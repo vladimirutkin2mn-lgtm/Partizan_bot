@@ -318,6 +318,8 @@ Experiment metrics expose `joins` and `bot_starts` alongside visits, signups, ac
 
 A Telegram invite can accumulate usage before a DistributionExperiment becomes `RUNNING`. In that case Partizan preserves the provider count as `analytics_pending` and retries ingestion on later sync rather than dropping the signal.
 
+Native attribution sync is also attached to the normal post-publish Telegram observation flow. Each time Partizan verifies that its published comment/post is still present, it also refreshes the invite usage counter for the same action. Attribution failure is read-only and does not turn a successfully published action into a failed publication.
+
 ### Customer API
 
 The customer workspace exposes:
