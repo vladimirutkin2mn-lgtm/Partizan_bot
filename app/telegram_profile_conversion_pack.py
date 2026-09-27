@@ -556,6 +556,20 @@ class TelegramProfileConversionPackService:
         result.sort(key=lambda item: (item.updated_at, str(item.id)), reverse=True)
         return result
 
+    def for_action(
+        self,
+        project_id: UUID,
+        customer_token: str,
+        action_id: UUID,
+    ) -> TelegramProfilePackView | None:
+        packs = [
+            pack
+            for pack in self.list(project_id, customer_token)
+            if pack.action_id == action_id
+            and pack.status != TelegramProfilePackStatus.ARCHIVED
+        ]
+        return packs[0] if packs else None
+
     def avatar_bytes(
         self,
         project_id: UUID,
