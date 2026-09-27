@@ -291,6 +291,19 @@ For a customer-owned Telegram profile pack whose CTA is a plain public channel U
 
 The end user sees only a native Telegram link. No Partizan domain is inserted into the conversion path.
 
+### Bot deep-link strategy
+
+For a customer-owned profile pack whose CTA is a plain Telegram bot URL such as `https://t.me/examplebot`:
+
+1. the pack remains in `DRAFT`;
+2. Partizan reads the exact DistributionExperiment referral token;
+3. Partizan rewrites the CTA to `https://t.me/examplebot?start=<referral_token>`;
+4. the rewritten pack receives a new fingerprint and still requires exact customer approval;
+5. the promoted bot sends a `BOT_START` event to the authenticated product event endpoint using the Telegram `start` value as `referral_token`;
+6. Partizan resolves that token to the exact experiment and exposes `bot_starts` in experiment metrics.
+
+The user still sees a native Telegram URL and does not pass through a Partizan redirect.
+
 ### Attribution state
 
 Native attribution is stored separately from the profile pack and records:
@@ -324,7 +337,8 @@ Native attribution sync is also attached to the normal post-publish Telegram obs
 
 The customer workspace exposes:
 
-- `POST /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/native-attribution/provision`
+- `POST /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/native-attribution/provision` for channel invites
+- `POST /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/native-attribution/provision-bot` for bot deep links
 - `GET /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/native-attribution`
 - `POST /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/native-attribution/sync`
 
@@ -332,6 +346,6 @@ Provisioning is allowed only while the profile pack is still `DRAFT`, because pr
 
 ### Current scope and permissions
 
-The first native strategy supports public Telegram channels for which the connected Telegram account has permission to create invite links. If Telegram rejects invite creation because the account lacks channel administration rights, provisioning fails closed and the existing profile pack remains unapproved.
+The channel-invite strategy supports public Telegram channels for which the connected Telegram account has permission to create invite links. If Telegram rejects invite creation because the account lacks channel administration rights, provisioning fails closed and the existing profile pack remains unapproved.
 
-The next native strategy is bot deep-link attribution. Stories remain a separate proxy-signal layer for cases where direct conversion attribution is unavailable.
+The bot deep-link strategy supports plain public bot usernames and uses the experiment referral token as the Telegram `start` parameter. Product-side bot code must report `BOT_START` through the existing authenticated distribution-event integration. Stories remain a separate proxy-signal layer for cases where direct conversion attribution is unavailable.
