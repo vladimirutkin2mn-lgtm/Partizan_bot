@@ -25,18 +25,20 @@ def _event(event_type: str, *, count: int | None = None) -> DistributionAttribut
     )
 
 
-def test_native_telegram_join_and_bot_start_metrics_are_aggregated() -> None:
+def test_native_telegram_join_bot_start_and_story_proxy_metrics_are_aggregated() -> None:
     service = InMemoryDistributionAnalyticsService(store=MemoryRuntimeStateStore())
     events = [
         _event("JOIN", count=3),
         _event("BOT_START"),
         _event("BOT_START"),
+        _event("STORY_VIEW", count=7),
     ]
 
     metrics = service._metrics(events, DistributionCostBreakdownView())
 
     assert metrics.joins == 3
     assert metrics.bot_starts == 2
+    assert metrics.story_views == 7
     assert metrics.visits == 0
     assert metrics.signups == 0
 
@@ -52,3 +54,16 @@ def test_cumulative_join_snapshots_use_highest_provider_count() -> None:
     metrics = service._metrics(events, DistributionCostBreakdownView())
 
     assert metrics.joins == 5
+
+
+def test_cumulative_story_view_snapshots_use_highest_provider_count() -> None:
+    service = InMemoryDistributionAnalyticsService(store=MemoryRuntimeStateStore())
+    events = [
+        _event("STORY_VIEW", count=3),
+        _event("STORY_VIEW", count=9),
+        _event("STORY_VIEW", count=8),
+    ]
+
+    metrics = service._metrics(events, DistributionCostBreakdownView())
+
+    assert metrics.story_views == 9
