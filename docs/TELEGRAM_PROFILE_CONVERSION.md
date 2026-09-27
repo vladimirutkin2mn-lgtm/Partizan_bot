@@ -272,3 +272,64 @@ PR 2 defines but does not yet activate:
 - multi-armed-bandit allocation.
 
 Those remain separate tracked slices so that profile mutation, approval and attribution can be reviewed independently.
+
+
+## Native Telegram attribution
+
+PR 3 removes the requirement to expose a Partizan redirect when Telegram can measure the product conversion natively.
+
+### Channel invite strategy
+
+For a customer-owned Telegram profile pack whose CTA is a plain public channel URL such as `https://t.me/example`:
+
+1. the pack remains in `DRAFT`;
+2. Partizan creates an experiment-specific exported invite link using the connected customer Telegram session;
+3. Partizan replaces the public channel URL in the pack bio with the returned `t.me/+...` invite;
+4. because the pack content changed, the pack receives a new fingerprint and still requires exact customer approval;
+5. after the distribution experiment runs, Partizan reads the exported invite usage counter;
+6. growth in that counter is recorded as a `JOIN` conversion on the exact distribution experiment.
+
+The end user sees only a native Telegram link. No Partizan domain is inserted into the conversion path.
+
+### Attribution state
+
+Native attribution is stored separately from the profile pack and records:
+
+- project/product/profile-pack/action/experiment identity;
+- public source channel URL;
+- native invite URL;
+- current Telegram usage count;
+- count already committed to analytics;
+- latest join delta;
+- join-request count where Telegram exposes it;
+- last sync and last analytics event;
+- pending/error state.
+
+Provider usage is treated as cumulative. Sync never reduces a previously observed join count.
+
+### Analytics delivery
+
+Distribution analytics now recognizes:
+
+- `JOIN`: native Telegram channel membership conversion;
+- `BOT_START`: native Telegram bot deep-link conversion, reserved for the bot-attribution slice.
+
+Experiment metrics expose `joins` and `bot_starts` alongside visits, signups, activation and paid conversions.
+
+A Telegram invite can accumulate usage before a DistributionExperiment becomes `RUNNING`. In that case Partizan preserves the provider count as `analytics_pending` and retries ingestion on later sync rather than dropping the signal.
+
+### Customer API
+
+The customer workspace exposes:
+
+- `POST /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/native-attribution/provision`
+- `GET /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/native-attribution`
+- `POST /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/native-attribution/sync`
+
+Provisioning is allowed only while the profile pack is still `DRAFT`, because provisioning changes the CTA and therefore must happen before customer approval.
+
+### Current scope and permissions
+
+The first native strategy supports public Telegram channels for which the connected Telegram account has permission to create invite links. If Telegram rejects invite creation because the account lacks channel administration rights, provisioning fails closed and the existing profile pack remains unapproved.
+
+The next native strategy is bot deep-link attribution. Stories remain a separate proxy-signal layer for cases where direct conversion attribution is unavailable.
