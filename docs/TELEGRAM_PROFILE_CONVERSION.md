@@ -158,6 +158,32 @@ Add measurement strategies in priority order:
 
 Add optional stories and use the deepest available conversion signal to learn which combination of persona, profile treatment, message strategy and CTA works best.
 
+## Profile-surface learning
+
+PR 4 starts with an observation layer that joins each ProfileConversionPack to the exact distribution action and experiment that used it.
+
+For every non-archived pack, Partizan exposes:
+
+- a stable `profile_treatment_key` derived only from display name, bio, CTA and avatar, independent of action/experiment ids;
+- message strategy and conversion mechanism from the bound distribution action;
+- CTA type and native attribution strategy;
+- visits, native joins, bot starts, signups, activations and paid users;
+- replies/removals for community feedback;
+- revenue;
+- the deepest observed funnel signal.
+
+This keeps the learning unit explicit:
+
+`profile treatment × message strategy × CTA strategy × distribution context → observed outcome`
+
+The customer workspace endpoint is:
+
+- `GET /customer/workspace/{project_id}/telegram/profile-learning`
+
+This slice intentionally does not auto-select a winner yet. It creates the comparable observations needed for later allocation across Partizan-managed identities and profile variants without conflating a message experiment with a profile experiment.
+
+Stories are the next PR 4 slice. They will add a proxy-signal surface for scenarios where direct `JOIN` / `BOT_START` attribution is not available.
+
 ## Non-goals of PR 1
 
 PR 1 does not:
