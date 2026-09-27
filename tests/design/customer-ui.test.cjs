@@ -43,6 +43,15 @@ async function open(route, options = {}) {
   w.fetch = async (url, init = {}) => {
     const call = { url: String(url), method: init.method || 'GET', body: init.body && JSON.parse(init.body), credentials: init.credentials };
     calls.push(call);
+    if (options.hang?.includes(call.url)) {
+      return new Promise((_, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        }, { once: true });
+      });
+    }
     const override = options.respond?.(call);
     let payload = override;
     if (payload === undefined) {
@@ -56,7 +65,15 @@ async function open(route, options = {}) {
       else payload = {};
     }
     const denied = options.signedOut && call.url === '/customer/account/me';
-    return { ok: !denied, status: denied ? 401 : 200, json: async () => denied ? { detail: 'Sign in required' } : structuredClone(payload) };
+    const failedStatus = options.fail?.[call.url];
+    const failed = Number.isInteger(failedStatus);
+    const status = denied ? 401 : (failed ? failedStatus : 200);
+    const detail = denied ? 'Sign in required' : `Test failure (${status})`;
+    return {
+      ok: !denied && !failed,
+      status,
+      json: async () => denied || failed ? { detail } : structuredClone(payload),
+    };
   };
   const scripts = [...d.querySelectorAll('script')];
   // Inline scripts execute during parsing, deferred assets execute in document order.
@@ -134,6 +151,33 @@ test('real sign in remains available and submits to customer authentication', as
   assert.deepEqual(ui.errors, []);
 });
 
+test('channel controls failure does not block the authenticated workspace', async t => {
+  const ui = await open('/workspace', {
+    fail: { '/customer/workspace/project-1/channels': 503 },
+  });
+  t.after(ui.close);
+  const { d } = ui;
+  assert.equal(d.getElementById('workspace').classList.contains('hidden'), false);
+  assert.equal(d.getElementById('loading').classList.contains('hidden'), true);
+  assert.match(d.getElementById('notice').textContent, /channel controls are temporarily unavailable/i);
+  assert.deepEqual(ui.errors, []);
+});
+
+test('core workspace failure exits the spinner and offers recovery actions', async t => {
+  const ui = await open('/workspace', {
+    fail: { '/customer/workspace/project-1': 503 },
+  });
+  t.after(ui.close);
+  const { d } = ui;
+  assert.equal(d.getElementById('workspace').classList.contains('hidden'), true);
+  assert.equal(d.getElementById('loading').classList.contains('hidden'), false);
+  assert.equal(d.getElementById('workspace-loading-spinner').classList.contains('hidden'), true);
+  assert.match(d.getElementById('workspace-loading-title').textContent, /could not open/i);
+  assert.match(d.getElementById('workspace-loading-copy').textContent, /Test failure \(503\)/);
+  assert.equal(d.getElementById('workspace-loading-actions').classList.contains('hidden'), false);
+  assert.equal(d.getElementById('workspace-loading-retry').disabled, false);
+  assert.deepEqual(ui.errors, []);
+});
 test('simple workspace keeps live metrics, result sections and all server channels', async t => {
   const ui = await open('/workspace'); t.after(ui.close);
   const { d } = ui;
