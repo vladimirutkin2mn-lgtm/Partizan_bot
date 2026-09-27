@@ -243,6 +243,10 @@ class TelegramProfileConversionPackService:
             raise TelegramProfilePackError(
                 "Partizan-managed profile packs are reserved for the managed-account rollout"
             )
+        if payload.story_enabled:
+            raise TelegramProfilePackError(
+                "Telegram stories are reserved for the stories rollout"
+            )
         self._validate_cta(payload.cta_type, payload.cta_value)
         avatar_record = self._avatar_record(
             project_id,
@@ -295,6 +299,10 @@ class TelegramProfileConversionPackService:
         }:
             raise TelegramProfilePackError(
                 "Only DRAFT or READY Telegram profile packs can be edited"
+            )
+        if payload.story_enabled:
+            raise TelegramProfilePackError(
+                "Telegram stories are reserved for the stories rollout"
             )
         self._validate_cta(payload.cta_type, payload.cta_value)
 
@@ -577,9 +585,12 @@ class TelegramProfileConversionPackService:
             raise TelegramProfilePackError("Telegram distribution action not found") from exc
         if action.platform != DistributionPlatform.TELEGRAM:
             raise TelegramProfilePackError("Profile packs can only be bound to Telegram actions")
-        if action.status in {DistributionActionStatus.EXECUTED, DistributionActionStatus.CANCELLED}:
+        if action.status not in {
+            DistributionActionStatus.PREPARED,
+            DistributionActionStatus.APPROVED,
+        }:
             raise TelegramProfilePackError(
-                "Profile pack cannot be created for a completed Telegram action"
+                "Profile pack requires a PREPARED or APPROVED Telegram action"
             )
         if action.experiment_id is None:
             raise TelegramProfilePackError("Telegram action has no experiment")
@@ -623,9 +634,12 @@ class TelegramProfileConversionPackService:
             raise TelegramProfilePackError(
                 "Telegram profile pack no longer matches its distribution action"
             )
-        if action.status in {DistributionActionStatus.EXECUTED, DistributionActionStatus.CANCELLED}:
+        if action.status not in {
+            DistributionActionStatus.PREPARED,
+            DistributionActionStatus.APPROVED,
+        }:
             raise TelegramProfilePackError(
-                "Telegram profile pack action is already completed"
+                "Telegram profile pack action is no longer eligible"
             )
 
     def _assert_no_other_applied_pack(self, payload: dict) -> None:
