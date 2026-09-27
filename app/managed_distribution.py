@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from threading import RLock
 from uuid import UUID, uuid4
 
 from app.config import Settings, get_settings
@@ -52,6 +53,7 @@ class ManagedDistributionService:
         self._settings = settings or get_settings()
         self._publishers: dict[UUID, ManagedPublisherView] = {}
         self._assignments: dict[UUID, ManagedAssignmentView] = {}
+        self._reservation_lock = RLock()
 
     def readiness_blocker(self, platform: DistributionPlatform | None = None) -> str | None:
         if not self._settings.managed_distribution_public_ready:
@@ -243,6 +245,14 @@ class ManagedDistributionService:
         )
 
     def reserve(
+        self,
+        product_id: UUID,
+        payload: ManagedAssignmentCreateRequest,
+    ) -> ManagedAssignmentView:
+        with self._reservation_lock:
+            return self._reserve_unlocked(product_id, payload)
+
+    def _reserve_unlocked(
         self,
         product_id: UUID,
         payload: ManagedAssignmentCreateRequest,
