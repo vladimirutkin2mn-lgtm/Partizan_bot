@@ -30,6 +30,7 @@ from app.telegram_client_publishing import (
     TelegramPublishResult,
     customer_telegram_client_publish_service,
 )
+from app.telegram_native_attribution import telegram_native_attribution_service
 from app.telegram_profile_conversion_pack import (
     telegram_profile_conversion_pack_service,
 )
@@ -188,6 +189,7 @@ def reset_state():
     distribution_execution_service.reset()
     customer_telegram_client_publish_service.reset()
     telegram_profile_conversion_pack_service.reset()
+    telegram_native_attribution_service.reset()
     get_runtime_store().clear_namespace(PROVIDER_SECRET_NAMESPACE)
     try:
         yield
