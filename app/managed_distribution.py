@@ -35,6 +35,7 @@ MANAGED_PUBLISHER_NAMESPACE = "managed_distribution_publisher"
 MANAGED_ASSIGNMENT_NAMESPACE = "managed_distribution_assignment"
 MANAGED_SERVICE_LABEL = "Partizan Managed Distribution"
 MANAGED_CAPACITY_WINDOW = timedelta(hours=24)
+MANAGED_TARGET_COOLDOWN = timedelta(hours=24)
 
 
 class ManagedDistributionError(RuntimeError):
@@ -117,6 +118,8 @@ class ManagedDistributionService:
             daily_action_capacity=payload.daily_action_capacity,
             prior_outcome_score=payload.prior_outcome_score,
             last_activity_at=payload.last_activity_at,
+            persona=payload.persona,
+            profile_strategy_key=self._optional_text(payload.profile_strategy_key),
             health=ManagedPublisherHealth.ELIGIBLE,
             partner_reference=(
                 payload.partner_reference.strip()
@@ -176,6 +179,12 @@ class ManagedDistributionService:
         self,
         payload: ManagedSelectionRequest,
     ) -> list[ManagedSelectionCandidateView]:
+        target_conflict_key = self._target_conflict_key(payload)
+        if target_conflict_key is not None and self._has_target_conflict(
+            target_conflict_key
+        ):
+            return []
+
         candidates: list[ManagedSelectionCandidateView] = []
         for publisher in self._eligible_publishers(payload.platform):
             if payload.action_type not in publisher.allowed_actions:
@@ -183,6 +192,16 @@ class ManagedDistributionService:
             if payload.opportunity_kind not in publisher.allowed_surfaces:
                 continue
             if not self._language_matches(payload.language, publisher.languages):
+                continue
+            if payload.persona is not None and publisher.persona != payload.persona:
+                continue
+            requested_profile_strategy = self._optional_text(
+                payload.profile_strategy_key
+            )
+            if (
+                requested_profile_strategy is not None
+                and publisher.profile_strategy_key != requested_profile_strategy
+            ):
                 continue
             if self._has_reserved_assignment(publisher.id):
                 continue
@@ -199,9 +218,23 @@ class ManagedDistributionService:
                     managed_publisher_id=publisher.id,
                     distribution_identity_id=publisher.distribution_identity_id,
                     ownership=publisher.ownership,
+                    persona=publisher.persona,
+                    profile_strategy_key=publisher.profile_strategy_key,
                     score=score,
                     capacity_remaining_24h=remaining,
-                    reasons=reasons,
+                    reasons=(
+                        reasons
+                        + (
+                            [f"persona {publisher.persona.value}"]
+                            if publisher.persona is not None
+                            else []
+                        )
+                        + (
+                            [f"profile strategy {publisher.profile_strategy_key}"]
+                            if publisher.profile_strategy_key
+                            else []
+                        )
+                    ),
                 )
             )
         return sorted(
@@ -222,6 +255,7 @@ class ManagedDistributionService:
         except KeyError as exc:
             raise ManagedDistributionError("Product not found") from exc
 
+        target_conflict_key = self._target_conflict_key(payload)
         candidates = self.select_candidates(payload)
         if not candidates:
             raise ManagedDistributionError(
@@ -240,6 +274,15 @@ class ManagedDistributionService:
                         "managed_publisher_id": str(publisher.id),
                         "ownership": publisher.ownership.value,
                         "conflict_group": payload.conflict_group,
+                        "target_conflict_key": target_conflict_key,
+                        "persona": (
+                            publisher.persona.value
+                            if publisher.persona is not None
+                            else None
+                        ),
+                        "profile_strategy_key": publisher.profile_strategy_key,
+                        "message_strategy": self._optional_text(payload.message_strategy),
+                        "experiment_arm": self._optional_text(payload.experiment_arm),
                     },
                 ),
             )
@@ -257,7 +300,12 @@ class ManagedDistributionService:
             opportunity_kind=payload.opportunity_kind,
             opportunity_id=payload.opportunity_id,
             campaign_slot_id=slot.id,
-            conflict_group=str(payload.conflict_group or "").strip() or None,
+            conflict_group=self._optional_text(payload.conflict_group),
+            target_conflict_key=target_conflict_key,
+            persona=publisher.persona,
+            profile_strategy_key=publisher.profile_strategy_key,
+            message_strategy=self._optional_text(payload.message_strategy),
+            experiment_arm=self._optional_text(payload.experiment_arm),
             status=ManagedAssignmentStatus.RESERVED,
             reserved_at=datetime.now(UTC),
         )
@@ -309,6 +357,15 @@ class ManagedDistributionService:
                 "assignment_id": str(assignment.id),
                 "ownership": assignment.ownership.value,
                 "service": MANAGED_SERVICE_LABEL,
+                "persona": (
+                    assignment.persona.value
+                    if assignment.persona is not None
+                    else None
+                ),
+                "profile_strategy_key": assignment.profile_strategy_key,
+                "message_strategy": assignment.message_strategy,
+                "experiment_arm": assignment.experiment_arm,
+                "target_conflict_key": assignment.target_conflict_key,
                 "fulfilled_at": now.isoformat(),
             },
         )
@@ -416,6 +473,33 @@ class ManagedDistributionService:
                 eligible.append(row)
         return eligible
 
+    def _target_conflict_key(
+        self,
+        payload: ManagedSelectionRequest,
+    ) -> str | None:
+        explicit = self._optional_text(payload.target_conflict_key)
+        if explicit is not None:
+            return explicit
+        opportunity_id = getattr(payload, "opportunity_id", None)
+        if opportunity_id is not None:
+            return f"opportunity:{opportunity_id}"
+        return None
+
+    def _has_target_conflict(self, target_conflict_key: str) -> bool:
+        cutoff = datetime.now(UTC) - MANAGED_TARGET_COOLDOWN
+        for row in self.list_assignments():
+            if row.target_conflict_key != target_conflict_key:
+                continue
+            if row.status == ManagedAssignmentStatus.RESERVED:
+                return True
+            if (
+                row.status == ManagedAssignmentStatus.FULFILLED
+                and row.fulfilled_at is not None
+                and self._utc(row.fulfilled_at) >= cutoff
+            ):
+                return True
+        return False
+
     def _has_reserved_assignment(self, publisher_id: UUID) -> bool:
         return any(
             row.managed_publisher_id == publisher_id
@@ -472,6 +556,11 @@ class ManagedDistributionService:
     def _tokens(value: str) -> set[str]:
         normalized = "".join(char.lower() if char.isalnum() else " " for char in value)
         return {token for token in normalized.split() if len(token) >= 3}
+
+    @staticmethod
+    def _optional_text(value: str | None) -> str | None:
+        normalized = " ".join(str(value or "").split())
+        return normalized or None
 
     @staticmethod
     def _normalized_values(values: list[str]) -> list[str]:
