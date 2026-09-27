@@ -45,10 +45,6 @@ from app.telegram_native_attribution import (
     TelegramNativeAttributionView,
     telegram_native_attribution_service,
 )
-from app.telegram_profile_learning import (
-    TelegramProfileLearningView,
-    telegram_profile_learning_service,
-)
 from app.telegram_profile_conversion_pack import (
     TelegramProfilePackApplyRequest,
     TelegramProfilePackApprovalRequest,
@@ -60,6 +56,10 @@ from app.telegram_profile_conversion_pack import (
     TelegramProfilePackUpdateRequest,
     TelegramProfilePackView,
     telegram_profile_conversion_pack_service,
+)
+from app.telegram_profile_learning import (
+    TelegramProfileLearningView,
+    telegram_profile_learning_service,
 )
 
 router = APIRouter(tags=["customer-channels"])
