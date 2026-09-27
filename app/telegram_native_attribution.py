@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
-import re
 from urllib.parse import urlencode, urlsplit
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
