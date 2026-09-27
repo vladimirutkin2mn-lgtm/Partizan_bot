@@ -28,6 +28,8 @@ class DistributionEvidenceKind(StrEnum):
 
 DistributionEventType = Literal[
     "VISIT",
+    "JOIN",
+    "BOT_START",
     "SIGNUP",
     "ACTIVATED",
     "PAID",
@@ -53,10 +55,16 @@ class DistributionAnalyticsEventCreate(BaseModel):
             raise ValueError("At least one distribution attribution identifier is required")
         if self.event_type != "PAID" and self.revenue != 0:
             raise ValueError("revenue is only allowed for PAID events")
-        if self.event_type == "REPLY":
+        if self.event_type in {"REPLY", "JOIN"}:
             count = self.properties.get("count")
-            if count is not None and (not isinstance(count, int) or isinstance(count, bool) or count < 0):
-                raise ValueError("REPLY properties.count must be a non-negative integer")
+            if count is not None and (
+                not isinstance(count, int)
+                or isinstance(count, bool)
+                or count < 0
+            ):
+                raise ValueError(
+                    f"{self.event_type} properties.count must be a non-negative integer"
+                )
         return self
 
 
