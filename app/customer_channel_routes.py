@@ -40,6 +40,11 @@ from app.telegram_client_publishing import (
     TelegramPublishRequest,
     customer_telegram_client_publish_service,
 )
+from app.telegram_native_attribution import (
+    TelegramNativeAttributionError,
+    TelegramNativeAttributionView,
+    telegram_native_attribution_service,
+)
 from app.telegram_profile_conversion_pack import (
     TelegramProfilePackApplyRequest,
     TelegramProfilePackApprovalRequest,
@@ -538,6 +543,74 @@ def archive_customer_telegram_profile_pack(
             pack_id,
         )
     except TelegramProfilePackError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/native-attribution/provision",
+    response_model=TelegramNativeAttributionView,
+)
+async def provision_customer_telegram_native_attribution(
+    project_id: UUID,
+    pack_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramNativeAttributionView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return await telegram_native_attribution_service.provision_channel_invite(
+            project_id,
+            customer_token,
+            pack_id,
+        )
+    except (
+        TelegramNativeAttributionError,
+        TelegramProfilePackError,
+        CustomerTelegramClientPublishError,
+    ) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/native-attribution",
+    response_model=TelegramNativeAttributionView,
+)
+def get_customer_telegram_native_attribution(
+    project_id: UUID,
+    pack_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramNativeAttributionView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return telegram_native_attribution_service.get(
+            project_id,
+            customer_token,
+            pack_id,
+        )
+    except (TelegramNativeAttributionError, TelegramProfilePackError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post(
+    "/customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/native-attribution/sync",
+    response_model=TelegramNativeAttributionView,
+)
+async def sync_customer_telegram_native_attribution(
+    project_id: UUID,
+    pack_id: UUID,
+    session_token: Annotated[str | None, Depends(_session_cookie)] = None,
+) -> TelegramNativeAttributionView:
+    customer_token = _project_token(session_token, project_id)
+    try:
+        return await telegram_native_attribution_service.sync(
+            project_id,
+            customer_token,
+            pack_id,
+        )
+    except (
+        TelegramNativeAttributionError,
+        TelegramProfilePackError,
+        CustomerTelegramClientPublishError,
+    ) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
