@@ -182,6 +182,11 @@ def test_customer_assignment_route_hides_internal_publisher_mechanics() -> None:
     assert "distribution_identity_id" not in row
     assert "partner_reference" not in row
     assert "internal_label" not in row
+    assert "persona" not in row
+    assert "profile_strategy_key" not in row
+    assert "message_strategy" not in row
+    assert "experiment_arm" not in row
+    assert "target_conflict_key" not in row
 
 
 def test_customer_cannot_read_another_projects_managed_assignments() -> None:
