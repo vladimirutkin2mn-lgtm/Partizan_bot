@@ -187,6 +187,23 @@ def test_approval_is_exact_fingerprint_gated() -> None:
     assert approved.approved_fingerprint == approved.fingerprint
 
 
+def test_pack_is_invalidated_when_distribution_action_changes() -> None:
+    service, _, project_id, action_id, _, _ = _service()
+    created = service.create(project_id, "customer-token", _request(action_id))
+    service._execution.action.content_text = "Changed after profile review"
+
+    with pytest.raises(TelegramProfilePackError, match="action changed"):
+        service.approve(
+            project_id,
+            "customer-token",
+            created.id,
+            TelegramProfilePackApprovalRequest(
+                confirm=True,
+                expected_fingerprint=created.fingerprint,
+            ),
+        )
+
+
 @pytest.mark.asyncio
 async def test_preview_compares_live_profile_with_proposed_pack() -> None:
     service, _, project_id, action_id, _, _ = _service()
