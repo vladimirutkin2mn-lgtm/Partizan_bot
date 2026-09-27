@@ -177,6 +177,7 @@ class TelegramProfilePackView(BaseModel):
     action_id: UUID
     experiment_id: UUID
     campaign_id: UUID | None = None
+    action_fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
     mode: TelegramProfilePackMode
     name: str
     display_name: str | None = None
@@ -262,6 +263,7 @@ class TelegramProfileConversionPackService:
             "action_id": str(action.id),
             "experiment_id": str(experiment.id),
             "campaign_id": str(action.campaign_slot_id) if action.campaign_slot_id else None,
+            "action_fingerprint": self._action_fingerprint(action),
             "mode": payload.mode.value,
             "name": payload.name.strip(),
             "display_name": payload.display_name,
@@ -305,6 +307,7 @@ class TelegramProfileConversionPackService:
                 "Telegram stories are reserved for the stories rollout"
             )
         self._validate_cta(payload.cta_type, payload.cta_value)
+        self._assert_pack_still_matches_action(current)
 
         avatar_view = current.get("avatar") if payload.keep_existing_avatar else None
         avatar_content = (
@@ -428,6 +431,11 @@ class TelegramProfileConversionPackService:
                 "Approved Telegram profile pack changed; refresh and approve it again"
             )
         self._assert_pack_still_matches_action(current)
+        action = self._execution.get_action(UUID(str(current["action_id"])))
+        if action.status != DistributionActionStatus.APPROVED:
+            raise TelegramProfilePackError(
+                "Telegram action must be APPROVED before applying its profile pack"
+            )
         self._assert_no_other_applied_pack(current)
 
         avatar_content = self._decode_avatar_payload(current)
@@ -655,6 +663,10 @@ class TelegramProfileConversionPackService:
             raise TelegramProfilePackError(
                 "Telegram profile pack action is no longer eligible"
             )
+        if self._action_fingerprint(action) != str(payload.get("action_fingerprint") or ""):
+            raise TelegramProfilePackError(
+                "Telegram action changed after this profile pack was created; create a new pack"
+            )
 
     def _assert_no_other_applied_pack(self, payload: dict) -> None:
         for other in self._store.list_namespace(TELEGRAM_PROFILE_PACK_NAMESPACE):
@@ -757,6 +769,23 @@ class TelegramProfileConversionPackService:
                     "Telegram bot CTA must include a start parameter"
                 )
 
+    def _action_fingerprint(self, action) -> str:
+        payload = {
+            "action_id": str(action.id),
+            "experiment_id": str(action.experiment_id or ""),
+            "action_type": action.action_type.value,
+            "target_url": str(action.target_url or ""),
+            "content_text": str(action.content_text or ""),
+        }
+        return hashlib.sha256(
+            json.dumps(
+                payload,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode("utf-8")
+        ).hexdigest()
+
     def _fingerprint(self, payload: dict) -> str:
         avatar = payload.get("avatar") if isinstance(payload.get("avatar"), dict) else None
         fingerprint_payload = {
@@ -765,6 +794,7 @@ class TelegramProfileConversionPackService:
             "action_id": str(payload["action_id"]),
             "experiment_id": str(payload["experiment_id"]),
             "campaign_id": str(payload.get("campaign_id") or ""),
+            "action_fingerprint": str(payload["action_fingerprint"]),
             "mode": str(payload["mode"]),
             "name": str(payload["name"]),
             "display_name": payload.get("display_name"),
