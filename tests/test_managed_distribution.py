@@ -352,11 +352,8 @@ def test_different_managed_accounts_cannot_target_same_opportunity_concurrently(
 def test_fulfilled_target_stays_in_cooldown_for_other_managed_accounts() -> None:
     managed_distribution_service._settings.managed_distribution_public_ready = True
     first_identity = _identity("Relationship advice")
-    second_identity = _identity("Relationship advice")
     _register(first_identity["id"], label="Publisher A", capacity=3)
-    _register(second_identity["id"], label="Publisher B", capacity=3)
     first_product = _product("Oracle A")
-    second_product = _product("Oracle B")
     target_key = "instagram:post:cooldown-42"
 
     reserved = client.post(
@@ -374,6 +371,9 @@ def test_fulfilled_target_stays_in_cooldown_for_other_managed_accounts() -> None
     )
     assert fulfilled.status_code == 200, fulfilled.text
 
+    second_identity = _identity("Relationship advice")
+    _register(second_identity["id"], label="Publisher B", capacity=3)
+    second_product = _product("Oracle B")
     blocked = client.post(
         f"/v1/products/{second_product}/managed-distribution/assignments",
         json=_selection_payload(target_conflict_key=target_key),
