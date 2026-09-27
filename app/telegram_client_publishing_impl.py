@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import json
 import re
@@ -48,6 +49,9 @@ _MIN_PUBLISH_INTERVAL = timedelta(seconds=60)
 _MAX_PUBLISHES_PER_DAY = 10
 _MAX_CONTENT_LENGTH = 4000
 _MAX_PROFILE_ABOUT_LENGTH = 70
+_MAX_PROFILE_FIRST_NAME_LENGTH = 64
+_MAX_PROFILE_LAST_NAME_LENGTH = 64
+_MAX_PROFILE_AVATAR_BYTES = 10 * 1024 * 1024
 _PHONE_PATTERN = re.compile(r"^\+[1-9][0-9]{7,15}$")
 _USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{5,32}$")
 
@@ -176,10 +180,19 @@ class TelegramPublishResult(BaseModel):
     executed_url: HttpUrl
 
 
+class TelegramProfilePhotoReference(BaseModel):
+    photo_id: int
+    access_hash: int
+    file_reference_b64: str = Field(min_length=1, max_length=16384)
+
+
 class TelegramProfileSnapshot(BaseModel):
     about: str = Field(default="", max_length=512)
     username: str | None = None
     display_name: str | None = None
+    first_name: str = ""
+    last_name: str = ""
+    avatar: TelegramProfilePhotoReference | None = None
 
 
 @dataclass(frozen=True)
@@ -208,6 +221,30 @@ class TelegramClientPublishTransport(Protocol):
         *,
         session: str,
         about: str,
+    ) -> TelegramProfileSnapshot: ...
+
+    async def update_profile(
+        self,
+        *,
+        session: str,
+        about: str | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
+    ) -> TelegramProfileSnapshot: ...
+
+    async def upload_profile_photo(
+        self,
+        *,
+        session: str,
+        content: bytes,
+        filename: str,
+    ) -> TelegramProfileSnapshot: ...
+
+    async def restore_profile_photo(
+        self,
+        *,
+        session: str,
+        avatar: TelegramProfilePhotoReference | None,
     ) -> TelegramProfileSnapshot: ...
 
     async def publish(
@@ -307,6 +344,16 @@ class TelethonClientPublishTransport:
         session: str,
         about: str,
     ) -> TelegramProfileSnapshot:
+        return await self.update_profile(session=session, about=about)
+
+    async def update_profile(
+        self,
+        *,
+        session: str,
+        about: str | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
+    ) -> TelegramProfileSnapshot:
         client = self._client(session)
         try:
             await client.connect()
@@ -315,6 +362,8 @@ class TelethonClientPublishTransport:
             await client(
                 telegram_functions.account.UpdateProfileRequest(
                     about=about,
+                    first_name=first_name,
+                    last_name=last_name,
                 )
             )
             return await self._profile_snapshot(client)
@@ -322,6 +371,65 @@ class TelethonClientPublishTransport:
             raise
         except Exception as exc:
             raise self._safe_error(exc, "PROFILE_UPDATE_FAILED") from None
+        finally:
+            await client.disconnect()
+
+    async def upload_profile_photo(
+        self,
+        *,
+        session: str,
+        content: bytes,
+        filename: str,
+    ) -> TelegramProfileSnapshot:
+        client = self._client(session)
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                raise TelegramClientPublishTransportError("SESSION_NOT_AUTHORIZED")
+            uploaded = await client.upload_file(content, file_name=filename)
+            await client(
+                telegram_functions.photos.UploadProfilePhotoRequest(
+                    file=uploaded,
+                )
+            )
+            return await self._profile_snapshot(client)
+        except TelegramClientPublishTransportError:
+            raise
+        except Exception as exc:
+            raise self._safe_error(exc, "PROFILE_PHOTO_UPDATE_FAILED") from None
+        finally:
+            await client.disconnect()
+
+    async def restore_profile_photo(
+        self,
+        *,
+        session: str,
+        avatar: TelegramProfilePhotoReference | None,
+    ) -> TelegramProfileSnapshot:
+        client = self._client(session)
+        try:
+            await client.connect()
+            if not await client.is_user_authorized():
+                raise TelegramClientPublishTransportError("SESSION_NOT_AUTHORIZED")
+            if avatar is None:
+                current = await self._profile_snapshot(client)
+                if current.avatar is not None:
+                    await client(
+                        telegram_functions.photos.DeletePhotosRequest(
+                            id=[self._input_photo(current.avatar)]
+                        )
+                    )
+            else:
+                await client(
+                    telegram_functions.photos.UpdateProfilePhotoRequest(
+                        id=self._input_photo(avatar)
+                    )
+                )
+            return await self._profile_snapshot(client)
+        except TelegramClientPublishTransportError:
+            raise
+        except Exception as exc:
+            raise self._safe_error(exc, "PROFILE_PHOTO_RESTORE_FAILED") from None
         finally:
             await client.disconnect()
 
@@ -410,10 +518,38 @@ class TelethonClientPublishTransport:
         first_name = str(getattr(me, "first_name", "") or "").strip()
         last_name = str(getattr(me, "last_name", "") or "").strip()
         display_name = " ".join(part for part in (first_name, last_name) if part) or None
+
+        avatar = None
+        photos = await client.get_profile_photos(me, limit=1)
+        if photos:
+            photo = photos[0]
+            if isinstance(photo, telegram_types.Photo):
+                file_reference = bytes(getattr(photo, "file_reference", b"") or b"")
+                access_hash = getattr(photo, "access_hash", None)
+                if file_reference and access_hash is not None:
+                    avatar = TelegramProfilePhotoReference(
+                        photo_id=int(photo.id),
+                        access_hash=int(access_hash),
+                        file_reference_b64=base64.b64encode(file_reference).decode("ascii"),
+                    )
+
         return TelegramProfileSnapshot(
             about=about,
             username=(str(me.username) if getattr(me, "username", None) else None),
             display_name=display_name,
+            first_name=first_name,
+            last_name=last_name,
+            avatar=avatar,
+        )
+
+    def _input_photo(
+        self,
+        avatar: TelegramProfilePhotoReference,
+    ) -> telegram_types.InputPhoto:
+        return telegram_types.InputPhoto(
+            id=avatar.photo_id,
+            access_hash=avatar.access_hash,
+            file_reference=base64.b64decode(avatar.file_reference_b64),
         )
 
     def _client(self, session: str = "") -> TelegramClient:
@@ -439,6 +575,9 @@ class TelethonClientPublishTransport:
             "PhoneCodeExpiredError": ("LOGIN_CODE_EXPIRED", None),
             "PasswordHashInvalidError": ("TWO_FACTOR_PASSWORD_INVALID", None),
             "AboutTooLongError": ("PROFILE_ABOUT_TOO_LONG", None),
+            "FirstNameInvalidError": ("PROFILE_NAME_INVALID", None),
+            "ImageProcessFailedError": ("PROFILE_PHOTO_INVALID", None),
+            "PhotoCropSizeSmallError": ("PROFILE_PHOTO_TOO_SMALL", None),
         }
         code, restriction = mapping.get(name, (fallback, None))
         return TelegramClientPublishTransportError(code, restriction_signal=restriction)
@@ -612,16 +751,93 @@ class CustomerTelegramClientPublishService:
         project_id: UUID,
         about: str,
     ) -> TelegramProfileSnapshot:
+        return await self.update_profile_fields_internal(
+            project_id,
+            about=about,
+        )
+
+    async def update_profile_name_internal(
+        self,
+        project_id: UUID,
+        display_name: str,
+    ) -> TelegramProfileSnapshot:
+        normalized = " ".join(display_name.split())
+        if not normalized:
+            raise CustomerTelegramClientPublishError("Telegram display name is required")
+        first_name, separator, last_name = normalized.partition(" ")
+        return await self.update_profile_fields_internal(
+            project_id,
+            first_name=first_name,
+            last_name=(last_name if separator else ""),
+        )
+
+    async def update_profile_fields_internal(
+        self,
+        project_id: UUID,
+        *,
+        about: str | None = None,
+        first_name: str | None = None,
+        last_name: str | None = None,
+    ) -> TelegramProfileSnapshot:
         self._require_ready()
-        normalized = about.strip()
-        if len(normalized) > _MAX_PROFILE_ABOUT_LENGTH:
+        normalized_about = None if about is None else about.strip()
+        normalized_first = None if first_name is None else " ".join(first_name.split())
+        normalized_last = None if last_name is None else " ".join(last_name.split())
+
+        if normalized_about is not None and len(normalized_about) > _MAX_PROFILE_ABOUT_LENGTH:
             raise CustomerTelegramClientPublishError(
                 f"Telegram profile CTA exceeds {_MAX_PROFILE_ABOUT_LENGTH} characters"
             )
+        if normalized_first is not None:
+            if not normalized_first:
+                raise CustomerTelegramClientPublishError("Telegram first name is required")
+            if len(normalized_first) > _MAX_PROFILE_FIRST_NAME_LENGTH:
+                raise CustomerTelegramClientPublishError("Telegram first name is too long")
+        if normalized_last is not None and len(normalized_last) > _MAX_PROFILE_LAST_NAME_LENGTH:
+            raise CustomerTelegramClientPublishError("Telegram last name is too long")
+        if normalized_about is None and normalized_first is None and normalized_last is None:
+            raise CustomerTelegramClientPublishError("No Telegram profile fields were provided")
+
         session = self._active_session_internal(project_id)
-        return await self._transport.update_profile_about(
+        return await self._transport.update_profile(
             session=session,
-            about=normalized,
+            about=normalized_about,
+            first_name=normalized_first,
+            last_name=normalized_last,
+        )
+
+    async def update_profile_avatar_internal(
+        self,
+        project_id: UUID,
+        content: bytes,
+        *,
+        filename: str = "avatar.jpg",
+    ) -> TelegramProfileSnapshot:
+        self._require_ready()
+        if not content:
+            raise CustomerTelegramClientPublishError("Telegram avatar content is required")
+        if len(content) > _MAX_PROFILE_AVATAR_BYTES:
+            raise CustomerTelegramClientPublishError(
+                f"Telegram avatar exceeds the {_MAX_PROFILE_AVATAR_BYTES}-byte safety limit"
+            )
+        safe_filename = filename.strip() or "avatar.jpg"
+        session = self._active_session_internal(project_id)
+        return await self._transport.upload_profile_photo(
+            session=session,
+            content=content,
+            filename=safe_filename,
+        )
+
+    async def restore_profile_avatar_internal(
+        self,
+        project_id: UUID,
+        avatar: TelegramProfilePhotoReference | None,
+    ) -> TelegramProfileSnapshot:
+        self._require_ready()
+        session = self._active_session_internal(project_id)
+        return await self._transport.restore_profile_photo(
+            session=session,
+            avatar=avatar,
         )
 
     def _active_session_internal(self, project_id: UUID) -> str:
