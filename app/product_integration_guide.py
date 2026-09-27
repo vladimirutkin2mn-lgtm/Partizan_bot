@@ -53,13 +53,14 @@ class ProductIntegrationGuideService:
             event_endpoint=event_endpoint,
             verification_endpoint=verification_endpoint,
             attribution_fields=["experiment_id", "action_id", "referral_token"],
-            event_types=["VISIT", "SIGNUP", "ACTIVATED", "PAID"],
+            event_types=["VISIT", "JOIN", "BOT_START", "SIGNUP", "ACTIVATED", "PAID"],
             checklist=[
                 "Store the Product Event Key only in the product backend secret store",
                 "Persist Partizan attribution in a first-party server-side session or user record",
                 "Use one stable UUID event_id per real business event and reuse it on retries",
                 "Verify one representative payload through /distribution-events/verify",
                 "Send real business events through /distribution-events from the product backend",
+                "For Telegram bots, send BOT_START with the deep-link start value as referral_token",
                 "Keep SIGNUP, ACTIVATED and PAID semantics stable across experiments",
             ],
             outbox_guidance=[
