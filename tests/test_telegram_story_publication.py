@@ -353,3 +353,32 @@ def test_story_draft_is_invalidated_when_profile_pack_changes() -> None:
                 expected_fingerprint=created.fingerprint,
             ),
         )
+
+
+@pytest.mark.asyncio
+async def test_deleted_story_pack_cannot_start_second_story_experiment() -> None:
+    service, publish, _, pack = _service()
+    _, approved = _approved(service, pack)
+    published = await service.publish(
+        pack.project_id,
+        "customer-token",
+        approved.id,
+        TelegramStoryPublicationPublishRequest(
+            confirm_publish=True,
+            expected_fingerprint=approved.fingerprint,
+        ),
+    )
+    await service.delete(
+        pack.project_id,
+        "customer-token",
+        published.id,
+        TelegramStoryPublicationDeleteRequest(confirm_delete=True),
+    )
+
+    with pytest.raises(TelegramStoryPublicationError, match="new profile pack"):
+        service.create(
+            pack.project_id,
+            "customer-token",
+            pack.id,
+            _request(),
+        )
