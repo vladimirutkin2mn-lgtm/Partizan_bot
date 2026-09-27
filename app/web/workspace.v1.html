@@ -58,7 +58,17 @@
       </div>
     </section>
 
-    <section id="loading" class="loading-card"><span class="spinner"></span><div><strong>Opening your Partizan workspace…</strong><small>Your project, performance and channel controls are loading.</small></div></section>
+    <section id="loading" class="loading-card">
+      <span id="workspace-loading-spinner" class="spinner"></span>
+      <div>
+        <strong id="workspace-loading-title">Opening your Partizan workspace…</strong>
+        <small id="workspace-loading-copy">Your project, performance and channel controls are loading.</small>
+        <div id="workspace-loading-actions" class="hidden" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <button id="workspace-loading-retry" class="button button-primary" type="button">Try again →</button>
+          <button id="workspace-loading-signout" class="button button-secondary" type="button">Sign out</button>
+        </div>
+      </div>
+    </section>
 
     <div id="workspace" class="hidden"><section class="ws-page-heading">
           <div>
