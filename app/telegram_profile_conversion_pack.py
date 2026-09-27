@@ -234,7 +234,7 @@ class TelegramProfileConversionPackService:
         customer_token: str,
         payload: TelegramProfilePackCreateRequest,
     ) -> TelegramProfilePackView:
-        project, action, experiment = self._validated_scope(
+        _, action, experiment = self._validated_scope(
             project_id,
             customer_token,
             payload.action_id,
