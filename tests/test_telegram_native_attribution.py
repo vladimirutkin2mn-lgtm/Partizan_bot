@@ -195,6 +195,36 @@ async def test_sync_ingests_cumulative_join_count_for_exact_experiment() -> None
 
 
 @pytest.mark.asyncio
+async def test_internal_action_sync_reuses_bound_native_attribution() -> None:
+    pack = _pack()
+    packs = FakePackService(pack)
+    publish = FakeInvitePublishService()
+    analytics = FakeAnalyticsService()
+    service = TelegramNativeAttributionService(
+        store=MemoryRuntimeStateStore(),
+        pack_service=packs,
+        publish_service=publish,
+        analytics_service=analytics,
+    )
+    await service.provision_channel_invite(
+        pack.project_id,
+        "customer-token",
+        pack.id,
+    )
+
+    publish.usage = 2
+    synced = await service.sync_for_action_internal(
+        pack.project_id,
+        pack.action_id,
+    )
+
+    assert synced is not None
+    assert synced.join_count == 2
+    assert synced.attributed_join_count == 2
+    assert analytics.events[0].event_type == "JOIN"
+
+
+@pytest.mark.asyncio
 async def test_repeated_sync_with_same_usage_does_not_create_duplicate_join_event() -> None:
     pack = _pack()
     packs = FakePackService(pack)
