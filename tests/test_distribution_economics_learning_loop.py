@@ -11,7 +11,14 @@ from app.distribution_analytics_service import (
     distribution_analytics_service,
 )
 from app.distribution_control_plane_service import distribution_control_plane_service
-from app.distribution_execution_service import distribution_execution_service
+from app.distribution_execution_schemas import (
+    DistributionExperimentStatus,
+    DistributionExperimentView,
+)
+from app.distribution_execution_service import (
+    DISTRIBUTION_EXPERIMENT_NAMESPACE,
+    distribution_execution_service,
+)
 from app.distribution_growth_manager_service import distribution_growth_manager_service
 from app.distribution_play_service import distribution_play_service
 from app.icp_service import icp_service
@@ -20,6 +27,7 @@ from app.managed_distribution import managed_distribution_service
 from app.opportunity_enrichment import opportunity_enrichment_service
 from app.product_intake import product_intake_service
 from app.runtime_store import get_runtime_store
+from app.distribution_types import AttributionLevel
 
 client = TestClient(app)
 
@@ -107,6 +115,33 @@ def _event(experiment_id: str, event_type: str, **fields) -> dict:
     response = client.post("/v1/distribution-analytics/events", json=payload)
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def test_product_analytics_skips_orphaned_experiment_dependencies() -> None:
+    product_id = UUID(_product())
+    orphan = DistributionExperimentView(
+        id=uuid4(),
+        product_id=product_id,
+        distribution_play_id=uuid4(),
+        opportunity_id=uuid4(),
+        action_id=uuid4(),
+        status=DistributionExperimentStatus.DRAFT,
+        attribution_level=AttributionLevel.ACTION,
+        tracking_url="https://example.com/orphan",
+        referral_token="orphan-referral",
+    )
+    get_runtime_store().put(
+        DISTRIBUTION_EXPERIMENT_NAMESPACE,
+        str(orphan.id),
+        orphan.model_dump(mode="json"),
+    )
+
+    analytics = distribution_analytics_service.product_analytics(product_id)
+
+    assert analytics.experiment_count == 0
+    assert analytics.total_spend == 0
+    with pytest.raises(KeyError):
+        distribution_analytics_service.experiment_analytics(orphan.id)
 
 
 def test_cost_categories_keep_non_observed_and_internal_cost_out_of_customer_economics() -> None:
