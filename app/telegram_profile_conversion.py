@@ -436,9 +436,7 @@ class TelegramProfileConversionService:
         expected: TelegramProfileSnapshot,
         changed_fields: list[str],
     ) -> bool:
-        if "about" in changed_fields and self._normal_text(actual.about) != self._normal_text(
-            expected.about
-        ):
+        if "about" in changed_fields and actual.about != expected.about:
             return False
         if "display_name" in changed_fields and (
             actual.first_name != expected.first_name or actual.last_name != expected.last_name
