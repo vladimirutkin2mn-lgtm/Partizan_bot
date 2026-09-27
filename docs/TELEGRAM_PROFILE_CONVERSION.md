@@ -193,6 +193,7 @@ A pack may also be `ARCHIVED` when it is not applied.
 Each pack has a deterministic fingerprint over:
 
 - project/product/action/experiment identity;
+- an exact fingerprint of the bound Telegram action target and content;
 - mode;
 - name;
 - display name;
@@ -202,6 +203,8 @@ Each pack has a deterministic fingerprint over:
 - story flag.
 
 Approval requires the browser to send the exact fingerprint it reviewed. Editing a DRAFT or READY pack resets approval and produces a new fingerprint. Apply requires the same fingerprint to still be both current and approved.
+
+If the bound Telegram action target or content changes after pack creation, the pack is stale and must be recreated. Applying a pack is permitted only after the Telegram action itself reaches `APPROVED`, so Partizan does not mutate the customer's live profile for an unapproved message.
 
 This mirrors the exact-review protection already used by Telegram publishing.
 
