@@ -148,7 +148,12 @@ class TelegramStoryPublicationService:
                 "Review the Telegram profile pack before preparing a story"
             )
         existing = self._for_pack(project_id, pack.id)
-        if existing is not None and existing.status != TelegramStoryPublicationStatus.DELETED:
+        if existing is not None:
+            if existing.status == TelegramStoryPublicationStatus.DELETED:
+                raise TelegramStoryPublicationError(
+                    "This profile pack already completed a story experiment; "
+                    "create a new profile pack for another story variant"
+                )
             return existing
 
         publication_id = uuid4()
