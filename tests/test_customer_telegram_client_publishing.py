@@ -30,8 +30,6 @@ from app.telegram_client_publishing import (
     customer_telegram_client_publish_service,
 )
 from app.telegram_profile_conversion_pack import (
-    TelegramProfileCTAType,
-    TelegramProfilePackCreateRequest,
     telegram_profile_conversion_pack_service,
 )
 
@@ -508,19 +506,19 @@ def test_customer_publish_waits_for_bound_profile_pack_to_be_applied() -> None:
     _bind_project_to_product(preview.project_id, product_id)
     _select_client_owned(client, preview.project_id)
 
-    pack = telegram_profile_conversion_pack_service.create(
-        preview.project_id,
-        preview.customer_token,
-        TelegramProfilePackCreateRequest(
-            action_id=UUID(action_id),
-            name="Oracle profile",
-            display_name="Founder | Oracle",
-            bio="Oracle ↓\nhttps://t.me/oracle_demo",
-            cta_type=TelegramProfileCTAType.TELEGRAM_PUBLIC_LINK,
-            cta_value="https://t.me/oracle_demo",
-        ),
+    created = client.post(
+        f"/customer/workspace/{preview.project_id}/telegram/profile-packs",
+        json={
+            "action_id": action_id,
+            "name": "Oracle profile",
+            "display_name": "Founder | Oracle",
+            "bio": "Oracle ↓\nhttps://t.me/oracle_demo",
+            "cta_type": "TELEGRAM_PUBLIC_LINK",
+            "cta_value": "https://t.me/oracle_demo",
+        },
     )
-    assert pack.status.value == "DRAFT"
+    assert created.status_code == 201
+    assert created.json()["status"] == "DRAFT"
 
     response = client.post(
         f"/customer/workspace/{preview.project_id}/telegram/actions/{action_id}/publish",
