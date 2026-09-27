@@ -54,6 +54,7 @@ class ExperimentMetricsView(BaseModel):
     visits: int = Field(ge=0)
     joins: int = Field(default=0, ge=0)
     bot_starts: int = Field(default=0, ge=0)
+    story_views: int = Field(default=0, ge=0)
     signups: int = Field(ge=0)
     activated_users: int = Field(ge=0)
     paid_users: int = Field(ge=0)

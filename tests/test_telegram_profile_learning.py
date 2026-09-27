@@ -69,6 +69,7 @@ def _analytics(**overrides):
         "visits": 0,
         "joins": 0,
         "bot_starts": 0,
+        "story_views": 0,
         "signups": 0,
         "activated_users": 0,
         "paid_users": 0,
@@ -98,6 +99,7 @@ def test_profile_learning_combines_profile_message_and_deepest_conversion_signal
                 pack.experiment_id: _analytics(
                     visits=12,
                     joins=4,
+                    story_views=18,
                     signups=2,
                     activated_users=1,
                     revenue=0,
@@ -119,6 +121,7 @@ def test_profile_learning_combines_profile_message_and_deepest_conversion_signal
     assert row.native_attribution_kind == "CHANNEL_INVITE"
     assert row.visits == 12
     assert row.joins == 4
+    assert row.story_views == 18
     assert row.signups == 2
     assert row.activated_users == 1
     assert row.deepest_signal == TelegramProfileLearningSignal.ACTIVATED

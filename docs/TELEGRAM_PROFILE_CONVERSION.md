@@ -182,7 +182,30 @@ The customer workspace endpoint is:
 
 This slice intentionally does not auto-select a winner yet. It creates the comparable observations needed for later allocation across Partizan-managed identities and profile variants without conflating a message experiment with a profile experiment.
 
-Stories are the next PR 4 slice. They will add a proxy-signal surface for scenarios where direct `JOIN` / `BOT_START` attribution is not available.
+Stories are a separate proxy-signal surface for scenarios where direct `JOIN` / `BOT_START` attribution is not available.
+
+### Story proxy signals
+
+A Telegram story is not treated as a conversion. It is an attention proxy attached to the exact profile treatment and experiment.
+
+The first story slice deliberately separates three things:
+
+1. profile mutation;
+2. story publication;
+3. story observation.
+
+An existing customer-owned story may be attached only after the reviewed ProfileConversionPack is `APPLIED`, with explicit confirmation. The attachment stores the Telegram `story_id` but does not publish or edit a story.
+
+Provider observations feed cumulative view counts through an internal adapter. Partizan persists the highest observed count and emits deterministic `STORY_VIEW` analytics events with `properties.count`, so retries and repeated snapshots do not inflate the metric. If the experiment is not measurable yet, the provider count is retained and attribution remains pending until a later observation.
+
+Customer endpoints:
+
+- `POST /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/story-signal`
+- `GET /customer/workspace/{project_id}/telegram/profile-packs/{pack_id}/story-signal`
+
+`story_views` is exposed alongside profile/message/CTA learning, but it is intentionally not promoted into the deepest conversion signal: a story view is weaker evidence than a product visit, join, bot start, signup or paid conversion.
+
+Actual story creation/publishing remains a separate adapter milestone because it mutates a public Telegram surface and must preserve the same approval and rollback discipline as profile changes.
 
 ## Non-goals of PR 1
 

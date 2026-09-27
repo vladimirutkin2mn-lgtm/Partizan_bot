@@ -46,6 +46,7 @@ class TelegramProfileLearningRow(BaseModel):
     visits: int = Field(default=0, ge=0)
     joins: int = Field(default=0, ge=0)
     bot_starts: int = Field(default=0, ge=0)
+    story_views: int = Field(default=0, ge=0)
     signups: int = Field(default=0, ge=0)
     activated_users: int = Field(default=0, ge=0)
     paid_users: int = Field(default=0, ge=0)
@@ -124,6 +125,7 @@ class TelegramProfileLearningService:
             visits = int(metrics.visits) if metrics is not None else 0
             joins = int(metrics.joins) if metrics is not None else 0
             bot_starts = int(metrics.bot_starts) if metrics is not None else 0
+            story_views = int(metrics.story_views) if metrics is not None else 0
             signups = int(metrics.signups) if metrics is not None else 0
             activated = int(metrics.activated_users) if metrics is not None else 0
             paid = int(metrics.paid_users) if metrics is not None else 0
@@ -155,6 +157,7 @@ class TelegramProfileLearningService:
                     visits=visits,
                     joins=joins,
                     bot_starts=bot_starts,
+                    story_views=story_views,
                     signups=signups,
                     activated_users=activated,
                     paid_users=paid,
