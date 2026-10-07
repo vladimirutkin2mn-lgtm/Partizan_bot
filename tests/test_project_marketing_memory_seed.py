@@ -48,7 +48,7 @@ def test_reviewed_marketing_memory_seed_is_idempotent(tmp_path, monkeypatch) -> 
         "get_product",
         lambda resolved_product_id: SimpleNamespace(
             id=resolved_product_id,
-            name="FemDom",
+            name="FemDom — private Telegram community",
         ),
     )
     args = argparse.Namespace(
@@ -64,8 +64,20 @@ def test_reviewed_marketing_memory_seed_is_idempotent(tmp_path, monkeypatch) -> 
 
     assert first["status"] == "APPLIED"
     assert first["entry_count"] == 1
+    assert first["product_name"] == "FemDom — private Telegram community"
+    assert first["expected_product_name"] == "FemDom"
     assert second["status"] == "ALREADY_APPLIED"
     rows = memory._entries_for_project(project_id)
     assert len(rows) == 1
     assert rows[0].source == ProjectMarketingMemorySource.CUSTOMER_CONFIRMED
     assert rows[0].confidence == 1.0
+
+
+def test_product_name_guard_requires_expected_name_to_be_present() -> None:
+    assert seed_module._product_name_matches(
+        "FemDom — private Telegram community",
+        "FemDom",
+    )
+    assert seed_module._product_name_matches("FEMDOM", "femdom")
+    assert not seed_module._product_name_matches("Different product", "FemDom")
+    assert not seed_module._product_name_matches("FemDom", "")
