@@ -1,0 +1,46 @@
+[
+  {
+    "key": "telegram-profile-presentation",
+    "category": "CUSTOMER_PREFERENCE",
+    "statement": "For this campaign, do not keep a male-presenting Telegram profile identity. Use a female-presenting profile identity that fits the target community.",
+    "platform": "TELEGRAM",
+    "tags": ["profile", "identity", "customer-review"]
+  },
+  {
+    "key": "telegram-bio-cta",
+    "category": "CUSTOMER_PREFERENCE",
+    "statement": "Do not use a weak label-only bio such as 'FemDom ↓'. Use either the native destination link alone or a stronger concise CTA that gives the visitor a reason to click.",
+    "platform": "TELEGRAM",
+    "tags": ["profile", "bio", "cta", "customer-review"]
+  },
+  {
+    "key": "telegram-first-experiment-story",
+    "category": "CURRENT_STRATEGY",
+    "statement": "Include one reviewed Telegram story in the first experiment instead of deferring story exposure to a later arm.",
+    "platform": "TELEGRAM",
+    "tags": ["story", "first-experiment", "customer-review"]
+  },
+  {
+    "key": "telegram-comment-style",
+    "category": "CHANNEL_PLAYBOOK",
+    "statement": "Avoid dry, lecture-like or safety-checklist comments. The comment should feel native, conversational, curiosity-building and non-explicit while still being useful in context.",
+    "platform": "TELEGRAM",
+    "action_type": "COMMENT",
+    "tags": ["comment", "tone", "customer-review"]
+  },
+  {
+    "key": "telegram-rejected-comment-2026-10-07",
+    "category": "CUSTOMER_PREFERENCE",
+    "statement": "The previous comment centered on documentation, consent rules, stop signals, photo policy and a sober responsible contact was explicitly rejected by the customer and should not be reused or closely paraphrased.",
+    "platform": "TELEGRAM",
+    "action_type": "COMMENT",
+    "tags": ["comment", "rejected", "customer-review"]
+  },
+  {
+    "key": "telegram-avatar-direction",
+    "category": "BRAND_TONE",
+    "statement": "For this community, the avatar should use a sensual editorial, light-erotic visual direction that makes the profile worth opening, while remaining non-explicit and not impersonating a real person.",
+    "platform": "TELEGRAM",
+    "tags": ["avatar", "visual", "customer-review"]
+  }
+]
