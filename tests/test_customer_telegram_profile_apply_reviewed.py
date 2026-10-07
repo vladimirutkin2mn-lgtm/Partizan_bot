@@ -143,3 +143,30 @@ async def test_reviewed_profile_apply_rejects_publish_authorization(tmp_path) ->
 
     with pytest.raises(ValueError, match="cannot authorize community publication"):
         module._load_config(config_path)
+
+
+def test_reviewed_profile_binary_avatar_asset_is_hash_verified(tmp_path) -> None:
+    avatar = b"binary-approved-avatar"
+    avatar_path = tmp_path / "avatar.jpg"
+    avatar_path.write_bytes(avatar)
+    config = {
+        "schema_version": 1,
+        "operation_id": "reviewed-profile-binary-v1",
+        "proposal_id": "proposal-v1",
+        "authorization_scope": "PROFILE_ONLY",
+        "display_name": "Nika",
+        "about": "То, что не пишу в комментариях ↓\nhttps://t.me/example",
+        "native_destination": "https://t.me/example",
+        "avatar_file": str(avatar_path),
+        "avatar_filename": "avatar.jpg",
+        "avatar_sha256": hashlib.sha256(avatar).hexdigest(),
+        "story_publish_authorized": False,
+        "community_publish_authorized": False,
+        "community_publish_authorization_phrase": "разрешаю отправку",
+    }
+    config_path = tmp_path / "profile-binary.json"
+    config_path.write_text(json.dumps(config, ensure_ascii=False), encoding="utf-8")
+
+    loaded = module._load_config(config_path)
+
+    assert module._avatar_bytes(loaded, config_path=config_path) == avatar
