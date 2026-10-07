@@ -50,7 +50,6 @@ def _load_config(path: Path) -> dict:
         "display_name",
         "about",
         "native_destination",
-        "avatar_b64_file",
         "avatar_filename",
         "avatar_sha256",
     }
@@ -69,15 +68,41 @@ def _load_config(path: Path) -> dict:
         raise ValueError("Reviewed bio must contain the exact native destination")
     if len(str(payload["about"]).strip()) > 70:
         raise ValueError("Reviewed Telegram bio exceeds the conservative limit")
+
+    single_file = str(payload.get("avatar_b64_file") or "").strip()
+    chunks = payload.get("avatar_b64_chunks")
+    if chunks is None:
+        chunks = []
+    if not isinstance(chunks, list) or any(not str(item).strip() for item in chunks):
+        raise ValueError("Reviewed avatar chunk list must contain non-empty paths")
+    if bool(single_file) == bool(chunks):
+        raise ValueError("Reviewed profile must define exactly one avatar payload source")
     return payload
 
 
+def _repository_path(config_path: Path, value: str) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    repository_root = config_path.resolve().parents[2]
+    return repository_root / path
+
+
 def _avatar_bytes(config: dict, *, config_path: Path) -> bytes:
-    avatar_path = Path(str(config["avatar_b64_file"]))
-    if not avatar_path.is_absolute():
-        repository_root = config_path.resolve().parents[2]
-        avatar_path = repository_root / avatar_path
-    encoded = "".join(avatar_path.read_text(encoding="ascii").split())
+    chunk_paths = [str(item).strip() for item in config.get("avatar_b64_chunks") or []]
+    if chunk_paths:
+        encoded = "".join(
+            "".join(
+                _repository_path(config_path, item)
+                .read_text(encoding="ascii")
+                .split()
+            )
+            for item in chunk_paths
+        )
+    else:
+        avatar_path = _repository_path(config_path, str(config["avatar_b64_file"]))
+        encoded = "".join(avatar_path.read_text(encoding="ascii").split())
+
     content = base64.b64decode(encoded, validate=True)
     actual_sha = hashlib.sha256(content).hexdigest()
     expected_sha = str(config["avatar_sha256"]).strip().casefold()
