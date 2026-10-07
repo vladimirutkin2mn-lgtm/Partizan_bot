@@ -86,7 +86,7 @@ jobs:
           printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Prepare exact profile and comment bundle for user review only
+      - name: Prepare exact profile, story and comment bundle for user review only
         if: ${{ steps.freshness.outputs.bundle_allowed == 'true' }}
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -99,4 +99,5 @@ jobs:
               --expected-product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
               --expected-product-name FemDom \
               --expected-telegram-entity-id 1642699396 \
-              --expected-handle a_sfera"
+              --expected-handle a_sfera \
+              --review-config ops/femdom/telegram_review_v2.json"

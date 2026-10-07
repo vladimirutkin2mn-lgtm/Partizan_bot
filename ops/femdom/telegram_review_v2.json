@@ -1,0 +1,18 @@
+{
+  "proposal_id": "femdom-telegram-review-v2",
+  "display_name": "Nika",
+  "bio_cta_line": "То, что не пишу в комментариях ↓",
+  "avatar": {
+    "change_recommended": true,
+    "visual_direction": "Dark premium sensual editorial portrait, female-presenting, close crop, intriguing at small circular-avatar size, non-explicit, no impersonation of a real person."
+  },
+  "story": {
+    "first_experiment": "INCLUDE",
+    "copy": "Если ты уже здесь — значит, любопытство победило.\n\nПродолжение в bio ↓",
+    "visual_direction": "Same dark premium sensual editorial language as the avatar, slightly wider composition with room for short copy, non-explicit."
+  },
+  "recommended_comment": {
+    "conversion_mechanism": "PROFILE_CLICK",
+    "variant_name": "non_obvious_lens"
+  }
+}

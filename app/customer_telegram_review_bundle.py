@@ -5,12 +5,16 @@ import asyncio
 import hashlib
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import UUID
+
+from pydantic import BaseModel, Field, field_validator
 
 from app.customer_telegram_preview import (
     PREVIEW_SCHEMA_VERSION,
     TELEGRAM_PREVIEW_NAMESPACE,
+    _marketing_memory_state,
     _preview_key,
     _render_preview,
     _validate_existing_preview,
@@ -19,8 +23,46 @@ from app.customer_telegram_rollout import _load_exact_target
 from app.telegram_client_publishing import customer_telegram_client_publish_service
 
 TELEGRAM_REVIEW_BUNDLE_NAMESPACE = "customer_telegram_review_bundle"
-REVIEW_BUNDLE_SCHEMA_VERSION = 1
+REVIEW_BUNDLE_SCHEMA_VERSION = 2
 _MAX_PROFILE_ABOUT_LENGTH = 70
+
+
+class TelegramReviewAvatarConfig(BaseModel):
+    change_recommended: bool = True
+    visual_direction: str = Field(min_length=5, max_length=1000)
+
+
+class TelegramReviewStoryConfig(BaseModel):
+    first_experiment: str = Field(min_length=2, max_length=20)
+    copy: str = Field(min_length=1, max_length=1024)
+    visual_direction: str = Field(min_length=5, max_length=1000)
+
+    @field_validator("first_experiment")
+    @classmethod
+    def normalize_first_experiment(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in {"INCLUDE", "DEFER"}:
+            raise ValueError("Story first_experiment must be INCLUDE or DEFER")
+        return normalized
+
+
+class TelegramReviewCommentConfig(BaseModel):
+    conversion_mechanism: str = Field(min_length=2, max_length=50)
+    variant_name: str = Field(min_length=2, max_length=120)
+
+    @field_validator("conversion_mechanism")
+    @classmethod
+    def normalize_mechanism(cls, value: str) -> str:
+        return value.strip().upper()
+
+
+class TelegramReviewConfig(BaseModel):
+    proposal_id: str = Field(min_length=2, max_length=120)
+    display_name: str | None = Field(default=None, max_length=64)
+    bio_cta_line: str | None = Field(default=None, max_length=120)
+    avatar: TelegramReviewAvatarConfig | None = None
+    story: TelegramReviewStoryConfig | None = None
+    recommended_comment: TelegramReviewCommentConfig | None = None
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,11 +77,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-product-name", required=True)
     parser.add_argument("--expected-telegram-entity-id", type=int, required=True)
     parser.add_argument("--expected-handle", required=True)
+    parser.add_argument("--review-config", type=Path)
     return parser
 
 
 def _bundle_key(project_id: UUID, entity_id: int) -> str:
     return f"{project_id}:{entity_id}:v{REVIEW_BUNDLE_SCHEMA_VERSION}"
+
+
+def _load_review_config(path: Path | None) -> TelegramReviewConfig | None:
+    if path is None:
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return TelegramReviewConfig.model_validate(payload)
 
 
 def _is_partizan_url(value: str) -> bool:
@@ -72,19 +122,39 @@ def _native_destination(reference_links: list[str]) -> str:
     )
 
 
-def _profile_about(product_name: str, destination: str) -> str:
-    proposed = f"{product_name.strip()} ↓\n{destination.strip()}".strip()
+def _profile_about(
+    product_name: str,
+    destination: str,
+    cta_line: str | None = None,
+) -> str:
+    label = str(cta_line or "").strip() or f"{product_name.strip()} ↓"
+    proposed = f"{label}\n{destination.strip()}".strip()
     if len(proposed) > _MAX_PROFILE_ABOUT_LENGTH:
         raise ValueError("Native Telegram profile CTA exceeds the conservative bio limit")
     return proposed
 
 
-def _recommended_variant(variants: list[dict]) -> dict:
+def _recommended_variant(
+    variants: list[dict],
+    config: TelegramReviewCommentConfig | None = None,
+) -> dict:
     if not variants:
         raise ValueError("Telegram review has no prepared comment variants")
 
     sendable = [item for item in variants if bool(item.get("send_eligible"))]
     pool = sendable or variants
+    if config is not None:
+        configured = [
+            item
+            for item in pool
+            if str(item.get("conversion_mechanism") or "").upper()
+            == config.conversion_mechanism
+            and str(item.get("variant_name") or "") == config.variant_name
+        ]
+        if configured:
+            return configured[0]
+        raise ValueError("Configured recommended comment variant was not prepared")
+
     preferred = [
         item
         for item in pool
@@ -108,6 +178,8 @@ def _review_hash(payload: dict) -> str:
     material = {
         "project_id": payload["project_id"],
         "product_id": payload["product_id"],
+        "proposal_id": payload.get("proposal_id"),
+        "marketing_memory_fingerprint": payload.get("marketing_memory_fingerprint"),
         "target_url": payload["target_url"],
         "native_destination": payload["native_destination"],
         "proposed_profile": payload["proposed_profile"],
@@ -126,6 +198,8 @@ def _review_hash(payload: dict) -> str:
 
 async def run(args: argparse.Namespace) -> dict:
     store, _, product, _, _, target_url = _load_exact_target(args)
+    config = _load_review_config(args.review_config)
+    memory_fingerprint, memory_entry_ids = _marketing_memory_state(product.id)
     preview_key = _preview_key(args.project_id, args.expected_telegram_entity_id)
     preview = store.get(TELEGRAM_PREVIEW_NAMESPACE, preview_key)
     if preview is None:
@@ -134,37 +208,79 @@ async def run(args: argparse.Namespace) -> dict:
         raise ValueError("Telegram human preview is stale")
     if str(preview.get("status") or "") != "AWAITING_USER_APPROVAL":
         raise ValueError("Telegram human preview is not awaiting user approval")
-    _validate_existing_preview(preview)
+    _validate_existing_preview(
+        preview,
+        expected_memory_fingerprint=memory_fingerprint,
+    )
 
     rendered = _render_preview(preview)
-    recommended = _recommended_variant(list(rendered.get("variants") or []))
+    recommended = _recommended_variant(
+        list(rendered.get("variants") or []),
+        config.recommended_comment if config is not None else None,
+    )
     destination = _native_destination(list(product.reference_links or []))
     current_profile = await customer_telegram_client_publish_service.profile_internal(
         args.project_id
     )
-    proposed_about = _profile_about(args.expected_product_name, destination)
+    proposed_about = _profile_about(
+        args.expected_product_name,
+        destination,
+        config.bio_cta_line if config is not None else None,
+    )
+    proposed_display_name = (
+        str(config.display_name or "").strip()
+        if config is not None and config.display_name is not None
+        else current_profile.display_name
+    )
+    avatar_config = config.avatar if config is not None else None
+    story_config = config.story if config is not None else None
+
+    if story_config is not None and story_config.first_experiment == "INCLUDE":
+        story_plan = {
+            "first_experiment": "INCLUDE",
+            "status": "AWAITING_CREATIVE_REVIEW",
+            "copy": story_config.copy,
+            "visual_direction": story_config.visual_direction,
+            "published": False,
+        }
+    else:
+        story_plan = {
+            "first_experiment": "DEFER",
+            "reason": (
+                "Story exposure is not part of the currently reviewed bundle configuration."
+            ),
+            "published": False,
+        }
 
     payload = {
         "schema_version": REVIEW_BUNDLE_SCHEMA_VERSION,
         "status": "AWAITING_USER_REVIEW",
+        "proposal_id": config.proposal_id if config is not None else None,
         "project_id": str(args.project_id),
         "product_id": str(product.id),
         "product_name": args.expected_product_name,
         "target_url": target_url,
         "target_handle": args.expected_handle,
         "native_destination": destination,
+        "marketing_memory_fingerprint": memory_fingerprint,
+        "marketing_memory_entry_ids": memory_entry_ids,
         "current_profile": {
             "display_name": current_profile.display_name,
             "about": current_profile.about,
             "avatar_present": current_profile.avatar is not None,
         },
         "proposed_profile": {
-            "display_name": current_profile.display_name,
+            "display_name": proposed_display_name,
             "about": proposed_about,
             "cta": destination,
             "avatar": {
-                "change_recommended": True,
+                "change_recommended": (
+                    avatar_config.change_recommended if avatar_config is not None else True
+                ),
                 "status": "AWAITING_CREATIVE_REVIEW",
+                "visual_direction": (
+                    avatar_config.visual_direction if avatar_config is not None else None
+                ),
                 "reason": (
                     "Avatar is part of the profile conversion treatment, but no avatar "
                     "may be changed before the user sees and approves the exact creative."
@@ -193,14 +309,7 @@ async def run(args: argparse.Namespace) -> dict:
             for item in list(rendered.get("variants") or [])
             if item.get("action_id") != recommended.get("action_id")
         ],
-        "story_plan": {
-            "first_experiment": "DEFER",
-            "reason": (
-                "Do not mix story exposure into the first comment/profile experiment. "
-                "Prepare it as a separate reviewed arm after the profile/avatar treatment "
-                "has been approved."
-            ),
-        },
+        "story_plan": story_plan,
         "safety": {
             "profile_mutated": False,
             "comment_published": False,
