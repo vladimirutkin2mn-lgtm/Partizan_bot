@@ -59,6 +59,29 @@ operator_router = APIRouter(
 customer_router = APIRouter(tags=["customer-managed-distribution"])
 
 
+def _require_exact_managed_telegram_profile_strategy(assignment_id: UUID) -> None:
+    try:
+        assignment = managed_distribution_service.get_assignment(assignment_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Managed assignment not found") from exc
+    if not assignment.profile_strategy_key:
+        return
+    try:
+        applied = managed_telegram_profile_strategy_service.is_exact_strategy_applied(
+            assignment_id
+        )
+    except ManagedTelegramProfileStrategyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if not applied:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The exact managed Telegram profile strategy for this assignment "
+                "must be APPLIED before preview or execution"
+            ),
+        )
+
+
 @operator_router.post(
     "/managed-distribution/publishers",
     response_model=ManagedPublisherView,
@@ -296,6 +319,7 @@ def preview_managed_telegram_action(
     assignment_id: UUID,
     payload: ManagedTelegramActionPreviewRequest,
 ) -> ManagedTelegramActionPreview:
+    _require_exact_managed_telegram_profile_strategy(assignment_id)
     try:
         return managed_telegram_execution_service.preview(assignment_id, payload)
     except ManagedTelegramExecutionError as exc:
@@ -310,6 +334,7 @@ async def execute_managed_telegram_action(
     assignment_id: UUID,
     payload: ManagedTelegramExecuteRequest,
 ) -> ManagedTelegramExecutionReceipt:
+    _require_exact_managed_telegram_profile_strategy(assignment_id)
     try:
         return await managed_telegram_execution_service.execute(
             assignment_id,
