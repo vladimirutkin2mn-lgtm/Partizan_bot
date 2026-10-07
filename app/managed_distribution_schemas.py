@@ -25,6 +25,14 @@ class ManagedPublisherHealth(StrEnum):
     RETIRED = "RETIRED"
 
 
+class ManagedPublisherPersona(StrEnum):
+    EXPERT = "EXPERT"
+    CASUAL_HUMAN = "CASUAL_HUMAN"
+    NICHE_ENTHUSIAST = "NICHE_ENTHUSIAST"
+    AESTHETIC = "AESTHETIC"
+    DISCUSSION_STARTER = "DISCUSSION_STARTER"
+
+
 class ManagedAssignmentStatus(StrEnum):
     RESERVED = "RESERVED"
     FULFILLED = "FULFILLED"
@@ -43,6 +51,8 @@ class ManagedPublisherRegistrationRequest(BaseModel):
     daily_action_capacity: int = Field(default=3, ge=1, le=20)
     prior_outcome_score: float = Field(default=50, ge=0, le=100)
     last_activity_at: datetime | None = None
+    persona: ManagedPublisherPersona | None = None
+    profile_strategy_key: str | None = Field(default=None, min_length=2, max_length=120)
     management_authorization_confirmed: bool = False
     partner_reference: str | None = Field(default=None, max_length=160)
 
@@ -74,6 +84,8 @@ class ManagedPublisherView(BaseModel):
     daily_action_capacity: int = Field(ge=1, le=20)
     prior_outcome_score: float = Field(ge=0, le=100)
     last_activity_at: datetime | None = None
+    persona: ManagedPublisherPersona | None = None
+    profile_strategy_key: str | None = None
     health: ManagedPublisherHealth
     health_reason: str | None = None
     partner_reference: str | None = None
@@ -88,12 +100,19 @@ class ManagedSelectionRequest(BaseModel):
     vertical: str = Field(min_length=1, max_length=160)
     language: str = Field(min_length=1, max_length=50)
     conflict_group: str | None = Field(default=None, max_length=160)
+    target_conflict_key: str | None = Field(default=None, min_length=2, max_length=300)
+    persona: ManagedPublisherPersona | None = None
+    profile_strategy_key: str | None = Field(default=None, min_length=2, max_length=120)
+    message_strategy: str | None = Field(default=None, min_length=2, max_length=120)
+    experiment_arm: str | None = Field(default=None, min_length=2, max_length=160)
 
 
 class ManagedSelectionCandidateView(BaseModel):
     managed_publisher_id: UUID
     distribution_identity_id: UUID
     ownership: ManagedPublisherOwnership
+    persona: ManagedPublisherPersona | None = None
+    profile_strategy_key: str | None = None
     score: float = Field(ge=0, le=100)
     capacity_remaining_24h: int = Field(ge=0)
     reasons: list[str] = Field(default_factory=list)
@@ -135,6 +154,11 @@ class ManagedAssignmentView(BaseModel):
     opportunity_id: UUID | None = None
     campaign_slot_id: UUID
     conflict_group: str | None = None
+    target_conflict_key: str | None = None
+    persona: ManagedPublisherPersona | None = None
+    profile_strategy_key: str | None = None
+    message_strategy: str | None = None
+    experiment_arm: str | None = None
     status: ManagedAssignmentStatus
     cost: ManagedCostBreakdown = Field(default_factory=ManagedCostBreakdown)
     action_id: UUID | None = None
