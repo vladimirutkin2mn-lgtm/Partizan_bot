@@ -68,6 +68,56 @@ Ranking after eligibility remains based on:
 - recent activity;
 - remaining capacity.
 
+## Guarded Telegram execution
+
+A Partizan-managed Telegram publisher may be connected only through the operator API and only when the publisher is owned by Partizan. Partner-managed inventory cannot install a direct Partizan Telegram session.
+
+The already-authorized Telegram `StringSession` is encrypted through the existing provider-secret store under a dedicated `MANAGED_TELEGRAM_SESSION_*` reference. Normal API responses expose only publisher identity, public Telegram username and verification timestamps; the session is never returned.
+
+Connection installation is fail-closed:
+
+- operator explicitly confirms management authorization;
+- the session is verified against Telegram before storage;
+- the live public username must exactly match the expected managed account;
+- reconnecting replaces and deletes the previous encrypted session;
+- a later verification fails if the session identity has changed.
+
+Execution uses a mandatory preview contract. A preview binds together:
+
+- managed assignment;
+- exact DistributionAction and experiment;
+- reserved Distribution Identity;
+- Telegram account username;
+- action type;
+- exact target URL;
+- exact content text;
+- persona/profile/message/experiment-arm metadata.
+
+Partizan computes a deterministic SHA-256 fingerprint over that material. The execute call requires both an explicit confirmation and that exact reviewed fingerprint. Any content, target, account or action change invalidates the preview before Telegram is called.
+
+Supported targets remain deliberately narrow: public `https://t.me/...` comments, replies and standalone community posts. Private invite targets are rejected.
+
+### Remote publication reconciliation
+
+Before calling Telegram, Partizan stores an `IN_PROGRESS` receipt. After Telegram confirms a remote message, Partizan first persists the remote message id, URL and timestamp as `PUBLISHED_UNRECONCILED`, then fulfills the managed assignment locally.
+
+This ordering prevents a dangerous retry case: if Telegram publishes successfully but the local fulfillment write fails, a subsequent execute call returns the existing `PUBLISHED_UNRECONCILED` receipt and **does not publish again**. An explicit reconcile operation completes the local fulfillment without sending a second Telegram message.
+
+Provider restriction signals also fail closed. When Telegram returns a restriction signal, the managed publisher is marked `RESTRICTED` so it is removed from future candidate selection until reviewed.
+
+Operator endpoints:
+
+- `PUT /managed-distribution/publishers/{publisher_id}/telegram/connection`
+- `GET /managed-distribution/publishers/{publisher_id}/telegram/connection`
+- `POST /managed-distribution/publishers/{publisher_id}/telegram/connection/verify`
+- `DELETE /managed-distribution/publishers/{publisher_id}/telegram/connection`
+- `POST /managed-distribution/assignments/{assignment_id}/telegram/preview`
+- `POST /managed-distribution/assignments/{assignment_id}/telegram/execute`
+- `POST /managed-distribution/assignments/{assignment_id}/telegram/reconcile`
+- `GET /managed-distribution/assignments/{assignment_id}/telegram/receipt`
+
+No managed Telegram publish endpoint is called by reservation, learning, profile preparation, customer workspace loading, or comment generation. Execution is a separate mutation.
+
 ## Learning contract
 
 On fulfillment, the internal managed observation records:
