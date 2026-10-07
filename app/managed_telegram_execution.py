@@ -31,7 +31,6 @@ from app.provider_secret_store import (
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.telegram_client_publishing import (
     TelegramClientPublishTransportError,
-    TelegramProfileSnapshot,
     TelegramPublishTarget,
     TelethonClientPublishTransport,
 )
