@@ -111,15 +111,13 @@ Entries are stored in `RuntimeStateStore` under namespace:
 
 Therefore database-mode production keeps the project memory across process restarts in the same durable snapshot mechanism already used by the rest of Partizan runtime state.
 
-## Prompt integration boundary
+## Prompt integration
 
-This PR deliberately separates **memory storage / conflict resolution / prompt assembly** from automatic mutation of historical product facts and from the existing action-drafting implementation.
+Action drafting now consumes the bounded memory context directly. The effective composition is:
 
-The prompt builder is now a stable interface that drafting/research/planning components can consume without storing bespoke prompts per customer. The intended composition is:
+`global Partizan rules + ProductProfile + applicable ProjectMarketingMemory + current opportunity + experiment strategy -> action draft`
 
-`global Partizan rules + ProductProfile + ProjectMarketingMemory + current opportunity + experiment strategy -> action draft`
-
-The next integration slice can inject `prompt_context_for_product(...)` into action drafting without changing the memory persistence model.
+Memory is inserted as user context, not as system instructions. The full integration contract and regression coverage are documented in `docs/PROJECT_MARKETING_MEMORY_DRAFTING.md`.
 
 No memory entry can authorize external publication. Telegram comment/story publication remains governed by its existing explicit approval flows.
 
