@@ -50,13 +50,18 @@ def _load_config(path: Path) -> dict:
         "display_name",
         "about",
         "native_destination",
-        "avatar_b64_file",
         "avatar_filename",
         "avatar_sha256",
     }
     missing = sorted(required.difference(payload))
     if missing:
         raise ValueError(f"Reviewed profile config is missing fields: {missing}")
+    avatar_file = str(payload.get("avatar_file") or "").strip()
+    avatar_b64_file = str(payload.get("avatar_b64_file") or "").strip()
+    if bool(avatar_file) == bool(avatar_b64_file):
+        raise ValueError(
+            "Reviewed profile config must set exactly one of avatar_file or avatar_b64_file"
+        )
     if int(payload.get("schema_version") or 0) != 1:
         raise ValueError("Unsupported reviewed profile config schema")
     if str(payload["authorization_scope"]) != "PROFILE_ONLY":
@@ -72,13 +77,25 @@ def _load_config(path: Path) -> dict:
     return payload
 
 
-def _avatar_bytes(config: dict, *, config_path: Path) -> bytes:
-    avatar_path = Path(str(config["avatar_b64_file"]))
-    if not avatar_path.is_absolute():
+def _resolve_asset_path(value: str, *, config_path: Path) -> Path:
+    asset_path = Path(value)
+    if not asset_path.is_absolute():
         repository_root = config_path.resolve().parents[2]
-        avatar_path = repository_root / avatar_path
-    encoded = "".join(avatar_path.read_text(encoding="ascii").split())
-    content = base64.b64decode(encoded, validate=True)
+        asset_path = repository_root / asset_path
+    return asset_path
+
+
+def _avatar_bytes(config: dict, *, config_path: Path) -> bytes:
+    avatar_file = str(config.get("avatar_file") or "").strip()
+    if avatar_file:
+        content = _resolve_asset_path(avatar_file, config_path=config_path).read_bytes()
+    else:
+        avatar_path = _resolve_asset_path(
+            str(config["avatar_b64_file"]),
+            config_path=config_path,
+        )
+        encoded = "".join(avatar_path.read_text(encoding="ascii").split())
+        content = base64.b64decode(encoded, validate=True)
     actual_sha = hashlib.sha256(content).hexdigest()
     expected_sha = str(config["avatar_sha256"]).strip().casefold()
     if actual_sha != expected_sha:
