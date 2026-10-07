@@ -23,6 +23,10 @@ from app.distribution_schemas import (
 from app.distribution_types import DistributionActionType, DistributionPlatform
 from app.llm import LLMMessage, LLMProvider, get_llm_provider
 from app.marketing_intelligence import marketing_task_for_action, render_marketing_guidance
+from app.project_marketing_memory import (
+    ProjectMarketingMemoryService,
+    project_marketing_memory_service,
+)
 from app.reddit_research import action_target_is_fresh
 from app.schemas import ProductProfileView
 
@@ -246,8 +250,13 @@ Return only the requested structured schema.
 
 
 class DistributionActionComposer:
-    def __init__(self, provider: LLMProvider | None = None) -> None:
+    def __init__(
+        self,
+        provider: LLMProvider | None = None,
+        memory_service: ProjectMarketingMemoryService | None = None,
+    ) -> None:
         self._provider = provider
+        self._memory = memory_service or project_marketing_memory_service
 
     async def compose(
         self,
@@ -275,6 +284,11 @@ class DistributionActionComposer:
             opportunity.platform.value,
         )
         marketing_guidance = render_marketing_guidance(marketing_task)
+        memory = self._memory.prompt_context_for_product(
+            product.id,
+            platform=opportunity.platform.value,
+            action_type=play.action_type.value,
+        )
         return await self._provider.parse(
             messages=[
                 LLMMessage(
@@ -285,6 +299,7 @@ class DistributionActionComposer:
                     role="user",
                     content=(
                         f"Product: {product.model_dump(mode='json')}\n"
+                        f"Project marketing memory: {memory.rendered or None}\n"
                         f"Distribution play: {play.model_dump(mode='json')}\n"
                         f"Opportunity: {opportunity.model_dump(mode='json')}\n"
                         f"Selected target: {target}\n"
