@@ -23,6 +23,7 @@ from app.database_advisory_lock import postgres_session_advisory_lock
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_types import DistributionActionStatus
+from app.project_marketing_memory import project_marketing_memory_service
 from app.telegram_client_governance import (
     TelegramAutomationStatus,
     customer_telegram_governance_service,
@@ -30,7 +31,7 @@ from app.telegram_client_governance import (
 from app.telegram_client_publishing import CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE
 
 TELEGRAM_PREVIEW_NAMESPACE = "customer_telegram_publish_preview"
-PREVIEW_SCHEMA_VERSION = 4
+PREVIEW_SCHEMA_VERSION = 5
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -62,6 +63,16 @@ def _content_hash(
         f"{target_url}\n{conversion_mechanism}\n{variant_name}\n{content_text}"
     ).encode()
     return hashlib.sha256(material).hexdigest()
+
+
+def _marketing_memory_state(product_id: UUID) -> tuple[str, list[str]]:
+    prompt = project_marketing_memory_service.prompt_context_for_product(
+        product_id,
+        platform="TELEGRAM",
+        action_type="COMMENT",
+    )
+    fingerprint = hashlib.sha256(prompt.rendered.encode("utf-8")).hexdigest()
+    return fingerprint, [str(item) for item in prompt.entry_ids]
 
 
 def _render_preview(record: dict) -> dict:
@@ -97,6 +108,12 @@ def _render_preview(record: dict) -> dict:
         "play_id": str(record["play_id"]),
         "target_url": str(record["target_url"]),
         "profile_route_url": str(record.get("profile_route_url") or ""),
+        "marketing_memory_fingerprint": str(
+            record.get("marketing_memory_fingerprint") or ""
+        ),
+        "marketing_memory_entry_ids": list(
+            record.get("marketing_memory_entry_ids") or []
+        ),
         "variant_count": len(rendered_variants),
         "variants": rendered_variants,
         "prepared_at": str(record["prepared_at"]),
@@ -104,9 +121,18 @@ def _render_preview(record: dict) -> dict:
     }
 
 
-def _validate_existing_preview(record: dict) -> None:
+def _validate_existing_preview(
+    record: dict,
+    expected_memory_fingerprint: str | None = None,
+) -> None:
     if int(record.get("schema_version") or 0) != PREVIEW_SCHEMA_VERSION:
         raise ValueError("Existing preview uses a stale schema version")
+    if (
+        expected_memory_fingerprint is not None
+        and str(record.get("marketing_memory_fingerprint") or "")
+        != expected_memory_fingerprint
+    ):
+        raise ValueError("Existing preview uses stale project marketing memory")
     variants = record.get("variants")
     if not isinstance(variants, list) or not variants:
         raise ValueError("Existing preview has no prepared variants")
@@ -128,6 +154,7 @@ def _validate_existing_preview(record: dict) -> None:
 async def run(args: argparse.Namespace) -> dict:
     store, project, product, distribution, opportunity, target_url = _load_exact_target(args)
     preview_key = _preview_key(args.project_id, args.expected_telegram_entity_id)
+    memory_fingerprint, memory_entry_ids = _marketing_memory_state(product.id)
 
     if str((project.get("channel_preferences") or {}).get("TELEGRAM") or "") != "RESEARCH_ONLY":
         raise ValueError("Telegram must remain RESEARCH_ONLY while awaiting human preview approval")
@@ -144,8 +171,15 @@ async def run(args: argparse.Namespace) -> dict:
         growth_mandate_service.set_status(product.id, GrowthMandateStatus.PAUSED)
 
     existing = store.get(TELEGRAM_PREVIEW_NAMESPACE, preview_key)
-    if existing is not None and str(existing.get("status") or "") == "AWAITING_USER_APPROVAL":
-        _validate_existing_preview(existing)
+    if (
+        existing is not None
+        and str(existing.get("status") or "") == "AWAITING_USER_APPROVAL"
+        and str(existing.get("marketing_memory_fingerprint") or "") == memory_fingerprint
+    ):
+        _validate_existing_preview(
+            existing,
+            expected_memory_fingerprint=memory_fingerprint,
+        )
         return _render_preview(existing)
 
     connection = store.get(CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE, str(args.project_id))
@@ -235,6 +269,8 @@ async def run(args: argparse.Namespace) -> dict:
             "play_id": str(play.id),
             "target_url": target_url,
             "profile_route_url": profile_route_url,
+            "marketing_memory_fingerprint": memory_fingerprint,
+            "marketing_memory_entry_ids": memory_entry_ids,
             "variants": variant_records,
             "prepared_at": datetime.now(UTC).isoformat(),
         }
