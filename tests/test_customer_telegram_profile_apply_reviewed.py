@@ -2,6 +2,7 @@ import argparse
 import base64
 import hashlib
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -143,3 +144,21 @@ async def test_reviewed_profile_apply_rejects_publish_authorization(tmp_path) ->
 
     with pytest.raises(ValueError, match="cannot authorize community publication"):
         module._load_config(config_path)
+
+
+def test_committed_femdom_avatar_payload_matches_reviewed_hash() -> None:
+    repository_root = Path(__file__).resolve().parents[1]
+    config_path = repository_root / "ops/femdom/telegram_profile_v2.json"
+    config = module._load_config(config_path)
+
+    avatar = module._avatar_bytes(config, config_path=config_path)
+
+    assert len(avatar) == 13701
+    assert avatar.startswith(b"\xff\xd8\xff")
+    assert avatar.endswith(b"\xff\xd9")
+    assert hashlib.sha256(avatar).hexdigest() == (
+        "bcddb2d77ac84beb8eefc19491254c4b38e0effd0d101426ad590100e9dcafe2"
+    )
+    assert config["community_publish_authorization_phrase"] == "разрешаю отправку"
+    assert config["community_publish_authorized"] is False
+    assert config["story_publish_authorized"] is False
