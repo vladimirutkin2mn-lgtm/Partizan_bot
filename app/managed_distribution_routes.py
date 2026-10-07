@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 
 from app.customer_account import (
     CUSTOMER_ACCOUNT_SESSION_COOKIE,
@@ -38,6 +38,16 @@ from app.managed_telegram_execution import (
     ManagedTelegramReconcileRequest,
     ManagedTelegramSessionInstallRequest,
     managed_telegram_execution_service,
+)
+from app.managed_telegram_profile_strategy import (
+    ManagedTelegramProfileStrategyApplyRequest,
+    ManagedTelegramProfileStrategyApprovalRequest,
+    ManagedTelegramProfileStrategyCreateRequest,
+    ManagedTelegramProfileStrategyError,
+    ManagedTelegramProfileStrategyPreview,
+    ManagedTelegramProfileStrategyRollbackRequest,
+    ManagedTelegramProfileStrategyView,
+    managed_telegram_profile_strategy_service,
 )
 from app.operator_auth import require_operator
 from app.product_intake import product_intake_service
@@ -180,6 +190,102 @@ def list_managed_assignments(product_id: UUID) -> list[ManagedAssignmentView]:
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Product not found") from exc
     return managed_distribution_service.list_assignments(product_id)
+
+
+@operator_router.post(
+    "/managed-distribution/assignments/{assignment_id}/telegram/profile-strategy",
+    response_model=ManagedTelegramProfileStrategyView,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_managed_telegram_profile_strategy(
+    assignment_id: UUID,
+    payload: ManagedTelegramProfileStrategyCreateRequest,
+) -> ManagedTelegramProfileStrategyView:
+    try:
+        return managed_telegram_profile_strategy_service.create(assignment_id, payload)
+    except ManagedTelegramProfileStrategyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@operator_router.get(
+    "/managed-distribution/assignments/{assignment_id}/telegram/profile-strategy",
+    response_model=ManagedTelegramProfileStrategyView,
+)
+def get_managed_telegram_profile_strategy(
+    assignment_id: UUID,
+) -> ManagedTelegramProfileStrategyView:
+    strategy = managed_telegram_profile_strategy_service.for_assignment(assignment_id)
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Managed Telegram profile strategy not found")
+    return strategy
+
+
+@operator_router.get(
+    "/managed-distribution/telegram/profile-strategies/{strategy_id}/avatar",
+)
+def get_managed_telegram_profile_strategy_avatar(strategy_id: UUID) -> Response:
+    try:
+        content, mime_type, _ = managed_telegram_profile_strategy_service.avatar_bytes(
+            strategy_id
+        )
+        return Response(content=content, media_type=mime_type)
+    except ManagedTelegramProfileStrategyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@operator_router.get(
+    "/managed-distribution/telegram/profile-strategies/{strategy_id}/preview",
+    response_model=ManagedTelegramProfileStrategyPreview,
+)
+async def preview_managed_telegram_profile_strategy(
+    strategy_id: UUID,
+) -> ManagedTelegramProfileStrategyPreview:
+    try:
+        return await managed_telegram_profile_strategy_service.preview(strategy_id)
+    except ManagedTelegramProfileStrategyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@operator_router.post(
+    "/managed-distribution/telegram/profile-strategies/{strategy_id}/approve",
+    response_model=ManagedTelegramProfileStrategyView,
+)
+def approve_managed_telegram_profile_strategy(
+    strategy_id: UUID,
+    payload: ManagedTelegramProfileStrategyApprovalRequest,
+) -> ManagedTelegramProfileStrategyView:
+    try:
+        return managed_telegram_profile_strategy_service.approve(strategy_id, payload)
+    except ManagedTelegramProfileStrategyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@operator_router.post(
+    "/managed-distribution/telegram/profile-strategies/{strategy_id}/apply",
+    response_model=ManagedTelegramProfileStrategyView,
+)
+async def apply_managed_telegram_profile_strategy(
+    strategy_id: UUID,
+    payload: ManagedTelegramProfileStrategyApplyRequest,
+) -> ManagedTelegramProfileStrategyView:
+    try:
+        return await managed_telegram_profile_strategy_service.apply(strategy_id, payload)
+    except ManagedTelegramProfileStrategyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@operator_router.post(
+    "/managed-distribution/telegram/profile-strategies/{strategy_id}/rollback",
+    response_model=ManagedTelegramProfileStrategyView,
+)
+async def rollback_managed_telegram_profile_strategy(
+    strategy_id: UUID,
+    payload: ManagedTelegramProfileStrategyRollbackRequest,
+) -> ManagedTelegramProfileStrategyView:
+    try:
+        return await managed_telegram_profile_strategy_service.rollback(strategy_id, payload)
+    except ManagedTelegramProfileStrategyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @operator_router.post(

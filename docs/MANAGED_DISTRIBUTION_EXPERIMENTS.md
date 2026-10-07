@@ -118,6 +118,41 @@ Operator endpoints:
 
 No managed Telegram publish endpoint is called by reservation, learning, profile preparation, customer workspace loading, or comment generation. Execution is a separate mutation.
 
+## Managed Telegram profile strategies
+
+A `profile_strategy_key` is not treated as a label alone. For a Partizan-managed Telegram assignment it can be materialized into a reviewed live-profile treatment containing:
+
+- display name;
+- bio;
+- exact visible CTA;
+- optional avatar.
+
+The treatment is bound to one RESERVED assignment, its managed publisher and Distribution Identity. The request is rejected for partner-managed inventory or for assignments without a `profile_strategy_key`.
+
+Lifecycle:
+
+`DRAFT -> READY -> APPLIED -> ROLLED_BACK`
+
+The deterministic fingerprint contains assignment/product/publisher/identity, the `profile_strategy_key`, display name, bio, CTA and avatar SHA-256. Approval and apply each require the exact reviewed fingerprint.
+
+Before apply, Partizan reads and stores the live Telegram profile snapshot. It then changes only display name, bio and the optional avatar, reads the profile back from Telegram and verifies the controlled fields. Telegram whitespace normalization in the bio is accepted, but the intended text remains exact after normalization.
+
+If apply fails, rollback to the pre-apply snapshot is attempted immediately. Explicit rollback is also supported later, but only while the currently controlled Telegram fields still match the Partizan-applied snapshot. If a human or another system changed those fields after apply, rollback fails closed rather than overwriting the external edit.
+
+The active managed Telegram connection records the exact applied assignment id, profile strategy key and strategy fingerprint. This gives the execution layer a machine-verifiable answer to “is the profile treatment required by this experimental arm actually live?”.
+
+Operator endpoints:
+
+- `POST /managed-distribution/assignments/{assignment_id}/telegram/profile-strategy`
+- `GET /managed-distribution/assignments/{assignment_id}/telegram/profile-strategy`
+- `GET /managed-distribution/telegram/profile-strategies/{strategy_id}/avatar`
+- `GET /managed-distribution/telegram/profile-strategies/{strategy_id}/preview`
+- `POST /managed-distribution/telegram/profile-strategies/{strategy_id}/approve`
+- `POST /managed-distribution/telegram/profile-strategies/{strategy_id}/apply`
+- `POST /managed-distribution/telegram/profile-strategies/{strategy_id}/rollback`
+
+Profile-strategy routes never call Telegram comment/post/story publication. They only read or mutate the connected managed account profile.
+
 ## Learning contract
 
 On fulfillment, the internal managed observation records:
