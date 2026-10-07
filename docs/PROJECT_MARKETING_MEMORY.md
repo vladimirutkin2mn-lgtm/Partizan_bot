@@ -113,11 +113,13 @@ Therefore database-mode production keeps the project memory across process resta
 
 ## Prompt integration boundary
 
-This PR deliberately separates **memory storage / conflict resolution / prompt assembly** from automatic mutation of historical product facts.
+This PR deliberately separates **memory storage / conflict resolution / prompt assembly** from automatic mutation of historical product facts and from the existing action-drafting implementation.
 
-The action-drafting integration consumes the bounded prompt context rather than storing bespoke prompts per customer. The intended composition is:
+The prompt builder is now a stable interface that drafting/research/planning components can consume without storing bespoke prompts per customer. The intended composition is:
 
 `global Partizan rules + ProductProfile + ProjectMarketingMemory + current opportunity + experiment strategy -> action draft`
+
+The next integration slice can inject `prompt_context_for_product(...)` into action drafting without changing the memory persistence model.
 
 No memory entry can authorize external publication. Telegram comment/story publication remains governed by its existing explicit approval flows.
 
