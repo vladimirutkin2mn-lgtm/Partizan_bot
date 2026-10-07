@@ -1,4 +1,4 @@
-name: Apply reviewed FemDom Telegram profile v2
+name: Apply reviewed FemDom profile HQ and story v3
 
 on:
   workflow_run:
@@ -6,11 +6,11 @@ on:
     types: [completed]
 
 concurrency:
-  group: femdom-telegram-profile-v2
+  group: femdom-telegram-profile-story-v3
   cancel-in-progress: false
 
 jobs:
-  apply-profile:
+  apply-reviewed-profile-and-story:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_branch == 'main'
@@ -45,12 +45,12 @@ jobs:
           current_main_sha="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
           if [[ "${RELEASE_SHA}" != "${current_main_sha}" ]]; then
             echo "apply_allowed=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipping stale reviewed Telegram profile release"
+            echo "::notice::Skipping stale reviewed Telegram profile/story release"
             exit 0
           fi
           echo "apply_allowed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Require production profile configuration
+      - name: Require production connection configuration
         if: ${{ steps.freshness.outputs.apply_allowed == 'true' }}
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -65,7 +65,7 @@ jobs:
           [[ -z "${DEPLOY_SSH_KNOWN_HOSTS}" ]] && missing+=(DEPLOY_SSH_KNOWN_HOSTS)
           [[ -z "${DEPLOY_PATH}" ]] && missing+=(DEPLOY_PATH)
           if (( ${#missing[@]} > 0 )); then
-            echo "::error::Missing production profile configuration: ${missing[*]}"
+            echo "::error::Missing production Telegram operation configuration: ${missing[*]}"
             exit 1
           fi
 
@@ -86,7 +86,7 @@ jobs:
           printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Apply exact reviewed profile treatment only
+      - name: Apply profile quality correction, remove username and publish reviewed story
         if: ${{ steps.freshness.outputs.apply_allowed == 'true' }}
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -94,9 +94,10 @@ jobs:
         shell: bash
         run: |
           ssh -o BatchMode=yes "${DEPLOY_HOST}" \
-            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python -m app.customer_telegram_profile_apply_reviewed \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python -m app.customer_telegram_profile_story_reviewed \
               --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0 \
               --expected-product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
               --expected-product-name FemDom \
               --profile-config ops/femdom/telegram_profile_v2.json \
-              --confirm APPLY_REVIEWED_FEMDOM_PROFILE_V2"
+              --review-config ops/femdom/telegram_review_v2.json \
+              --confirm APPLY_FEMDOM_PROFILE_HQ_AND_STORY_V1"
