@@ -6,9 +6,9 @@
   "display_name": "Nika",
   "about": "То, что не пишу в комментариях ↓\nhttps://t.me/+UfDqyvLWOVgzZGMy",
   "native_destination": "https://t.me/+UfDqyvLWOVgzZGMy",
-  "avatar_b64_file": "ops/femdom/avatar_approved_v1.jpg.b64",
+  "avatar_file": "ops/femdom/avatar_approved_v1.jpg",
   "avatar_filename": "femdom-avatar-approved-v1.jpg",
-  "avatar_sha256": "4c1cc870c82e93dc6957533e52325227638725657abad155aa705a4f782186c2",
+  "avatar_sha256": "bcddb2d77ac84beb8eefc19491254c4b38e0effd0d101426ad590100e9dcafe2",
   "story_publish_authorized": false,
   "community_publish_authorized": false,
   "community_publish_authorization_phrase": "разрешаю отправку"
