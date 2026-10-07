@@ -12,12 +12,14 @@ PROVIDER_SECRET_NAMESPACE = "provider_secret"
 PROVIDER_SECRET_PREFIX = "CUSTOMER_META_ACCESS_TOKEN_"
 TELEGRAM_SESSION_SECRET_PREFIX = "CUSTOMER_TELEGRAM_SESSION_"
 TELEGRAM_LOGIN_SECRET_PREFIX = "CUSTOMER_TELEGRAM_LOGIN_SESSION_"
+MANAGED_TELEGRAM_SESSION_SECRET_PREFIX = "MANAGED_TELEGRAM_SESSION_"
 REDDIT_OAUTH_SECRET_PREFIX = "CUSTOMER_REDDIT_OAUTH_TOKEN_"
 _ALLOWED_PROVIDER_SECRET_PREFIXES = frozenset(
     {
         PROVIDER_SECRET_PREFIX,
         TELEGRAM_SESSION_SECRET_PREFIX,
         TELEGRAM_LOGIN_SECRET_PREFIX,
+        MANAGED_TELEGRAM_SESSION_SECRET_PREFIX,
         REDDIT_OAUTH_SECRET_PREFIX,
     }
 )
@@ -41,12 +43,12 @@ class ProviderSecretStore:
 
     def create_reference(self, *, prefix: str = PROVIDER_SECRET_PREFIX) -> str:
         if prefix not in _ALLOWED_PROVIDER_SECRET_PREFIXES:
-            raise ValueError("Customer provider secret prefix is invalid")
+            raise ValueError("Provider secret prefix is invalid")
         return f"{prefix}{uuid4().hex.upper()}"
 
     def put(self, reference: str, plaintext: str) -> None:
         if not any(reference.startswith(prefix) for prefix in _ALLOWED_PROVIDER_SECRET_PREFIXES):
-            raise ValueError("Customer provider secret reference is invalid")
+            raise ValueError("Provider secret reference is invalid")
         if not plaintext:
             raise ValueError("Provider secret cannot be empty")
         encrypted = self._fernet().encrypt(plaintext.encode("utf-8")).decode("ascii")
@@ -77,7 +79,7 @@ class ProviderSecretStore:
         configured = self._settings.provider_secret_encryption_key
         if configured is None:
             raise ProviderSecretConfigurationError(
-                "PROVIDER_SECRET_ENCRYPTION_KEY is required for customer provider connections"
+                "PROVIDER_SECRET_ENCRYPTION_KEY is required for provider connections"
             )
         try:
             return Fernet(configured.get_secret_value().encode("ascii"))
@@ -88,7 +90,7 @@ class ProviderSecretStore:
 
 
 class ProviderSecretResolver:
-    """Resolve customer-encrypted credentials first, then legacy environment refs."""
+    """Resolve encrypted credentials first, then legacy environment refs."""
 
     def __init__(self, secret_store: ProviderSecretStore | None = None) -> None:
         self._secret_store = secret_store or ProviderSecretStore()
