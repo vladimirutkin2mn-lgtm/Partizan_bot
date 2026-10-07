@@ -28,6 +28,17 @@ from app.managed_distribution_schemas import (
     ManagedSelectionCandidateView,
     ManagedSelectionRequest,
 )
+from app.managed_telegram_execution import (
+    ManagedTelegramActionPreview,
+    ManagedTelegramActionPreviewRequest,
+    ManagedTelegramConnectionView,
+    ManagedTelegramExecuteRequest,
+    ManagedTelegramExecutionError,
+    ManagedTelegramExecutionReceipt,
+    ManagedTelegramReconcileRequest,
+    ManagedTelegramSessionInstallRequest,
+    managed_telegram_execution_service,
+)
 from app.operator_auth import require_operator
 from app.product_intake import product_intake_service
 
@@ -80,6 +91,60 @@ def set_managed_publisher_health(
         raise HTTPException(status_code=404, detail="Managed publisher not found") from exc
 
 
+@operator_router.put(
+    "/managed-distribution/publishers/{publisher_id}/telegram/connection",
+    response_model=ManagedTelegramConnectionView,
+)
+async def install_managed_telegram_connection(
+    publisher_id: UUID,
+    payload: ManagedTelegramSessionInstallRequest,
+) -> ManagedTelegramConnectionView:
+    try:
+        return await managed_telegram_execution_service.install_session(
+            publisher_id,
+            payload,
+        )
+    except ManagedTelegramExecutionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@operator_router.get(
+    "/managed-distribution/publishers/{publisher_id}/telegram/connection",
+    response_model=ManagedTelegramConnectionView,
+)
+def get_managed_telegram_connection(
+    publisher_id: UUID,
+) -> ManagedTelegramConnectionView:
+    try:
+        return managed_telegram_execution_service.connection(publisher_id)
+    except ManagedTelegramExecutionError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@operator_router.post(
+    "/managed-distribution/publishers/{publisher_id}/telegram/connection/verify",
+    response_model=ManagedTelegramConnectionView,
+)
+async def verify_managed_telegram_connection(
+    publisher_id: UUID,
+) -> ManagedTelegramConnectionView:
+    try:
+        return await managed_telegram_execution_service.verify_session(publisher_id)
+    except ManagedTelegramExecutionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@operator_router.delete(
+    "/managed-distribution/publishers/{publisher_id}/telegram/connection",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_managed_telegram_connection(publisher_id: UUID) -> None:
+    try:
+        managed_telegram_execution_service.disconnect(publisher_id)
+    except ManagedTelegramExecutionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @operator_router.post(
     "/managed-distribution/selection/preview",
     response_model=list[ManagedSelectionCandidateView],
@@ -115,6 +180,67 @@ def list_managed_assignments(product_id: UUID) -> list[ManagedAssignmentView]:
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Product not found") from exc
     return managed_distribution_service.list_assignments(product_id)
+
+
+@operator_router.post(
+    "/managed-distribution/assignments/{assignment_id}/telegram/preview",
+    response_model=ManagedTelegramActionPreview,
+)
+def preview_managed_telegram_action(
+    assignment_id: UUID,
+    payload: ManagedTelegramActionPreviewRequest,
+) -> ManagedTelegramActionPreview:
+    try:
+        return managed_telegram_execution_service.preview(assignment_id, payload)
+    except ManagedTelegramExecutionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@operator_router.post(
+    "/managed-distribution/assignments/{assignment_id}/telegram/execute",
+    response_model=ManagedTelegramExecutionReceipt,
+)
+async def execute_managed_telegram_action(
+    assignment_id: UUID,
+    payload: ManagedTelegramExecuteRequest,
+) -> ManagedTelegramExecutionReceipt:
+    try:
+        return await managed_telegram_execution_service.execute(
+            assignment_id,
+            payload,
+        )
+    except ManagedTelegramExecutionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@operator_router.post(
+    "/managed-distribution/assignments/{assignment_id}/telegram/reconcile",
+    response_model=ManagedTelegramExecutionReceipt,
+)
+def reconcile_managed_telegram_action(
+    assignment_id: UUID,
+    payload: ManagedTelegramReconcileRequest,
+) -> ManagedTelegramExecutionReceipt:
+    try:
+        return managed_telegram_execution_service.reconcile(
+            assignment_id,
+            payload,
+        )
+    except ManagedTelegramExecutionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@operator_router.get(
+    "/managed-distribution/assignments/{assignment_id}/telegram/receipt",
+    response_model=ManagedTelegramExecutionReceipt,
+)
+def get_managed_telegram_receipt(
+    assignment_id: UUID,
+) -> ManagedTelegramExecutionReceipt:
+    receipt = managed_telegram_execution_service.receipt(assignment_id)
+    if receipt is None:
+        raise HTTPException(status_code=404, detail="Managed Telegram receipt not found")
+    return receipt
 
 
 @operator_router.post(
