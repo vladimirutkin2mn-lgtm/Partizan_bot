@@ -45,6 +45,12 @@ def _load_entries(path: Path) -> list[ProjectMarketingMemoryCustomerCreateReques
     return [ProjectMarketingMemoryCustomerCreateRequest.model_validate(item) for item in payload]
 
 
+def _product_name_matches(actual_name: str, expected_name: str) -> bool:
+    actual = " ".join(str(actual_name or "").split()).casefold()
+    expected = " ".join(str(expected_name or "").split()).casefold()
+    return bool(expected) and expected in actual
+
+
 def run(args: argparse.Namespace) -> dict:
     store = get_runtime_store()
     project = store.get(CUSTOMER_PROJECT_NAMESPACE, str(args.project_id))
@@ -54,7 +60,7 @@ def run(args: argparse.Namespace) -> dict:
         raise ValueError("Customer project product id does not match the reviewed seed")
 
     product = product_intake_service.get_product(args.expected_product_id)
-    if product.name.strip() != args.expected_product_name.strip():
+    if not _product_name_matches(product.name, args.expected_product_name):
         raise ValueError("Customer project product name does not match the reviewed seed")
 
     seed_id = args.seed_id.strip()
@@ -92,6 +98,7 @@ def run(args: argparse.Namespace) -> dict:
         "project_id": str(args.project_id),
         "product_id": str(args.expected_product_id),
         "product_name": product.name,
+        "expected_product_name": args.expected_product_name,
         "seed_file": str(args.seed_file),
         "entry_ids": applied_ids,
         "entry_count": len(applied_ids),
