@@ -36,7 +36,7 @@ class FakeClient:
         if isinstance(request, GetParticipantRequest):
             self.participant_checks += 1
             if not self.member:
-                raise UserNotParticipantError(request=request)
+                raise UserNotParticipantError(request)
             return SimpleNamespace(
                 participant=SimpleNamespace(banned_rights=None),
             )
