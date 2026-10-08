@@ -8,7 +8,7 @@ from app.audience_intelligence_service import (
     audience_intelligence_service,
 )
 from app.autonomy_schemas import GrowthMandateStatus, GrowthMandateView
-from app.autonomy_service import GROWTH_MANDATE_NAMESPACE, growth_mandate_service
+from app.autonomy_service import GROWTH_MANDATE_NAMESPACE
 from app.customer_live_opportunities import (
     CUSTOMER_LIVE_OPPORTUNITY_NAMESPACE,
     CUSTOMER_PROJECT_NAMESPACE,
@@ -307,9 +307,12 @@ class AutonomousOpportunityRefreshService:
 
     def _candidate_mandates(self, product_id: UUID | None) -> list[GrowthMandateView]:
         if product_id is not None:
+            payload = self._store.get(GROWTH_MANDATE_NAMESPACE, str(product_id))
+            if payload is None:
+                return []
             try:
-                mandate = growth_mandate_service.get(product_id)
-            except KeyError:
+                mandate = GrowthMandateView.model_validate(payload)
+            except ValueError:
                 return []
             return [mandate] if self._eligible(mandate) else []
 
