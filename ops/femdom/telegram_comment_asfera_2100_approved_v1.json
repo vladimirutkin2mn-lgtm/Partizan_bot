@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "operation_id": "femdom-asfera-2100-approved-comment-2026-10-08-v1",
+  "authorization_scope": "COMMENT_ONLY",
+  "authorization_phrase_received": "публикуй",
+  "community_publish_authorized": true,
+  "profile_mutation_authorized": false,
+  "story_mutation_authorized": false,
+  "reply_publish_authorized": false,
+  "message_publish_authorized": false,
+  "expected_handle": "a_sfera",
+  "expected_telegram_entity_id": 1642699396,
+  "target_post_id": 2100,
+  "target_url": "https://t.me/a_sfera/2100",
+  "target_context_marker": "Черно-оранжевый",
+  "content_sha256": "7ccc37f8c9cbc40503546bb7e1c7df742fa82ded45b19a85d2fe774ea0dd96a2",
+  "content_text": "Мне кажется, для новичка на таких больших вечеринках важнее не количество практик, а возможность самому выбрать темп. Когда можно сначала просто посмотреть, пообщаться и понять атмосферу, гораздо проще расслабиться и не чувствовать, что от тебя сразу чего-то ждут. Интересно, у вас новеньких как-то отдельно знакомят с форматом в начале вечера?"
+}
