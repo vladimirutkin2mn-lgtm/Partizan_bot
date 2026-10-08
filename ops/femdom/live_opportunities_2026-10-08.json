@@ -1,0 +1,65 @@
+[
+  {
+    "source": "OPERATIONAL_DISCOVERY",
+    "platform": "TELEGRAM",
+    "surface": "COMMUNITY",
+    "kind": "COMMENT",
+    "title": "Bizarre — Real Femdom pajama party · 11 Oct",
+    "url": "https://t.me/Bizarre_afisha/794",
+    "rationale": "The audience and event theme are unusually close to FemDom: the organizer explicitly frames the event around female domination, BDSM practices and social interaction. This is a stronger contextual fit than the older ATMOSPHERE target.",
+    "recommended_action": "Review a native, non-promotional comment for this exact post. If approved, run Telegram discussion preflight before any publication attempt.",
+    "suggested_content": "Пижамный формат для знакомства с Femdom кажется неожиданно удачным: меньше ощущения, что нужно сразу «соответствовать» сложному образу, и больше пространства сначала просто пообщаться. Для тех, кто впервые приходит именно на Real Femdom, есть в начале вечера какой-то мягкий ввод в правила и границы взаимодействия?",
+    "relevance_score": 0.96,
+    "publishability": "NEEDS_REVIEW",
+    "publishability_detail": "Target is researched, but linked-discussion membership and write access have not been preflighted yet.",
+    "discovered_at": "2026-10-08T18:00:00+00:00",
+    "expires_at": "2026-10-11T20:59:59+00:00",
+    "status": "ACTIVE",
+    "metadata": {
+      "event_date": "2026-10-11",
+      "review_source": "operator-dogfood-2026-10-08"
+    }
+  },
+  {
+    "source": "OPERATIONAL_DISCOVERY",
+    "platform": "TELEGRAM",
+    "surface": "COMMUNITY",
+    "kind": "COMMENT",
+    "title": "Free People — Kink & Fetish · 13 Oct",
+    "url": "https://t.me/freepeopleschedule/523",
+    "rationale": "The event emphasizes etiquette, roles, interaction and practices, which gives Nika a natural way to contribute a useful newcomer-oriented comment without advertising the product directly.",
+    "recommended_action": "Review the proposed comment and verify that the target thread is still current and writable before publication.",
+    "suggested_content": "Классно, что в программе есть этикетная встреча до практик. Для новичка это, кажется, важнее любого списка активностей: когда заранее понимаешь, как корректно предложить взаимодействие и как спокойно отказать, дальше уже намного легче исследовать формат. Этикетная часть рассчитана только на совсем новых гостей или опытным тоже есть что вынести?",
+    "relevance_score": 0.89,
+    "publishability": "NEEDS_REVIEW",
+    "publishability_detail": "Target is researched, but freshness and Telegram write access still need a live preflight.",
+    "discovered_at": "2026-10-08T18:00:00+00:00",
+    "expires_at": "2026-10-13T20:59:59+00:00",
+    "status": "ACTIVE",
+    "metadata": {
+      "event_date": "2026-10-13",
+      "review_source": "operator-dogfood-2026-10-08"
+    }
+  },
+  {
+    "source": "OPERATIONAL_DISCOVERY",
+    "platform": "TELEGRAM",
+    "surface": "COMMUNITY",
+    "kind": "COMMENT",
+    "title": "Bizarre — Stockings theme party · 16 Oct",
+    "url": "https://t.me/Bizarre_afisha/800",
+    "rationale": "The fit is broader than Real Femdom but the audience is still relevant: a fetish-oriented 18+ event where a natural comment about first-time participation can plausibly drive profile curiosity.",
+    "recommended_action": "Keep as a secondary opportunity. Re-check the post closer to publication time and only prepare execution if stronger targets have not appeared.",
+    "suggested_content": "Мне кажется, на таких тематических вечерах образ сильно влияет на то, насколько легко начать знакомство: уже есть понятный повод сделать комплимент или заговорить. А для тех, кто приходит впервые, есть какой-то ориентир, насколько смелым должен быть образ, чтобы чувствовать себя уместно?",
+    "relevance_score": 0.79,
+    "publishability": "NEEDS_REVIEW",
+    "publishability_detail": "Secondary target. Live freshness and write access have not been checked yet.",
+    "discovered_at": "2026-10-08T18:00:00+00:00",
+    "expires_at": "2026-10-16T20:59:59+00:00",
+    "status": "ACTIVE",
+    "metadata": {
+      "event_date": "2026-10-16",
+      "review_source": "operator-dogfood-2026-10-08"
+    }
+  }
+]
