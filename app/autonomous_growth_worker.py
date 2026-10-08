@@ -12,6 +12,11 @@ from app.autonomous_controlled_growth import (
     autonomous_controlled_growth_sweep_service,
 )
 from app.autonomous_growth import AutonomousGrowthSweepService
+from app.autonomous_opportunity_refresh import (
+    DEFAULT_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS,
+    AutonomousOpportunityRefreshService,
+    autonomous_opportunity_refresh_service,
+)
 from app.customer_autopilot import customer_autopilot_service
 from app.growth_autoresearch_execution import GrowthAutoResearchExecutionService
 from app.growth_autoresearch_execution_runtime import (
@@ -33,6 +38,7 @@ class AutonomousGrowthWorker:
         sweep_service: AutonomousGrowthSweepService | None = None,
         autoresearch_execution_service: GrowthAutoResearchExecutionService | None = None,
         autoresearch_loop_service: GrowthAutoResearchLoopService | None = None,
+        opportunity_refresh_service: AutonomousOpportunityRefreshService | None = None,
         heartbeat_service: WorkerHeartbeatService | None = None,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
@@ -43,6 +49,9 @@ class AutonomousGrowthWorker:
         self._autoresearch_loop_service = (
             autoresearch_loop_service or growth_autoresearch_loop_service
         )
+        self._opportunity_refresh_service = (
+            opportunity_refresh_service or autonomous_opportunity_refresh_service
+        )
         self._heartbeat_service = heartbeat_service
         self._sleep = sleep
 
@@ -51,6 +60,7 @@ class AutonomousGrowthWorker:
         *,
         once: bool,
         interval_seconds: int,
+        discovery_interval_seconds: int = DEFAULT_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS,
         product_id: UUID | None = None,
         max_runs: int | None = None,
         emit: Callable[[str], None] = print,
@@ -72,6 +82,18 @@ class AutonomousGrowthWorker:
                 # Reconcile customer Autopilot safety before any autonomous provider work.
                 # CHANNELS/FUNDING/SETUP pauses are provider-confirmed and never auto-resumed.
                 customer_autopilot_service.reconcile_safety_policy(product_id=product_id)
+
+                # Fresh public opportunities are a separate research concern from the
+                # five-minute execution loop. Refresh them on a slower cadence, rebuild
+                # Distribution Plays, then let the existing mandate/governance stack decide
+                # whether any concrete action is allowed. This step never publishes or joins.
+                asyncio.run(
+                    self._opportunity_refresh_service.run_once(
+                        product_id=product_id,
+                        interval_seconds=discovery_interval_seconds,
+                    )
+                )
+
                 # Give an existing READY AutoResearch challenger first access to its exact,
                 # permissioned non-paid DistributionPlay. The bridge still delegates every
                 # mutation to the existing mandate, drafting, approval and adapter control plane.
@@ -126,6 +148,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Seconds between autonomous growth sweeps (minimum 60).",
     )
     parser.add_argument(
+        "--discovery-interval-seconds",
+        type=int,
+        default=DEFAULT_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS,
+        help=(
+            "Seconds between fresh public opportunity discovery refreshes "
+            "for active Telegram Auto products (minimum 900)."
+        ),
+    )
+    parser.add_argument(
         "--product-id",
         type=UUID,
         default=None,
@@ -141,6 +172,7 @@ def main() -> int:
         return worker.run(
             once=args.once,
             interval_seconds=args.interval_seconds,
+            discovery_interval_seconds=args.discovery_interval_seconds,
             product_id=args.product_id,
         )
     except (RuntimeError, ValueError) as exc:
