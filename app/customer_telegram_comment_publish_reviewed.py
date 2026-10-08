@@ -28,6 +28,7 @@ ENTITY_ID = 1642699396
 POST_ID = 2100
 TARGET_URL = "https://t.me/a_sfera/2100"
 CONTENT_SHA256 = "7ccc37f8c9cbc40503546bb7e1c7df742fa82ded45b19a85d2fe774ea0dd96a2"
+RECONCILE_LIMIT = 100
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -88,14 +89,18 @@ def _marker_key(project_id: UUID) -> str:
     return f"{project_id}:{OPERATION_ID}"
 
 
-async def _verify_target_post(project_id: UUID, config: dict) -> dict:
+def _telegram_client(project_id: UUID) -> TelegramClient:
     session = customer_telegram_client_publish_service._active_session_internal(project_id)
     settings = get_settings()
     api_id = settings.telegram_client_publish_api_id
     api_hash = settings.telegram_client_publish_api_hash
     if api_id is None or api_hash is None:
         raise ValueError("Telegram client publishing credentials are not configured")
-    client = TelegramClient(StringSession(session), api_id, api_hash.get_secret_value())
+    return TelegramClient(StringSession(session), api_id, api_hash.get_secret_value())
+
+
+async def _verify_target_post(project_id: UUID, config: dict) -> dict:
+    client = _telegram_client(project_id)
     try:
         await client.connect()
         if not await client.is_user_authorized():
@@ -110,7 +115,76 @@ async def _verify_target_post(project_id: UUID, config: dict) -> dict:
         body = str(getattr(message, "message", "") or "")
         if marker.casefold() not in body.casefold():
             raise ValueError("Telegram target post no longer matches the reviewed context")
-        return {"entity_id": ENTITY_ID, "post_id": POST_ID}
+        return {
+            "entity_id": ENTITY_ID,
+            "post_id": POST_ID,
+            "discussion_available": getattr(message, "replies", None) is not None,
+            "replies_count": int(
+                getattr(getattr(message, "replies", None), "replies", 0) or 0
+            ),
+        }
+    finally:
+        await client.disconnect()
+
+
+async def _reconcile_existing_comment(project_id: UUID, config: dict) -> dict:
+    client = _telegram_client(project_id)
+    expected_text = str(config["content_text"]).strip()
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            raise ValueError("Telegram session is not authorised")
+        me = await client.get_me()
+        if me is None or not getattr(me, "id", None):
+            raise ValueError("Telegram identity is not available")
+        entity = await client.get_entity(f"@{HANDLE}")
+        post = await client.get_messages(entity, ids=POST_ID)
+        if post is None:
+            raise ValueError("Reviewed Telegram target post is no longer available")
+        if getattr(post, "replies", None) is None:
+            return {
+                "status": "RECONCILIATION_BLOCKED",
+                "reason": "TARGET_HAS_NO_DISCUSSION",
+                "found": False,
+                "comments_checked": 0,
+                "retry_allowed": False,
+            }
+
+        checked = 0
+        async for item in client.iter_messages(
+            entity,
+            reply_to=POST_ID,
+            limit=RECONCILE_LIMIT,
+        ):
+            checked += 1
+            text = str(getattr(item, "message", "") or "").strip()
+            sender_id = int(getattr(item, "sender_id", 0) or 0)
+            if sender_id == int(me.id) and text == expected_text:
+                message_id = int(getattr(item, "id", 0) or 0)
+                return {
+                    "status": "PUBLISHED_RECONCILED",
+                    "found": True,
+                    "comments_checked": checked,
+                    "retry_allowed": False,
+                    "remote_message_id": message_id,
+                    "executed_url": f"{TARGET_URL}?comment={message_id}",
+                }
+        return {
+            "status": "RECONCILED_NOT_FOUND",
+            "found": False,
+            "comments_checked": checked,
+            "retry_allowed": True,
+        }
+    except ValueError:
+        raise
+    except Exception as exc:
+        return {
+            "status": "RECONCILIATION_BLOCKED",
+            "reason": type(exc).__name__,
+            "found": False,
+            "comments_checked": 0,
+            "retry_allowed": False,
+        }
     finally:
         await client.disconnect()
 
@@ -129,15 +203,48 @@ async def run(args: argparse.Namespace) -> dict:
     key = _marker_key(args.project_id)
     existing = store.get(MARKER_NAMESPACE, key)
     if existing is not None:
-        if str(existing.get("status") or "") == "PUBLISHED":
+        existing_status = str(existing.get("status") or "")
+        if existing_status in {"PUBLISHED", "PUBLISHED_RECONCILED"}:
             return {**existing, "status": "ALREADY_PUBLISHED"}
-        raise ValueError(
-            "Previous reviewed Telegram comment outcome is unresolved; "
-            "manual reconciliation is required"
-        )
+        if existing_status == "FAILED_UNRESOLVED":
+            reconciliation = await _reconcile_existing_comment(args.project_id, config)
+            reconciled = {
+                **existing,
+                **reconciliation,
+                "reconciled_at": datetime.now(UTC).isoformat(),
+                "comment_published": bool(reconciliation.get("found")),
+                "profile_mutated": False,
+                "story_mutated": False,
+                "reply_published": False,
+                "message_published": False,
+            }
+            store.put(MARKER_NAMESPACE, key, reconciled)
+            return reconciled
+        if existing_status not in {"RECONCILED_NOT_FOUND"}:
+            return {
+                **existing,
+                "comment_published": False,
+                "retry_allowed": False,
+            }
 
     customer_telegram_client_publish_service._require_ready()
     verified = await _verify_target_post(args.project_id, config)
+    if not verified["discussion_available"]:
+        blocked = {
+            "status": "TARGET_HAS_NO_DISCUSSION",
+            "operation_id": OPERATION_ID,
+            "project_id": str(args.project_id),
+            "target_url": TARGET_URL,
+            "comment_published": False,
+            "retry_allowed": False,
+            "profile_mutated": False,
+            "story_mutated": False,
+            "reply_published": False,
+            "message_published": False,
+        }
+        store.put(MARKER_NAMESPACE, key, blocked)
+        return blocked
+
     session = customer_telegram_client_publish_service._active_session_internal(args.project_id)
     text = str(config["content_text"]).strip()
     target = TelegramPublishTarget(username=HANDLE, reply_to_message_id=POST_ID)
@@ -154,6 +261,7 @@ async def run(args: argparse.Namespace) -> dict:
         "target_handle": HANDLE,
         "target_post_id": POST_ID,
         "target_entity_id": verified["entity_id"],
+        "target_replies_count_before": verified["replies_count"],
         "content_sha256": CONTENT_SHA256,
         "started_at": datetime.now(UTC).isoformat(),
         "profile_mutated": False,
@@ -189,6 +297,7 @@ async def run(args: argparse.Namespace) -> dict:
         "remote_message_id": result.message_id,
         "published_at": result.published_at.isoformat(),
         "executed_url": str(result.executed_url),
+        "retry_allowed": False,
     }
     store.put(MARKER_NAMESPACE, key, completed)
     return completed
