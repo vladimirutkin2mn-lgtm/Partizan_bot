@@ -21,6 +21,7 @@
   let syncing = false;
   let latestChannels = [];
   let communityActions = [];
+  let communityActionsProjectId = null;
   let selectedCommunityAction = null;
   let focusedPlatform = null;
   let telegramChallenge = null;
@@ -339,6 +340,7 @@
   };
 
   const renderCommunityActions = (actions) => {
+    if (communityActionsProjectId !== currentProjectId()) return;
     const experiments = $('experiments');
     if (!experiments || !experiments.parentElement) return;
     let inbox = $('community-action-inbox');
@@ -350,23 +352,30 @@
     }
     if (!actions.length) {
       inbox.innerHTML = '<header><div><h4>Community actions</h4><p>Manual client-owned actions appear here for review. Telegram AUTO actions can execute within the automation limits you explicitly enabled and will appear in Activity after an execution attempt.</p></div></header><div class="community-action-empty">No manual community action needs your review right now.</div>';
+      window.dispatchEvent(new CustomEvent('partizan:community-actions-rendered'));
       return;
     }
     inbox.innerHTML = `<header><div><h4>Community actions</h4><p>Review manual client-owned actions here. Telegram AUTO executions use the automation permission and daily cap you enabled; their delivered result and verification appear in Activity.</p></div></header><div class="community-action-list">${actions.map((action) => {
       const selectedMode = selectedModeFor(action.platform);
       const removed = Number(action.removals || 0) > 0 ? `${action.removals} removal signal${Number(action.removals) === 1 ? '' : 's'}` : 'not removed';
-      return `<article class="community-action-card"><div><strong>${escapeHtml(action.opportunity_title || `${action.platform} community action`)}</strong><small>${escapeHtml(action.platform)} · ${escapeHtml(action.action_type)} · action ${escapeHtml(action.action_status)} · experiment ${escapeHtml(action.experiment_status)}</small><div class="community-action-meta"><span>Selected: ${escapeHtml(publisherModeLabel(selectedMode))}</span><span>Provenance: ${escapeHtml(publisherModeLabel(action.publisher_mode))}</span><span>${Number(action.replies || 0)} replies</span><span>${escapeHtml(removed)}</span></div></div><div class="community-action-actions">${communityActionButton(action)}</div></article>`;
+      return `<article class="community-action-card" data-action-id="${escapeHtml(action.action_id)}" data-action-platform="${escapeHtml(action.platform)}" data-action-status="${escapeHtml(action.action_status)}" data-action-project="${escapeHtml(communityActionsProjectId)}"><div><strong>${escapeHtml(action.opportunity_title || `${action.platform} community action`)}</strong><small>${escapeHtml(action.platform)} · ${escapeHtml(action.action_type)} · action ${escapeHtml(action.action_status)} · experiment ${escapeHtml(action.experiment_status)}</small><div class="community-action-meta"><span>Selected: ${escapeHtml(publisherModeLabel(selectedMode))}</span><span>Provenance: ${escapeHtml(publisherModeLabel(action.publisher_mode))}</span><span>${Number(action.replies || 0)} replies</span><span>${escapeHtml(removed)}</span></div></div><div class="community-action-actions">${communityActionButton(action)}</div></article>`;
     }).join('')}</div>`;
+    window.dispatchEvent(new CustomEvent('partizan:community-actions-rendered'));
   };
 
   const refreshCommunityActions = async () => {
     const projectId = currentProjectId();
     if (!projectId) return;
     try {
-      communityActions = await api(`/customer/workspace/${encodeURIComponent(projectId)}/community-actions`);
+      const actions = await api(`/customer/workspace/${encodeURIComponent(projectId)}/community-actions`);
+      if (projectId !== currentProjectId()) return;
+      communityActions = actions;
+      communityActionsProjectId = projectId;
       renderCommunityActions(communityActions || []);
     } catch (error) {
+      if (projectId !== currentProjectId()) return;
       communityActions = [];
+      communityActionsProjectId = projectId;
       renderCommunityActions([]);
       showNotice(error.message, true);
     }
