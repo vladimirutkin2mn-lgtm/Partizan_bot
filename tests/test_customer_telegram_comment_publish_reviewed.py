@@ -1,14 +1,13 @@
 from pathlib import Path
 
 from app.customer_telegram_comment_publish_reviewed import (
+    _load_config,
     CONTENT_SHA256,
     ENTITY_ID,
     HANDLE,
     POST_ID,
     TARGET_URL,
-    _load_config,
 )
-
 
 CONFIG = Path("ops/femdom/telegram_comment_asfera_2100_approved_v1.json")
 
