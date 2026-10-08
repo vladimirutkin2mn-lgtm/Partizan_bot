@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from app.customer_live_opportunities import (
     CUSTOMER_PROJECT_NAMESPACE,
+    MAX_TELEGRAM_OPPORTUNITY_AGE,
     CustomerLiveOpportunityService,
     CustomerLiveOpportunityUpsert,
 )
@@ -27,6 +28,47 @@ def _request(**overrides) -> CustomerLiveOpportunityUpsert:
     }
     payload.update(overrides)
     return CustomerLiveOpportunityUpsert.model_validate(payload)
+
+
+def _project_store():
+    store = MemoryRuntimeStateStore()
+    product_id = uuid4()
+    project_id = uuid4()
+    store.put(
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(project_id),
+        {"id": str(project_id), "product_id": str(product_id)},
+    )
+    return store, product_id, project_id
+
+
+def _telegram_opportunity(
+    *,
+    target_url: str,
+    published_at: datetime | None,
+    checked_at: datetime | None = None,
+):
+    recent_context = [{"url": target_url}]
+    if published_at is not None:
+        recent_context[0]["published_at"] = published_at.isoformat()
+    return SimpleNamespace(
+        id=uuid4(),
+        platform=SimpleNamespace(value="TELEGRAM"),
+        kind=SimpleNamespace(value="CHANNEL"),
+        title="Example community",
+        relevance_score=83.5,
+        rationale="Native Telegram evidence matches the target audience.",
+        metadata={
+            "native_research_status": "VERIFIED",
+            "source_checked_at": (checked_at or datetime.now(UTC)).isoformat(),
+            "telegram_entity_id": 123,
+            "handle": "example",
+            "linked_discussion_id": 456,
+            "action_target_specific": True,
+            "action_target_url": target_url,
+            "recent_context": recent_context,
+        },
+    )
 
 
 def test_live_opportunity_is_scoped_sorted_and_freshness_is_derived() -> None:
@@ -89,12 +131,15 @@ def test_publishability_and_publish_status_update_by_exact_target_url() -> None:
     target = "https://t.me/example/42"
     service.upsert(project_id, _request(url=target))
 
-    assert service.update_publishability_by_url(
-        project_id,
-        target,
-        publishability="JOIN_REQUIRED",
-        detail="Join the linked discussion group before publishing.",
-    ) == 1
+    assert (
+        service.update_publishability_by_url(
+            project_id,
+            target,
+            publishability="JOIN_REQUIRED",
+            detail="Join the linked discussion group before publishing.",
+        )
+        == 1
+    )
     item = service.list_for_project(project_id)[0]
     assert item.publishability == "JOIN_REQUIRED"
     assert "linked discussion" in str(item.publishability_detail)
@@ -146,45 +191,80 @@ def test_native_telegram_discovery_is_promoted_to_owning_customer_projects() -> 
         str(unrelated_project_id),
         {"id": str(unrelated_project_id), "product_id": str(uuid4())},
     )
-    published_at = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
+    checked_at = datetime.now(UTC)
+    published_at = checked_at - timedelta(hours=2)
     target_url = "https://t.me/example/777"
-    opportunity = SimpleNamespace(
-        id=uuid4(),
-        platform=SimpleNamespace(value="TELEGRAM"),
-        kind=SimpleNamespace(value="CHANNEL"),
-        title="Example community",
-        relevance_score=83.5,
-        rationale="Native Telegram evidence matches the target audience.",
-        metadata={
-            "native_research_status": "VERIFIED",
-            "source_checked_at": "2026-10-08T13:00:00+00:00",
-            "telegram_entity_id": 123,
-            "handle": "example",
-            "linked_discussion_id": 456,
-            "action_target_specific": True,
-            "action_target_url": target_url,
-            "recent_context": [
-                {
-                    "url": target_url,
-                    "published_at": published_at.isoformat(),
-                }
-            ],
-        },
+    opportunity = _telegram_opportunity(
+        target_url=target_url,
+        published_at=published_at,
+        checked_at=checked_at,
     )
 
     assert service.sync_distribution_opportunities(product_id, [opportunity]) == 1
-    items = service.list_for_project(
-        project_id,
-        now=datetime(2026, 10, 8, 14, 0, tzinfo=UTC),
-    )
+    items = service.list_for_project(project_id, now=checked_at)
 
     assert len(items) == 1
     assert str(items[0].url).rstrip("/") == target_url
     assert items[0].source == "RESEARCH"
     assert items[0].publishability == "NEEDS_REVIEW"
     assert items[0].relevance_score == 83.5
-    assert items[0].expires_at == published_at + timedelta(days=14)
+    assert items[0].expires_at == published_at + MAX_TELEGRAM_OPPORTUNITY_AGE
     assert service.list_for_project(unrelated_project_id) == []
+
+
+def test_old_telegram_post_is_rejected_even_when_crawl_is_current() -> None:
+    store, product_id, project_id = _project_store()
+    service = CustomerLiveOpportunityService(store)
+    checked_at = datetime.now(UTC)
+    target_url = "https://t.me/example/old"
+    opportunity = _telegram_opportunity(
+        target_url=target_url,
+        published_at=checked_at - MAX_TELEGRAM_OPPORTUNITY_AGE - timedelta(minutes=1),
+        checked_at=checked_at,
+    )
+
+    assert service.sync_distribution_opportunities(product_id, [opportunity]) == 0
+    assert service.list_for_project(project_id) == []
+
+
+def test_telegram_post_without_real_published_at_is_rejected() -> None:
+    store, product_id, project_id = _project_store()
+    service = CustomerLiveOpportunityService(store)
+    target_url = "https://t.me/example/unknown-date"
+    opportunity = _telegram_opportunity(
+        target_url=target_url,
+        published_at=None,
+        checked_at=datetime.now(UTC),
+    )
+
+    assert service.sync_distribution_opportunities(product_id, [opportunity]) == 0
+    assert service.list_for_project(project_id) == []
+
+
+def test_stale_or_undated_refresh_retires_existing_live_target() -> None:
+    store, product_id, project_id = _project_store()
+    service = CustomerLiveOpportunityService(store)
+    target_url = "https://t.me/example/rediscovered"
+    now = datetime.now(UTC)
+    fresh = _telegram_opportunity(
+        target_url=target_url,
+        published_at=now - timedelta(hours=1),
+        checked_at=now,
+    )
+    assert service.sync_distribution_opportunities(product_id, [fresh]) == 1
+    assert service.list_for_project(project_id)[0].status == "ACTIVE"
+
+    undated = _telegram_opportunity(
+        target_url=target_url,
+        published_at=None,
+        checked_at=now + timedelta(minutes=1),
+    )
+    assert service.sync_distribution_opportunities(product_id, [undated]) == 0
+
+    retired = service.list_for_project(project_id)[0]
+    assert retired.status == "STALE"
+    assert retired.freshness == "STALE"
+    assert "published_at is unavailable" in str(retired.publishability_detail)
 
 
 def test_generic_telegram_channel_without_specific_action_target_stays_out_of_live_feed() -> None:

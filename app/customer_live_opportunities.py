@@ -15,6 +15,8 @@ CUSTOMER_LIVE_OPPORTUNITY_NAMESPACE = "customer_live_opportunities"
 # Audience Intelligence can publish customer-facing discoveries without importing the
 # funnel module back into its own dependency graph.
 CUSTOMER_PROJECT_NAMESPACE = "customer_acquisition_projects"
+MAX_TELEGRAM_OPPORTUNITY_AGE = timedelta(days=7)
+TELEGRAM_PUBLISHED_AT_FUTURE_TOLERANCE = timedelta(minutes=5)
 
 LiveOpportunitySource = Literal[
     "OPERATIONAL_DISCOVERY",
@@ -160,17 +162,18 @@ class CustomerLiveOpportunityService:
         product_id: UUID,
         opportunities: list[object],
     ) -> int:
-        """Persist concrete fresh Telegram targets discovered by Audience Intelligence.
+        """Persist concrete, truly recent Telegram targets discovered by Audience Intelligence.
 
-        Audience Intelligence can rediscover communities repeatedly. Only native Telegram
-        opportunities with a specific fresh action target are promoted here; a generic
-        channel URL is not actionable enough for the customer live feed. This method only
-        records research. It never joins a chat or publishes anything.
+        Search/crawl timestamps are not proof that a Telegram post itself is current. A target
+        is promoted only when its matching native context contains a parseable ``published_at``
+        no more than seven days old. Unknown, future-invalid or older posts stay out of the
+        active customer feed. This method only records research; it never joins or publishes.
         """
         project_ids = self._project_ids_for_product(product_id)
         if not project_ids:
             return 0
 
+        current = datetime.now(UTC)
         synced = 0
         for opportunity in opportunities:
             platform_value = getattr(getattr(opportunity, "platform", None), "value", None)
@@ -183,8 +186,34 @@ class CustomerLiveOpportunityService:
             if not target_url or metadata.get("action_target_specific") is not True:
                 continue
 
-            checked_at = self._parse_datetime(metadata.get("source_checked_at")) or datetime.now(UTC)
-            expires_at = self._telegram_target_expiry(metadata, target_url)
+            checked_at = self._parse_datetime(metadata.get("source_checked_at")) or current
+            published_at = self._telegram_target_published_at(metadata, target_url)
+            if published_at is None:
+                self._mark_target_stale_for_projects(
+                    project_ids,
+                    target_url,
+                    detail="Telegram post published_at is unavailable; true freshness is unverified.",
+                    checked_at=checked_at,
+                )
+                continue
+            if published_at > current + TELEGRAM_PUBLISHED_AT_FUTURE_TOLERANCE:
+                self._mark_target_stale_for_projects(
+                    project_ids,
+                    target_url,
+                    detail="Telegram post published_at is in the future; freshness verification failed.",
+                    checked_at=checked_at,
+                )
+                continue
+            expires_at = published_at + MAX_TELEGRAM_OPPORTUNITY_AGE
+            if expires_at <= current:
+                self._mark_target_stale_for_projects(
+                    project_ids,
+                    target_url,
+                    detail="Telegram post is older than the 7-day acquisition window.",
+                    checked_at=checked_at,
+                )
+                continue
+
             kind_value = getattr(getattr(opportunity, "kind", None), "value", None) or "COMMENT"
             rationale = str(
                 getattr(opportunity, "rationale", None)
@@ -220,6 +249,7 @@ class CustomerLiveOpportunityService:
                     "handle": metadata.get("handle"),
                     "linked_discussion_id": metadata.get("linked_discussion_id"),
                     "source": "audience_intelligence_native_telegram",
+                    "source_published_at": published_at.isoformat(),
                 },
             )
             for project_id in project_ids:
@@ -240,16 +270,49 @@ class CustomerLiveOpportunityService:
                 continue
         return result
 
-    def _telegram_target_expiry(self, metadata: dict, target_url: str) -> datetime | None:
+    def _telegram_target_published_at(self, metadata: dict, target_url: str) -> datetime | None:
+        normalized_target = target_url.strip().rstrip("/")
         for item in metadata.get("recent_context") or []:
             if not isinstance(item, dict):
                 continue
-            if str(item.get("url") or "").strip().rstrip("/") != target_url.rstrip("/"):
+            if str(item.get("url") or "").strip().rstrip("/") != normalized_target:
                 continue
-            published_at = self._parse_datetime(item.get("published_at"))
-            if published_at is not None:
-                return published_at + timedelta(days=14)
+            return self._parse_datetime(item.get("published_at"))
         return None
+
+    def _telegram_target_expiry(self, metadata: dict, target_url: str) -> datetime | None:
+        published_at = self._telegram_target_published_at(metadata, target_url)
+        if published_at is None:
+            return None
+        return published_at + MAX_TELEGRAM_OPPORTUNITY_AGE
+
+    def _mark_target_stale_for_projects(
+        self,
+        project_ids: list[UUID],
+        target_url: str,
+        *,
+        detail: str,
+        checked_at: datetime,
+    ) -> None:
+        normalized_target = target_url.strip().rstrip("/")
+        now = datetime.now(UTC).isoformat()
+        checked = self._as_utc(checked_at).isoformat()
+        for project_id in project_ids:
+            for row in self._project_rows(project_id):
+                if str(row.get("url") or "").strip().rstrip("/") != normalized_target:
+                    continue
+                if str(row.get("status") or "") == "PUBLISHED":
+                    continue
+                row["status"] = "STALE"
+                row["publishability"] = "NEEDS_REVIEW"
+                row["publishability_detail"] = detail[:1200]
+                row["last_checked_at"] = checked
+                row["updated_at"] = now
+                self._store.put(
+                    CUSTOMER_LIVE_OPPORTUNITY_NAMESPACE,
+                    self._key(project_id, str(row["opportunity_id"])),
+                    row,
+                )
 
     def list_for_project(
         self,
