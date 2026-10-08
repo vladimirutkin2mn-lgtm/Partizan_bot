@@ -40,7 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Replace only the previously published reviewed FemDom Telegram story with the "
-            "exact user-approved creative. This command cannot mutate the profile and has no "
+            "user-approved creative. This command cannot mutate the profile and has no "
             "comment, reply or message publishing path."
         )
     )
@@ -79,6 +79,39 @@ def _asset_bytes() -> bytes:
     return content
 
 
+def _telegram_photo_bytes(content: bytes) -> bytes:
+    """Encode the reviewed pixels as a Telegram photo without cropping or resizing.
+
+    Telegram stories sent as InputMediaUploadedPhoto reject WebP payloads. The reviewed
+    creative remains the source of truth; this conversion only changes the transport
+    container to JPEG and keeps the exact canvas, composition and embedded copy.
+    """
+    with Image.open(BytesIO(content)) as source:
+        source.load()
+        if source.size != EXPECTED_SIZE:
+            raise ValueError(
+                f"Approved story creative size changed: {source.size} != {EXPECTED_SIZE}"
+            )
+        image = source.convert("RGB")
+        output = BytesIO()
+        image.save(
+            output,
+            format="JPEG",
+            quality=98,
+            subsampling=0,
+            optimize=True,
+            progressive=True,
+        )
+    result = output.getvalue()
+    if not result.startswith(b"\xff\xd8\xff"):
+        raise ValueError("Telegram story transport payload is not a JPEG")
+    with Image.open(BytesIO(result)) as verify:
+        verify.load()
+        if verify.size != EXPECTED_SIZE:
+            raise ValueError("Telegram story transport changed the creative dimensions")
+    return result
+
+
 def _marker_key(project_id: UUID) -> str:
     return f"{project_id}:{OPERATION_ID}"
 
@@ -90,6 +123,8 @@ async def run(args: argparse.Namespace) -> dict:
     _validate_target(args)
     content = _asset_bytes()
     asset_sha256 = hashlib.sha256(content).hexdigest()
+    telegram_content = _telegram_photo_bytes(content)
+    telegram_sha256 = hashlib.sha256(telegram_content).hexdigest()
     store = get_runtime_store()
     key = _marker_key(args.project_id)
     marker = store.get(MARKER_NAMESPACE, key)
@@ -127,8 +162,8 @@ async def run(args: argparse.Namespace) -> dict:
 
     story = await customer_telegram_client_publish_service.publish_story_internal(
         args.project_id,
-        content=content,
-        filename="femdom-story-approved-v1.webp",
+        content=telegram_content,
+        filename="femdom-story-approved-v1.jpg",
         caption="",
         period_seconds=86400,
         noforwards=False,
@@ -140,6 +175,8 @@ async def run(args: argparse.Namespace) -> dict:
         "published_at": story.published_at.isoformat(),
         "period_seconds": 86400,
         "caption": "",
+        "telegram_upload_format": "JPEG",
+        "telegram_upload_sha256": telegram_sha256,
         "profile_mutated": False,
         "community_content_published": False,
         "comment_published": False,
