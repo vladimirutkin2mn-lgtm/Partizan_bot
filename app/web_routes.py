@@ -54,6 +54,7 @@ _LEGAL_PAGES = {
     "/contact": "contact.v1.html",
 }
 
+
 def _content_revision(*paths: str) -> str:
     digest = hashlib.sha256()
     for path in sorted(paths):
@@ -94,6 +95,7 @@ _CUSTOMER_WORKSPACE_ASSETS = {
     "workspace.design.v1.js": "text/javascript; charset=utf-8",
     "workspace.v1.css": "text/css; charset=utf-8",
     "workspace.v1.js": "text/javascript; charset=utf-8",
+    "workspace.live-opportunities.v1.js": "text/javascript; charset=utf-8",
     "workspace.meta-oauth-errors.v1.js": "text/javascript; charset=utf-8",
     "workspace.channels.v1.css": "text/css; charset=utf-8",
     "workspace.channels.v1.js": "text/javascript; charset=utf-8",
@@ -116,6 +118,9 @@ _WORKSPACE_EXPERIMENT_STYLESHEET = (
     '<link rel="stylesheet" href="/workspace/assets/workspace.experiments.v1.css">'
 )
 _WORKSPACE_SCRIPT_MARKER = '<script src="/workspace/assets/workspace.v1.js" defer></script>'
+_WORKSPACE_LIVE_OPPORTUNITIES_SCRIPT = (
+    '<script src="/workspace/assets/workspace.live-opportunities.v1.js" defer></script>'
+)
 _WORKSPACE_META_OAUTH_ERROR_SCRIPT = (
     '<script src="/workspace/assets/workspace.meta-oauth-errors.v1.js" defer></script>'
 )
@@ -323,7 +328,8 @@ async def customer_workspace(
     html = html.replace(
         _WORKSPACE_SCRIPT_MARKER,
         (
-            f"{_WORKSPACE_SCRIPT_MARKER}\n  {_WORKSPACE_META_OAUTH_ERROR_SCRIPT}"
+            f"{_WORKSPACE_SCRIPT_MARKER}\n  {_WORKSPACE_LIVE_OPPORTUNITIES_SCRIPT}"
+            f"\n  {_WORKSPACE_META_OAUTH_ERROR_SCRIPT}"
             f"\n  {_WORKSPACE_CHANNEL_SCRIPT}"
             f"\n  {_WORKSPACE_PROJECT_SCRIPT}"
             f"\n  {_WORKSPACE_EXPERIMENT_SCRIPT}"
