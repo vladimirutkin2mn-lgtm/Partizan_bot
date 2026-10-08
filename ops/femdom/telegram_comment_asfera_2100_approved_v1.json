@@ -4,6 +4,7 @@
   "authorization_scope": "COMMENT_ONLY",
   "authorization_phrase_received": "публикуй",
   "community_publish_authorized": true,
+  "linked_discussion_join_authorized": true,
   "profile_mutation_authorized": false,
   "story_mutation_authorized": false,
   "reply_publish_authorized": false,
