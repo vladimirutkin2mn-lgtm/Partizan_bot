@@ -11,6 +11,10 @@ from pydantic import BaseModel, Field, HttpUrl, field_validator
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 CUSTOMER_LIVE_OPPORTUNITY_NAMESPACE = "customer_live_opportunities"
+# Stable runtime namespace owned by the customer funnel. Repeated here deliberately so
+# Audience Intelligence can publish customer-facing discoveries without importing the
+# funnel module back into its own dependency graph.
+CUSTOMER_PROJECT_NAMESPACE = "customer_acquisition_projects"
 
 LiveOpportunitySource = Literal[
     "OPERATIONAL_DISCOVERY",
@@ -43,7 +47,7 @@ class CustomerLiveOpportunityUpsert(BaseModel):
     rationale: str = Field(min_length=1, max_length=4000)
     recommended_action: str = Field(min_length=1, max_length=4000)
     suggested_content: str | None = Field(default=None, max_length=8000)
-    relevance_score: float | None = Field(default=None, ge=0, le=1)
+    relevance_score: float | None = Field(default=None, ge=0, le=100)
     publishability: LiveOpportunityPublishability = "UNKNOWN"
     publishability_detail: str | None = Field(default=None, max_length=1200)
     discovered_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -106,6 +110,18 @@ class CustomerLiveOpportunityService:
             return value.replace(tzinfo=UTC)
         return value.astimezone(UTC)
 
+    @staticmethod
+    def _parse_datetime(value: object) -> datetime | None:
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(value))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
+
     def upsert(
         self,
         project_id: UUID,
@@ -119,7 +135,10 @@ class CustomerLiveOpportunityService:
         key = self._key(project_id, opportunity_id)
         existing = self._store.get(CUSTOMER_LIVE_OPPORTUNITY_NAMESPACE, key) or {}
         status: LiveOpportunityStatus = request.status
-        if str(existing.get("status") or "") == "PUBLISHED" and status == "ACTIVE":
+        preserve_published = (
+            str(existing.get("status") or "") == "PUBLISHED" and status == "ACTIVE"
+        )
+        if preserve_published:
             status = "PUBLISHED"
         payload = {
             **request.model_dump(mode="json"),
@@ -130,8 +149,107 @@ class CustomerLiveOpportunityService:
             "created_at": existing.get("created_at") or datetime.now(UTC).isoformat(),
             "updated_at": datetime.now(UTC).isoformat(),
         }
+        if preserve_published:
+            payload["publishability"] = existing.get("publishability") or "READY"
+            payload["published_at"] = existing.get("published_at")
         self._store.put(CUSTOMER_LIVE_OPPORTUNITY_NAMESPACE, key, payload)
         return self._view(payload)
+
+    def sync_distribution_opportunities(
+        self,
+        product_id: UUID,
+        opportunities: list[object],
+    ) -> int:
+        """Persist concrete fresh Telegram targets discovered by Audience Intelligence.
+
+        Audience Intelligence can rediscover communities repeatedly. Only native Telegram
+        opportunities with a specific fresh action target are promoted here; a generic
+        channel URL is not actionable enough for the customer live feed. This method only
+        records research. It never joins a chat or publishes anything.
+        """
+        project_ids = self._project_ids_for_product(product_id)
+        if not project_ids:
+            return 0
+
+        synced = 0
+        for opportunity in opportunities:
+            platform_value = getattr(getattr(opportunity, "platform", None), "value", None)
+            if str(platform_value or "").upper() != "TELEGRAM":
+                continue
+            metadata = getattr(opportunity, "metadata", None)
+            if not isinstance(metadata, dict):
+                continue
+            target_url = str(metadata.get("action_target_url") or "").strip()
+            if not target_url or metadata.get("action_target_specific") is not True:
+                continue
+
+            checked_at = self._parse_datetime(metadata.get("source_checked_at")) or datetime.now(UTC)
+            expires_at = self._telegram_target_expiry(metadata, target_url)
+            kind_value = getattr(getattr(opportunity, "kind", None), "value", None) or "COMMENT"
+            rationale = str(
+                getattr(opportunity, "rationale", None)
+                or "Partizan found fresh Telegram audience evidence for this target."
+            )[:4000]
+            title = str(getattr(opportunity, "title", None) or "Telegram opportunity")[:420]
+            relevance = getattr(opportunity, "relevance_score", None)
+            request = CustomerLiveOpportunityUpsert(
+                source="RESEARCH",
+                platform="TELEGRAM",
+                surface="COMMUNITY",
+                kind=str(kind_value),
+                title=f"{title} — fresh Telegram thread",
+                url=target_url,
+                rationale=rationale,
+                recommended_action=(
+                    "Review this fresh thread and the participation angle. Before any publication, "
+                    "Partizan must preflight linked-discussion membership and write access."
+                ),
+                relevance_score=float(relevance) if relevance is not None else None,
+                publishability="NEEDS_REVIEW",
+                publishability_detail=(
+                    "Native Telegram research found a specific current target. Publisher membership "
+                    "and write access have not been verified for this action yet."
+                ),
+                discovered_at=checked_at,
+                expires_at=expires_at,
+                last_checked_at=checked_at,
+                status="ACTIVE",
+                metadata={
+                    "distribution_opportunity_id": str(getattr(opportunity, "id", "")),
+                    "telegram_entity_id": metadata.get("telegram_entity_id"),
+                    "handle": metadata.get("handle"),
+                    "linked_discussion_id": metadata.get("linked_discussion_id"),
+                    "source": "audience_intelligence_native_telegram",
+                },
+            )
+            for project_id in project_ids:
+                self.upsert(project_id, request)
+                synced += 1
+        return synced
+
+    def _project_ids_for_product(self, product_id: UUID) -> list[UUID]:
+        result: list[UUID] = []
+        for project in self._store.list_namespace(CUSTOMER_PROJECT_NAMESPACE):
+            if project.get("deleted_at"):
+                continue
+            if str(project.get("product_id") or "") != str(product_id):
+                continue
+            try:
+                result.append(UUID(str(project["id"])))
+            except (KeyError, ValueError, TypeError):
+                continue
+        return result
+
+    def _telegram_target_expiry(self, metadata: dict, target_url: str) -> datetime | None:
+        for item in metadata.get("recent_context") or []:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("url") or "").strip().rstrip("/") != target_url.rstrip("/"):
+                continue
+            published_at = self._parse_datetime(item.get("published_at"))
+            if published_at is not None:
+                return published_at + timedelta(days=14)
+        return None
 
     def list_for_project(
         self,
