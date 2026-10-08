@@ -1,6 +1,7 @@
 from uuid import UUID, uuid4
 
 from app.audience_intelligence import AudienceIntelligenceEngine
+from app.customer_live_opportunities import customer_live_opportunity_service
 from app.distribution_schemas import (
     AudienceDistributionMapView,
     DistributionOpportunityView,
@@ -49,6 +50,14 @@ class InMemoryAudienceIntelligenceService:
         for opportunity in opportunities:
             self._opportunities[opportunity.id] = opportunity
             self._persist_opportunity(opportunity)
+
+        # Promote only concrete, native, fresh Telegram action targets into the
+        # owning customer's live feed. This is research persistence only: the bridge
+        # has no permission to join a group or publish on the customer's behalf.
+        customer_live_opportunity_service.sync_distribution_opportunities(
+            product.id,
+            list(opportunities),
+        )
         return response
 
     @staticmethod
