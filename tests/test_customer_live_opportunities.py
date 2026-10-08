@@ -1,7 +1,9 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from uuid import uuid4
 
 from app.customer_live_opportunities import (
+    CUSTOMER_PROJECT_NAMESPACE,
     CustomerLiveOpportunityService,
     CustomerLiveOpportunityUpsert,
 )
@@ -34,13 +36,13 @@ def test_live_opportunity_is_scoped_sorted_and_freshness_is_derived() -> None:
     other_project_id = uuid4()
     now = datetime(2026, 10, 8, 18, 0, tzinfo=UTC)
 
-    service.upsert(project_id, _request(title="Lower score", relevance_score=0.5))
+    service.upsert(project_id, _request(title="Lower score", relevance_score=50))
     service.upsert(
         project_id,
         _request(
             title="Higher score",
             url="https://t.me/example/43",
-            relevance_score=0.95,
+            relevance_score=95,
         ),
     )
     service.upsert(other_project_id, _request(url="https://t.me/example/99"))
@@ -124,4 +126,84 @@ def test_upsert_uses_stable_url_identity_and_preserves_published_state() -> None
     assert first.opportunity_id == second.opportunity_id
     assert second.title == "Updated title"
     assert second.status == "PUBLISHED"
+    assert second.publishability == "READY"
     assert len(service.list_for_project(project_id)) == 1
+
+
+def test_native_telegram_discovery_is_promoted_to_owning_customer_projects() -> None:
+    store = MemoryRuntimeStateStore()
+    service = CustomerLiveOpportunityService(store)
+    product_id = uuid4()
+    project_id = uuid4()
+    unrelated_project_id = uuid4()
+    store.put(
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(project_id),
+        {"id": str(project_id), "product_id": str(product_id)},
+    )
+    store.put(
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(unrelated_project_id),
+        {"id": str(unrelated_project_id), "product_id": str(uuid4())},
+    )
+    published_at = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
+    target_url = "https://t.me/example/777"
+    opportunity = SimpleNamespace(
+        id=uuid4(),
+        platform=SimpleNamespace(value="TELEGRAM"),
+        kind=SimpleNamespace(value="CHANNEL"),
+        title="Example community",
+        relevance_score=83.5,
+        rationale="Native Telegram evidence matches the target audience.",
+        metadata={
+            "native_research_status": "VERIFIED",
+            "source_checked_at": "2026-10-08T13:00:00+00:00",
+            "telegram_entity_id": 123,
+            "handle": "example",
+            "linked_discussion_id": 456,
+            "action_target_specific": True,
+            "action_target_url": target_url,
+            "recent_context": [
+                {
+                    "url": target_url,
+                    "published_at": published_at.isoformat(),
+                }
+            ],
+        },
+    )
+
+    assert service.sync_distribution_opportunities(product_id, [opportunity]) == 1
+    items = service.list_for_project(
+        project_id,
+        now=datetime(2026, 10, 8, 14, 0, tzinfo=UTC),
+    )
+
+    assert len(items) == 1
+    assert str(items[0].url).rstrip("/") == target_url
+    assert items[0].source == "RESEARCH"
+    assert items[0].publishability == "NEEDS_REVIEW"
+    assert items[0].relevance_score == 83.5
+    assert items[0].expires_at == published_at + timedelta(days=14)
+    assert service.list_for_project(unrelated_project_id) == []
+
+
+def test_generic_telegram_channel_without_specific_action_target_stays_out_of_live_feed() -> None:
+    store = MemoryRuntimeStateStore()
+    service = CustomerLiveOpportunityService(store)
+    product_id = uuid4()
+    project_id = uuid4()
+    store.put(
+        CUSTOMER_PROJECT_NAMESPACE,
+        str(project_id),
+        {"id": str(project_id), "product_id": str(product_id)},
+    )
+    generic = SimpleNamespace(
+        platform=SimpleNamespace(value="TELEGRAM"),
+        metadata={
+            "action_target_specific": False,
+            "action_target_url": None,
+        },
+    )
+
+    assert service.sync_distribution_opportunities(product_id, [generic]) == 0
+    assert service.list_for_project(project_id) == []
