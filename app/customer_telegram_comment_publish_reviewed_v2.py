@@ -4,6 +4,8 @@ import asyncio
 import json
 from datetime import UTC, datetime
 
+from telethon.tl.functions.messages import GetDiscussionMessageRequest
+
 from app import customer_telegram_comment_publish_reviewed as v1
 from app.runtime_store import get_runtime_store
 from app.telegram_comment_access import ensure_comment_access
@@ -31,6 +33,169 @@ async def _prepare_linked_discussion_access(args, config: dict) -> dict:
         await client.disconnect()
 
 
+def _peer_channel_id(message) -> int:
+    peer = getattr(message, "peer_id", None)
+    return int(getattr(peer, "channel_id", 0) or 0)
+
+
+def _reply_ids(message) -> set[int]:
+    reply = getattr(message, "reply_to", None)
+    values = {
+        int(getattr(reply, "reply_to_msg_id", 0) or 0),
+        int(getattr(reply, "top_msg_id", 0) or 0),
+    }
+    values.discard(0)
+    return values
+
+
+async def _reconcile_linked_discussion(args, config: dict) -> dict:
+    """Find the approved comment in the linked group without sending anything."""
+    client = v1._telegram_client(args.project_id)
+    expected_text = str(config["content_text"]).strip()
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            raise ValueError("Telegram session is not authorised")
+        me = await client.get_me()
+        if me is None or not getattr(me, "id", None):
+            raise ValueError("Telegram identity is not available")
+
+        channel = await client.get_entity(f"@{v1.HANDLE}")
+        if int(getattr(channel, "id", 0) or 0) != v1.ENTITY_ID:
+            raise ValueError("Telegram target entity no longer matches the reviewed channel")
+
+        access = await ensure_comment_access(client, channel, allow_join=False)
+        if access.status != "READY" or access.linked_chat_id is None:
+            return {
+                "status": "LINKED_RECONCILIATION_BLOCKED",
+                "reason": access.status,
+                "found": False,
+                "comments_checked": 0,
+                "retry_allowed": access.status == "JOIN_REQUIRED",
+                "linked_chat_id": access.linked_chat_id,
+            }
+
+        discussion = await client(
+            GetDiscussionMessageRequest(peer=channel, msg_id=v1.POST_ID)
+        )
+        linked_chat_id = int(access.linked_chat_id)
+        linked_entity = next(
+            (
+                chat
+                for chat in (getattr(discussion, "chats", None) or [])
+                if int(getattr(chat, "id", 0) or 0) == linked_chat_id
+            ),
+            None,
+        )
+        if linked_entity is None:
+            linked_entity = await client.get_entity(linked_chat_id)
+
+        root = next(
+            (
+                message
+                for message in (getattr(discussion, "messages", None) or [])
+                if _peer_channel_id(message) == linked_chat_id
+            ),
+            None,
+        )
+        if root is None or not getattr(root, "id", None):
+            return {
+                "status": "LINKED_RECONCILIATION_BLOCKED",
+                "reason": "DISCUSSION_ROOT_NOT_FOUND",
+                "found": False,
+                "comments_checked": 0,
+                "retry_allowed": False,
+                "linked_chat_id": linked_chat_id,
+            }
+
+        root_id = int(root.id)
+        checked = 0
+        seen: set[int] = set()
+
+        async for item in client.iter_messages(
+            linked_entity,
+            reply_to=root_id,
+            limit=v1.RECONCILE_LIMIT,
+        ):
+            message_id = int(getattr(item, "id", 0) or 0)
+            if message_id:
+                seen.add(message_id)
+            checked += 1
+            text = str(getattr(item, "message", "") or "").strip()
+            sender_id = int(getattr(item, "sender_id", 0) or 0)
+            if sender_id == int(me.id) and text == expected_text:
+                return {
+                    "status": "PUBLISHED_RECONCILED",
+                    "found": True,
+                    "comments_checked": checked,
+                    "retry_allowed": False,
+                    "remote_peer_id": linked_chat_id,
+                    "remote_message_id": message_id,
+                    "discussion_root_id": root_id,
+                    "executed_url": f"{v1.TARGET_URL}?comment={message_id}",
+                }
+
+        # Telethon can fail to materialize a freshly sent comment even when Telegram
+        # returned an update. Scan recent linked-group messages as a second, read-only check.
+        async for item in client.iter_messages(linked_entity, limit=v1.RECONCILE_LIMIT):
+            message_id = int(getattr(item, "id", 0) or 0)
+            if message_id in seen:
+                continue
+            checked += 1
+            text = str(getattr(item, "message", "") or "").strip()
+            sender_id = int(getattr(item, "sender_id", 0) or 0)
+            if (
+                sender_id == int(me.id)
+                and text == expected_text
+                and root_id in _reply_ids(item)
+            ):
+                return {
+                    "status": "PUBLISHED_RECONCILED",
+                    "found": True,
+                    "comments_checked": checked,
+                    "retry_allowed": False,
+                    "remote_peer_id": linked_chat_id,
+                    "remote_message_id": message_id,
+                    "discussion_root_id": root_id,
+                    "executed_url": f"{v1.TARGET_URL}?comment={message_id}",
+                }
+
+        return {
+            "status": "LINKED_RECONCILED_NOT_FOUND",
+            "found": False,
+            "comments_checked": checked,
+            "retry_allowed": True,
+            "linked_chat_id": linked_chat_id,
+            "discussion_root_id": root_id,
+        }
+    except ValueError:
+        raise
+    except Exception as exc:
+        return {
+            "status": "LINKED_RECONCILIATION_BLOCKED",
+            "reason": type(exc).__name__,
+            "found": False,
+            "comments_checked": 0,
+            "retry_allowed": False,
+        }
+    finally:
+        await client.disconnect()
+
+
+def _published_receipt(existing: dict | None, reconciliation: dict) -> dict:
+    return {
+        **(existing or {}),
+        **reconciliation,
+        "status": "PUBLISHED_RECONCILED",
+        "reconciled_at": datetime.now(UTC).isoformat(),
+        "comment_published": True,
+        "profile_mutated": False,
+        "story_mutated": False,
+        "reply_published": False,
+        "message_published": False,
+    }
+
+
 async def run(args) -> dict:
     if args.confirm != v1.CONFIRMATION:
         raise ValueError(f"Exact confirmation is required: {v1.CONFIRMATION}")
@@ -47,14 +212,36 @@ async def run(args) -> dict:
     existing = store.get(v1.MARKER_NAMESPACE, key)
     if existing is not None:
         existing_status = str(existing.get("status") or "")
-        # Let v1 preserve its reconciliation/idempotency behavior before any new side effect.
-        if existing_status in {
-            "PUBLISHED",
-            "PUBLISHED_RECONCILED",
-            "FAILED_UNRESOLVED",
-        }:
+        if existing_status in {"PUBLISHED", "PUBLISHED_RECONCILED"}:
             return await v1.run(args)
-        if existing_status not in {"RECONCILED_NOT_FOUND"}:
+        if existing_status in {"FAILED_UNRESOLVED", "RECONCILED_NOT_FOUND"}:
+            reconciliation = await _reconcile_linked_discussion(args, config)
+            if reconciliation.get("found"):
+                receipt = _published_receipt(existing, reconciliation)
+                store.put(v1.MARKER_NAMESPACE, key, receipt)
+                return receipt
+            if reconciliation.get("retry_allowed") is not True:
+                blocked = {
+                    **existing,
+                    **reconciliation,
+                    "comment_published": False,
+                    "retry_allowed": False,
+                }
+                store.put(v1.MARKER_NAMESPACE, key, blocked)
+                return blocked
+            # v1 only retries from RECONCILED_NOT_FOUND. Persist that state after the
+            # stronger linked-group reconciliation proves the exact comment is absent.
+            retry_state = {
+                **existing,
+                **reconciliation,
+                "status": "RECONCILED_NOT_FOUND",
+                "comment_published": False,
+                "retry_allowed": True,
+                "reconciled_at": datetime.now(UTC).isoformat(),
+            }
+            store.put(v1.MARKER_NAMESPACE, key, retry_state)
+            existing = retry_state
+        elif existing_status not in {"RECONCILED_NOT_FOUND"}:
             return {
                 **existing,
                 "comment_published": False,
@@ -90,11 +277,26 @@ async def run(args) -> dict:
         store.put(v1.MARKER_NAMESPACE, key, blocked)
         return blocked
 
-    result = await v1.run(args)
-    # Surface the prerequisite side effect in the receipt without changing v1's publish semantics.
+    try:
+        result = await v1.run(args)
+    except Exception:
+        # Telegram may accept the comment while Telethon fails to map the returned
+        # MessageEmpty update. Reconcile the linked group before surfacing failure.
+        reconciliation = await _reconcile_linked_discussion(args, config)
+        if reconciliation.get("found"):
+            current = store.get(v1.MARKER_NAMESPACE, key)
+            receipt = _published_receipt(current, reconciliation)
+            if bool(access.get("joined")):
+                receipt["linked_discussion_joined"] = True
+                receipt["linked_discussion_chat_id"] = access.get("linked_chat_id")
+            store.put(v1.MARKER_NAMESPACE, key, receipt)
+            return receipt
+        raise
+
     if bool(access.get("joined")) and result.get("status") in {
         "PUBLISHED",
         "ALREADY_PUBLISHED",
+        "PUBLISHED_RECONCILED",
     }:
         result = {
             **result,
