@@ -79,7 +79,7 @@ services:
       [
         "sh",
         "-c",
-        "partizan-autonomous-growth --interval-seconds $${AUTONOMOUS_GROWTH_INTERVAL_SECONDS:-300}",
+        "partizan-autonomous-growth --interval-seconds $${AUTONOMOUS_GROWTH_INTERVAL_SECONDS:-300} --discovery-interval-seconds $${AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS:-21600}",
       ]
     depends_on:
       migrate:
