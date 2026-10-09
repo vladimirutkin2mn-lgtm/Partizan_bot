@@ -4,8 +4,8 @@ from uuid import uuid4
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.telegram_discovery_strategy import (
     MAX_ADAPTIVE_DISCOVERY_ROUNDS,
-    TELEGRAM_DISCOVERY_QUERY_BUDGET,
     TARGET_READY_TELEGRAM_OPPORTUNITIES,
+    TELEGRAM_DISCOVERY_QUERY_BUDGET,
     ExpandedTelegramDiscoveryAdapter,
     expanded_platform_adapters,
 )
