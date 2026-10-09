@@ -10,8 +10,10 @@ from app.schemas import ICPGenerationResponse, ProductProfileView
 from app.search import get_search_provider
 from app.telegram_discovery_strategy import (
     MAX_ADAPTIVE_DISCOVERY_ROUNDS,
-    TELEGRAM_DISCOVERY_QUERY_BUDGET,
     TARGET_READY_TELEGRAM_OPPORTUNITIES,
+    TELEGRAM_DISCOVERY_QUERY_BUDGET,
+)
+from app.telegram_discovery_strategy import (
     ExpandedAudienceIntelligenceEngine as AudienceIntelligenceEngine,
 )
 
