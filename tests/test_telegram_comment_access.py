@@ -16,10 +16,18 @@ from app.telegram_comment_access import ensure_comment_access, preflight_comment
 
 
 class FakeClient:
-    def __init__(self, *, member: bool, send_blocked: bool = False, join_error: Exception | None = None):
+    def __init__(
+        self,
+        *,
+        member: bool,
+        send_blocked: bool = False,
+        join_error: Exception | None = None,
+        participant_error: Exception | None = None,
+    ):
         self.member = member
         self.send_blocked = send_blocked
         self.join_error = join_error
+        self.participant_error = participant_error
         self.join_calls = 0
         self.participant_checks = 0
         self.linked = SimpleNamespace(
@@ -35,6 +43,8 @@ class FakeClient:
             )
         if isinstance(request, GetParticipantRequest):
             self.participant_checks += 1
+            if self.participant_error is not None:
+                raise self.participant_error
             if not self.member:
                 raise UserNotParticipantError(request)
             return SimpleNamespace(
@@ -107,6 +117,17 @@ async def test_default_send_ban_is_no_write_access():
     access = await preflight_comment_access(client, SimpleNamespace(id=111))
 
     assert access.status == "NO_WRITE_ACCESS"
+
+
+@pytest.mark.asyncio
+async def test_telegram_account_ban_error_is_no_write_access():
+    banned_error_type = type("UserBannedInChannelError", (Exception,), {})
+    client = FakeClient(member=True, participant_error=banned_error_type("blocked"))
+
+    access = await preflight_comment_access(client, SimpleNamespace(id=111))
+
+    assert access.status == "NO_WRITE_ACCESS"
+    assert access.error_type == "UserBannedInChannelError"
 
 
 def test_generic_customer_transport_never_joins_groups_implicitly():

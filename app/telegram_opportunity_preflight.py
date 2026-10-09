@@ -12,6 +12,7 @@ from telethon.sessions import StringSession
 from app.config import get_settings
 from app.telegram_client_publishing import customer_telegram_client_publish_service
 from app.telegram_comment_access import preflight_comment_access
+from app.telegram_community_restrictions import telegram_community_restriction_memory
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +53,7 @@ class TelegramOpportunityPreflightResult:
 AccessChecker = Callable[[Any, Any], Awaitable[Any]]
 SessionProvider = Callable[[UUID], str]
 ClientFactory = Callable[[str], Any]
+RestrictionChecker = Callable[[UUID, str], dict | None]
 
 
 class TelegramOpportunityPreflightService:
@@ -59,7 +61,9 @@ class TelegramOpportunityPreflightService:
 
     The service never joins a linked group and never sends a message. A target is ready
     for autonomous COMMENT execution only when the exact post exists, has a discussion,
-    and the connected customer account already has write access to the linked discussion.
+    the connected customer account already has write access to the linked discussion,
+    and Partizan has no stronger prior evidence that Telegram rejected writes for this
+    account/community pair.
     """
 
     def __init__(
@@ -68,12 +72,16 @@ class TelegramOpportunityPreflightService:
         session_provider: SessionProvider | None = None,
         client_factory: ClientFactory | None = None,
         access_checker: AccessChecker | None = None,
+        restriction_checker: RestrictionChecker | None = None,
     ) -> None:
         self._session_provider = (
             session_provider or customer_telegram_client_publish_service._active_session_internal
         )
         self._client_factory = client_factory or self._default_client
         self._access_checker = access_checker or preflight_comment_access
+        self._restriction_checker = (
+            restriction_checker or telegram_community_restriction_memory.get
+        )
 
     async def check_comment_target(
         self,
@@ -85,6 +93,18 @@ class TelegramOpportunityPreflightService:
             return TelegramOpportunityPreflightResult(
                 status="PRECHECK_FAILED",
                 reason="INVALID_TARGET_URL",
+            )
+
+        known_restriction = self._restriction_checker(project_id, target.handle)
+        if known_restriction is not None:
+            return TelegramOpportunityPreflightResult(
+                status="NO_WRITE_ACCESS",
+                handle=target.handle,
+                post_id=target.post_id,
+                reason=str(
+                    known_restriction.get("reason")
+                    or "KNOWN_COMMUNITY_WRITE_RESTRICTION"
+                ),
             )
 
         try:

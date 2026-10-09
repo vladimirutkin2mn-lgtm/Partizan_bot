@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app import telegram_client_publishing_impl as _impl
 from app.customer_execution_boundary import require_customer_bound_mutation_scope
+from app.telegram_community_restrictions import TelegramCommunityRestrictionMemory
 
 for _name, _value in vars(_impl).items():
     if not _name.startswith("__"):
@@ -12,6 +13,17 @@ _AMBIGUOUS_TELEGRAM_PUBLISH_ERRORS = frozenset({"PUBLISH_FAILED"})
 
 
 class CustomerTelegramClientPublishService(_BaseCustomerTelegramClientPublishService):
+    def __init__(
+        self,
+        *args,
+        community_restrictions: TelegramCommunityRestrictionMemory | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._community_restrictions = (
+            community_restrictions or TelegramCommunityRestrictionMemory(self._store)
+        )
+
     async def publish(
         self,
         project_id: _impl.UUID,
@@ -25,7 +37,9 @@ class CustomerTelegramClientPublishService(_BaseCustomerTelegramClientPublishSer
         except ValueError as exc:
             raise _impl.CustomerTelegramClientPublishError(str(exc)) from exc
         self._require_retry_safe(action_id, payload)
-        return await super().publish(project_id, customer_token, action_id, payload)
+        receipt = await super().publish(project_id, customer_token, action_id, payload)
+        self._community_restrictions.observe_publish_receipt(project_id, receipt)
+        return receipt
 
     async def publish_internal(
         self,
@@ -40,7 +54,9 @@ class CustomerTelegramClientPublishService(_BaseCustomerTelegramClientPublishSer
         except ValueError as exc:
             raise _impl.CustomerTelegramClientPublishError(str(exc)) from exc
         self._require_retry_safe(action_id, payload)
-        return await super().publish_internal(project_id, project, action_id, payload)
+        receipt = await super().publish_internal(project_id, project, action_id, payload)
+        self._community_restrictions.observe_publish_receipt(project_id, receipt)
+        return receipt
 
     def _require_retry_safe(
         self,
