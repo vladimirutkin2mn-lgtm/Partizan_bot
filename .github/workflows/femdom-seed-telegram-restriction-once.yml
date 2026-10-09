@@ -1,0 +1,129 @@
+name: Seed FemDom Telegram restriction once
+
+on:
+  workflow_run:
+    workflows: ["Deploy production"]
+    types: [completed]
+
+concurrency:
+  group: femdom-seed-telegram-restriction-once
+  cancel-in-progress: false
+
+jobs:
+  seed-refresh-verify:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - name: Resolve deployed release
+        id: release
+        env:
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          if [[ ! "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Unable to resolve production release SHA"
+            exit 1
+          fi
+          echo "sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.sha }}
+
+      - name: Refuse stale one-time operation
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        shell: bash
+        run: |
+          current_main_sha="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [[ "${RELEASE_SHA}" != "${current_main_sha}" ]]; then
+            echo "::error::Release ${RELEASE_SHA} is not current main ${current_main_sha}; refusing operation"
+            exit 1
+          fi
+
+      - name: Require production connection configuration
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          missing=()
+          [[ -z "${DEPLOY_HOST}" ]] && missing+=(DEPLOY_HOST)
+          [[ -z "${DEPLOY_SSH_KEY}" ]] && missing+=(DEPLOY_SSH_KEY)
+          [[ -z "${DEPLOY_SSH_KNOWN_HOSTS}" ]] && missing+=(DEPLOY_SSH_KNOWN_HOSTS)
+          [[ -z "${DEPLOY_PATH}" ]] && missing+=(DEPLOY_PATH)
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing production operation configuration: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Pin production host key
+        env:
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Seed restriction, refresh discovery and verify
+        id: operation
+        continue-on-error: true
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ steps.release.outputs.sha }}
+        shell: bash
+        run: |
+          set +e
+          result="$(ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && \
+              deployed_sha=\$(git rev-parse HEAD) && \
+              if [ \"\${deployed_sha}\" != '${EXPECTED_SHA}' ]; then \
+                echo '{\"status\":\"FAILED\",\"error\":\"production release mismatch\"}'; \
+                exit 2; \
+              fi && \
+              bash tools/compose_shared_host.sh exec -T api \
+                python -m app.manual_telegram_community_restriction \
+                  --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+                  --community-handle a_sfera \
+                  --reason ACCOUNT_BANNED_IN_COMMUNITY \
+                  --refresh" 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "${result}" | tee femdom-seed-refresh-result.json
+          exit "${status}"
+
+      - name: Upload verification artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: femdom-seed-refresh-verification
+          path: femdom-seed-refresh-result.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Require verified operation
+        if: ${{ always() }}
+        env:
+          OPERATION_OUTCOME: ${{ steps.operation.outcome }}
+        shell: bash
+        run: |
+          if [[ "${OPERATION_OUTCOME}" != "success" ]]; then
+            echo "::error::One-time FemDom restriction seed/refresh/verify operation failed"
+            exit 1
+          fi
