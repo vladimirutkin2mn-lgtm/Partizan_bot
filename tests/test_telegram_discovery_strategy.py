@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.telegram_discovery_strategy import (
+    MAX_ADAPTIVE_DISCOVERY_ROUNDS,
     TELEGRAM_DISCOVERY_QUERY_BUDGET,
     TARGET_READY_TELEGRAM_OPPORTUNITIES,
     ExpandedTelegramDiscoveryAdapter,
@@ -38,6 +39,7 @@ def test_expanded_telegram_discovery_uses_full_bounded_query_budget() -> None:
 
     assert len(requests) == TELEGRAM_DISCOVERY_QUERY_BUDGET == 6
     assert TARGET_READY_TELEGRAM_OPPORTUNITIES == 5
+    assert MAX_ADAPTIVE_DISCOVERY_ROUNDS == 3
     assert all(item.platform == DistributionPlatform.TELEGRAM for item in requests)
     assert {item.kind for item in requests} == {
         OpportunityKind.CHANNEL,
@@ -63,6 +65,29 @@ def test_expanded_telegram_discovery_searches_participation_and_adjacent_topics(
     assert "kink" in queries or "kink" in topics
 
 
+def test_adaptive_hints_replace_repeated_default_queries_inside_same_budget() -> None:
+    adapter = ExpandedTelegramDiscoveryAdapter(
+        use_default_research_connector=False,
+        adaptive_hints=[
+            "consent education",
+            "beginner questions",
+            "relationship dynamics",
+            "peer advice",
+        ],
+    )
+
+    requests = adapter.build_requests(_product(), _icp())
+    queries = "\n".join(item.discovery_query.query.lower() for item in requests)
+
+    assert len(requests) == TELEGRAM_DISCOVERY_QUERY_BUDGET
+    assert "consent education" in queries
+    assert "beginner questions" in queries
+    assert "relationship dynamics" in queries
+    assert "peer advice" in queries
+    assert "telegram discussion comments questions" in queries
+    assert "telegram public community replies" in queries
+
+
 def test_expanded_platform_set_replaces_only_telegram_adapter() -> None:
     adapters = expanded_platform_adapters()
 
@@ -74,6 +99,17 @@ def test_expanded_platform_set_replaces_only_telegram_adapter() -> None:
         DistributionPlatform.REDDIT,
         DistributionPlatform.TIKTOK,
     ]
+
+
+def test_adaptive_round_can_be_telegram_only() -> None:
+    adapters = expanded_platform_adapters(
+        telegram_hints=["adjacent audience"],
+        telegram_only=True,
+    )
+
+    assert len(adapters) == 1
+    assert isinstance(adapters[0], ExpandedTelegramDiscoveryAdapter)
+    assert adapters[0].platform == DistributionPlatform.TELEGRAM
 
 
 def test_english_products_get_english_participation_lenses() -> None:
