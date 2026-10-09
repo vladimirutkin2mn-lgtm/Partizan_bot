@@ -95,7 +95,7 @@ async def seed_refresh_verify(
 
     project_id = _project_id_for_product(store, product_id)
     memory = TelegramCommunityRestrictionMemory(store)
-    restriction = memory.remember(
+    memory.remember(
         project_id,
         community_handle,
         reason=reason,
