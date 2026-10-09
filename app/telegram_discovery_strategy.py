@@ -17,9 +17,11 @@ from app.search import DiscoveryQuery, SearchProvider, SourceClass
 # customer acquisition: one or two obvious event channels can fail preflight and leave
 # the system with no executable opportunity even when adjacent communities are active.
 # Keep a bounded but broader search budget so discovery explores multiple participation
-# angles before it gives up.
+# angles before it gives up. Autonomous refresh may run several bounded rounds when the
+# first pass does not produce a useful READY portfolio.
 TELEGRAM_DISCOVERY_QUERY_BUDGET = 6
 TARGET_READY_TELEGRAM_OPPORTUNITIES = 5
+MAX_ADAPTIVE_DISCOVERY_ROUNDS = 3
 
 _RUSSIAN_LANGUAGE_MARKERS = ("ru", "russian", "рус", "русский", "русская")
 
@@ -31,7 +33,28 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
     later by Telegram publisher preflight. The purpose here is recall: search beyond the
     first obvious event/channel and deliberately include discussion-heavy, educational,
     newcomer and adjacent-topic communities.
+
+    ``adaptive_hints`` are hypotheses learned by the growth loop from earlier discovery
+    failures and observed experiment outcomes. They are generic product/audience phrases,
+    never customer-specific hard-coded categories.
     """
+
+    def __init__(
+        self,
+        research_connector=None,
+        *,
+        use_default_research_connector: bool = True,
+        adaptive_hints: list[str] | tuple[str, ...] | None = None,
+    ) -> None:
+        super().__init__(
+            research_connector=research_connector,
+            use_default_research_connector=use_default_research_connector,
+        )
+        self._adaptive_hints = tuple(
+            hint
+            for hint in (self._clean(item) for item in (adaptive_hints or []))
+            if hint
+        )
 
     def build_requests(
         self,
@@ -58,7 +81,28 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
             )
         )
 
-        expansions = [
+        # In adaptive rounds learned hypotheses get first claim on the remaining query
+        # budget. This is what makes the next search materially different instead of
+        # simply repeating the same six requests after a poor first pass.
+        expansions: list[tuple[OpportunityKind, str, str]] = []
+        for index, hint in enumerate(self._adaptive_hints[:4]):
+            if index % 2 == 0:
+                kind = OpportunityKind.CHANNEL
+                intent = discussion_terms
+                surface_hint = "Telegram discussion comments questions"
+            else:
+                kind = OpportunityKind.GROUP
+                intent = community_terms
+                surface_hint = "Telegram public community replies"
+            expansions.append(
+                (
+                    kind,
+                    self._topic(hint, intent),
+                    self._query(hint, intent, surface_hint, market, language),
+                )
+            )
+
+        default_expansions = [
             (
                 OpportunityKind.CHANNEL,
                 self._topic(title, discussion_terms),
@@ -104,6 +148,7 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
                 ),
             ),
         ]
+        expansions.extend(default_expansions)
 
         for kind, topic, query in expansions:
             if not topic or not query:
@@ -117,8 +162,9 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
                 )
             )
 
-        # Deduplicate semantically identical queries and enforce a hard budget. This is
-        # the "search until budget exhausted" boundary used by the autonomous refresh.
+        # Deduplicate semantically identical queries and enforce a hard budget. The
+        # autonomous refresh may start another bounded round with different hypotheses,
+        # but no individual round is allowed to grow without limit.
         deduped: list[PlatformDiscoveryRequest] = []
         seen: set[str] = set()
         for request in requests:
@@ -172,9 +218,16 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
         )
 
 
-def expanded_platform_adapters() -> list[PlatformDiscoveryAdapter]:
+def expanded_platform_adapters(
+    *,
+    telegram_hints: list[str] | tuple[str, ...] | None = None,
+    telegram_only: bool = False,
+) -> list[PlatformDiscoveryAdapter]:
+    telegram = ExpandedTelegramDiscoveryAdapter(adaptive_hints=telegram_hints)
+    if telegram_only:
+        return [telegram]
     return [
-        ExpandedTelegramDiscoveryAdapter(),
+        telegram,
         InstagramDiscoveryAdapter(),
         RedditDiscoveryAdapter(),
         TikTokDiscoveryAdapter(),
@@ -182,11 +235,21 @@ def expanded_platform_adapters() -> list[PlatformDiscoveryAdapter]:
 
 
 class ExpandedAudienceIntelligenceEngine(AudienceIntelligenceEngine):
-    """Audience engine with the broader Telegram search budget enabled by default."""
+    """Audience engine with the broader/adaptive Telegram search strategy enabled."""
 
-    def __init__(self, provider: SearchProvider, max_concurrency: int = 4) -> None:
+    def __init__(
+        self,
+        provider: SearchProvider,
+        max_concurrency: int = 4,
+        *,
+        telegram_hints: list[str] | tuple[str, ...] | None = None,
+        telegram_only: bool = False,
+    ) -> None:
         super().__init__(
             provider,
             max_concurrency=max_concurrency,
-            adapters=expanded_platform_adapters(),
+            adapters=expanded_platform_adapters(
+                telegram_hints=telegram_hints,
+                telegram_only=telegram_only,
+            ),
         )
