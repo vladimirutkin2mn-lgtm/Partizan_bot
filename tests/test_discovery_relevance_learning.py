@@ -93,20 +93,47 @@ def test_multi_signal_relevance_passes_and_is_annotated() -> None:
     assert accepted[0].metadata["relevance_guard"]["reason"] == "MULTI_SIGNAL_RELEVANCE"
 
 
-def test_irrelevant_community_is_remembered_and_blocked_even_if_it_later_scores_high() -> None:
+def test_one_weak_observation_does_not_permanently_hide_a_later_strong_match() -> None:
+    store = MemoryRuntimeStateStore()
+    service = DiscoveryRelevanceLearningService(store)
+    product = _product()
+    key = "telegram:possibly_relevant_channel"
+
+    accepted, rejected = service.filter_and_learn(
+        product=product,
+        icps=[_icp()],
+        opportunities=[_seed(key, "Possibly relevant channel", _weak_signals())],
+    )
+
+    assert accepted == []
+    assert rejected[0]["reason"] == "INSUFFICIENT_SEMANTIC_EVIDENCE"
+
+    accepted_again, rejected_again = service.filter_and_learn(
+        product=product,
+        icps=[_icp()],
+        opportunities=[
+            _seed(key, "Small business accounting community", _strong_signals())
+        ],
+    )
+
+    assert len(accepted_again) == 1
+    assert rejected_again == []
+
+
+def test_repeated_irrelevant_community_is_remembered_and_blocks_later_noise() -> None:
     store = MemoryRuntimeStateStore()
     service = DiscoveryRelevanceLearningService(store)
     product = _product()
     key = "telegram:random_crypto_channel"
 
-    accepted, rejected = service.filter_and_learn(
-        product=product,
-        icps=[_icp()],
-        opportunities=[_seed(key, "Random crypto news", _weak_signals())],
-    )
-
-    assert accepted == []
-    assert rejected[0]["reason"] == "INSUFFICIENT_SEMANTIC_EVIDENCE"
+    for _ in range(2):
+        accepted, rejected = service.filter_and_learn(
+            product=product,
+            icps=[_icp()],
+            opportunities=[_seed(key, "Random crypto news", _weak_signals())],
+        )
+        assert accepted == []
+        assert rejected[0]["reason"] == "INSUFFICIENT_SEMANTIC_EVIDENCE"
 
     accepted_again, rejected_again = service.filter_and_learn(
         product=product,
