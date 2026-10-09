@@ -45,10 +45,10 @@ _GENERIC_TERMS = {
 class DiscoveryRelevanceLearningService:
     """Filter weak acquisition candidates and learn reusable negative discovery signals.
 
-    Learning is scoped to a product. Exact communities that repeatedly surface with weak
-    audience evidence are remembered for 30 days. Theme terms are activated only after
-    they are independently observed in at least two rejected candidates and only when
-    they are not already part of the product/ICP vocabulary.
+    Learning is scoped to a product. An exact community rejected for weak semantic fit is
+    suppressed on later rounds for 30 days. Theme terms are activated only after they are
+    independently observed in at least two rejected candidates and only when they are not
+    already part of the product/ICP vocabulary.
     """
 
     def __init__(self, store: RuntimeStateStore | None = None) -> None:
@@ -102,6 +102,28 @@ class DiscoveryRelevanceLearningService:
                 rejections=rejected,
             )
         return accepted, rejected
+
+    def filter_hints(
+        self,
+        product_id: UUID | str | None,
+        hints: list[str] | tuple[str, ...],
+    ) -> list[str]:
+        """Remove hypotheses that repeat product-scoped negative discovery themes.
+
+        This is intentionally applied before adaptive search requests are built. The
+        relevance gate still validates returned evidence afterwards, but later rounds no
+        longer spend query budget on themes already learned to be irrelevant.
+        """
+        normalized_product_id = self._uuid(product_id)
+        if normalized_product_id is None:
+            return self._dedupe_hints(hints)
+        negative_terms = self.snapshot(normalized_product_id)["negative_terms"]
+        filtered: list[str] = []
+        for hint in self._dedupe_hints(hints):
+            if self._tokens(hint) & negative_terms:
+                continue
+            filtered.append(hint)
+        return filtered
 
     def snapshot(self, product_id: UUID) -> dict[str, set[str]]:
         payload = self._store.get(
@@ -290,6 +312,21 @@ class DiscoveryRelevanceLearningService:
         }
 
     @staticmethod
+    def _dedupe_hints(values: list[str] | tuple[str, ...]) -> list[str]:
+        result: list[str] = []
+        seen: set[str] = set()
+        for raw in values:
+            value = " ".join(str(raw or "").split()).strip()[:180]
+            if len(value) < 3:
+                continue
+            key = value.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(value)
+        return result
+
+    @staticmethod
     def _platform_value(platform: Any) -> str:
         return str(getattr(platform, "value", platform) or "")
 
@@ -300,13 +337,16 @@ class DiscoveryRelevanceLearningService:
         except (TypeError, ValueError):
             return 0.0
 
+    @classmethod
+    def _product_id(cls, product: Any) -> UUID | None:
+        return cls._uuid(getattr(product, "id", None))
+
     @staticmethod
-    def _product_id(product: Any) -> UUID | None:
-        raw = getattr(product, "id", None)
-        if raw is None:
+    def _uuid(value: Any) -> UUID | None:
+        if value is None:
             return None
         try:
-            return raw if isinstance(raw, UUID) else UUID(str(raw))
+            return value if isinstance(value, UUID) else UUID(str(value))
         except (TypeError, ValueError):
             return None
 
