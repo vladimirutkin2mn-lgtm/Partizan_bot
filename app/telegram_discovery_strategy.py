@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.audience_intelligence import AudienceIntelligenceEngine
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.platform_discovery import (
     InstagramDiscoveryAdapter,
@@ -10,7 +11,7 @@ from app.platform_discovery import (
     TikTokDiscoveryAdapter,
 )
 from app.schemas import ICPView, ProductProfileView
-from app.search import DiscoveryQuery, SourceClass
+from app.search import DiscoveryQuery, SearchProvider, SourceClass
 
 # The old Telegram discovery used only two queries per ICP. That is too brittle for
 # customer acquisition: one or two obvious event channels can fail preflight and leave
@@ -61,7 +62,13 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
             (
                 OpportunityKind.CHANNEL,
                 self._topic(title, discussion_terms),
-                self._query(title, discussion_terms, "Telegram discussion comments", market, language),
+                self._query(
+                    title,
+                    discussion_terms,
+                    "Telegram discussion comments",
+                    market,
+                    language,
+                ),
             ),
             (
                 OpportunityKind.CHANNEL,
@@ -172,3 +179,14 @@ def expanded_platform_adapters() -> list[PlatformDiscoveryAdapter]:
         RedditDiscoveryAdapter(),
         TikTokDiscoveryAdapter(),
     ]
+
+
+class ExpandedAudienceIntelligenceEngine(AudienceIntelligenceEngine):
+    """Audience engine with the broader Telegram search budget enabled by default."""
+
+    def __init__(self, provider: SearchProvider, max_concurrency: int = 4) -> None:
+        super().__init__(
+            provider,
+            max_concurrency=max_concurrency,
+            adapters=expanded_platform_adapters(),
+        )
