@@ -11,7 +11,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: partizan
           POSTGRES_PASSWORD: partizan
@@ -86,7 +86,8 @@ jobs:
           docker run --rm \
             -e PARTIZAN_PUBLIC_HOST=partizan.example.com \
             -v "$PWD/Caddyfile.prod:/etc/caddy/Caddyfile:ro" \
-            caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile
+            public.ecr.aws/docker/library/caddy:2-alpine \
+            caddy validate --config /etc/caddy/Caddyfile
       - name: Validate shared-host runtime
         run: |
           PARTIZAN_ENV_FILE=.env.example \
