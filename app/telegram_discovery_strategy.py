@@ -40,7 +40,9 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
 
     ``adaptive_hints`` are hypotheses learned by the growth loop from earlier discovery
     failures and observed experiment outcomes. They are generic product/audience phrases,
-    never customer-specific hard-coded categories.
+    never customer-specific hard-coded categories. Product-scoped negative learning is
+    applied before hints consume query budget, so later rounds do not repeat themes that
+    have already produced irrelevant acquisition candidates.
     """
 
     def __init__(
@@ -49,6 +51,7 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
         *,
         use_default_research_connector: bool = True,
         adaptive_hints: list[str] | tuple[str, ...] | None = None,
+        relevance_learning_service: DiscoveryRelevanceLearningService | None = None,
     ) -> None:
         super().__init__(
             research_connector=research_connector,
@@ -58,6 +61,9 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
             hint
             for hint in (self._clean(item) for item in (adaptive_hints or []))
             if hint
+        )
+        self._relevance_learning = (
+            relevance_learning_service or discovery_relevance_learning_service
         )
 
     def build_requests(
@@ -86,10 +92,14 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
         )
 
         # In adaptive rounds learned hypotheses get first claim on the remaining query
-        # budget. This is what makes the next search materially different instead of
-        # simply repeating the same six requests after a poor first pass.
+        # budget. Negative discovery memory is consulted before request construction, so
+        # failed themes do not consume another search round.
+        adaptive_hints = self._relevance_learning.filter_hints(
+            getattr(product, "id", None),
+            self._adaptive_hints,
+        )
         expansions: list[tuple[OpportunityKind, str, str]] = []
-        for index, hint in enumerate(self._adaptive_hints[:4]):
+        for index, hint in enumerate(adaptive_hints[:4]):
             if index % 2 == 0:
                 kind = OpportunityKind.CHANNEL
                 intent = discussion_terms
@@ -226,8 +236,12 @@ def expanded_platform_adapters(
     *,
     telegram_hints: list[str] | tuple[str, ...] | None = None,
     telegram_only: bool = False,
+    relevance_learning_service: DiscoveryRelevanceLearningService | None = None,
 ) -> list[PlatformDiscoveryAdapter]:
-    telegram = ExpandedTelegramDiscoveryAdapter(adaptive_hints=telegram_hints)
+    telegram = ExpandedTelegramDiscoveryAdapter(
+        adaptive_hints=telegram_hints,
+        relevance_learning_service=relevance_learning_service,
+    )
     if telegram_only:
         return [telegram]
     return [
@@ -250,16 +264,17 @@ class ExpandedAudienceIntelligenceEngine(AudienceIntelligenceEngine):
         telegram_only: bool = False,
         relevance_learning_service: DiscoveryRelevanceLearningService | None = None,
     ) -> None:
+        self._relevance_learning = (
+            relevance_learning_service or discovery_relevance_learning_service
+        )
         super().__init__(
             provider,
             max_concurrency=max_concurrency,
             adapters=expanded_platform_adapters(
                 telegram_hints=telegram_hints,
                 telegram_only=telegram_only,
+                relevance_learning_service=self._relevance_learning,
             ),
-        )
-        self._relevance_learning = (
-            relevance_learning_service or discovery_relevance_learning_service
         )
         self._last_relevance_rejections: list[dict] = []
 
