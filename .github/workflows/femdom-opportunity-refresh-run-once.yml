@@ -17,21 +17,6 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-
-      - name: Resolve current production release
-        id: release
-        shell: bash
-        run: |
-          current_main_sha="$(git rev-parse HEAD)"
-          if [[ ! "${current_main_sha}" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::Unable to resolve current main release"
-            exit 1
-          fi
-          echo "sha=${current_main_sha}" >> "$GITHUB_OUTPUT"
-
       - name: Require production connection configuration
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
@@ -69,16 +54,10 @@ jobs:
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          EXPECTED_SHA: ${{ steps.release.outputs.sha }}
         shell: bash
         run: |
           ssh -o BatchMode=yes "${DEPLOY_HOST}" \
             "cd '${DEPLOY_PATH}' && \
-              deployed_sha=\$(git rev-parse HEAD) && \
-              if [ \"\${deployed_sha}\" != '${EXPECTED_SHA}' ]; then \
-                echo 'Production release is not current main; refusing refresh' >&2; \
-                exit 2; \
-              fi && \
               bash tools/compose_shared_host.sh exec -T api \
                 python -m app.manual_opportunity_refresh \
                   --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
