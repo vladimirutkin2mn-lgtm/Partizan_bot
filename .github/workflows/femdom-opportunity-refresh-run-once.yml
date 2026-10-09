@@ -1,4 +1,4 @@
-name: Run FemDom opportunity refresh once
+name: Inspect FemDom opportunities once
 
 on:
   push:
@@ -6,11 +6,11 @@ on:
       - ops/run-femdom-refresh-2026-10-09
 
 concurrency:
-  group: femdom-opportunity-refresh-now
+  group: femdom-opportunity-inspect-now
   cancel-in-progress: false
 
 jobs:
-  refresh-opportunities:
+  inspect-opportunities:
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -31,7 +31,7 @@ jobs:
           [[ -z "${DEPLOY_SSH_KNOWN_HOSTS}" ]] && missing+=(DEPLOY_SSH_KNOWN_HOSTS)
           [[ -z "${DEPLOY_PATH}" ]] && missing+=(DEPLOY_PATH)
           if (( ${#missing[@]} > 0 )); then
-            echo "::error::Missing production refresh configuration: ${missing[*]}"
+            echo "::error::Missing production inspection configuration: ${missing[*]}"
             exit 1
           fi
 
@@ -50,7 +50,7 @@ jobs:
           printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Force fresh FemDom discovery only
+      - name: Read current FemDom opportunity portfolio
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
@@ -58,45 +58,47 @@ jobs:
         run: |
           ssh -o BatchMode=yes "${DEPLOY_HOST}" \
             "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python -" <<'PY'
-          import asyncio
           import json
-          from datetime import UTC, datetime
-          from uuid import UUID, uuid4
+          from collections import Counter
+          from uuid import UUID
 
-          from app.autonomy_schemas import GrowthMandateStatus, GrowthMandateView
-          from app.distribution_types import DistributionActionType, DistributionPlatform
-          from app.manual_opportunity_refresh import manual_opportunity_refresh_service
+          from app.customer_live_opportunities import (
+              CUSTOMER_LIVE_OPPORTUNITY_NAMESPACE,
+              customer_live_opportunity_service,
+          )
+          from app.runtime_store import get_runtime_store
 
-          product_id = UUID("52d7e59e-5ac5-4363-b829-c93e33e48272")
-          now = datetime.now(UTC)
-          discovery_only_mandate = GrowthMandateView(
-              id=uuid4(),
-              product_id=product_id,
-              version=1,
-              status=GrowthMandateStatus.ACTIVE,
-              total_budget_cap=100,
-              target_max_cac=10,
-              max_autonomous_spend_per_experiment=0,
-              max_autonomous_spend_per_day=0,
-              max_concurrent_running_experiments=1,
-              allowed_platforms=[DistributionPlatform.TELEGRAM],
-              allowed_actions=[DistributionActionType.COMMENT],
-              autonomous_prepare=False,
-              autonomous_approve=False,
-              autonomous_paid_activation=False,
-              approval_threshold=0,
-              created_at=now,
-              updated_at=now,
-          )
-          refresh_service = manual_opportunity_refresh_service._refresh_service
-          refresh_service._candidate_mandates = lambda _product_id: [discovery_only_mandate]
-          results = asyncio.run(
-              manual_opportunity_refresh_service.run_once(
-                  product_id=product_id,
-                  force=True,
-              )
-          )
-          print(json.dumps({"results": results}, ensure_ascii=False))
-          if not results or any(row.get("status") == "FAILED" for row in results):
-              raise SystemExit(2)
+          project_id = UUID("124cdd70-49b0-48b3-aee0-a037dda4bcd0")
+          store = get_runtime_store()
+          raw_by_id = {
+              str(row.get("opportunity_id")): row
+              for row in store.list_namespace(CUSTOMER_LIVE_OPPORTUNITY_NAMESPACE)
+              if str(row.get("project_id") or "") == str(project_id)
+          }
+          views = customer_live_opportunity_service.list_for_project(project_id)
+          active = [
+              item for item in views
+              if item.status == "ACTIVE" and item.platform == "TELEGRAM"
+          ]
+          payload = []
+          for item in active:
+              raw = raw_by_id.get(item.opportunity_id, {})
+              metadata = raw.get("metadata") if isinstance(raw.get("metadata"), dict) else {}
+              payload.append({
+                  "opportunity_id": item.opportunity_id,
+                  "title": item.title,
+                  "url": str(item.url),
+                  "kind": item.kind,
+                  "publishability": item.publishability,
+                  "freshness": item.freshness,
+                  "relevance_score": item.relevance_score,
+                  "source_published_at": metadata.get("source_published_at"),
+                  "expires_at": item.expires_at.isoformat() if item.expires_at else None,
+                  "publishability_detail": item.publishability_detail,
+              })
+          print(json.dumps({
+              "active_telegram_count": len(active),
+              "publishability_counts": dict(Counter(item.publishability for item in active)),
+              "opportunities": payload,
+          }, ensure_ascii=False))
           PY
