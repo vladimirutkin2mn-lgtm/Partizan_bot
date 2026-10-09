@@ -9,6 +9,7 @@ from app.distribution_schemas import (
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ICPGenerationResponse, ProductProfileView
 from app.search import get_search_provider
+from app.telegram_discovery_strategy import expanded_platform_adapters
 
 AUDIENCE_MAP_NAMESPACE = "audience_distribution_map"
 AUDIENCE_OPPORTUNITY_NAMESPACE = "audience_distribution_opportunity"
@@ -30,7 +31,10 @@ class InMemoryAudienceIntelligenceService:
         if not top_icps:
             raise ValueError("ICP generation must contain at least one segment")
 
-        engine = AudienceIntelligenceEngine(get_search_provider())
+        engine = AudienceIntelligenceEngine(
+            get_search_provider(),
+            adapters=expanded_platform_adapters(),
+        )
         seeds = await engine.discover(product=product, icps=top_icps)
 
         opportunities = [
