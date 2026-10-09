@@ -57,8 +57,46 @@ jobs:
         shell: bash
         run: |
           ssh -o BatchMode=yes "${DEPLOY_HOST}" \
-            "cd '${DEPLOY_PATH}' && \
-              bash tools/compose_shared_host.sh exec -T api \
-                python -m app.manual_opportunity_refresh \
-                  --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
-                  --force"
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python -" <<'PY'
+          import asyncio
+          import json
+          from datetime import UTC, datetime
+          from uuid import UUID, uuid4
+
+          from app.autonomy_schemas import GrowthMandateStatus, GrowthMandateView
+          from app.distribution_types import DistributionActionType, DistributionPlatform
+          from app.manual_opportunity_refresh import manual_opportunity_refresh_service
+
+          product_id = UUID("52d7e59e-5ac5-4363-b829-c93e33e48272")
+          now = datetime.now(UTC)
+          discovery_only_mandate = GrowthMandateView(
+              id=uuid4(),
+              product_id=product_id,
+              version=1,
+              status=GrowthMandateStatus.ACTIVE,
+              total_budget_cap=100,
+              target_max_cac=10,
+              max_autonomous_spend_per_experiment=0,
+              max_autonomous_spend_per_day=0,
+              max_concurrent_running_experiments=1,
+              allowed_platforms=[DistributionPlatform.TELEGRAM],
+              allowed_actions=[DistributionActionType.COMMENT],
+              autonomous_prepare=False,
+              autonomous_approve=False,
+              autonomous_paid_activation=False,
+              approval_threshold=0,
+              created_at=now,
+              updated_at=now,
+          )
+          refresh_service = manual_opportunity_refresh_service._refresh_service
+          refresh_service._candidate_mandates = lambda _product_id: [discovery_only_mandate]
+          results = asyncio.run(
+              manual_opportunity_refresh_service.run_once(
+                  product_id=product_id,
+                  force=True,
+              )
+          )
+          print(json.dumps({"results": results}, ensure_ascii=False))
+          if not results or any(row.get("status") == "FAILED" for row in results):
+              raise SystemExit(2)
+          PY
