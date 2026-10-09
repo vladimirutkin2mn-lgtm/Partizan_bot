@@ -12,6 +12,7 @@ DISCOVERY_NEGATIVE_LEARNING_NAMESPACE = "discovery_negative_learning"
 NEGATIVE_LEARNING_TTL = timedelta(days=30)
 MAX_BLOCKED_CANONICAL_KEYS = 200
 MAX_NEGATIVE_TERMS = 40
+MIN_NEGATIVE_COMMUNITY_OBSERVATIONS = 2
 MIN_NEGATIVE_THEME_OBSERVATIONS = 2
 
 _GENERIC_TERMS = {
@@ -45,11 +46,11 @@ _GENERIC_TERMS = {
 class DiscoveryRelevanceLearningService:
     """Filter weak acquisition candidates and learn reusable negative discovery signals.
 
-    Learning is scoped to a product. An exact platform/community candidate rejected for
-    weak semantic fit is suppressed on later rounds for 30 days, unless the same candidate
-    also produced a valid multi-signal match for another ICP in that discovery batch.
-    Theme terms are activated only after they are independently observed in at least two
-    rejected communities and only when they are not part of the product/ICP vocabulary.
+    Learning is scoped to a product. An exact platform/community candidate is suppressed
+    after repeated weak semantic observations for 30 days, unless the same candidate also
+    produced a valid multi-signal match for another ICP in that discovery batch. Theme
+    terms are activated only after they are independently observed in at least two rejected
+    communities and only when they are not part of the product/ICP vocabulary.
     """
 
     def __init__(self, store: RuntimeStateStore | None = None) -> None:
@@ -63,7 +64,11 @@ class DiscoveryRelevanceLearningService:
         opportunities: list[Any],
     ) -> tuple[list[Any], list[dict]]:
         product_id = self._product_id(product)
-        snapshot = self.snapshot(product_id) if product_id is not None else self._empty_snapshot()
+        snapshot = (
+            self.snapshot(product_id)
+            if product_id is not None
+            else self._empty_snapshot()
+        )
         accepted: list[Any] = []
         rejected: list[dict] = []
 
@@ -155,6 +160,8 @@ class DiscoveryRelevanceLearningService:
             str(key).casefold()
             for key, entry in (payload.get("blocked_keys") or {}).items()
             if self._entry_active(entry, now)
+            and int((entry or {}).get("count") or 0)
+            >= MIN_NEGATIVE_COMMUNITY_OBSERVATIONS
         }
         negative_terms = {
             str(term).casefold()
@@ -235,6 +242,10 @@ class DiscoveryRelevanceLearningService:
                 "updated_at": now.isoformat(),
             },
         )
+
+    def reset(self) -> None:
+        if self._store.ephemeral:
+            self._store.clear_namespace(DISCOVERY_NEGATIVE_LEARNING_NAMESPACE)
 
     def _decision(self, opportunity: Any, snapshot: dict[str, set[str]]) -> dict:
         memory_key = self._memory_key(
