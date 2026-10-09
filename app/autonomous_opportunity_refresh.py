@@ -20,6 +20,10 @@ from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.icp_service import icp_service
 from app.product_intake import product_intake_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.telegram_discovery_strategy import (
+    MAX_ADAPTIVE_DISCOVERY_ROUNDS,
+    TARGET_READY_TELEGRAM_OPPORTUNITIES,
+)
 from app.telegram_opportunity_preflight import (
     TelegramOpportunityPreflightResult,
     TelegramOpportunityPreflightService,
@@ -27,6 +31,7 @@ from app.telegram_opportunity_preflight import (
 )
 
 AUTONOMOUS_OPPORTUNITY_REFRESH_NAMESPACE = "autonomous_opportunity_refresh"
+DISTRIBUTION_LEARNING_NAMESPACE = "distribution_learning_entry"
 DEFAULT_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS = 6 * 60 * 60
 MIN_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS = 15 * 60
 
@@ -38,9 +43,12 @@ class AutonomousOpportunityRefreshService:
     evidence, persist fresh opportunities and rebuild Distribution Plays, but it never
     publishes, joins a community, changes a profile or mutates a provider account.
 
-    Exact Telegram comment targets are additionally checked with the connected customer
-    account before they can become autonomous execution candidates. The preflight is
-    read-only: no linked group is joined automatically.
+    The refresh is adaptive: after the first discovery pass it checks exact Telegram
+    targets with the connected customer account. If fewer than the target number are
+    READY, it creates new search hypotheses from ICP alternatives, product audience
+    context, failed preflight outcomes and prior growth learning, then runs another
+    bounded Telegram-only discovery round. The loop stops when the READY target is met,
+    no genuinely new hypotheses remain, or the maximum round budget is exhausted.
     """
 
     def __init__(
@@ -85,6 +93,9 @@ class AutonomousOpportunityRefreshService:
                 continue
 
             started_at = datetime.now(UTC)
+            adaptive_rounds = 1
+            adaptive_stop_reason = "NO_PUBLISHER_PROJECT"
+            adaptive_hints_used: set[str] = set()
             try:
                 product = product_intake_service.get_product(candidate.product_id)
                 icps = icp_service.get(candidate.product_id)
@@ -99,6 +110,62 @@ class AutonomousOpportunityRefreshService:
                         distribution,
                         preflight_by_url,
                     )
+                    adaptive_stop_reason = "TARGET_READY_REACHED"
+
+                    discover_with_hints = getattr(
+                        self._audience_service,
+                        "discover_with_hints",
+                        None,
+                    )
+                    while (
+                        self._ready_count(preflight_by_url)
+                        < TARGET_READY_TELEGRAM_OPPORTUNITIES
+                        and adaptive_rounds < MAX_ADAPTIVE_DISCOVERY_ROUNDS
+                        and callable(discover_with_hints)
+                    ):
+                        next_round = adaptive_rounds + 1
+                        hints = self._adaptive_discovery_hints(
+                            product=product,
+                            icps=icps,
+                            product_id=candidate.product_id,
+                            preflight_by_url=preflight_by_url,
+                            round_number=next_round,
+                        )
+                        hints = [
+                            hint
+                            for hint in hints
+                            if self._normalized_hint(hint) not in adaptive_hints_used
+                        ]
+                        if not hints:
+                            adaptive_stop_reason = "NO_NEW_HYPOTHESES"
+                            break
+
+                        selected_hints = hints[:4]
+                        adaptive_hints_used.update(
+                            self._normalized_hint(hint) for hint in selected_hints
+                        )
+                        distribution = await discover_with_hints(
+                            product,
+                            icps,
+                            telegram_hints=selected_hints,
+                            merge_existing=True,
+                        )
+                        adaptive_rounds = next_round
+
+                        round_preflight = await self._preflight_live_comment_targets(project_id)
+                        preflight_by_url.update(round_preflight)
+                        distribution = await self._apply_comment_preflight_to_distribution(
+                            project_id,
+                            distribution,
+                            preflight_by_url,
+                        )
+
+                    if self._ready_count(preflight_by_url) >= TARGET_READY_TELEGRAM_OPPORTUNITIES:
+                        adaptive_stop_reason = "TARGET_READY_REACHED"
+                    elif adaptive_rounds >= MAX_ADAPTIVE_DISCOVERY_ROUNDS:
+                        adaptive_stop_reason = "ROUND_BUDGET_EXHAUSTED"
+                    elif not callable(discover_with_hints):
+                        adaptive_stop_reason = "ADAPTIVE_DISCOVERY_UNAVAILABLE"
 
                 plays = distribution_play_service.generate(
                     product,
@@ -141,6 +208,10 @@ class AutonomousOpportunityRefreshService:
                 "telegram_preflight_excluded": sum(
                     status not in {"READY", "JOIN_REQUIRED"} for status in statuses
                 ),
+                "adaptive_discovery_rounds": adaptive_rounds,
+                "adaptive_ready_target": TARGET_READY_TELEGRAM_OPPORTUNITIES,
+                "adaptive_stop_reason": adaptive_stop_reason,
+                "adaptive_hypothesis_count": len(adaptive_hints_used),
                 "attempted_at": started_at.isoformat(),
                 "last_success_at": completed_at.isoformat(),
                 "updated_at": completed_at.isoformat(),
@@ -152,6 +223,162 @@ class AutonomousOpportunityRefreshService:
             )
             results.append(record)
         return results
+
+    def _adaptive_discovery_hints(
+        self,
+        *,
+        product,
+        icps,
+        product_id: UUID,
+        preflight_by_url: dict[str, TelegramOpportunityPreflightResult],
+        round_number: int,
+    ) -> list[str]:
+        hints: list[str] = []
+
+        # First preference: themes that have already produced positive observed growth
+        # signals. This closes the Learn -> Discovery part of the loop rather than only
+        # using learning to re-rank already-found plays.
+        hints.extend(self._learning_hints(product_id))
+
+        top_icps = list(getattr(icps, "icps", []) or [])[:3]
+        if round_number == 2:
+            # Split alternatives into independent hypotheses. The first pass previously
+            # bundled them, which could hide useful adjacent communities from search.
+            for icp in top_icps:
+                for alternative in list(getattr(icp, "alternatives", []) or [])[:3]:
+                    hints.append(str(alternative))
+                trigger = str(getattr(icp, "trigger", "") or "").strip()
+                if trigger:
+                    hints.append(trigger)
+            hints.extend(str(item) for item in list(getattr(product, "known_audience", []) or [])[:3])
+        else:
+            # Final bounded round explores the underlying problem/outcome rather than the
+            # category name. This is useful when direct category communities are closed,
+            # stale or non-writable.
+            for icp in top_icps:
+                for value in (
+                    getattr(icp, "pain", ""),
+                    getattr(icp, "desired_outcome", ""),
+                    getattr(icp, "description", ""),
+                ):
+                    value = str(value or "").strip()
+                    if value:
+                        hints.append(value)
+            for value in (
+                getattr(product, "problem_or_desire", ""),
+                getattr(product, "value_proposition", ""),
+            ):
+                value = str(value or "").strip()
+                if value:
+                    hints.append(value)
+
+        statuses = [item.status for item in preflight_by_url.values()]
+        # Failure-aware exploration: if direct channel posts mostly fail because no
+        # discussion surface exists, prefer audience/trigger hypotheses that the adaptive
+        # adapter will search as public groups and discussion-heavy communities.
+        if statuses.count("NO_DISCUSSION") >= max(1, statuses.count("READY")):
+            for icp in top_icps:
+                title = str(getattr(icp, "title", "") or "").strip()
+                if title:
+                    hints.append(title)
+        if statuses.count("NO_WRITE_ACCESS") or statuses.count("JOIN_REQUIRED"):
+            for icp in top_icps:
+                trigger = str(getattr(icp, "trigger", "") or "").strip()
+                if trigger:
+                    hints.append(trigger)
+
+        return self._dedupe_hints(hints)
+
+    def _learning_hints(self, product_id: UUID) -> list[str]:
+        positive_rows: list[dict] = []
+        negative_opportunity_ids: set[str] = set()
+        for row in self._store.list_namespace(DISTRIBUTION_LEARNING_NAMESPACE):
+            if str(row.get("product_id") or "") != str(product_id):
+                continue
+            if str(row.get("platform") or "").upper() != "TELEGRAM":
+                continue
+            opportunity_id = str(row.get("opportunity_id") or "")
+            action = str(row.get("action") or "").upper()
+            paid_users = int(row.get("paid_users") or 0)
+            replies = int(row.get("replies") or 0)
+            removals = int(row.get("removals") or 0)
+            if action == "STOP" or removals > 0:
+                if opportunity_id:
+                    negative_opportunity_ids.add(opportunity_id)
+                continue
+            if action in {"SCALE", "CONTINUE"} or paid_users > 0 or replies > 0:
+                positive_rows.append(row)
+
+        positive_rows.sort(
+            key=lambda row: (
+                int(row.get("paid_users") or 0),
+                int(row.get("replies") or 0),
+                str(row.get("created_at") or ""),
+            ),
+            reverse=True,
+        )
+
+        hints: list[str] = []
+        for row in positive_rows[:8]:
+            opportunity_id = str(row.get("opportunity_id") or "")
+            if not opportunity_id or opportunity_id in negative_opportunity_ids:
+                continue
+            try:
+                opportunity = self._audience_service.find_opportunity(opportunity_id)
+            except (KeyError, TypeError, ValueError):
+                continue
+            metadata = opportunity.metadata if isinstance(opportunity.metadata, dict) else {}
+            signals = metadata.get("research_signals")
+            if isinstance(signals, dict):
+                matched = [
+                    str(item).strip()
+                    for item in list(signals.get("matched_terms") or [])[:5]
+                    if str(item).strip()
+                ]
+                if matched:
+                    hints.append(" ".join(matched))
+            recent_context = metadata.get("recent_context")
+            if isinstance(recent_context, list):
+                for context in recent_context[:3]:
+                    if not isinstance(context, dict):
+                        continue
+                    matched = [
+                        str(item).strip()
+                        for item in list(context.get("matched_terms") or [])[:5]
+                        if str(item).strip()
+                    ]
+                    if matched:
+                        hints.append(" ".join(matched))
+                        break
+            title = str(getattr(opportunity, "title", "") or "").strip()
+            if title:
+                hints.append(title)
+        return self._dedupe_hints(hints)[:6]
+
+    @staticmethod
+    def _dedupe_hints(values: list[str]) -> list[str]:
+        result: list[str] = []
+        seen: set[str] = set()
+        for raw in values:
+            value = " ".join(str(raw or "").split()).strip()[:180]
+            if len(value) < 3:
+                continue
+            key = value.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(value)
+        return result
+
+    @staticmethod
+    def _normalized_hint(value: str) -> str:
+        return " ".join(str(value or "").lower().split()).strip()
+
+    @staticmethod
+    def _ready_count(
+        preflight_by_url: dict[str, TelegramOpportunityPreflightResult],
+    ) -> int:
+        return sum(item.status == "READY" for item in preflight_by_url.values())
 
     async def _preflight_live_comment_targets(
         self,

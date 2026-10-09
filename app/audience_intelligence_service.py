@@ -1,6 +1,5 @@
 from uuid import UUID, uuid4
 
-from app.audience_intelligence import AudienceIntelligenceEngine
 from app.customer_live_opportunities import customer_live_opportunity_service
 from app.distribution_schemas import (
     AudienceDistributionMapView,
@@ -9,6 +8,14 @@ from app.distribution_schemas import (
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ICPGenerationResponse, ProductProfileView
 from app.search import get_search_provider
+from app.telegram_discovery_strategy import (
+    MAX_ADAPTIVE_DISCOVERY_ROUNDS,
+    TARGET_READY_TELEGRAM_OPPORTUNITIES,
+    TELEGRAM_DISCOVERY_QUERY_BUDGET,
+)
+from app.telegram_discovery_strategy import (
+    ExpandedAudienceIntelligenceEngine as AudienceIntelligenceEngine,
+)
 
 AUDIENCE_MAP_NAMESPACE = "audience_distribution_map"
 AUDIENCE_OPPORTUNITY_NAMESPACE = "audience_distribution_opportunity"
@@ -26,18 +33,78 @@ class InMemoryAudienceIntelligenceService:
         icp_result: ICPGenerationResponse,
         top_icp_count: int = 3,
     ) -> AudienceDistributionMapView:
+        """Run the normal multi-platform discovery pass."""
+        engine = AudienceIntelligenceEngine(get_search_provider())
+        return await self._discover_with_engine(
+            product,
+            icp_result,
+            engine=engine,
+            top_icp_count=top_icp_count,
+            merge_existing=False,
+        )
+
+    async def discover_with_hints(
+        self,
+        product: ProductProfileView,
+        icp_result: ICPGenerationResponse,
+        *,
+        telegram_hints: list[str],
+        top_icp_count: int = 3,
+        merge_existing: bool = True,
+    ) -> AudienceDistributionMapView:
+        """Run a Telegram-only adaptive pass and merge it into the current map.
+
+        Hints come from observed growth outcomes and prior preflight failures. They alter
+        search hypotheses only; they do not bypass freshness, publisher preflight,
+        mandate, approval or execution controls.
+        """
+        engine = AudienceIntelligenceEngine(
+            get_search_provider(),
+            telegram_hints=telegram_hints,
+            telegram_only=True,
+        )
+        return await self._discover_with_engine(
+            product,
+            icp_result,
+            engine=engine,
+            top_icp_count=top_icp_count,
+            merge_existing=merge_existing,
+        )
+
+    async def _discover_with_engine(
+        self,
+        product: ProductProfileView,
+        icp_result: ICPGenerationResponse,
+        *,
+        engine: AudienceIntelligenceEngine,
+        top_icp_count: int,
+        merge_existing: bool,
+    ) -> AudienceDistributionMapView:
         top_icps = icp_result.icps[:top_icp_count]
         if not top_icps:
             raise ValueError("ICP generation must contain at least one segment")
 
-        engine = AudienceIntelligenceEngine(get_search_provider())
         seeds = await engine.discover(product=product, icps=top_icps)
-
-        opportunities = [
+        discovered = [
             DistributionOpportunityView(id=uuid4(), **seed.model_dump())
             for seed in seeds
         ]
         diagnostics = self._diagnostics(engine)
+
+        opportunities = discovered
+        if merge_existing:
+            existing = self._existing_map(product.id)
+            if existing is not None:
+                opportunities = self._merge_opportunities(
+                    list(existing.opportunities),
+                    discovered,
+                )
+                diagnostics = self._merge_diagnostics(
+                    existing.diagnostics,
+                    diagnostics,
+                    merged_opportunity_count=len(opportunities),
+                )
+
         response = AudienceDistributionMapView(
             product_id=product.id,
             top_icp_count=len(top_icps),
@@ -59,6 +126,89 @@ class InMemoryAudienceIntelligenceService:
             list(opportunities),
         )
         return response
+
+    def _existing_map(self, product_id: UUID) -> AudienceDistributionMapView | None:
+        cached = self._results.get(product_id)
+        if cached is not None:
+            return cached
+        payload = self._store.get(AUDIENCE_MAP_NAMESPACE, str(product_id))
+        if payload is None:
+            return None
+        return AudienceDistributionMapView.model_validate(payload)
+
+    @staticmethod
+    def _opportunity_key(opportunity: DistributionOpportunityView) -> tuple[str, str]:
+        platform = getattr(opportunity.platform, "value", str(opportunity.platform))
+        return str(platform), str(opportunity.canonical_key)
+
+    def _merge_opportunities(
+        self,
+        existing: list[DistributionOpportunityView],
+        discovered: list[DistributionOpportunityView],
+    ) -> list[DistributionOpportunityView]:
+        merged = {self._opportunity_key(item): item for item in existing}
+        order = [self._opportunity_key(item) for item in existing]
+
+        for incoming in discovered:
+            key = self._opportunity_key(incoming)
+            current = merged.get(key)
+            if current is None:
+                merged[key] = incoming
+                order.append(key)
+                continue
+
+            current_score = current.relevance_score or 0
+            incoming_score = incoming.relevance_score or 0
+            preferred = incoming if incoming_score >= current_score else current
+
+            evidence = list(current.evidence)
+            seen_evidence = {
+                (str(item.get("url") or ""), str(item.get("title") or ""))
+                for item in evidence
+            }
+            for item in incoming.evidence:
+                evidence_key = (
+                    str(item.get("url") or ""),
+                    str(item.get("title") or ""),
+                )
+                if evidence_key in seen_evidence:
+                    continue
+                seen_evidence.add(evidence_key)
+                evidence.append(item)
+
+            metadata = dict(current.metadata)
+            for field, value in incoming.metadata.items():
+                if value not in (None, "", [], {}):
+                    metadata[field] = value
+
+            merged[key] = preferred.model_copy(
+                update={
+                    "id": current.id,
+                    "metadata": metadata,
+                    "evidence": evidence,
+                }
+            )
+
+        values = [merged[key] for key in order]
+        values.sort(
+            key=lambda item: (-(item.relevance_score or 0), item.canonical_key)
+        )
+        return values
+
+    @staticmethod
+    def _merge_diagnostics(
+        existing: dict,
+        current: dict,
+        *,
+        merged_opportunity_count: int,
+    ) -> dict:
+        previous_rounds = int(existing.get("adaptive_round_count") or 0)
+        return {
+            **current,
+            "adaptive_round_count": previous_rounds + 1,
+            "merged_opportunity_count": merged_opportunity_count,
+            "previous_query_count": int(existing.get("query_count") or 0),
+        }
 
     @staticmethod
     def _diagnostics(engine: AudienceIntelligenceEngine) -> dict:
@@ -118,6 +268,13 @@ class InMemoryAudienceIntelligenceService:
             "search_error_types": search_error_types,
             "enrichment_error_types": enrichment_error_types,
             "platforms": by_platform,
+            "telegram_discovery": {
+                "query_budget_per_icp": TELEGRAM_DISCOVERY_QUERY_BUDGET,
+                "target_ready_opportunities": TARGET_READY_TELEGRAM_OPPORTUNITIES,
+                "max_adaptive_rounds": MAX_ADAPTIVE_DISCOVERY_ROUNDS,
+                "expansion_lenses_enabled": True,
+                "adaptive_hypotheses_enabled": True,
+            },
         }
 
     def get(self, product_id: UUID) -> AudienceDistributionMapView:
