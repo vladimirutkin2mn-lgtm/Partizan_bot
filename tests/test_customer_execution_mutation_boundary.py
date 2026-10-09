@@ -83,10 +83,10 @@ def test_all_known_customer_execution_bypasses_check_scope_before_mutation() -> 
 
     telegram_source = Path("app/telegram_client_publishing.py").read_text()
     telegram_guard = 'require_customer_bound_mutation_scope(action, "Telegram client publish")'
+    telegram_publish = "receipt = await super().publish"
     assert telegram_guard in telegram_source
-    assert telegram_source.index(telegram_guard) < telegram_source.index(
-        "return await super().publish"
-    )
+    assert telegram_publish in telegram_source
+    assert telegram_source.index(telegram_guard) < telegram_source.index(telegram_publish)
 
 
 def test_publisher_impl_modules_are_private_implementation_only() -> None:
