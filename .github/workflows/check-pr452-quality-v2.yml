@@ -1,0 +1,43 @@
+name: Check PR 452 quality changes v2
+
+on:
+  push:
+    branches:
+      - ops/check-pr452-quality-v2
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/discovery-quality-and-telegram-ban-memory
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Lint changed Python
+        run: |
+          ruff check \
+            app/discovery_relevance_learning.py \
+            app/telegram_discovery_strategy.py \
+            app/telegram_community_restrictions.py \
+            app/telegram_client_publishing.py \
+            app/telegram_opportunity_preflight.py \
+            app/telegram_comment_access.py \
+            tests/test_discovery_relevance_learning.py \
+            tests/test_telegram_community_restrictions.py \
+            tests/test_telegram_opportunity_preflight.py \
+            tests/test_telegram_comment_access.py
+      - name: Targeted tests
+        run: |
+          pytest -q \
+            tests/test_discovery_relevance_learning.py \
+            tests/test_telegram_community_restrictions.py \
+            tests/test_telegram_opportunity_preflight.py \
+            tests/test_telegram_comment_access.py \
+            tests/test_telegram_discovery_strategy.py \
+            tests/test_autonomous_opportunity_refresh_adaptive.py \
+            tests/test_autonomous_opportunity_refresh_preflight.py
