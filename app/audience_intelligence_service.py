@@ -9,6 +9,8 @@ from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ICPGenerationResponse, ProductProfileView
 from app.search import get_search_provider
 from app.telegram_discovery_strategy import (
+    TELEGRAM_DISCOVERY_QUERY_BUDGET,
+    TARGET_READY_TELEGRAM_OPPORTUNITIES,
     ExpandedAudienceIntelligenceEngine as AudienceIntelligenceEngine,
 )
 
@@ -120,6 +122,11 @@ class InMemoryAudienceIntelligenceService:
             "search_error_types": search_error_types,
             "enrichment_error_types": enrichment_error_types,
             "platforms": by_platform,
+            "telegram_discovery": {
+                "query_budget_per_icp": TELEGRAM_DISCOVERY_QUERY_BUDGET,
+                "target_ready_opportunities": TARGET_READY_TELEGRAM_OPPORTUNITIES,
+                "expansion_lenses_enabled": True,
+            },
         }
 
     def get(self, product_id: UUID) -> AudienceDistributionMapView:
