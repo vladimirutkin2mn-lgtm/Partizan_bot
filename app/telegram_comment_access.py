@@ -18,6 +18,10 @@ _NO_DISCUSSION = "NO_DISCUSSION"
 _PRECHECK_FAILED = "PRECHECK_FAILED"
 _JOIN_FAILED = "JOIN_FAILED"
 _SAFE_RPC_MESSAGE = re.compile(r"^[A-Z0-9_]{2,120}$")
+_WRITE_RESTRICTION_ERROR_TYPES = {
+    "ChatWriteForbiddenError",
+    "UserBannedInChannelError",
+}
 
 
 @dataclass(frozen=True)
@@ -60,7 +64,12 @@ def safe_telegram_rpc_error(exc: Exception) -> dict[str, object]:
     return payload
 
 
-def _error_access(status: str, exc: Exception, *, linked_chat_id: int | None = None) -> TelegramCommentAccess:
+def _error_access(
+    status: str,
+    exc: Exception,
+    *,
+    linked_chat_id: int | None = None,
+) -> TelegramCommentAccess:
     safe = safe_telegram_rpc_error(exc)
     return TelegramCommentAccess(
         status=status,
@@ -69,6 +78,12 @@ def _error_access(status: str, exc: Exception, *, linked_chat_id: int | None = N
         rpc_code=safe.get("rpc_code") if isinstance(safe.get("rpc_code"), int) else None,
         rpc_message=str(safe["rpc_message"]) if safe.get("rpc_message") else None,
     )
+
+
+def _preflight_error_status(exc: Exception) -> str:
+    if type(exc).__name__ in _WRITE_RESTRICTION_ERROR_TYPES:
+        return _NO_WRITE_ACCESS
+    return _PRECHECK_FAILED
 
 
 def _send_messages_blocked(entity: Any, participant: Any) -> bool:
@@ -87,7 +102,7 @@ async def preflight_comment_access(client: Any, channel: Any) -> TelegramComment
     try:
         full = await client(GetFullChannelRequest(channel))
     except Exception as exc:
-        return _error_access(_PRECHECK_FAILED, exc)
+        return _error_access(_preflight_error_status(exc), exc)
 
     linked_chat_id = int(getattr(getattr(full, "full_chat", None), "linked_chat_id", 0) or 0)
     if linked_chat_id <= 0:
@@ -105,7 +120,11 @@ async def preflight_comment_access(client: Any, channel: Any) -> TelegramComment
         try:
             linked_entity = await client.get_entity(linked_chat_id)
         except Exception as exc:
-            return _error_access(_PRECHECK_FAILED, exc, linked_chat_id=linked_chat_id)
+            return _error_access(
+                _preflight_error_status(exc),
+                exc,
+                linked_chat_id=linked_chat_id,
+            )
 
     try:
         participant_result = await client(GetParticipantRequest(linked_entity, "me"))
@@ -116,7 +135,11 @@ async def preflight_comment_access(client: Any, channel: Any) -> TelegramComment
             _linked_entity=linked_entity,
         )
     except Exception as exc:
-        return _error_access(_PRECHECK_FAILED, exc, linked_chat_id=linked_chat_id)
+        return _error_access(
+            _preflight_error_status(exc),
+            exc,
+            linked_chat_id=linked_chat_id,
+        )
 
     participant = getattr(participant_result, "participant", participant_result)
     if _send_messages_blocked(linked_entity, participant):
@@ -146,7 +169,8 @@ async def ensure_comment_access(
     try:
         await client(JoinChannelRequest(access._linked_entity))
     except Exception as exc:
-        return _error_access(_JOIN_FAILED, exc, linked_chat_id=access.linked_chat_id)
+        status = _NO_WRITE_ACCESS if type(exc).__name__ in _WRITE_RESTRICTION_ERROR_TYPES else _JOIN_FAILED
+        return _error_access(status, exc, linked_chat_id=access.linked_chat_id)
 
     rechecked = await preflight_comment_access(client, channel)
     return replace(rechecked, joined=True)
