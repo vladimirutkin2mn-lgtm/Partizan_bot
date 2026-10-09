@@ -45,10 +45,11 @@ _GENERIC_TERMS = {
 class DiscoveryRelevanceLearningService:
     """Filter weak acquisition candidates and learn reusable negative discovery signals.
 
-    Learning is scoped to a product. An exact community rejected for weak semantic fit is
-    suppressed on later rounds for 30 days. Theme terms are activated only after they are
-    independently observed in at least two rejected candidates and only when they are not
-    already part of the product/ICP vocabulary.
+    Learning is scoped to a product. An exact platform/community candidate rejected for
+    weak semantic fit is suppressed on later rounds for 30 days, unless the same candidate
+    also produced a valid multi-signal match for another ICP in that discovery batch.
+    Theme terms are activated only after they are independently observed in at least two
+    rejected communities and only when they are not part of the product/ICP vocabulary.
     """
 
     def __init__(self, store: RuntimeStateStore | None = None) -> None:
@@ -68,6 +69,8 @@ class DiscoveryRelevanceLearningService:
 
         for opportunity in opportunities:
             decision = self._decision(opportunity, snapshot)
+            platform = self._platform_value(getattr(opportunity, "platform", None))
+            canonical_key = str(getattr(opportunity, "canonical_key", "") or "")
             if decision["accepted"]:
                 metadata = (
                     dict(getattr(opportunity, "metadata", {}) or {})
@@ -86,8 +89,8 @@ class DiscoveryRelevanceLearningService:
 
             rejected.append(
                 {
-                    "canonical_key": str(getattr(opportunity, "canonical_key", "") or ""),
-                    "platform": self._platform_value(getattr(opportunity, "platform", None)),
+                    "canonical_key": canonical_key,
+                    "platform": platform,
                     "title": str(getattr(opportunity, "title", "") or ""),
                     "reason": decision["reason"],
                     "signal_families": decision["signal_families"],
@@ -95,12 +98,29 @@ class DiscoveryRelevanceLearningService:
             )
 
         if product_id is not None and rejected:
-            self.observe_rejections(
-                product_id=product_id,
-                product=product,
-                icps=icps,
-                rejections=rejected,
-            )
+            accepted_keys = {
+                self._memory_key(
+                    self._platform_value(getattr(item, "platform", None)),
+                    str(getattr(item, "canonical_key", "") or ""),
+                )
+                for item in accepted
+            }
+            learning_rejections = [
+                row
+                for row in rejected
+                if self._memory_key(
+                    str(row.get("platform") or ""),
+                    str(row.get("canonical_key") or ""),
+                )
+                not in accepted_keys
+            ]
+            if learning_rejections:
+                self.observe_rejections(
+                    product_id=product_id,
+                    product=product,
+                    icps=icps,
+                    rejections=learning_rejections,
+                )
         return accepted, rejected
 
     def filter_hints(
@@ -167,20 +187,27 @@ class DiscoveryRelevanceLearningService:
         blocked = dict(payload.get("blocked_keys") or {})
         term_rows = dict(payload.get("negative_terms") or {})
 
+        unique_rejections: dict[str, dict] = {}
         for row in rejections:
-            canonical_key = str(row.get("canonical_key") or "").strip()
-            if not canonical_key:
-                continue
-            current = dict(blocked.get(canonical_key.casefold()) or {})
+            memory_key = self._memory_key(
+                str(row.get("platform") or ""),
+                str(row.get("canonical_key") or ""),
+            )
+            if memory_key:
+                unique_rejections.setdefault(memory_key, row)
+
+        for memory_key, row in unique_rejections.items():
+            current = dict(blocked.get(memory_key) or {})
             current["count"] = int(current.get("count") or 0) + 1
             current["last_seen_at"] = now.isoformat()
             current["reason"] = str(row.get("reason") or "IRRELEVANT")
             current["platform"] = str(row.get("platform") or "")
-            blocked[canonical_key.casefold()] = current
+            current["canonical_key"] = str(row.get("canonical_key") or "")
+            blocked[memory_key] = current
 
         anchor_terms = self._anchor_terms(product, icps)
         batch_term_counts: Counter[str] = Counter()
-        for row in rejections:
+        for row in unique_rejections.values():
             if str(row.get("reason") or "") != "INSUFFICIENT_SEMANTIC_EVIDENCE":
                 continue
             title_terms = {
@@ -210,8 +237,11 @@ class DiscoveryRelevanceLearningService:
         )
 
     def _decision(self, opportunity: Any, snapshot: dict[str, set[str]]) -> dict:
-        canonical_key = str(getattr(opportunity, "canonical_key", "") or "").casefold()
-        if canonical_key and canonical_key in snapshot["blocked_keys"]:
+        memory_key = self._memory_key(
+            self._platform_value(getattr(opportunity, "platform", None)),
+            str(getattr(opportunity, "canonical_key", "") or ""),
+        )
+        if memory_key and memory_key in snapshot["blocked_keys"]:
             return self._rejected("NEGATIVE_COMMUNITY_MEMORY")
 
         title_terms = self._tokens(str(getattr(opportunity, "title", "") or ""))
@@ -325,6 +355,14 @@ class DiscoveryRelevanceLearningService:
             seen.add(key)
             result.append(value)
         return result
+
+    @staticmethod
+    def _memory_key(platform: str, canonical_key: str) -> str:
+        normalized_platform = str(platform or "").strip().casefold()
+        normalized_key = str(canonical_key or "").strip().casefold()
+        if not normalized_key:
+            return ""
+        return f"{normalized_platform}|{normalized_key}"
 
     @staticmethod
     def _platform_value(platform: Any) -> str:
