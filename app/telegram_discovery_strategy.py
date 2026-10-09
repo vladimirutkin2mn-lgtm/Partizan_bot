@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from app.audience_intelligence import AudienceIntelligenceEngine
+from app.discovery_relevance_learning import (
+    DiscoveryRelevanceLearningService,
+    discovery_relevance_learning_service,
+)
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.platform_discovery import (
     InstagramDiscoveryAdapter,
@@ -235,7 +239,7 @@ def expanded_platform_adapters(
 
 
 class ExpandedAudienceIntelligenceEngine(AudienceIntelligenceEngine):
-    """Audience engine with the broader/adaptive Telegram search strategy enabled."""
+    """Audience engine with broader search plus reusable quality learning enabled."""
 
     def __init__(
         self,
@@ -244,6 +248,7 @@ class ExpandedAudienceIntelligenceEngine(AudienceIntelligenceEngine):
         *,
         telegram_hints: list[str] | tuple[str, ...] | None = None,
         telegram_only: bool = False,
+        relevance_learning_service: DiscoveryRelevanceLearningService | None = None,
     ) -> None:
         super().__init__(
             provider,
@@ -253,3 +258,32 @@ class ExpandedAudienceIntelligenceEngine(AudienceIntelligenceEngine):
                 telegram_only=telegram_only,
             ),
         )
+        self._relevance_learning = (
+            relevance_learning_service or discovery_relevance_learning_service
+        )
+        self._last_relevance_rejections: list[dict] = []
+
+    @property
+    def last_relevance_rejections(self) -> list[dict]:
+        return [dict(item) for item in self._last_relevance_rejections]
+
+    async def discover(
+        self,
+        product: ProductProfileView,
+        icps: list[ICPView],
+        per_query_limit: int = 5,
+        max_opportunities: int = 80,
+    ):
+        opportunities = await super().discover(
+            product,
+            icps,
+            per_query_limit=per_query_limit,
+            max_opportunities=max_opportunities,
+        )
+        accepted, rejected = self._relevance_learning.filter_and_learn(
+            product=product,
+            icps=icps,
+            opportunities=opportunities,
+        )
+        self._last_relevance_rejections = rejected
+        return accepted
