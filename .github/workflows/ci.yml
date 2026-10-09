@@ -83,11 +83,19 @@ jobs:
               -f docker-compose.edge.yml \
               --env-file .env.example \
               config --quiet
-          docker run --rm \
-            -e PARTIZAN_PUBLIC_HOST=partizan.example.com \
-            -v "$PWD/Caddyfile.prod:/etc/caddy/Caddyfile:ro" \
-            public.ecr.aws/docker/library/caddy:2-alpine \
-            caddy validate --config /etc/caddy/Caddyfile
+
+          CADDY_VERSION="2.11.7"
+          CADDY_ARCHIVE="/tmp/caddy_${CADDY_VERSION}_linux_amd64.tar.gz"
+          CADDY_SHA256="727b91701a392de6ebc5027509f548bf39979e5216340d0faed8fa5e69c84f8b"
+          curl --fail --silent --show-error --location \
+            "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_linux_amd64.tar.gz" \
+            --output "${CADDY_ARCHIVE}"
+          echo "${CADDY_SHA256}  ${CADDY_ARCHIVE}" | sha256sum --check -
+          mkdir -p /tmp/caddy-bin
+          tar -xzf "${CADDY_ARCHIVE}" -C /tmp/caddy-bin caddy
+          chmod +x /tmp/caddy-bin/caddy
+          PARTIZAN_PUBLIC_HOST=partizan.example.com \
+            /tmp/caddy-bin/caddy validate --config "$PWD/Caddyfile.prod"
       - name: Validate shared-host runtime
         run: |
           PARTIZAN_ENV_FILE=.env.example \
