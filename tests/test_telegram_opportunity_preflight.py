@@ -79,6 +79,35 @@ async def test_preflight_keeps_join_required_visible_but_not_execution_ready() -
     assert result.execution_ready is False
 
 
+@pytest.mark.asyncio
+async def test_preflight_known_ban_overrides_read_only_ready_signal() -> None:
+    client = FakeClient(message=SimpleNamespace(id=2103, replies=SimpleNamespace(replies=8)))
+    project_id = uuid4()
+    service = TelegramOpportunityPreflightService(
+        session_provider=lambda project_id: "session",
+        client_factory=lambda session: client,
+        restriction_checker=lambda candidate_project_id, handle: (
+            {
+                "reason": "ACCOUNT_BANNED_IN_COMMUNITY",
+                "community_handle": handle.casefold(),
+            }
+            if candidate_project_id == project_id and handle.casefold() == "a_sfera"
+            else None
+        ),
+    )
+
+    result = await service.check_comment_target(
+        project_id,
+        "https://t.me/a_sfera/2103",
+    )
+
+    assert result.status == "NO_WRITE_ACCESS"
+    assert result.reason == "ACCOUNT_BANNED_IN_COMMUNITY"
+    assert result.execution_ready is False
+    assert result.recoverable is False
+    assert client.connected is False
+
+
 def test_parse_requires_exact_message_target() -> None:
     service = TelegramOpportunityPreflightService(
         session_provider=lambda project_id: "session",
