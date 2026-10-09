@@ -1,0 +1,83 @@
+name: Refresh FemDom opportunities now
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: femdom-opportunity-refresh-now
+  cancel-in-progress: false
+
+jobs:
+  refresh-opportunities:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Resolve current production release
+        id: release
+        shell: bash
+        run: |
+          current_main_sha="$(git rev-parse HEAD)"
+          if [[ ! "${current_main_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Unable to resolve current main release"
+            exit 1
+          fi
+          echo "sha=${current_main_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Require production connection configuration
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          missing=()
+          [[ -z "${DEPLOY_HOST}" ]] && missing+=(DEPLOY_HOST)
+          [[ -z "${DEPLOY_SSH_KEY}" ]] && missing+=(DEPLOY_SSH_KEY)
+          [[ -z "${DEPLOY_SSH_KNOWN_HOSTS}" ]] && missing+=(DEPLOY_SSH_KNOWN_HOSTS)
+          [[ -z "${DEPLOY_PATH}" ]] && missing+=(DEPLOY_PATH)
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing production refresh configuration: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Pin production host key
+        env:
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Force fresh FemDom discovery only
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ steps.release.outputs.sha }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && \
+              deployed_sha=\$(git rev-parse HEAD) && \
+              if [ \"\${deployed_sha}\" != '${EXPECTED_SHA}' ]; then \
+                echo 'Production release is not current main; refusing refresh' >&2; \
+                exit 2; \
+              fi && \
+              bash tools/compose_shared_host.sh exec -T api \
+                python -m app.manual_opportunity_refresh \
+                  --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+                  --force"
