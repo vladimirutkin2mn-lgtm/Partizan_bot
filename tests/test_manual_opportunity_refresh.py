@@ -30,6 +30,25 @@ class InspectingRefreshService:
         return [{"product_id": str(product_id), "status": "REFRESHED"}]
 
 
+class EmptyRefreshService:
+    async def run_once(self, *, product_id, interval_seconds):
+        return []
+
+
+class InspectingManualRefreshService(ManualOpportunityRefreshService):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.direct_calls = []
+
+    async def _run_direct_product_discovery(self, product_id):
+        self.direct_calls.append(product_id)
+        return {
+            "product_id": str(product_id),
+            "status": "REFRESHED",
+            "mode": "MANUAL_DIRECT",
+        }
+
+
 @pytest.mark.asyncio
 async def test_force_refresh_clears_only_cadence_marker_before_discovery() -> None:
     store = MemoryRuntimeStateStore()
@@ -85,3 +104,24 @@ async def test_non_force_refresh_keeps_existing_cadence_marker() -> None:
 
     assert delegate.calls[0]["marker"]["last_success_at"] == last_success_at
     assert "manual_force_requested_at" not in delegate.calls[0]["marker"]
+
+
+@pytest.mark.asyncio
+async def test_manual_refresh_falls_back_to_read_only_direct_discovery_without_mandate() -> None:
+    store = MemoryRuntimeStateStore()
+    product_id = uuid4()
+    service = InspectingManualRefreshService(
+        store=store,
+        refresh_service=EmptyRefreshService(),
+    )
+
+    result = await service.run_once(product_id=product_id, force=True)
+
+    assert result == [
+        {
+            "product_id": str(product_id),
+            "status": "REFRESHED",
+            "mode": "MANUAL_DIRECT",
+        }
+    ]
+    assert service.direct_calls == [product_id]
