@@ -94,11 +94,8 @@ jobs:
           set +e
           result="$(ssh -o BatchMode=yes "${DEPLOY_HOST}" \
             "cd '${DEPLOY_PATH}' && \
-              deployed_sha=\$(git rev-parse HEAD) && \
-              if [ \"\${deployed_sha}\" != '${EXPECTED_SHA}' ]; then \
-                echo '{\"status\":\"FAILED\",\"error\":\"production release mismatch\"}'; \
-                exit 2; \
-              fi && \
+              bash tools/compose_shared_host.sh exec -T api \
+                python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_SHA}' else 2)\" >/dev/null && \
               bash tools/compose_shared_host.sh exec -T api \
                 python -m app.manual_telegram_community_restriction \
                   --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
