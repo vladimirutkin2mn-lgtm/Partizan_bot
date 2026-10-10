@@ -71,6 +71,17 @@
     );
     const confirmationTime = requestedAt(preparedAction.customer_publish_confirmed_at);
     const approvalTime = requestedAt(preparedAction.operator_approved_at || executionRequest.operator_approved_at);
+    Object.assign(card.dataset, {
+      nextProject: projectId, nextStage: executed ? 'results' : 'confirm',
+      nextOwner: executed ? 'done' : (confirmed ? (approved ? 'status' : 'partizan') : 'you'),
+      nextTitle: executed ? 'Your action is complete.' : (confirmed ? 'Your action is confirmed.' : 'Check the final text and destination.'),
+      nextCopy: executed ? 'Review the completed action and follow its results.'
+        : confirmed ? (approved ? 'The action is approved. Publication is a separate step; it has not happened yet.'
+          : 'Partizan still needs to check this action. You have confirmed the text; nothing has been published yet.')
+          : 'Review exactly what will be sent and where. Confirmation records your approval; publication is a separate step.',
+      nextCta: executed ? 'View completed action →' : (confirmed ? 'View confirmed action →' : 'Review final action →'),
+      nextFocus: 'h2',
+    });
     const title = preparedAction.draft_title
       ? `<div><span class="eyebrow">Title</span><strong>${escapeHtml(preparedAction.draft_title)}</strong></div>`
       : '';
@@ -181,6 +192,12 @@
       executionRequest
       && ['REQUESTED', 'PREPARATION_READY'].includes(executionRequest.status)
     ) {
+      Object.assign(card.dataset, {
+        nextProject: projectId, nextStage: 'prepare', nextOwner: 'partizan',
+        nextTitle: 'Partizan is preparing your action.',
+        nextCopy: 'Your accepted draft is being prepared. You will review the final text and destination before publication can be authorized.',
+        nextCta: 'View preparation →', nextFocus: '',
+      });
       const timestamp = requestedAt(executionRequest.requested_at);
       const linked = executionRequest.status === 'PREPARATION_READY';
       card.innerHTML = `
@@ -197,6 +214,12 @@
       return;
     }
 
+    Object.assign(card.dataset, {
+      nextProject: projectId, nextStage: 'prepare', nextOwner: 'you',
+      nextTitle: 'Ask Partizan to prepare your action.',
+      nextCopy: 'Your draft and channel setup are ready. Request the exact action, then review it before confirming.',
+      nextCta: 'Review preparation →', nextFocus: '#execution-request-submit',
+    });
     card.innerHTML = `
       <div class="activation-head">
         <div><span class="eyebrow">Accepted draft → preparation</span><h2>Ask Partizan to prepare one action.</h2></div>
@@ -240,6 +263,7 @@
       return;
     }
     loading = true;
+    const requestedProjectId = projectId;
     try {
       const encodedProject = encodeURIComponent(projectId);
       const [draft, setup, executionRequest] = await Promise.all([
@@ -256,10 +280,10 @@
           `/customer/workspace/${encodedProject}/starting-move/execution-request/prepared-action`,
         );
       }
-      render(draft, setup, executionRequest, preparedAction);
+      if (requestedProjectId === projectId) render(draft, setup, executionRequest, preparedAction);
     } catch (_) {
       const card = ensureCard();
-      if (card) card.classList.add('hidden');
+      if (card && requestedProjectId === projectId) card.classList.add('hidden');
     } finally {
       loading = false;
       if (refreshQueued) {
