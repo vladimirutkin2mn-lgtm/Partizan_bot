@@ -1,6 +1,7 @@
 name: Seed FemDom Telegram restriction once
 
 on:
+  workflow_dispatch:
   workflow_run:
     workflows: ["Deploy production"]
     types: [completed]
@@ -12,8 +13,9 @@ concurrency:
 jobs:
   seed-refresh-verify:
     if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main'
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -23,7 +25,7 @@ jobs:
       - name: Resolve deployed release
         id: release
         env:
-          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+          RELEASE_SHA: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
         shell: bash
         run: |
           if [[ ! "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
