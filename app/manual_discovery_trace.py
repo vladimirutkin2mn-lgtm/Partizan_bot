@@ -58,10 +58,21 @@ def _filters() -> dict:
             "signal_family_ratio_threshold": 0.15,
             "minimum_matched_terms": 2,
             "pass_paths": {
-                "DIVERSIFIED_MATCH": "at least 2 signal families and at least 2 matched terms",
-                "DIRECT_PROBLEM_MATCH": "pain or trigger >= 0.25, at least 1 intent hit, and at least 2 matched terms",
-                "CORROBORATED_FIT": "fit >= 0.35, at least 2 independent evidence items, intent or alternative signal, and at least 2 matched terms",
-                "CONFIDENCE_SUPPORTED": "MEDIUM/HIGH confidence, at least 2 signal families, and at least 2 matched terms",
+                "DIVERSIFIED_MATCH": (
+                    "at least 2 signal families and at least 2 matched terms"
+                ),
+                "DIRECT_PROBLEM_MATCH": (
+                    "pain or trigger >= 0.25, at least 1 intent hit, "
+                    "and at least 2 matched terms"
+                ),
+                "CORROBORATED_FIT": (
+                    "fit >= 0.35, at least 2 independent evidence items, "
+                    "intent or alternative signal, and at least 2 matched terms"
+                ),
+                "CONFIDENCE_SUPPORTED": (
+                    "MEDIUM/HIGH confidence, at least 2 signal families, "
+                    "and at least 2 matched terms"
+                ),
             },
             "reject_paths": [
                 "NEGATIVE_COMMUNITY_MEMORY",
@@ -74,7 +85,10 @@ def _filters() -> dict:
             "negative_theme_min_observations": 2,
             "ttl_days": 30,
         },
-        "note": "This trace evaluates the current gate but never calls filter_and_learn, so it does not add negative-learning observations.",
+        "note": (
+            "This trace evaluates the current gate but never calls filter_and_learn, "
+            "so it does not add negative-learning observations."
+        ),
     }
 
 
