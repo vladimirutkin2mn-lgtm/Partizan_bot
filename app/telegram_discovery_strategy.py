@@ -412,11 +412,18 @@ class ExpandedAudienceIntelligenceEngine(AudienceIntelligenceEngine):
         per_query_limit: int = 5,
         max_opportunities: int = 80,
     ):
+        # Expanded Telegram discovery has more queries than the other adapters. Collect a
+        # bounded superset first so one platform cannot consume the global top-N before
+        # cross-platform coverage is considered.
+        collection_limit = max(
+            max_opportunities,
+            max_opportunities * max(1, len(self._adapters)),
+        )
         opportunities = await super().discover(
             product,
             icps,
             per_query_limit=per_query_limit,
-            max_opportunities=max_opportunities,
+            max_opportunities=collection_limit,
         )
         accepted, rejected = self._relevance_learning.filter_and_learn(
             product=product,
@@ -424,4 +431,49 @@ class ExpandedAudienceIntelligenceEngine(AudienceIntelligenceEngine):
             opportunities=opportunities,
         )
         self._last_relevance_rejections = rejected
-        return accepted
+        return self._coverage_first_limit(accepted, max_opportunities)
+
+    @staticmethod
+    def _coverage_first_limit(opportunities: list, limit: int) -> list:
+        """Bound the portfolio without letting query fan-out erase a platform/ICP cell."""
+        if limit <= 0:
+            return []
+        if len(opportunities) <= limit:
+            return list(opportunities)
+
+        ranked = sorted(
+            opportunities,
+            key=lambda item: (-(item.relevance_score or 0), item.canonical_key),
+        )
+        selected: list = []
+        selected_keys: set[tuple[str, str, str]] = set()
+        coverage_cells: set[tuple[str, str]] = set()
+
+        # First keep the strongest valid candidate for every ICP/platform combination.
+        for item in ranked:
+            platform = str(getattr(item.platform, "value", item.platform))
+            cell = (str(item.icp_id), platform)
+            if cell in coverage_cells:
+                continue
+            coverage_cells.add(cell)
+            key = (str(item.icp_id), platform, str(item.canonical_key))
+            selected.append(item)
+            selected_keys.add(key)
+            if len(selected) >= limit:
+                return selected
+
+        # Fill the remaining budget by score, preserving the existing ranking semantics.
+        for item in ranked:
+            platform = str(getattr(item.platform, "value", item.platform))
+            key = (str(item.icp_id), platform, str(item.canonical_key))
+            if key in selected_keys:
+                continue
+            selected.append(item)
+            selected_keys.add(key)
+            if len(selected) >= limit:
+                break
+
+        selected.sort(
+            key=lambda item: (-(item.relevance_score or 0), item.canonical_key),
+        )
+        return selected
