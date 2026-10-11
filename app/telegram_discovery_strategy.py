@@ -17,12 +17,8 @@ from app.platform_discovery import (
 from app.schemas import ICPView, ProductProfileView
 from app.search import DiscoveryQuery, SearchProvider, SourceClass
 
-# The old Telegram discovery used only two queries per ICP. That is too brittle for
-# customer acquisition: one or two obvious event channels can fail preflight and leave
-# the system with no executable opportunity even when adjacent communities are active.
-# Keep a bounded but broader search budget so discovery explores multiple participation
-# angles before it gives up. Autonomous refresh may run several bounded rounds when the
-# first pass does not produce a useful READY portfolio.
+# Discovery may explore several participation angles, but every query must retain enough
+# product/audience context to avoid drifting into generic Telegram communities.
 TELEGRAM_DISCOVERY_QUERY_BUDGET = 6
 TARGET_READY_TELEGRAM_OPPORTUNITIES = 5
 MAX_ADAPTIVE_DISCOVERY_ROUNDS = 3
@@ -31,18 +27,12 @@ _RUSSIAN_LANGUAGE_MARKERS = ("ru", "russian", "рус", "русский", "ру�
 
 
 class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
-    """Broader Telegram discovery without changing publication permissions.
+    """Audience-first Telegram discovery without changing publication permissions.
 
-    The adapter still produces research candidates only. Native write access is checked
-    later by Telegram publisher preflight. The purpose here is recall: search beyond the
-    first obvious event/channel and deliberately include discussion-heavy, educational,
-    newcomer and adjacent-topic communities.
-
-    ``adaptive_hints`` are hypotheses learned by the growth loop from earlier discovery
-    failures and observed experiment outcomes. They are generic product/audience phrases,
-    never customer-specific hard-coded categories. Product-scoped negative learning is
-    applied before hints consume query budget, so later rounds do not repeat themes that
-    have already produced irrelevant acquisition candidates.
+    The adapter produces research candidates only. Native write access is checked later by
+    publisher preflight. Broader exploration is allowed, including adjacent communities, but
+    every search keeps a stable product + audience anchor. This prevents generic lenses such
+    as "education" or "community" from becoming unbounded searches unrelated to the product.
     """
 
     def __init__(
@@ -72,7 +62,6 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
         icp: ICPView,
     ) -> list[PlatformDiscoveryRequest]:
         market, language = self._market_language(product)
-        requests = list(super().build_requests(product, icp))
         discussion_terms, learning_terms, community_terms = self._participation_terms(language)
 
         title = self._clean(getattr(icp, "title", ""))
@@ -85,15 +74,41 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
                 for part in (
                     getattr(product, "name", ""),
                     getattr(product, "problem_or_desire", "") or "",
-                    " ".join(getattr(product, "known_audience", [])[:2]),
+                    getattr(product, "value_proposition", "") or "",
+                    getattr(product, "description", "") or "",
+                    " ".join(getattr(product, "known_audience", [])[:3]),
                 )
                 if part
             )
         )
+        audience_theme = self._clean(
+            " ".join(part for part in (title, pain, trigger) if part)
+        )
+        stable_anchor = self._clean(f"{product_theme} {audience_theme}") or audience_theme or product_theme
+        if not stable_anchor:
+            return []
 
-        # In adaptive rounds learned hypotheses get first claim on the remaining query
-        # budget. Negative discovery memory is consulted before request construction, so
-        # failed themes do not consume another search round.
+        requests: list[PlatformDiscoveryRequest] = [
+            self._request(
+                OpportunityKind.CHANNEL,
+                stable_anchor,
+                discussion_terms,
+                "Telegram channel discussion comments",
+                market,
+                language,
+            ),
+            self._request(
+                OpportunityKind.GROUP,
+                stable_anchor,
+                community_terms,
+                "Telegram group chat community",
+                market,
+                language,
+            ),
+        ]
+
+        # In adaptive rounds learned hypotheses vary the exploration lens but never replace
+        # the stable product/audience anchor. This is the core guard against query drift.
         adaptive_hints = self._relevance_learning.filter_hints(
             getattr(product, "id", None),
             self._adaptive_hints,
@@ -108,20 +123,15 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
                 kind = OpportunityKind.GROUP
                 intent = community_terms
                 surface_hint = "Telegram public community replies"
-            expansions.append(
-                (
-                    kind,
-                    self._topic(hint, intent),
-                    self._query(hint, intent, surface_hint, market, language),
-                )
-            )
+            anchored_hint = self._clean(f"{stable_anchor} {hint}")
+            expansions.append((kind, anchored_hint, self._query(anchored_hint, intent, surface_hint, market, language)))
 
         default_expansions = [
             (
                 OpportunityKind.CHANNEL,
-                self._topic(title, discussion_terms),
+                stable_anchor,
                 self._query(
-                    title,
+                    stable_anchor,
                     discussion_terms,
                     "Telegram discussion comments",
                     market,
@@ -130,9 +140,9 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
             ),
             (
                 OpportunityKind.CHANNEL,
-                self._topic(title or pain, learning_terms),
+                stable_anchor,
                 self._query(
-                    title or pain,
+                    stable_anchor,
                     learning_terms,
                     "Telegram education advice",
                     market,
@@ -141,9 +151,9 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
             ),
             (
                 OpportunityKind.GROUP,
-                self._topic(title or trigger, community_terms),
+                stable_anchor,
                 self._query(
-                    title or trigger,
+                    stable_anchor,
                     community_terms,
                     "Telegram community chat",
                     market,
@@ -152,9 +162,9 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
             ),
             (
                 OpportunityKind.CHANNEL,
-                self._topic(alternatives or product_theme or title, discussion_terms),
+                self._clean(f"{stable_anchor} {alternatives}"),
                 self._query(
-                    alternatives or product_theme or title,
+                    self._clean(f"{stable_anchor} {alternatives}"),
                     discussion_terms,
                     "Telegram adjacent community",
                     market,
@@ -171,14 +181,11 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
                 PlatformDiscoveryRequest(
                     platform=DistributionPlatform.TELEGRAM,
                     kind=kind,
-                    topic=topic,
+                    topic=self._topic(topic, ""),
                     discovery_query=DiscoveryQuery(SourceClass.COMMUNITY, query),
                 )
             )
 
-        # Deduplicate semantically identical queries and enforce a hard budget. The
-        # autonomous refresh may start another bounded round with different hypotheses,
-        # but no individual round is allowed to grow without limit.
         deduped: list[PlatformDiscoveryRequest] = []
         seen: set[str] = set()
         for request in requests:
@@ -190,6 +197,25 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
             if len(deduped) >= TELEGRAM_DISCOVERY_QUERY_BUDGET:
                 break
         return deduped
+
+    def _request(
+        self,
+        kind: OpportunityKind,
+        anchor: str,
+        intent: str,
+        surface_hint: str,
+        market: str,
+        language: str,
+    ) -> PlatformDiscoveryRequest:
+        return PlatformDiscoveryRequest(
+            platform=DistributionPlatform.TELEGRAM,
+            kind=kind,
+            topic=self._topic(anchor, intent),
+            discovery_query=DiscoveryQuery(
+                SourceClass.COMMUNITY,
+                self._query(anchor, intent, surface_hint, market, language),
+            ),
+        )
 
     @staticmethod
     def _clean(value: str) -> str:
