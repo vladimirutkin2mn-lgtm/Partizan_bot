@@ -6,6 +6,7 @@ from app.telegram_discovery_strategy import (
     MAX_ADAPTIVE_DISCOVERY_ROUNDS,
     TARGET_READY_TELEGRAM_OPPORTUNITIES,
     TELEGRAM_DISCOVERY_QUERY_BUDGET,
+    ExpandedAudienceIntelligenceEngine,
     ExpandedTelegramDiscoveryAdapter,
     expanded_platform_adapters,
 )
@@ -136,3 +137,45 @@ def test_english_products_get_english_participation_lenses() -> None:
     assert "discussion comments questions" in queries
     assert "newcomers education rules boundaries advice" in queries
     assert "community meetups introductions experience" in queries
+
+
+def test_query_fanout_cannot_push_other_platforms_out_of_bounded_portfolio() -> None:
+    icp_id = uuid4()
+    opportunities = [
+        SimpleNamespace(
+            icp_id=icp_id,
+            platform=DistributionPlatform.TELEGRAM,
+            canonical_key=f"telegram:{index}",
+            relevance_score=100 - index,
+        )
+        for index in range(6)
+    ]
+    opportunities.extend(
+        [
+            SimpleNamespace(
+                icp_id=icp_id,
+                platform=DistributionPlatform.INSTAGRAM,
+                canonical_key="instagram:creator",
+                relevance_score=45,
+            ),
+            SimpleNamespace(
+                icp_id=icp_id,
+                platform=DistributionPlatform.REDDIT,
+                canonical_key="reddit:community",
+                relevance_score=40,
+            ),
+        ]
+    )
+
+    limited = ExpandedAudienceIntelligenceEngine._coverage_first_limit(
+        opportunities,
+        4,
+    )
+
+    platforms = {item.platform for item in limited}
+    assert platforms == {
+        DistributionPlatform.TELEGRAM,
+        DistributionPlatform.INSTAGRAM,
+        DistributionPlatform.REDDIT,
+    }
+    assert len(limited) == 4
