@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import re
+from datetime import UTC, datetime, timedelta
+
 from app.audience_intelligence import AudienceIntelligenceEngine
 from app.discovery_relevance_learning import (
     DiscoveryRelevanceLearningService,
@@ -22,8 +25,35 @@ from app.search import DiscoveryQuery, SearchProvider, SourceClass
 TELEGRAM_DISCOVERY_QUERY_BUDGET = 6
 TARGET_READY_TELEGRAM_OPPORTUNITIES = 5
 MAX_ADAPTIVE_DISCOVERY_ROUNDS = 3
+TELEGRAM_ACTION_TARGET_MAX_AGE = timedelta(days=7)
 
 _RUSSIAN_LANGUAGE_MARKERS = ("ru", "russian", "рус", "русский", "русская")
+_SEMANTIC_UTILITY_TERMS = {
+    "site",
+    "telegram",
+    "channel",
+    "group",
+    "chat",
+    "community",
+    "discussion",
+    "comments",
+    "questions",
+    "public",
+    "replies",
+    "education",
+    "advice",
+    "online",
+    "any",
+    "https",
+    "канал",
+    "группа",
+    "чат",
+    "сообщество",
+    "обсуждение",
+    "комментарии",
+    "вопросы",
+    "советы",
+}
 
 
 class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
@@ -107,8 +137,6 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
             ),
         ]
 
-        # In adaptive rounds learned hypotheses vary the exploration lens but never replace
-        # the stable product/audience anchor. This is the core guard against query drift.
         adaptive_hints = self._relevance_learning.filter_hints(
             getattr(product, "id", None),
             self._adaptive_hints,
@@ -198,6 +226,51 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
                 break
         return deduped
 
+    def _native_metadata(self, request, snapshot) -> dict:
+        """Keep community discovery separate from action-target resolution.
+
+        Native Telegram research can prove that a community is relevant even when none of
+        the last few messages repeats the full search query. In that case we may select the
+        freshest concrete post only when the community title/about itself overlaps meaningful
+        product/audience terms. This is still research: publisher preflight remains mandatory.
+        """
+        metadata = super()._native_metadata(request, snapshot)
+        if metadata.get("action_target_specific") is True:
+            metadata["action_target_resolution"] = "DIRECT_MESSAGE_MATCH"
+            return metadata
+
+        query_terms = self._semantic_terms(request.topic or request.discovery_query.query)
+        community_terms = self._semantic_terms(
+            f"{getattr(snapshot, 'title', '')} {getattr(snapshot, 'about', '')}"
+        )
+        overlap = sorted(query_terms & community_terms)
+        if not overlap:
+            metadata["action_target_resolution"] = "COMMUNITY_ONLY"
+            return metadata
+
+        now = datetime.now(UTC)
+        eligible = []
+        for item in getattr(snapshot, "recent_context", ()) or ():
+            published_at = getattr(item, "published_at", None)
+            url = str(getattr(item, "url", "") or "").strip()
+            if published_at is None or not url:
+                continue
+            if published_at.tzinfo is None:
+                published_at = published_at.replace(tzinfo=UTC)
+            age = now - published_at.astimezone(UTC)
+            if timedelta(0) <= age <= TELEGRAM_ACTION_TARGET_MAX_AGE:
+                eligible.append((published_at, url))
+        if not eligible:
+            metadata["action_target_resolution"] = "COMMUNITY_ONLY"
+            return metadata
+
+        _, target_url = max(eligible, key=lambda item: item[0])
+        metadata["action_target_url"] = target_url
+        metadata["action_target_specific"] = True
+        metadata["action_target_resolution"] = "COMMUNITY_RELEVANCE_FRESH_POST"
+        metadata["community_match_terms"] = overlap[:12]
+        return metadata
+
     def _request(
         self,
         kind: OpportunityKind,
@@ -240,6 +313,14 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
         return cls._clean(
             f"site:t.me {anchor} {intent} {surface_hint} {market} {language}"
         )[:500]
+
+    @staticmethod
+    def _semantic_terms(value: str) -> set[str]:
+        return {
+            word
+            for word in re.findall(r"[a-zA-Zа-яА-ЯёЁ0-9]+", str(value or "").casefold())
+            if len(word) > 3 and not word.isdigit() and word not in _SEMANTIC_UTILITY_TERMS
+        }
 
     @staticmethod
     def _participation_terms(language: str) -> tuple[str, str, str]:
