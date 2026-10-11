@@ -1,0 +1,121 @@
+name: Trace FemDom discovery once
+
+on:
+  workflow_run:
+    workflows: ["Deploy production"]
+    types: [completed]
+
+concurrency:
+  group: femdom-discovery-trace-once
+  cancel-in-progress: false
+
+jobs:
+  trace:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - name: Resolve deployed release
+        id: release
+        env:
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          if [[ ! "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Unable to resolve deployed release"
+            exit 1
+          fi
+          echo "sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.sha }}
+
+      - name: Refuse stale trace
+        id: freshness
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        shell: bash
+        run: |
+          current_main_sha="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [[ "${RELEASE_SHA}" != "${current_main_sha}" ]]; then
+            echo "trace_allowed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping stale discovery trace"
+            exit 0
+          fi
+          echo "trace_allowed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Require production trace configuration
+        if: ${{ steps.freshness.outputs.trace_allowed == 'true' }}
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          missing=()
+          [[ -z "${DEPLOY_HOST}" ]] && missing+=(DEPLOY_HOST)
+          [[ -z "${DEPLOY_SSH_KEY}" ]] && missing+=(DEPLOY_SSH_KEY)
+          [[ -z "${DEPLOY_SSH_KNOWN_HOSTS}" ]] && missing+=(DEPLOY_SSH_KNOWN_HOSTS)
+          [[ -z "${DEPLOY_PATH}" ]] && missing+=(DEPLOY_PATH)
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing production trace configuration: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Start SSH agent
+        if: ${{ steps.freshness.outputs.trace_allowed == 'true' }}
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Pin production host key
+        if: ${{ steps.freshness.outputs.trace_allowed == 'true' }}
+        env:
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Trace current Telegram discovery without mutations
+        if: ${{ steps.freshness.outputs.trace_allowed == 'true' }}
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ steps.release.outputs.sha }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && \
+              bash tools/compose_shared_host.sh exec -T api \
+                python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_SHA}' else 2)\" >/dev/null && \
+              bash tools/compose_shared_host.sh exec -T api \
+                python -m app.manual_discovery_trace \
+                  --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+                  --top-icp-count 3" > femdom-discovery-trace.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("femdom-discovery-trace.json").read_text())
+          if payload.get("status") != "TRACE_COMPLETE" or payload.get("read_only") is not True:
+              raise SystemExit("trace did not complete safely")
+          print(json.dumps(payload.get("summary", {}), ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Upload trace artifact
+        if: ${{ steps.freshness.outputs.trace_allowed == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: femdom-discovery-trace
+          path: femdom-discovery-trace.json
+          if-no-files-found: error
+          retention-days: 7
