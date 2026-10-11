@@ -17,16 +17,25 @@ MIN_NEGATIVE_THEME_OBSERVATIONS = 2
 
 _GENERIC_TERMS = {
     "about",
+    "active",
     "advice",
+    "any",
+    "around",
     "channel",
     "chat",
     "community",
     "discussion",
     "group",
     "help",
+    "http",
+    "https",
+    "link",
     "official",
     "people",
+    "public",
     "questions",
+    "replies",
+    "site",
     "telegram",
     "thread",
     "today",
@@ -37,6 +46,7 @@ _GENERIC_TERMS = {
     "обсуждение",
     "официальный",
     "официальная",
+    "ссылка",
     "сообщество",
     "советы",
     "чат",
@@ -272,11 +282,9 @@ class DiscoveryRelevanceLearningService:
             "alternative": self._as_float(signals.get("alternative_ratio")),
         }
         signal_families = [name for name, value in ratios.items() if value >= 0.15]
-        matched_terms = {
-            str(term).casefold()
-            for term in list(signals.get("matched_terms") or [])
-            if len(str(term).strip()) >= 3
-        }
+        matched_terms: set[str] = set()
+        for term in list(signals.get("matched_terms") or []):
+            matched_terms.update(self._tokens(str(term)))
         demand_intent = int(signals.get("demand_intent_hits") or 0)
         commercial_intent = int(signals.get("commercial_intent_hits") or 0)
         intent_hits = demand_intent + commercial_intent
