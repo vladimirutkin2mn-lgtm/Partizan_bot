@@ -114,7 +114,11 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
         audience_theme = self._clean(
             " ".join(part for part in (title, pain, trigger) if part)
         )
-        stable_anchor = self._clean(f"{product_theme} {audience_theme}") or audience_theme or product_theme
+        stable_anchor = (
+            self._clean(f"{product_theme} {audience_theme}")
+            or audience_theme
+            or product_theme
+        )
         if not stable_anchor:
             return []
 
@@ -152,7 +156,19 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
                 intent = community_terms
                 surface_hint = "Telegram public community replies"
             anchored_hint = self._clean(f"{stable_anchor} {hint}")
-            expansions.append((kind, anchored_hint, self._query(anchored_hint, intent, surface_hint, market, language)))
+            expansions.append(
+                (
+                    kind,
+                    anchored_hint,
+                    self._query(
+                        anchored_hint,
+                        intent,
+                        surface_hint,
+                        market,
+                        language,
+                    ),
+                )
+            )
 
         default_expansions = [
             (
