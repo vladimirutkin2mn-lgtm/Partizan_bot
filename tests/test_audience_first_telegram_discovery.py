@@ -62,22 +62,40 @@ def _request() -> PlatformDiscoveryRequest:
     )
 
 
-def _snapshot(*, title: str, about: str) -> TelegramCommunitySnapshot:
+def _snapshot(
+    *,
+    title: str,
+    about: str,
+    kind: TelegramSurfaceKind = TelegramSurfaceKind.CHANNEL,
+    linked_discussion_id: int | None = 99,
+) -> TelegramCommunitySnapshot:
     now = datetime.now(UTC)
+    is_group = kind == TelegramSurfaceKind.GROUP
+    has_discussion = linked_discussion_id is not None
     return TelegramCommunitySnapshot(
         entity_id=42,
         username="example",
         title=title,
-        kind=TelegramSurfaceKind.CHANNEL,
+        kind=kind,
         url="https://t.me/example",
         about=about,
         member_count=1000,
         source_checked_at=now,
         last_activity_at=now - timedelta(hours=1),
-        comment_surface=SurfaceAvailability.AVAILABLE,
-        reply_surface=SurfaceAvailability.UNKNOWN,
-        standalone_post_surface=SurfaceAvailability.UNAVAILABLE,
-        linked_discussion_id=99,
+        comment_surface=(
+            SurfaceAvailability.AVAILABLE
+            if kind == TelegramSurfaceKind.CHANNEL and has_discussion
+            else SurfaceAvailability.UNAVAILABLE
+            if kind == TelegramSurfaceKind.CHANNEL
+            else SurfaceAvailability.UNKNOWN
+        ),
+        reply_surface=(
+            SurfaceAvailability.AVAILABLE if is_group else SurfaceAvailability.UNKNOWN
+        ),
+        standalone_post_surface=(
+            SurfaceAvailability.AVAILABLE if is_group else SurfaceAvailability.UNAVAILABLE
+        ),
+        linked_discussion_id=linked_discussion_id,
         action_target_url=None,
         recent_context=(
             TelegramRecentContext(
@@ -105,10 +123,12 @@ def test_relevant_community_can_resolve_fresh_post_even_when_post_text_has_no_qu
     assert metadata["action_target_specific"] is True
     assert metadata["action_target_url"] == "https://t.me/example/123"
     assert metadata["action_target_resolution"] == "COMMUNITY_RELEVANCE_FRESH_POST"
+    assert metadata["opportunity_scope"] == "POST"
+    assert metadata["actionability"] == "NEEDS_PREFLIGHT"
     assert set(metadata["community_match_terms"]) & {"femdom", "bdsm", "знакомства"}
 
 
-def test_unrelated_community_does_not_get_fallback_action_target() -> None:
+def test_unrelated_community_stays_as_research_only_community() -> None:
     adapter = ExpandedTelegramDiscoveryAdapter(use_default_research_connector=False)
 
     metadata = adapter._native_metadata(
@@ -122,3 +142,47 @@ def test_unrelated_community_does_not_get_fallback_action_target() -> None:
     assert metadata["action_target_specific"] is False
     assert metadata["action_target_url"] is None
     assert metadata["action_target_resolution"] == "COMMUNITY_ONLY"
+    assert metadata["opportunity_scope"] == "COMMUNITY"
+    assert metadata["actionability"] == "RESEARCH_ONLY"
+    assert metadata["community_only_reason"] == "NO_COMMUNITY_OVERLAP"
+
+
+def test_relevant_broadcast_without_discussion_never_gets_fallback_action_target() -> None:
+    adapter = ExpandedTelegramDiscoveryAdapter(use_default_research_connector=False)
+
+    metadata = adapter._native_metadata(
+        _request(),
+        _snapshot(
+            title="FemDom community",
+            about="BDSM знакомства, события и безопасные практики",
+            kind=TelegramSurfaceKind.CHANNEL,
+            linked_discussion_id=None,
+        ),
+    )
+
+    assert metadata["action_target_specific"] is False
+    assert metadata["action_target_url"] is None
+    assert metadata["action_target_resolution"] == "COMMUNITY_ONLY"
+    assert metadata["opportunity_scope"] == "COMMUNITY"
+    assert metadata["actionability"] == "RESEARCH_ONLY"
+    assert metadata["community_only_reason"] == "NO_INTERACTION_SURFACE"
+    assert set(metadata["community_match_terms"]) & {"femdom", "bdsm", "знакомства"}
+
+
+def test_relevant_group_can_use_fresh_post_without_linked_discussion() -> None:
+    adapter = ExpandedTelegramDiscoveryAdapter(use_default_research_connector=False)
+
+    metadata = adapter._native_metadata(
+        _request(),
+        _snapshot(
+            title="FemDom group",
+            about="BDSM знакомства, события и безопасные практики",
+            kind=TelegramSurfaceKind.GROUP,
+            linked_discussion_id=None,
+        ),
+    )
+
+    assert metadata["action_target_specific"] is True
+    assert metadata["action_target_url"] == "https://t.me/example/123"
+    assert metadata["opportunity_scope"] == "POST"
+    assert metadata["actionability"] == "NEEDS_PREFLIGHT"
