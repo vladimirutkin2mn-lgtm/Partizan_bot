@@ -248,11 +248,14 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
         Native Telegram research can prove that a community is relevant even when none of
         the last few messages repeats the full search query. In that case we may select the
         freshest concrete post only when the community title/about itself overlaps meaningful
-        product/audience terms. This is still research: publisher preflight remains mandatory.
+        product/audience terms and the surface can actually support a later interaction.
+        Publisher preflight remains mandatory before any write action.
         """
         metadata = super()._native_metadata(request, snapshot)
         if metadata.get("action_target_specific") is True:
             metadata["action_target_resolution"] = "DIRECT_MESSAGE_MATCH"
+            metadata["opportunity_scope"] = "POST"
+            metadata["actionability"] = "NEEDS_PREFLIGHT"
             return metadata
 
         query_terms = self._semantic_terms(request.topic or request.discovery_query.query)
@@ -261,8 +264,22 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
         )
         overlap = sorted(query_terms & community_terms)
         if not overlap:
-            metadata["action_target_resolution"] = "COMMUNITY_ONLY"
-            return metadata
+            return self._community_only_metadata(metadata, reason="NO_COMMUNITY_OVERLAP")
+
+        surface_kind = str(
+            getattr(getattr(snapshot, "kind", None), "value", getattr(snapshot, "kind", ""))
+            or ""
+        ).upper()
+        has_interaction_surface = (
+            surface_kind == "GROUP"
+            or getattr(snapshot, "linked_discussion_id", None) is not None
+        )
+        if not has_interaction_surface:
+            return self._community_only_metadata(
+                metadata,
+                overlap=overlap,
+                reason="NO_INTERACTION_SURFACE",
+            )
 
         now = datetime.now(UTC)
         eligible = []
@@ -277,14 +294,36 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
             if timedelta(0) <= age <= TELEGRAM_ACTION_TARGET_MAX_AGE:
                 eligible.append((published_at, url))
         if not eligible:
-            metadata["action_target_resolution"] = "COMMUNITY_ONLY"
-            return metadata
+            return self._community_only_metadata(
+                metadata,
+                overlap=overlap,
+                reason="NO_FRESH_ACTION_TARGET",
+            )
 
         _, target_url = max(eligible, key=lambda item: item[0])
         metadata["action_target_url"] = target_url
         metadata["action_target_specific"] = True
         metadata["action_target_resolution"] = "COMMUNITY_RELEVANCE_FRESH_POST"
         metadata["community_match_terms"] = overlap[:12]
+        metadata["opportunity_scope"] = "POST"
+        metadata["actionability"] = "NEEDS_PREFLIGHT"
+        return metadata
+
+    @staticmethod
+    def _community_only_metadata(
+        metadata: dict,
+        *,
+        overlap: list[str] | None = None,
+        reason: str,
+    ) -> dict:
+        metadata["action_target_url"] = None
+        metadata["action_target_specific"] = False
+        metadata["action_target_resolution"] = "COMMUNITY_ONLY"
+        metadata["opportunity_scope"] = "COMMUNITY"
+        metadata["actionability"] = "RESEARCH_ONLY"
+        metadata["community_only_reason"] = reason
+        if overlap:
+            metadata["community_match_terms"] = overlap[:12]
         return metadata
 
     def _request(
