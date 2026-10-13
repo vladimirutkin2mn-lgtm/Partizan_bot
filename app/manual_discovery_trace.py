@@ -4,13 +4,14 @@ import argparse
 import asyncio
 import json
 from collections import Counter
+from urllib.parse import unquote, urlsplit
 from uuid import UUID
 
 from app.audience_intelligence import AudienceIntelligenceEngine
 from app.discovery_relevance_learning import discovery_relevance_learning_service
 from app.icp_service import icp_service
 from app.product_intake import product_intake_service
-from app.search import get_search_provider
+from app.search import DiscoveryQuery, SearchHit, SearchProvider, get_search_provider
 from app.telegram_discovery_strategy import ExpandedTelegramDiscoveryAdapter
 
 
@@ -50,6 +51,85 @@ def _evidence_rows(opportunity: object) -> list[dict]:
             }
         )
     return rows
+
+
+def _telegram_normalization_diagnostic(url: str) -> dict:
+    """Explain the current Telegram adapter URL-normalization outcome without mutating it."""
+    parts = urlsplit(str(url or "").strip())
+    host = parts.netloc.lower().removeprefix("www.")
+    segments = [
+        unquote(segment)
+        for segment in parts.path.split("/")
+        if segment
+    ]
+    if host not in {"t.me", "telegram.me"}:
+        return {
+            "normalized": False,
+            "normalization_reason": "NON_TELEGRAM_HOST",
+            "host": host,
+        }
+    if not segments:
+        return {
+            "normalized": False,
+            "normalization_reason": "MISSING_TELEGRAM_SLUG",
+            "host": host,
+        }
+    if segments[0] == "s" and len(segments) >= 2:
+        segments = segments[1:]
+    slug = segments[0]
+    if slug.startswith("+") or slug.lower() == "joinchat":
+        return {
+            "normalized": False,
+            "normalization_reason": "INVITE_LINK_UNSUPPORTED",
+            "host": host,
+        }
+    return {
+        "normalized": True,
+        "normalization_reason": "TELEGRAM_SLUG_ACCEPTED",
+        "host": host,
+        "handle": slug,
+        "canonical_url": f"https://t.me/{slug}",
+    }
+
+
+class _TracingSearchProvider(SearchProvider):
+    """Read-only wrapper that records exactly what the underlying provider returned."""
+
+    def __init__(self, delegate: SearchProvider) -> None:
+        self._delegate = delegate
+        self._calls: list[dict] = []
+
+    async def search(
+        self,
+        discovery_query: DiscoveryQuery,
+        limit: int = 5,
+    ) -> list[SearchHit]:
+        hits = await self._delegate.search(discovery_query, limit=limit)
+        self._calls.append(
+            {
+                "query": discovery_query.query,
+                "source_class": discovery_query.source_class.value,
+                "hits": list(hits),
+            }
+        )
+        return hits
+
+    def raw_hit_rows(self) -> list[dict]:
+        rows: list[dict] = []
+        for call in sorted(self._calls, key=lambda item: item["query"]):
+            for index, hit in enumerate(call["hits"], start=1):
+                rows.append(
+                    {
+                        "query": call["query"],
+                        "source_class": call["source_class"],
+                        "rank": index,
+                        "title": str(hit.title or "")[:500],
+                        "url": str(hit.url or ""),
+                        "snippet": str(hit.snippet or "")[:1200],
+                        **_telegram_normalization_diagnostic(hit.url),
+                    }
+                )
+        return rows
 
 
 def _filters() -> dict:
@@ -117,10 +197,11 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
         raise ValueError("ICP generation must contain at least one segment")
 
     provider = get_search_provider()
+    tracing_provider = _TracingSearchProvider(provider)
     adapter = ExpandedTelegramDiscoveryAdapter(
         relevance_learning_service=discovery_relevance_learning_service,
     )
-    engine = AudienceIntelligenceEngine(provider, adapters=[adapter])
+    engine = AudienceIntelligenceEngine(tracing_provider, adapters=[adapter])
 
     # Deliberately use the base AudienceIntelligenceEngine. It performs the same current
     # Telegram query construction, search and enrichment, but does not call the semantic
@@ -181,6 +262,11 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
         }
         for attempt in engine.last_attempts
     ]
+    raw_hits = tracing_provider.raw_hit_rows()
+    normalization_counts = Counter(
+        str(row["normalization_reason"])
+        for row in raw_hits
+    )
 
     return {
         "status": "TRACE_COMPLETE",
@@ -210,6 +296,8 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
             "platform": "TELEGRAM",
             "query_attempt_count": len(attempts),
             "attempts": attempts,
+            "raw_hits": raw_hits,
+            "normalization_reasons": dict(sorted(normalization_counts.items())),
         },
         "current_negative_memory": {
             "blocked_keys": sorted(snapshot["blocked_keys"]),
