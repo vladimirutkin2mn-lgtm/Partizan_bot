@@ -1,6 +1,7 @@
 from uuid import UUID, uuid4
 
 from app.customer_live_opportunities import customer_live_opportunity_service
+from app.discovery_persistence_propagation import recompute_persisted_discovery_signals
 from app.distribution_schemas import (
     AudienceDistributionMapView,
     DistributionOpportunityView,
@@ -104,6 +105,11 @@ class InMemoryAudienceIntelligenceService:
                     diagnostics,
                     merged_opportunity_count=len(opportunities),
                 )
+
+        # Recompute exact-surface and parent/child evidence over the accumulated map.
+        # The helper first removes recorded prior bonuses, so adaptive rounds cannot
+        # compound their own propagation. This remains research scoring only.
+        opportunities = recompute_persisted_discovery_signals(opportunities)
 
         response = AudienceDistributionMapView(
             product_id=product.id,
