@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.discovery_intelligence import propagate_surface_corroboration
+from app.discovery_intelligence import portfolio_score, propagate_surface_corroboration
 
 
 def recompute_persisted_discovery_signals(opportunities: list[Any]) -> list[Any]:
@@ -11,11 +11,16 @@ def recompute_persisted_discovery_signals(opportunities: list[Any]) -> list[Any]
     Persisted opportunities may already contain exact-surface and graph propagation bonuses
     from a prior discovery round. Before recomputing the merged map, subtract those recorded
     bonuses from audience/confidence, then run propagation once over the whole accumulated
-    set. Context fit and actionability are never changed by this reset.
+    set. Context fit and actionability are never changed by this reset. The merged map is
+    finally re-ranked by intelligence score so accumulated evidence changes prioritisation.
     """
 
     reset = [_reset_propagated_scores(item) for item in opportunities]
-    return propagate_surface_corroboration(reset)
+    propagated = propagate_surface_corroboration(reset)
+    return sorted(
+        propagated,
+        key=lambda item: (-portfolio_score(item), str(getattr(item, "canonical_key", ""))),
+    )
 
 
 def _reset_propagated_scores(item: Any) -> Any:
