@@ -56,7 +56,7 @@ def _filters() -> dict:
     return {
         "semantic_gate": {
             "signal_family_ratio_threshold": 0.15,
-            "default_minimum_matched_terms": 2,
+            "minimum_matched_terms": 2,
             "direct_product_anchor_minimum_matched_terms": 1,
             "pass_paths": {
                 "DIVERSIFIED_MATCH": (
