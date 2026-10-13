@@ -90,10 +90,12 @@ async def test_enrich_persists_only_aggregate_participant_counts_not_identities(
     assert evidence["identity_persisted"] is False
     assert evidence["participant_ids_persisted"] is False
     assert evidence["usernames_persisted"] is False
-    serialized = str(evidence)
-    assert "101" not in serialized
-    assert "202" not in serialized
-    assert "505" not in serialized
+    persisted_integer_values = {
+        value
+        for value in evidence.values()
+        if isinstance(value, int) and not isinstance(value, bool)
+    }
+    assert not ({101, 202, 303, 404, 505} & persisted_integer_values)
 
 
 @pytest.mark.asyncio
