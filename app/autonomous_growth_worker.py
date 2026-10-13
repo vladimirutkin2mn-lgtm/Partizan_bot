@@ -7,6 +7,9 @@ import time
 from collections.abc import Callable
 from uuid import UUID
 
+from app.adjacent_opportunity_refresh import (
+    adjacent_autonomous_opportunity_refresh_service,
+)
 from app.autonomous_controlled_growth import (
     AutonomousGrowthSweepAlreadyRunning,
     autonomous_controlled_growth_sweep_service,
@@ -15,7 +18,6 @@ from app.autonomous_growth import AutonomousGrowthSweepService
 from app.autonomous_opportunity_refresh import (
     DEFAULT_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS,
     AutonomousOpportunityRefreshService,
-    autonomous_opportunity_refresh_service,
 )
 from app.customer_autopilot import customer_autopilot_service
 from app.growth_autoresearch_execution import GrowthAutoResearchExecutionService
@@ -50,7 +52,7 @@ class AutonomousGrowthWorker:
             autoresearch_loop_service or growth_autoresearch_loop_service
         )
         self._opportunity_refresh_service = (
-            opportunity_refresh_service or autonomous_opportunity_refresh_service
+            opportunity_refresh_service or adjacent_autonomous_opportunity_refresh_service
         )
         self._heartbeat_service = heartbeat_service
         self._sleep = sleep
