@@ -56,7 +56,8 @@ def _filters() -> dict:
     return {
         "semantic_gate": {
             "signal_family_ratio_threshold": 0.15,
-            "minimum_matched_terms": 2,
+            "default_minimum_matched_terms": 2,
+            "direct_product_anchor_minimum_matched_terms": 1,
             "pass_paths": {
                 "DIVERSIFIED_MATCH": (
                     "at least 2 signal families and at least 2 matched terms"
@@ -72,6 +73,10 @@ def _filters() -> dict:
                 "CONFIDENCE_SUPPORTED": (
                     "MEDIUM/HIGH confidence, at least 2 signal families, "
                     "and at least 2 matched terms"
+                ),
+                "DIRECT_PRODUCT_ANCHOR": (
+                    "at least 1 direct product-anchor term, MEDIUM/HIGH confidence, "
+                    "and either at least 2 signal families or strong pain/trigger plus intent"
                 ),
             },
             "reject_paths": [
@@ -90,6 +95,18 @@ def _filters() -> dict:
             "so it does not add negative-learning observations."
         ),
     }
+
+
+def _trace_decision(opportunity: object, snapshot: dict, product: object) -> dict:
+    """Evaluate exactly the same semantic inputs as production without learning writes."""
+    product_anchor_terms = discovery_relevance_learning_service._product_anchor_terms(  # noqa: SLF001
+        product
+    )
+    return discovery_relevance_learning_service._decision(  # noqa: SLF001
+        opportunity,
+        snapshot,
+        product_anchor_terms=product_anchor_terms,
+    )
 
 
 async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
@@ -115,10 +132,7 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
     verdict_counts: Counter[str] = Counter()
     reason_counts: Counter[str] = Counter()
     for opportunity in raw:
-        decision = discovery_relevance_learning_service._decision(  # noqa: SLF001
-            opportunity,
-            snapshot,
-        )
+        decision = _trace_decision(opportunity, snapshot, product)
         verdict = "PASS" if decision.get("accepted") else "REJECT"
         reason = str(decision.get("reason") or "UNKNOWN")
         verdict_counts[verdict] += 1
@@ -133,6 +147,9 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
                 "verdict": verdict,
                 "gate_reason": reason,
                 "signal_families": list(decision.get("signal_families") or []),
+                "direct_product_anchor_count": int(
+                    decision.get("direct_product_anchor_count") or 0
+                ),
                 "title": str(getattr(opportunity, "title", "") or ""),
                 "url": str(getattr(opportunity, "url", "") or ""),
                 "canonical_key": str(getattr(opportunity, "canonical_key", "") or ""),
