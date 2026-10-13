@@ -1,6 +1,7 @@
 from uuid import UUID, uuid4
 
 from app.customer_live_opportunities import customer_live_opportunity_service
+from app.discovery_persistence_propagation import recompute_persisted_discovery_signals
 from app.distribution_schemas import (
     AudienceDistributionMapView,
     DistributionOpportunityView,
@@ -16,6 +17,7 @@ from app.telegram_discovery_strategy import (
 from app.telegram_discovery_strategy import (
     ExpandedAudienceIntelligenceEngine as AudienceIntelligenceEngine,
 )
+from app.telegram_participant_research import telegram_participant_research_service
 
 AUDIENCE_MAP_NAMESPACE = "audience_distribution_map"
 AUDIENCE_OPPORTUNITY_NAMESPACE = "audience_distribution_opportunity"
@@ -89,6 +91,12 @@ class InMemoryAudienceIntelligenceService:
             DistributionOpportunityView(id=uuid4(), **seed.model_dump())
             for seed in seeds
         ]
+        # Optional Telegram participant research is aggregate and read-only. Raw sender
+        # identities are used only transiently for distinct counts and are never persisted.
+        discovered = await telegram_participant_research_service.enrich(
+            discovered,
+            top_icps,
+        )
         diagnostics = self._diagnostics(engine)
 
         opportunities = discovered
@@ -104,6 +112,11 @@ class InMemoryAudienceIntelligenceService:
                     diagnostics,
                     merged_opportunity_count=len(opportunities),
                 )
+
+        # Recompute participant, exact-surface and parent/child evidence over the accumulated
+        # map. Recorded prior bonuses are removed first, so adaptive rounds cannot compound
+        # their own research confidence. This remains scoring only, not execution permission.
+        opportunities = recompute_persisted_discovery_signals(opportunities)
 
         response = AudienceDistributionMapView(
             product_id=product.id,
@@ -137,9 +150,15 @@ class InMemoryAudienceIntelligenceService:
         return AudienceDistributionMapView.model_validate(payload)
 
     @staticmethod
-    def _opportunity_key(opportunity: DistributionOpportunityView) -> tuple[str, str]:
+    def _opportunity_key(
+        opportunity: DistributionOpportunityView,
+    ) -> tuple[str, str, str]:
         platform = getattr(opportunity.platform, "value", str(opportunity.platform))
-        return str(platform), str(opportunity.canonical_key)
+        return (
+            str(opportunity.icp_id),
+            str(platform),
+            str(opportunity.canonical_key),
+        )
 
     def _merge_opportunities(
         self,

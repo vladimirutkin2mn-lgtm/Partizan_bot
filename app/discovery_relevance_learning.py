@@ -60,6 +60,44 @@ _TELEGRAM_MATCH_UTILITY_TERMS = {
     "ссылка",
 }
 
+# These words are frequently introduced by generic generated ICP labels and fallback
+# alternatives rather than by a real audience/community observation. They must not be
+# allowed to satisfy Telegram semantic-evidence counts. Their underlying ratios/intent
+# remain available as separate evidence families, so we only remove the literal words.
+_TELEGRAM_GENERATED_ICP_BOILERPLATE_TERMS = {
+    "alternative",
+    "alternatives",
+    "asset",
+    "audience",
+    "business",
+    "customer",
+    "customers",
+    "frequency",
+    "generic",
+    "goal",
+    "high",
+    "manual",
+    "market",
+    "paying",
+    "power",
+    "problem",
+    "problems",
+    "product",
+    "products",
+    "promoted",
+    "segment",
+    "solution",
+    "solutions",
+    "solver",
+    "solvers",
+    "switcher",
+    "switchers",
+    "tool",
+    "tools",
+    "user",
+    "users",
+}
+
 
 class DiscoveryRelevanceLearningService:
     """Filter weak acquisition candidates and learn reusable negative discovery signals.
@@ -69,6 +107,11 @@ class DiscoveryRelevanceLearningService:
     produced a valid multi-signal match for another ICP in that discovery batch. Theme
     terms are activated only after they are independently observed in at least two rejected
     communities and only when they are not part of the product/ICP vocabulary.
+
+    Telegram gets one additional audience-first rule: generic generated-ICP words cannot
+    count as semantic evidence. A single product-specific anchor term may still pass when
+    it is supported by strong independent signal families. Anchorless adjacent contexts
+    remain valid, but they still need at least two meaningful observed terms.
     """
 
     def __init__(self, store: RuntimeStateStore | None = None) -> None:
@@ -87,11 +130,16 @@ class DiscoveryRelevanceLearningService:
             if product_id is not None
             else self._empty_snapshot()
         )
+        product_anchor_terms = self._product_anchor_terms(product)
         accepted: list[Any] = []
         rejected: list[dict] = []
 
         for opportunity in opportunities:
-            decision = self._decision(opportunity, snapshot)
+            decision = self._decision(
+                opportunity,
+                snapshot,
+                product_anchor_terms=product_anchor_terms,
+            )
             platform = self._platform_value(getattr(opportunity, "platform", None))
             canonical_key = str(getattr(opportunity, "canonical_key", "") or "")
             if decision["accepted"]:
@@ -104,6 +152,10 @@ class DiscoveryRelevanceLearningService:
                     "status": "PASS",
                     "reason": decision["reason"],
                     "signal_families": decision["signal_families"],
+                    "direct_product_anchor_count": decision.get(
+                        "direct_product_anchor_count",
+                        0,
+                    ),
                 }
                 if hasattr(opportunity, "model_copy"):
                     opportunity = opportunity.model_copy(update={"metadata": metadata})
@@ -151,12 +203,7 @@ class DiscoveryRelevanceLearningService:
         product_id: UUID | str | None,
         hints: list[str] | tuple[str, ...],
     ) -> list[str]:
-        """Remove hypotheses that repeat product-scoped negative discovery themes.
-
-        This is intentionally applied before adaptive search requests are built. The
-        relevance gate still validates returned evidence afterwards, but later rounds no
-        longer spend query budget on themes already learned to be irrelevant.
-        """
+        """Remove hypotheses that repeat product-scoped negative discovery themes."""
         normalized_product_id = self._uuid(product_id)
         if normalized_product_id is None:
             return self._dedupe_hints(hints)
@@ -265,7 +312,13 @@ class DiscoveryRelevanceLearningService:
         if self._store.ephemeral:
             self._store.clear_namespace(DISCOVERY_NEGATIVE_LEARNING_NAMESPACE)
 
-    def _decision(self, opportunity: Any, snapshot: dict[str, set[str]]) -> dict:
+    def _decision(
+        self,
+        opportunity: Any,
+        snapshot: dict[str, set[str]],
+        *,
+        product_anchor_terms: set[str] | None = None,
+    ) -> dict:
         platform = self._platform_value(getattr(opportunity, "platform", None))
         memory_key = self._memory_key(
             platform,
@@ -302,6 +355,7 @@ class DiscoveryRelevanceLearningService:
                 matched_terms.update(self._telegram_signal_tokens(term))
         else:
             matched_terms = raw_matched_terms
+
         demand_intent = int(signals.get("demand_intent_hits") or 0)
         commercial_intent = int(signals.get("commercial_intent_hits") or 0)
         intent_hits = demand_intent + commercial_intent
@@ -326,11 +380,33 @@ class DiscoveryRelevanceLearningService:
             and len(matched_terms) >= 2
         )
 
-        if diversified_match or direct_problem_match or corroborated_fit or confidence_supported:
+        direct_product_anchor_terms: set[str] = set()
+        direct_product_anchor_match = False
+        if platform.upper() == "TELEGRAM":
+            direct_product_anchor_terms = matched_terms & set(product_anchor_terms or set())
+            direct_product_anchor_match = bool(direct_product_anchor_terms) and confidence in {
+                "MEDIUM",
+                "HIGH",
+            } and (
+                len(signal_families) >= 2
+                or (
+                    max(ratios["pain"], ratios["trigger"]) >= 0.25
+                    and intent_hits >= 1
+                )
+            )
+
+        if (
+            diversified_match
+            or direct_problem_match
+            or corroborated_fit
+            or confidence_supported
+            or direct_product_anchor_match
+        ):
             return {
                 "accepted": True,
                 "reason": "MULTI_SIGNAL_RELEVANCE",
                 "signal_families": signal_families,
+                "direct_product_anchor_count": len(direct_product_anchor_terms),
             }
         return self._rejected(
             "INSUFFICIENT_SEMANTIC_EVIDENCE",
@@ -368,6 +444,19 @@ class DiscoveryRelevanceLearningService:
             result.update(self._tokens(str(value or "")))
         return result
 
+    def _product_anchor_terms(self, product: Any) -> set[str]:
+        values = [
+            getattr(product, "name", ""),
+            getattr(product, "problem_or_desire", ""),
+            getattr(product, "value_proposition", ""),
+            getattr(product, "description", ""),
+            " ".join(getattr(product, "known_audience", []) or []),
+        ]
+        result: set[str] = set()
+        for value in values:
+            result.update(self._telegram_signal_tokens(str(value or "")))
+        return result
+
     @staticmethod
     def _tokens(value: str) -> set[str]:
         words = re.findall(r"[a-zA-Zа-яА-ЯёЁ0-9]+", value.casefold())
@@ -387,6 +476,7 @@ class DiscoveryRelevanceLearningService:
             and not word.isdigit()
             and word not in _GENERIC_TERMS
             and word not in _TELEGRAM_MATCH_UTILITY_TERMS
+            and word not in _TELEGRAM_GENERATED_ICP_BOILERPLATE_TERMS
         }
 
     @staticmethod
