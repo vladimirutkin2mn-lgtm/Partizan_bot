@@ -1,7 +1,11 @@
 from types import SimpleNamespace
 
 from app.distribution_types import DistributionPlatform
-from app.manual_discovery_trace import _filters, _trace_decision
+from app.manual_discovery_trace import (
+    _filters,
+    _telegram_normalization_diagnostic,
+    _trace_decision,
+)
 
 
 def _product():
@@ -64,3 +68,31 @@ def test_trace_filter_description_documents_direct_product_anchor_exception() ->
     assert semantic_gate["minimum_matched_terms"] == 2
     assert semantic_gate["direct_product_anchor_minimum_matched_terms"] == 1
     assert "DIRECT_PRODUCT_ANCHOR" in semantic_gate["pass_paths"]
+
+
+def test_trace_explains_non_telegram_search_hit_rejection() -> None:
+    result = _telegram_normalization_diagnostic(
+        "https://example.com/article-about-femdom"
+    )
+
+    assert result == {
+        "normalized": False,
+        "normalization_reason": "NON_TELEGRAM_HOST",
+        "host": "example.com",
+    }
+
+
+def test_trace_explains_unsupported_telegram_invite_link() -> None:
+    result = _telegram_normalization_diagnostic("https://t.me/+InviteToken")
+
+    assert result["normalized"] is False
+    assert result["normalization_reason"] == "INVITE_LINK_UNSUPPORTED"
+
+
+def test_trace_normalization_matches_public_post_to_channel_slug() -> None:
+    result = _telegram_normalization_diagnostic("https://t.me/s/a_sfera/2106")
+
+    assert result["normalized"] is True
+    assert result["normalization_reason"] == "TELEGRAM_SLUG_ACCEPTED"
+    assert result["handle"] == "a_sfera"
+    assert result["canonical_url"] == "https://t.me/a_sfera"
