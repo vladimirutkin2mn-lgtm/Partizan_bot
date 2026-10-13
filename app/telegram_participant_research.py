@@ -97,7 +97,10 @@ class TelegramParticipantResearchService:
     def _ranked_handles(self, opportunities: list[Any]) -> list[str]:
         ranked = sorted(
             opportunities,
-            key=lambda item: (-(float(getattr(item, "relevance_score", 0.0) or 0.0)), str(getattr(item, "canonical_key", ""))),
+            key=lambda item: (
+                -(float(getattr(item, "relevance_score", 0.0) or 0.0)),
+                str(getattr(item, "canonical_key", "")),
+            ),
         )
         result: list[str] = []
         seen: set[str] = set()
@@ -272,10 +275,20 @@ class TelethonTelegramParticipantResearchTransport:
                         elif bool(getattr(entity, "broadcast", False)):
                             input_entity = await client.get_input_entity(entity)
                             full = await client(GetFullChannelRequest(input_entity))
-                            linked_id = getattr(getattr(full, "full_chat", None), "linked_chat_id", None)
-                            linked = self._linked_discussion(getattr(full, "chats", []) or [], linked_id)
+                            linked_id = getattr(
+                                getattr(full, "full_chat", None),
+                                "linked_chat_id",
+                                None,
+                            )
+                            linked = self._linked_discussion(
+                                getattr(full, "chats", []) or [],
+                                linked_id,
+                            )
                             if linked is not None:
-                                messages = await client.get_messages(linked, limit=message_limit)
+                                messages = await client.get_messages(
+                                    linked,
+                                    limit=message_limit,
+                                )
                                 observations.extend(
                                     self._message_observations(
                                         list(messages or []),
