@@ -42,6 +42,24 @@ _GENERIC_TERMS = {
     "чат",
 }
 
+# Telegram search results frequently echo transport/search boilerplate in matched_terms.
+# Keep this stricter cleanup local to Telegram so discovery contracts for Instagram,
+# Reddit and TikTok are not changed by a Telegram regression fix.
+_TELEGRAM_MATCH_UTILITY_TERMS = {
+    "active",
+    "any",
+    "around",
+    "http",
+    "https",
+    "link",
+    "links",
+    "public",
+    "replies",
+    "site",
+    "test",
+    "ссылка",
+}
+
 
 class DiscoveryRelevanceLearningService:
     """Filter weak acquisition candidates and learn reusable negative discovery signals.
@@ -248,8 +266,9 @@ class DiscoveryRelevanceLearningService:
             self._store.clear_namespace(DISCOVERY_NEGATIVE_LEARNING_NAMESPACE)
 
     def _decision(self, opportunity: Any, snapshot: dict[str, set[str]]) -> dict:
+        platform = self._platform_value(getattr(opportunity, "platform", None))
         memory_key = self._memory_key(
-            self._platform_value(getattr(opportunity, "platform", None)),
+            platform,
             str(getattr(opportunity, "canonical_key", "") or ""),
         )
         if memory_key and memory_key in snapshot["blocked_keys"]:
@@ -272,11 +291,17 @@ class DiscoveryRelevanceLearningService:
             "alternative": self._as_float(signals.get("alternative_ratio")),
         }
         signal_families = [name for name, value in ratios.items() if value >= 0.15]
-        matched_terms = {
+        raw_matched_terms = {
             str(term).casefold()
             for term in list(signals.get("matched_terms") or [])
             if len(str(term).strip()) >= 3
         }
+        if platform.upper() == "TELEGRAM":
+            matched_terms: set[str] = set()
+            for term in raw_matched_terms:
+                matched_terms.update(self._telegram_signal_tokens(term))
+        else:
+            matched_terms = raw_matched_terms
         demand_intent = int(signals.get("demand_intent_hits") or 0)
         commercial_intent = int(signals.get("commercial_intent_hits") or 0)
         intent_hits = demand_intent + commercial_intent
@@ -350,6 +375,18 @@ class DiscoveryRelevanceLearningService:
             word
             for word in words
             if len(word) > 3 and not word.isdigit() and word not in _GENERIC_TERMS
+        }
+
+    @staticmethod
+    def _telegram_signal_tokens(value: str) -> set[str]:
+        words = re.findall(r"[a-zA-Zа-яА-ЯёЁ0-9]+", value.casefold())
+        return {
+            word
+            for word in words
+            if len(word) > 3
+            and not word.isdigit()
+            and word not in _GENERIC_TERMS
+            and word not in _TELEGRAM_MATCH_UTILITY_TERMS
         }
 
     @staticmethod
