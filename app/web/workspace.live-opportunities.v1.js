@@ -32,6 +32,7 @@
       .live-opportunity-links{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}.live-opportunity-links a{font-size:10px;color:var(--accent);text-decoration:none}.live-opportunity details{margin-top:10px}.live-opportunity summary{cursor:pointer;color:var(--muted);font-size:9px}.live-opportunity pre{margin:7px 0 0;padding:10px;border:1px solid var(--line);border-radius:9px;background:rgba(0,0,0,.18);color:var(--soft);white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:10px;line-height:1.5}
       .live-opportunity-stale{opacity:.68}.live-opportunities-history{margin-top:12px}.live-opportunities-history summary{cursor:pointer;color:var(--muted);font-size:10px}.live-opportunities-empty{color:var(--muted);font-size:10px;line-height:1.55}.live-opportunities-error{color:var(--warn);font-size:10px;line-height:1.55}
       .research-community-note{margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;color:var(--muted);font-size:9px;line-height:1.5}
+      .research-score-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}.research-score{padding:4px 7px;border:1px solid var(--line);border-radius:9px;color:var(--soft);font-size:8px}.research-score b{color:var(--muted);font-weight:600}
       @media(max-width:700px){.live-opportunities-head,.live-opportunity-top{display:block}.live-opportunity-badges{justify-content:flex-start;margin-top:8px}}
     `;
     document.head.appendChild(style);
@@ -96,6 +97,12 @@
     return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
 
+  const scorePill = (label, value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return '';
+    return `<span class="research-score"><b>${escapeHtml(label)}</b> ${escapeHtml(Math.round(numeric))}</span>`;
+  };
+
   const card = (item, stale = false) => {
     const expires = formatDate(item.expires_at);
     const checked = formatDate(item.last_checked_at);
@@ -114,9 +121,16 @@
     const checked = formatDate(item.source_checked_at);
     const members = Number.isFinite(Number(item.member_count)) ? Number(item.member_count).toLocaleString() : '';
     const blocked = item.write_access === 'NO_WRITE_ACCESS';
+    const scores = [
+      scorePill('Audience fit', item.audience_fit),
+      scorePill('Context fit', item.context_fit),
+      scorePill('Actionability', item.actionability_score),
+      scorePill('Confidence', item.confidence_score),
+    ].filter(Boolean).join('');
     return `<article class="live-opportunity">
-      <div class="live-opportunity-top"><strong>${escapeHtml(item.title)}</strong><div class="live-opportunity-badges"><span class="live-opportunity-badge">Research only</span>${blocked ? '<span class="live-opportunity-badge warn">No write access</span>' : ''}</div></div>
+      <div class="live-opportunity-top"><strong>${escapeHtml(item.title)}</strong><div class="live-opportunity-badges"><span class="live-opportunity-badge">Research only</span>${item.exploration_candidate ? '<span class="live-opportunity-badge ready">Adjacent exploration</span>' : ''}${blocked ? '<span class="live-opportunity-badge warn">No write access</span>' : ''}</div></div>
       <div class="live-opportunity-meta">TELEGRAM${members ? ` · ${escapeHtml(members)} members` : ''}${checked ? ` · checked ${escapeHtml(checked)}` : ''}</div>
+      ${scores ? `<div class="research-score-row">${scores}</div>` : ''}
       ${item.rationale ? `<p>${escapeHtml(item.rationale)}</p>` : ''}
       ${item.write_access_detail ? `<div class="research-community-note">${escapeHtml(item.write_access_detail)}</div>` : ''}
       <div class="live-opportunity-links"><a href="${escapeHtml(item.community_url)}" target="_blank" rel="noopener noreferrer">Open community ↗</a></div>
