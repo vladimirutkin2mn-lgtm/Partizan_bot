@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from app.distribution_types import DistributionPlatform
 from app.manual_discovery_trace import (
     _filters,
+    _selected_metadata,
     _telegram_normalization_diagnostic,
     _trace_decision,
 )
@@ -96,3 +97,42 @@ def test_trace_normalization_matches_public_post_to_channel_slug() -> None:
     assert result["normalization_reason"] == "TELEGRAM_SLUG_ACCEPTED"
     assert result["handle"] == "a_sfera"
     assert result["canonical_url"] == "https://t.me/a_sfera"
+
+
+def test_trace_keeps_actionability_diagnostics_and_recent_context() -> None:
+    recent_context = [
+        {
+            "message_id": 455,
+            "text": "recent message",
+            "published_at": "2026-10-13T12:00:00+00:00",
+            "url": "https://t.me/thisisxtasia/455",
+            "matched_terms": [],
+        }
+    ]
+    result = _selected_metadata(
+        {
+            "handle": "thisisxtasia",
+            "action_target_url": None,
+            "action_target_specific": False,
+            "action_target_resolution": "COMMUNITY_ONLY",
+            "opportunity_scope": "COMMUNITY",
+            "actionability": "RESEARCH_ONLY",
+            "community_only_reason": "NO_FRESH_ACTION_TARGET",
+            "community_match_terms": ["femdom"],
+            "linked_discussion_id": 2862464487,
+            "surface_capabilities": {
+                "comment": "AVAILABLE",
+                "reply": "UNKNOWN",
+                "standalone_post": "UNAVAILABLE",
+                "publisher_permission_verified": False,
+            },
+            "recent_context": recent_context,
+            "unrelated_internal_field": "do not expose",
+        }
+    )
+
+    assert result["community_only_reason"] == "NO_FRESH_ACTION_TARGET"
+    assert result["community_match_terms"] == ["femdom"]
+    assert result["surface_capabilities"]["comment"] == "AVAILABLE"
+    assert result["recent_context"] == recent_context
+    assert "unrelated_internal_field" not in result
