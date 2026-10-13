@@ -34,6 +34,13 @@ class CustomerResearchCommunityView(BaseModel):
     confidence_score: float | None = Field(default=None, ge=0, le=100)
     ranking_score: float | None = Field(default=None, ge=0, le=100)
     exploration_candidate: bool = False
+    observed_participant_count: int | None = Field(default=None, ge=0)
+    matched_participant_count: int | None = Field(default=None, ge=0)
+    repeat_participant_count: int | None = Field(default=None, ge=0)
+    observed_message_count: int | None = Field(default=None, ge=0)
+    matched_message_count: int | None = Field(default=None, ge=0)
+    participant_match_ratio: float | None = Field(default=None, ge=0, le=1)
+    participant_evidence_checked_at: datetime | None = None
     actionability: ResearchCommunityActionability = "RESEARCH_ONLY"
     write_access: ResearchCommunityWriteAccess = "UNKNOWN"
     write_access_detail: str | None = Field(default=None, max_length=1200)
@@ -92,16 +99,10 @@ class CustomerResearchCommunityService:
                     f"account in @{handle}: {reason}. The community remains useful audience evidence."
                 )
 
-            member_count = metadata.get("member_count")
-            try:
-                normalized_member_count = int(member_count) if member_count is not None else None
-            except (TypeError, ValueError):
-                normalized_member_count = None
-            if normalized_member_count is not None and normalized_member_count < 0:
-                normalized_member_count = None
-
+            member_count = self._nonnegative_int(metadata.get("member_count"))
             scores = metadata.get("intelligence_scores")
             scores = scores if isinstance(scores, dict) else {}
+            participant = self._participant_evidence(metadata)
             result.append(
                 CustomerResearchCommunityView(
                     opportunity_id=opportunity.id,
@@ -115,10 +116,31 @@ class CustomerResearchCommunityService:
                     confidence_score=self._score(scores, "confidence"),
                     ranking_score=self._score(scores, "ranking_score"),
                     exploration_candidate=scores.get("exploration_candidate") is True,
+                    observed_participant_count=self._nonnegative_int(
+                        participant.get("distinct_participant_count")
+                    ),
+                    matched_participant_count=self._nonnegative_int(
+                        participant.get("matched_participant_count")
+                    ),
+                    repeat_participant_count=self._nonnegative_int(
+                        participant.get("repeat_participant_count")
+                    ),
+                    observed_message_count=self._nonnegative_int(
+                        participant.get("observed_message_count")
+                    ),
+                    matched_message_count=self._nonnegative_int(
+                        participant.get("matched_message_count")
+                    ),
+                    participant_match_ratio=self._ratio(
+                        participant.get("matched_participant_ratio")
+                    ),
+                    participant_evidence_checked_at=self._datetime(
+                        participant.get("source_checked_at")
+                    ),
                     write_access=write_access,
                     write_access_detail=write_access_detail,
                     handle=handle,
-                    member_count=normalized_member_count,
+                    member_count=member_count,
                     source_checked_at=self._source_checked_at(metadata),
                 )
             )
@@ -131,6 +153,20 @@ class CustomerResearchCommunityService:
             )
         )
         return result
+
+    @staticmethod
+    def _participant_evidence(metadata: dict) -> dict:
+        value = metadata.get("participant_evidence")
+        if not isinstance(value, dict):
+            return {}
+        # Fail closed if a future producer starts persisting participant identity.
+        if value.get("identity_persisted") is not False:
+            return {}
+        if value.get("participant_ids_persisted") is not False:
+            return {}
+        if value.get("usernames_persisted") is not False:
+            return {}
+        return value
 
     @staticmethod
     def _community_handle(url: object, metadata: dict) -> str | None:
@@ -147,15 +183,38 @@ class CustomerResearchCommunityService:
             return None
         return path[0] if _TELEGRAM_HANDLE.fullmatch(path[0]) else None
 
+    @classmethod
+    def _source_checked_at(cls, metadata: dict) -> datetime | None:
+        return cls._datetime(metadata.get("source_checked_at"))
+
     @staticmethod
-    def _source_checked_at(metadata: dict) -> datetime | None:
-        value = metadata.get("source_checked_at")
+    def _datetime(value: object) -> datetime | None:
         if not value:
             return None
         try:
-            return datetime.fromisoformat(str(value))
+            return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
         except ValueError:
             return None
+
+    @staticmethod
+    def _nonnegative_int(value: object) -> int | None:
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return None
+        return number if number >= 0 else None
+
+    @staticmethod
+    def _ratio(value: object) -> float | None:
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return min(1.0, max(0.0, number))
 
     @staticmethod
     def _score(scores: dict, key: str) -> float | None:
