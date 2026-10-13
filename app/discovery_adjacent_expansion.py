@@ -59,9 +59,12 @@ def build_adjacent_discovery_hints(
 ) -> list[str]:
     """Build bounded adjacent-context hypotheses from observed public evidence.
 
-    Search-query text is deliberately excluded: it records what Partizan asked for, not what
-    a public source actually contained. Participant aggregates may strengthen confidence in a
-    surface but never contribute identity or vocabulary to a hint.
+    Search-query text and generic web-search snippets are deliberately excluded: they record
+    what Partizan asked for or what an upstream search provider summarized, not necessarily
+    what the Telegram surface itself said. Vocabulary comes from native Telegram title/about/
+    recent-message observations (plus evidence explicitly tagged `telegram_native`).
+    Participant aggregates may strengthen confidence in a surface but never contribute
+    identity or vocabulary to a hint.
     """
 
     limit = max(0, min(int(max_hints), MAX_ADJACENT_HINTS))
@@ -207,10 +210,27 @@ def _ordered_context_terms(opportunity: Any, *, anchor_terms: set[str]) -> list[
         str(getattr(opportunity, "title", "") or ""),
         str(metadata.get("about") or ""),
     ]
+
+    # Native Telegram recent messages are direct provider observations and are safe source
+    # vocabulary for adjacent hypotheses. Keep the pass bounded to the already-bounded
+    # recent_context retained by Telegram research.
+    recent_context = metadata.get("recent_context")
+    if isinstance(recent_context, list):
+        for row in recent_context[:8]:
+            if not isinstance(row, dict):
+                continue
+            observed_parts.append(str(row.get("text") or ""))
+
+    # Generic web-search snippets may be provider summaries rather than source text. Only
+    # reuse evidence text when the discovery adapter explicitly marks it as Telegram-native.
     for evidence in list(getattr(opportunity, "evidence", []) or [])[:6]:
         if not isinstance(evidence, dict):
             continue
-        # Do not use evidence["query"] here. Search terms are provenance, not observation.
+        source_metadata = evidence.get("source_metadata")
+        if not isinstance(source_metadata, dict):
+            continue
+        if str(source_metadata.get("evidence_type") or "").casefold() != "telegram_native":
+            continue
         observed_parts.extend(
             [
                 str(evidence.get("title") or ""),
