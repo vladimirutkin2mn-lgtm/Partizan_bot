@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import UTC, datetime, timedelta
 
 from app.audience_intelligence import AudienceIntelligenceEngine
+from app.discovery_intelligence import (
+    annotate_base_intelligence,
+    exploration_slot_count,
+    is_exploration_candidate,
+    portfolio_score,
+    propagate_surface_corroboration,
+)
 from app.discovery_relevance_learning import (
     DiscoveryRelevanceLearningService,
     discovery_relevance_learning_service,
@@ -11,6 +19,7 @@ from app.discovery_relevance_learning import (
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.platform_discovery import (
     InstagramDiscoveryAdapter,
+    PlatformCandidate,
     PlatformDiscoveryAdapter,
     PlatformDiscoveryRequest,
     RedditDiscoveryAdapter,
@@ -242,6 +251,32 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
                 break
         return deduped
 
+    async def enrich_candidates(
+        self,
+        request: PlatformDiscoveryRequest,
+        candidates: list[PlatformCandidate],
+    ) -> list[PlatformCandidate]:
+        enriched = await super().enrich_candidates(request, candidates)
+        for candidate in enriched:
+            metadata = candidate.metadata if isinstance(candidate.metadata, dict) else {}
+            entity_id = metadata.get("telegram_entity_id")
+            scope = str(metadata.get("opportunity_scope") or "").upper()
+            if entity_id is None or scope not in {"COMMUNITY", "POST"}:
+                continue
+            parent_key = f"telegram:{entity_id}"
+            metadata["surface_parent_key"] = parent_key
+            if scope == "COMMUNITY":
+                candidate.canonical_key = f"{parent_key}:community"
+            else:
+                target_url = str(metadata.get("action_target_url") or "").strip()
+                if not target_url:
+                    continue
+                candidate.canonical_key = (
+                    f"{parent_key}:post:{self._target_discriminator(target_url)}"
+                )
+            candidate.metadata = metadata
+        return enriched
+
     def _native_metadata(self, request, snapshot) -> dict:
         """Keep community discovery separate from action-target resolution.
 
@@ -325,6 +360,13 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
         if overlap:
             metadata["community_match_terms"] = overlap[:12]
         return metadata
+
+    @staticmethod
+    def _target_discriminator(target_url: str) -> str:
+        tail = str(target_url).rstrip("/").rsplit("/", 1)[-1]
+        if tail.isdigit():
+            return tail
+        return hashlib.sha256(str(target_url).encode("utf-8")).hexdigest()[:16]
 
     def _request(
         self,
@@ -464,25 +506,30 @@ class ExpandedAudienceIntelligenceEngine(AudienceIntelligenceEngine):
             per_query_limit=per_query_limit,
             max_opportunities=collection_limit,
         )
+        scored = annotate_base_intelligence(opportunities)
         accepted, rejected = self._relevance_learning.filter_and_learn(
             product=product,
             icps=icps,
-            opportunities=opportunities,
+            opportunities=scored,
         )
         self._last_relevance_rejections = rejected
-        return self._coverage_first_limit(accepted, max_opportunities)
+        propagated = propagate_surface_corroboration(accepted)
+        return self._coverage_first_limit(propagated, max_opportunities)
 
     @staticmethod
     def _coverage_first_limit(opportunities: list, limit: int) -> list:
-        """Bound the portfolio without letting query fan-out erase a platform/ICP cell."""
+        """Bound the portfolio with coverage plus a small adjacent-exploration reserve."""
         if limit <= 0:
             return []
         if len(opportunities) <= limit:
-            return list(opportunities)
+            return sorted(
+                opportunities,
+                key=lambda item: (-portfolio_score(item), item.canonical_key),
+            )
 
         ranked = sorted(
             opportunities,
-            key=lambda item: (-(item.relevance_score or 0), item.canonical_key),
+            key=lambda item: (-portfolio_score(item), item.canonical_key),
         )
         selected: list = []
         selected_keys: set[tuple[str, str, str]] = set()
@@ -501,7 +548,26 @@ class ExpandedAudienceIntelligenceEngine(AudienceIntelligenceEngine):
             if len(selected) >= limit:
                 return selected
 
-        # Fill the remaining budget by score, preserving the existing ranking semantics.
+        # Reserve roughly 15% of the remaining portfolio for audience-led adjacent contexts.
+        # Exploration never bypasses the semantic relevance guard above and never changes
+        # publication permissions; it only prevents non-obvious audience surfaces from being
+        # squeezed out by many obvious topical results.
+        target_exploration = exploration_slot_count(limit)
+        selected_exploration = sum(is_exploration_candidate(item) for item in selected)
+        needed_exploration = max(0, target_exploration - selected_exploration)
+        if needed_exploration:
+            for item in ranked:
+                platform = str(getattr(item.platform, "value", item.platform))
+                key = (str(item.icp_id), platform, str(item.canonical_key))
+                if key in selected_keys or not is_exploration_candidate(item):
+                    continue
+                selected.append(item)
+                selected_keys.add(key)
+                needed_exploration -= 1
+                if len(selected) >= limit or needed_exploration <= 0:
+                    break
+
+        # Fill the remaining budget using the explicit intelligence ranking score.
         for item in ranked:
             platform = str(getattr(item.platform, "value", item.platform))
             key = (str(item.icp_id), platform, str(item.canonical_key))
@@ -513,6 +579,6 @@ class ExpandedAudienceIntelligenceEngine(AudienceIntelligenceEngine):
                 break
 
         selected.sort(
-            key=lambda item: (-(item.relevance_score or 0), item.canonical_key),
+            key=lambda item: (-portfolio_score(item), item.canonical_key),
         )
         return selected
