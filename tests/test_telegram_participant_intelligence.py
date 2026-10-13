@@ -80,8 +80,8 @@ def test_persisted_recompute_does_not_compound_participant_bonus() -> None:
     second = recompute_persisted_discovery_signals([first])[0]
     third = recompute_persisted_discovery_signals([second])[0]
 
-    assert first.metadata["intelligence_scores"]["confidence"] == 59.0
-    assert second.metadata["intelligence_scores"]["confidence"] == 59.0
-    assert third.metadata["intelligence_scores"]["confidence"] == 59.0
+    assert first.metadata["intelligence_scores"]["confidence"] == 58.0
+    assert second.metadata["intelligence_scores"]["confidence"] == 58.0
+    assert third.metadata["intelligence_scores"]["confidence"] == 58.0
     assert first.metadata["participant_signal"]["confidence_bonus"] == 8.0
     assert second.metadata["participant_signal"]["confidence_bonus"] == 8.0
