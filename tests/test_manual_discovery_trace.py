@@ -61,6 +61,6 @@ def test_trace_uses_direct_product_anchor_path_like_production_gate() -> None:
 def test_trace_filter_description_documents_direct_product_anchor_exception() -> None:
     semantic_gate = _filters()["semantic_gate"]
 
-    assert semantic_gate["default_minimum_matched_terms"] == 2
+    assert semantic_gate["minimum_matched_terms"] == 2
     assert semantic_gate["direct_product_anchor_minimum_matched_terms"] == 1
     assert "DIRECT_PRODUCT_ANCHOR" in semantic_gate["pass_paths"]
