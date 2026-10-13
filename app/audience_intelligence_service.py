@@ -137,9 +137,15 @@ class InMemoryAudienceIntelligenceService:
         return AudienceDistributionMapView.model_validate(payload)
 
     @staticmethod
-    def _opportunity_key(opportunity: DistributionOpportunityView) -> tuple[str, str]:
+    def _opportunity_key(
+        opportunity: DistributionOpportunityView,
+    ) -> tuple[str, str, str]:
         platform = getattr(opportunity.platform, "value", str(opportunity.platform))
-        return str(platform), str(opportunity.canonical_key)
+        return (
+            str(opportunity.icp_id),
+            str(platform),
+            str(opportunity.canonical_key),
+        )
 
     def _merge_opportunities(
         self,
