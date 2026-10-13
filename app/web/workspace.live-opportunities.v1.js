@@ -33,6 +33,7 @@
       .live-opportunity-stale{opacity:.68}.live-opportunities-history{margin-top:12px}.live-opportunities-history summary{cursor:pointer;color:var(--muted);font-size:10px}.live-opportunities-empty{color:var(--muted);font-size:10px;line-height:1.55}.live-opportunities-error{color:var(--warn);font-size:10px;line-height:1.55}
       .research-community-note{margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;color:var(--muted);font-size:9px;line-height:1.5}
       .research-score-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}.research-score{padding:4px 7px;border:1px solid var(--line);border-radius:9px;color:var(--soft);font-size:8px}.research-score b{color:var(--muted);font-weight:600}
+      .research-audience-evidence{margin-top:9px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.012);color:var(--soft);font-size:9px;line-height:1.5}.research-audience-evidence b{color:var(--muted);font-weight:600}
       @media(max-width:700px){.live-opportunities-head,.live-opportunity-top{display:block}.live-opportunity-badges{justify-content:flex-start;margin-top:8px}}
     `;
     document.head.appendChild(style);
@@ -103,6 +104,23 @@
     return `<span class="research-score"><b>${escapeHtml(label)}</b> ${escapeHtml(Math.round(numeric))}</span>`;
   };
 
+  const participantSummary = (item) => {
+    const observed = Number(item.observed_participant_count);
+    const matched = Number(item.matched_participant_count);
+    const messages = Number(item.matched_message_count);
+    const repeated = Number(item.repeat_participant_count);
+    if (!Number.isFinite(observed) || !Number.isFinite(matched) || matched <= 0) return '';
+    const details = [`${matched} relevant participant${matched === 1 ? '' : 's'}`];
+    if (Number.isFinite(messages) && messages > 0) {
+      details.push(`${messages} matched message${messages === 1 ? '' : 's'}`);
+    }
+    if (Number.isFinite(repeated) && repeated > 0) {
+      details.push(`${repeated} repeat participant${repeated === 1 ? '' : 's'}`);
+    }
+    const checked = formatDate(item.participant_evidence_checked_at);
+    return `<div class="research-audience-evidence"><b>Observed audience</b> · ${escapeHtml(details.join(' · '))}${checked ? ` · checked ${escapeHtml(checked)}` : ''}</div>`;
+  };
+
   const card = (item, stale = false) => {
     const expires = formatDate(item.expires_at);
     const checked = formatDate(item.last_checked_at);
@@ -127,10 +145,12 @@
       scorePill('Actionability', item.actionability_score),
       scorePill('Confidence', item.confidence_score),
     ].filter(Boolean).join('');
+    const participants = participantSummary(item);
     return `<article class="live-opportunity">
       <div class="live-opportunity-top"><strong>${escapeHtml(item.title)}</strong><div class="live-opportunity-badges"><span class="live-opportunity-badge">Research only</span>${item.exploration_candidate ? '<span class="live-opportunity-badge ready">Adjacent exploration</span>' : ''}${blocked ? '<span class="live-opportunity-badge warn">No write access</span>' : ''}</div></div>
       <div class="live-opportunity-meta">TELEGRAM${members ? ` · ${escapeHtml(members)} members` : ''}${checked ? ` · checked ${escapeHtml(checked)}` : ''}</div>
       ${scores ? `<div class="research-score-row">${scores}</div>` : ''}
+      ${participants}
       ${item.rationale ? `<p>${escapeHtml(item.rationale)}</p>` : ''}
       ${item.write_access_detail ? `<div class="research-community-note">${escapeHtml(item.write_access_detail)}</div>` : ''}
       <div class="live-opportunity-links"><a href="${escapeHtml(item.community_url)}" target="_blank" rel="noopener noreferrer">Open community ↗</a></div>
