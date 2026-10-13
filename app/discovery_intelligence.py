@@ -28,10 +28,12 @@ def annotate_base_intelligence(opportunities: list[Any]) -> list[Any]:
 
 
 def propagate_surface_corroboration(opportunities: list[Any]) -> list[Any]:
-    """Propagate only corroboration for the exact same platform/canonical surface.
+    """Propagate corroboration only for the exact same platform/canonical surface.
 
     Audience/confidence evidence can become stronger when the same surface is independently
-    rediscovered for several ICPs. Actionability is intentionally never propagated.
+    rediscovered for several ICPs. Actionability is intentionally never propagated. Multiple
+    ICP labels alone are not corroboration: at least two unique evidence URLs are required
+    before any propagation bonus is applied.
     """
 
     grouped: dict[tuple[str, str], list[Any]] = defaultdict(list)
@@ -53,10 +55,21 @@ def propagate_surface_corroboration(opportunities: list[Any]) -> list[Any]:
             str(_metadata(peer).get("opportunity_scope") or "UNKNOWN").upper()
             for peer in group
         }
-        cross_icp_bonus = min(10.0, max(0, len(distinct_icps) - 1) * 4.0)
-        repeated_surface_bonus = min(6.0, max(0, observation_count - 1) * 2.0)
-        confidence_bonus = min(14.0, cross_icp_bonus + repeated_surface_bonus)
-        audience_bonus = min(8.0, cross_icp_bonus * 0.5 + repeated_surface_bonus * 0.5)
+        evidence_urls = {
+            str(row.get("url") or "").strip()
+            for peer in group
+            for row in (getattr(peer, "evidence", []) or [])
+            if isinstance(row, dict) and str(row.get("url") or "").strip()
+        }
+        independent_evidence_urls = len(evidence_urls)
+        if independent_evidence_urls >= 2:
+            cross_icp_bonus = min(8.0, max(0, len(distinct_icps) - 1) * 4.0)
+            evidence_bonus = min(6.0, max(0, independent_evidence_urls - 1) * 2.0)
+        else:
+            cross_icp_bonus = 0.0
+            evidence_bonus = 0.0
+        confidence_bonus = min(14.0, cross_icp_bonus + evidence_bonus)
+        audience_bonus = min(8.0, cross_icp_bonus * 0.5 + evidence_bonus * 0.5)
 
         scores["audience_fit"] = _clamp(scores.get("audience_fit", 0.0) + audience_bonus)
         scores["confidence"] = _clamp(scores.get("confidence", 0.0) + confidence_bonus)
@@ -67,6 +80,7 @@ def propagate_surface_corroboration(opportunities: list[Any]) -> list[Any]:
             "scope": "EXACT_PLATFORM_CANONICAL_KEY",
             "surface_observations": observation_count,
             "distinct_icp_count": len(distinct_icps),
+            "independent_evidence_urls": independent_evidence_urls,
             "observed_scopes": sorted(scopes),
             "audience_fit_bonus": round(audience_bonus, 1),
             "confidence_bonus": round(confidence_bonus, 1),
