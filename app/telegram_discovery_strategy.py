@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import UTC, datetime, timedelta
 
@@ -18,6 +19,7 @@ from app.discovery_relevance_learning import (
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.platform_discovery import (
     InstagramDiscoveryAdapter,
+    PlatformCandidate,
     PlatformDiscoveryAdapter,
     PlatformDiscoveryRequest,
     RedditDiscoveryAdapter,
@@ -249,6 +251,32 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
                 break
         return deduped
 
+    async def enrich_candidates(
+        self,
+        request: PlatformDiscoveryRequest,
+        candidates: list[PlatformCandidate],
+    ) -> list[PlatformCandidate]:
+        enriched = await super().enrich_candidates(request, candidates)
+        for candidate in enriched:
+            metadata = candidate.metadata if isinstance(candidate.metadata, dict) else {}
+            entity_id = metadata.get("telegram_entity_id")
+            scope = str(metadata.get("opportunity_scope") or "").upper()
+            if entity_id is None or scope not in {"COMMUNITY", "POST"}:
+                continue
+            parent_key = f"telegram:{entity_id}"
+            metadata["surface_parent_key"] = parent_key
+            if scope == "COMMUNITY":
+                candidate.canonical_key = f"{parent_key}:community"
+            else:
+                target_url = str(metadata.get("action_target_url") or "").strip()
+                if not target_url:
+                    continue
+                candidate.canonical_key = (
+                    f"{parent_key}:post:{self._target_discriminator(target_url)}"
+                )
+            candidate.metadata = metadata
+        return enriched
+
     def _native_metadata(self, request, snapshot) -> dict:
         """Keep community discovery separate from action-target resolution.
 
@@ -332,6 +360,13 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
         if overlap:
             metadata["community_match_terms"] = overlap[:12]
         return metadata
+
+    @staticmethod
+    def _target_discriminator(target_url: str) -> str:
+        tail = str(target_url).rstrip("/").rsplit("/", 1)[-1]
+        if tail.isdigit():
+            return tail
+        return hashlib.sha256(str(target_url).encode("utf-8")).hexdigest()[:16]
 
     def _request(
         self,
