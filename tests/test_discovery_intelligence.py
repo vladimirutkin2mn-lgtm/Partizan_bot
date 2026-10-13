@@ -23,6 +23,7 @@ def _opportunity(
     commercial_hits=0,
     confidence="MEDIUM",
     independent_evidence=2,
+    evidence_url=None,
 ):
     return DistributionOpportunitySeed(
         icp_id=icp_id or uuid4(),
@@ -49,7 +50,7 @@ def _opportunity(
                 "matched_terms": ["audience", "problem", "need"],
             },
         },
-        evidence=[],
+        evidence=[{"url": evidence_url}] if evidence_url else [],
     )
 
 
@@ -67,8 +68,16 @@ def test_scores_separate_audience_context_actionability_and_confidence() -> None
 def test_same_surface_corroboration_raises_audience_and_confidence_not_actionability() -> None:
     first, second = annotate_base_intelligence(
         [
-            _opportunity(icp_id=uuid4(), canonical_key="telegram:same"),
-            _opportunity(icp_id=uuid4(), canonical_key="telegram:same"),
+            _opportunity(
+                icp_id=uuid4(),
+                canonical_key="telegram:same",
+                evidence_url="https://evidence.example/one",
+            ),
+            _opportunity(
+                icp_id=uuid4(),
+                canonical_key="telegram:same",
+                evidence_url="https://evidence.example/two",
+            ),
         ]
     )
     before = dict(first.metadata["intelligence_scores"])
@@ -81,14 +90,42 @@ def test_same_surface_corroboration_raises_audience_and_confidence_not_actionabi
     assert after["confidence"] > before["confidence"]
     assert after["actionability"] == before["actionability"]
     assert propagation["distinct_icp_count"] == 2
+    assert propagation["independent_evidence_urls"] == 2
     assert propagation["actionability_propagated"] is False
+
+
+def test_repeated_same_evidence_does_not_create_corroboration_bonus() -> None:
+    first, second = annotate_base_intelligence(
+        [
+            _opportunity(
+                icp_id=uuid4(),
+                canonical_key="telegram:same",
+                evidence_url="https://evidence.example/shared",
+            ),
+            _opportunity(
+                icp_id=uuid4(),
+                canonical_key="telegram:same",
+                evidence_url="https://evidence.example/shared",
+            ),
+        ]
+    )
+    before = dict(first.metadata["intelligence_scores"])
+
+    propagated = propagate_surface_corroboration([first, second])
+    after = propagated[0].metadata["intelligence_scores"]
+    propagation = propagated[0].metadata["signal_propagation"]
+
+    assert after["audience_fit"] == before["audience_fit"]
+    assert after["confidence"] == before["confidence"]
+    assert propagation["independent_evidence_urls"] == 1
+    assert propagation["confidence_bonus"] == 0.0
 
 
 def test_different_surfaces_do_not_share_corroboration() -> None:
     first, second = annotate_base_intelligence(
         [
-            _opportunity(canonical_key="telegram:first"),
-            _opportunity(canonical_key="telegram:second"),
+            _opportunity(canonical_key="telegram:first", evidence_url="https://evidence.example/1"),
+            _opportunity(canonical_key="telegram:second", evidence_url="https://evidence.example/2"),
         ]
     )
     propagated = propagate_surface_corroboration([first, second])
