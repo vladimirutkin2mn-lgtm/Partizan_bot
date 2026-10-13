@@ -28,6 +28,12 @@ class CustomerResearchCommunityView(BaseModel):
     community_url: HttpUrl
     rationale: str | None = Field(default=None, max_length=4000)
     relevance_score: float | None = Field(default=None, ge=0, le=100)
+    audience_fit: float | None = Field(default=None, ge=0, le=100)
+    context_fit: float | None = Field(default=None, ge=0, le=100)
+    actionability_score: float | None = Field(default=None, ge=0, le=100)
+    confidence_score: float | None = Field(default=None, ge=0, le=100)
+    ranking_score: float | None = Field(default=None, ge=0, le=100)
+    exploration_candidate: bool = False
     actionability: ResearchCommunityActionability = "RESEARCH_ONLY"
     write_access: ResearchCommunityWriteAccess = "UNKNOWN"
     write_access_detail: str | None = Field(default=None, max_length=1200)
@@ -94,6 +100,8 @@ class CustomerResearchCommunityService:
             if normalized_member_count is not None and normalized_member_count < 0:
                 normalized_member_count = None
 
+            scores = metadata.get("intelligence_scores")
+            scores = scores if isinstance(scores, dict) else {}
             result.append(
                 CustomerResearchCommunityView(
                     opportunity_id=opportunity.id,
@@ -101,6 +109,12 @@ class CustomerResearchCommunityService:
                     community_url=community_url,
                     rationale=opportunity.rationale,
                     relevance_score=opportunity.relevance_score,
+                    audience_fit=self._score(scores, "audience_fit"),
+                    context_fit=self._score(scores, "context_fit"),
+                    actionability_score=self._score(scores, "actionability"),
+                    confidence_score=self._score(scores, "confidence"),
+                    ranking_score=self._score(scores, "ranking_score"),
+                    exploration_candidate=scores.get("exploration_candidate") is True,
                     write_access=write_access,
                     write_access_detail=write_access_detail,
                     handle=handle,
@@ -111,7 +125,7 @@ class CustomerResearchCommunityService:
 
         result.sort(
             key=lambda item: (
-                -(item.relevance_score or 0),
+                -(item.ranking_score if item.ranking_score is not None else item.relevance_score or 0),
                 item.title.casefold(),
                 str(item.community_url),
             )
@@ -142,6 +156,17 @@ class CustomerResearchCommunityService:
             return datetime.fromisoformat(str(value))
         except ValueError:
             return None
+
+    @staticmethod
+    def _score(scores: dict, key: str) -> float | None:
+        value = scores.get(key)
+        if value is None:
+            return None
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return min(100.0, max(0.0, number))
 
 
 customer_research_community_service = CustomerResearchCommunityService()
