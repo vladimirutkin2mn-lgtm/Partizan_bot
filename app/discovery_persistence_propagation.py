@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.discovery_intelligence import portfolio_score, propagate_surface_corroboration
+from app.telegram_participant_intelligence import apply_participant_confidence
 
 PERSISTED_SCORE_PRECISION = 1
 _SCORE_FIELDS = (
@@ -15,19 +16,20 @@ _SCORE_FIELDS = (
 
 
 def recompute_persisted_discovery_signals(opportunities: list[Any]) -> list[Any]:
-    """Recompute propagation over a merged discovery map without compounding bonuses.
+    """Recompute evidence over a merged discovery map without compounding bonuses.
 
-    Persisted opportunities may already contain exact-surface and graph propagation bonuses
+    Persisted opportunities may already contain participant, exact-surface and graph bonuses
     from a prior discovery round. Before recomputing the merged map, subtract those recorded
-    bonuses from audience/confidence, then run propagation once over the whole accumulated
-    set. Context fit and actionability are never changed by this reset. Persisted scores are
-    normalized to one decimal so sub-second decay drift cannot mutate an otherwise unchanged
-    map. The merged map is finally re-ranked by intelligence score so accumulated evidence
-    changes prioritisation.
+    bonuses, apply fresh aggregate participant confidence, then run graph propagation once
+    over the whole accumulated set. Context fit and actionability are never changed by this
+    reset. Persisted scores are normalized to one decimal so sub-second decay drift cannot
+    mutate an otherwise unchanged map. The merged map is finally re-ranked by intelligence
+    score so accumulated evidence changes prioritisation.
     """
 
     reset = [_reset_propagated_scores(item) for item in opportunities]
-    propagated = propagate_surface_corroboration(reset)
+    participant_scored = apply_participant_confidence(reset)
+    propagated = propagate_surface_corroboration(participant_scored)
     normalized = [_normalize_persisted_scores(item) for item in propagated]
     return sorted(
         normalized,
@@ -43,6 +45,9 @@ def _reset_propagated_scores(item: Any) -> Any:
 
     audience_bonus = 0.0
     confidence_bonus = 0.0
+    participant = metadata.get("participant_signal")
+    if isinstance(participant, dict):
+        confidence_bonus += _as_float(participant.get("confidence_bonus"))
     exact = metadata.get("signal_propagation")
     if isinstance(exact, dict):
         audience_bonus += _as_float(exact.get("audience_fit_bonus"))
@@ -61,6 +66,7 @@ def _reset_propagated_scores(item: Any) -> Any:
         PERSISTED_SCORE_PRECISION,
     )
     metadata["intelligence_scores"] = scores
+    metadata.pop("participant_signal", None)
     metadata.pop("signal_propagation", None)
     metadata.pop("graph_signal_propagation", None)
     return _copy_with_metadata(item, metadata)

@@ -17,6 +17,7 @@ from app.telegram_discovery_strategy import (
 from app.telegram_discovery_strategy import (
     ExpandedAudienceIntelligenceEngine as AudienceIntelligenceEngine,
 )
+from app.telegram_participant_research import telegram_participant_research_service
 
 AUDIENCE_MAP_NAMESPACE = "audience_distribution_map"
 AUDIENCE_OPPORTUNITY_NAMESPACE = "audience_distribution_opportunity"
@@ -90,6 +91,12 @@ class InMemoryAudienceIntelligenceService:
             DistributionOpportunityView(id=uuid4(), **seed.model_dump())
             for seed in seeds
         ]
+        # Optional Telegram participant research is aggregate and read-only. Raw sender
+        # identities are used only transiently for distinct counts and are never persisted.
+        discovered = await telegram_participant_research_service.enrich(
+            discovered,
+            top_icps,
+        )
         diagnostics = self._diagnostics(engine)
 
         opportunities = discovered
@@ -106,9 +113,9 @@ class InMemoryAudienceIntelligenceService:
                     merged_opportunity_count=len(opportunities),
                 )
 
-        # Recompute exact-surface and parent/child evidence over the accumulated map.
-        # The helper first removes recorded prior bonuses, so adaptive rounds cannot
-        # compound their own propagation. This remains research scoring only.
+        # Recompute participant, exact-surface and parent/child evidence over the accumulated
+        # map. Recorded prior bonuses are removed first, so adaptive rounds cannot compound
+        # their own research confidence. This remains scoring only, not execution permission.
         opportunities = recompute_persisted_discovery_signals(opportunities)
 
         response = AudienceDistributionMapView(
