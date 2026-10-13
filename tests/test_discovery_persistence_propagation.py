@@ -125,5 +125,6 @@ def test_recompute_reranks_accumulated_map_by_intelligence_not_legacy_relevance(
     strong.relevance_score = 40
 
     ranked = recompute_persisted_discovery_signals([community, weak, strong])
+    keys = [item.canonical_key for item in ranked]
 
-    assert ranked.index(strong) < ranked.index(weak)
+    assert keys.index("telegram:500:post:2") < keys.index("telegram:500:post:1")
