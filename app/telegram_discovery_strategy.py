@@ -272,14 +272,24 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
         """Keep community discovery separate from action-target resolution.
 
         Native Telegram research can prove that a community is relevant even when none of
-        the last few messages repeats the full search query. In that case we may select the
-        freshest concrete post only when the community title/about itself overlaps meaningful
-        product/audience terms and the surface can actually support a later interaction.
-        Publisher preflight remains mandatory before any write action.
+        the last few messages repeats the full search query. A concrete post is actionable
+        only when it is recent, has inspectable text and the surface can support a later
+        interaction. Publisher preflight remains mandatory before any write action.
         """
         metadata = super()._native_metadata(request, snapshot)
+        now = datetime.now(UTC)
+
         if metadata.get("action_target_specific") is True:
+            target_url = str(metadata.get("action_target_url") or "").strip()
+            direct_context = self._context_for_target(snapshot, target_url)
+            direct_quality = self._target_context_quality(direct_context, now)
+            if direct_quality != "ELIGIBLE":
+                return self._community_only_metadata(
+                    metadata,
+                    reason=f"DIRECT_TARGET_{direct_quality}",
+                )
             metadata["action_target_resolution"] = "DIRECT_MESSAGE_MATCH"
+            metadata["action_target_quality"] = "FRESH_TEXT"
             metadata["opportunity_scope"] = "POST"
             metadata["actionability"] = "NEEDS_PREFLIGHT"
             return metadata
@@ -307,33 +317,65 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
                 reason="NO_INTERACTION_SURFACE",
             )
 
-        now = datetime.now(UTC)
         eligible = []
         for item in getattr(snapshot, "recent_context", ()) or ():
-            published_at = getattr(item, "published_at", None)
-            url = str(getattr(item, "url", "") or "").strip()
-            if published_at is None or not url:
+            if self._target_context_quality(item, now) != "ELIGIBLE":
                 continue
-            if published_at.tzinfo is None:
-                published_at = published_at.replace(tzinfo=UTC)
-            age = now - published_at.astimezone(UTC)
-            if timedelta(0) <= age <= TELEGRAM_ACTION_TARGET_MAX_AGE:
+            published_at = self._aware_datetime(getattr(item, "published_at", None))
+            url = str(getattr(item, "url", "") or "").strip()
+            if published_at is not None and url:
                 eligible.append((published_at, url))
         if not eligible:
             return self._community_only_metadata(
                 metadata,
                 overlap=overlap,
-                reason="NO_FRESH_ACTION_TARGET",
+                reason="NO_FRESH_TEXT_ACTION_TARGET",
             )
 
         _, target_url = max(eligible, key=lambda item: item[0])
         metadata["action_target_url"] = target_url
         metadata["action_target_specific"] = True
         metadata["action_target_resolution"] = "COMMUNITY_RELEVANCE_FRESH_POST"
+        metadata["action_target_quality"] = "FRESH_TEXT"
         metadata["community_match_terms"] = overlap[:12]
         metadata["opportunity_scope"] = "POST"
         metadata["actionability"] = "NEEDS_PREFLIGHT"
         return metadata
+
+    @classmethod
+    def _context_for_target(cls, snapshot, target_url: str):
+        normalized = str(target_url or "").strip().rstrip("/")
+        if not normalized:
+            return None
+        for item in getattr(snapshot, "recent_context", ()) or ():
+            item_url = str(getattr(item, "url", "") or "").strip().rstrip("/")
+            if item_url == normalized:
+                return item
+        return None
+
+    @classmethod
+    def _target_context_quality(cls, item, now: datetime) -> str:
+        if item is None:
+            return "CONTEXT_MISSING"
+        if not cls._clean(str(getattr(item, "text", "") or "")):
+            return "EMPTY_TEXT"
+        published_at = cls._aware_datetime(getattr(item, "published_at", None))
+        if published_at is None:
+            return "TIMESTAMP_MISSING"
+        age = now - published_at
+        if age < timedelta(0) or age > TELEGRAM_ACTION_TARGET_MAX_AGE:
+            return "STALE"
+        if not str(getattr(item, "url", "") or "").strip():
+            return "URL_MISSING"
+        return "ELIGIBLE"
+
+    @staticmethod
+    def _aware_datetime(value) -> datetime | None:
+        if not isinstance(value, datetime):
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
     @staticmethod
     def _community_only_metadata(
