@@ -27,6 +27,9 @@ def _selected_metadata(metadata: object) -> dict:
         "action_target_url",
         "action_target_specific",
         "action_target_resolution",
+        "action_target_quality",
+        "conversation_signals",
+        "target_match_terms",
         "opportunity_scope",
         "actionability",
         "community_only_reason",
@@ -57,6 +60,21 @@ def _evidence_rows(opportunity: object) -> list[dict]:
                 "snippet": str(item.get("snippet") or "")[:1200],
                 "source_class": str(item.get("source_class") or ""),
                 "signal_tags": list(item.get("signal_tags") or []),
+            }
+        )
+    return rows
+
+
+def _failure_rows(failures: object) -> list[dict]:
+    """Serialize bounded provider failures without exposing credentials or mutable state."""
+    rows: list[dict] = []
+    for failure in list(failures or []):
+        rows.append(
+            {
+                "platform": _as_value(getattr(failure, "platform", "")),
+                "query": str(getattr(failure, "query", "") or "")[:500],
+                "error_type": str(getattr(failure, "error_type", "") or "")[:120],
+                "message": str(getattr(failure, "message", "") or "")[:480],
             }
         )
     return rows
@@ -271,6 +289,8 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
         }
         for attempt in engine.last_attempts
     ]
+    failures = _failure_rows(engine.last_failures)
+    failure_counts = Counter(row["error_type"] for row in failures if row["error_type"])
     raw_hits = tracing_provider.raw_hit_rows()
     normalization_counts = Counter(
         str(row["normalization_reason"])
@@ -305,6 +325,7 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
             "platform": "TELEGRAM",
             "query_attempt_count": len(attempts),
             "attempts": attempts,
+            "failures": failures,
             "raw_hits": raw_hits,
             "normalization_reasons": dict(sorted(normalization_counts.items())),
         },
@@ -317,6 +338,7 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
             "raw_opportunity_count": len(opportunities),
             "verdicts": dict(sorted(verdict_counts.items())),
             "reasons": dict(sorted(reason_counts.items())),
+            "search_failures": dict(sorted(failure_counts.items())),
         },
         "opportunities": opportunities,
     }
