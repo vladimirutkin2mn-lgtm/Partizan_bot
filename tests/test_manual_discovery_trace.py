@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from app.distribution_types import DistributionPlatform
 from app.manual_discovery_trace import (
+    _failure_rows,
     _filters,
     _selected_metadata,
     _telegram_normalization_diagnostic,
@@ -112,12 +113,14 @@ def test_trace_keeps_actionability_diagnostics_and_recent_context() -> None:
     result = _selected_metadata(
         {
             "handle": "thisisxtasia",
-            "action_target_url": None,
-            "action_target_specific": False,
-            "action_target_resolution": "COMMUNITY_ONLY",
-            "opportunity_scope": "COMMUNITY",
-            "actionability": "RESEARCH_ONLY",
-            "community_only_reason": "NO_FRESH_ACTION_TARGET",
+            "action_target_url": "https://t.me/thisisxtasia/455",
+            "action_target_specific": True,
+            "action_target_resolution": "DIRECT_MESSAGE_MATCH",
+            "action_target_quality": "FRESH_CONVERSATION",
+            "conversation_signals": ["QUESTION", "REQUEST"],
+            "target_match_terms": ["femdom"],
+            "opportunity_scope": "POST",
+            "actionability": "NEEDS_PREFLIGHT",
             "community_match_terms": ["femdom"],
             "linked_discussion_id": 2862464487,
             "surface_capabilities": {
@@ -131,8 +134,27 @@ def test_trace_keeps_actionability_diagnostics_and_recent_context() -> None:
         }
     )
 
-    assert result["community_only_reason"] == "NO_FRESH_ACTION_TARGET"
+    assert result["action_target_quality"] == "FRESH_CONVERSATION"
+    assert result["conversation_signals"] == ["QUESTION", "REQUEST"]
+    assert result["target_match_terms"] == ["femdom"]
     assert result["community_match_terms"] == ["femdom"]
     assert result["surface_capabilities"]["comment"] == "AVAILABLE"
     assert result["recent_context"] == recent_context
     assert "unrelated_internal_field" not in result
+
+
+def test_trace_serializes_bounded_search_failure_message() -> None:
+    failure = SimpleNamespace(
+        platform=DistributionPlatform.TELEGRAM,
+        query="site:t.me FemDom",
+        error_type="RateLimitError",
+        message="search: Error code: 429 - requests per minute exceeded" + "x" * 700,
+    )
+
+    rows = _failure_rows([failure])
+
+    assert rows[0]["platform"] == "TELEGRAM"
+    assert rows[0]["query"] == "site:t.me FemDom"
+    assert rows[0]["error_type"] == "RateLimitError"
+    assert rows[0]["message"].startswith("search: Error code: 429")
+    assert len(rows[0]["message"]) == 480
