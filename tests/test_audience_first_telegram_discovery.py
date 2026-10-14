@@ -68,6 +68,8 @@ def _snapshot(
     about: str,
     kind: TelegramSurfaceKind = TelegramSurfaceKind.CHANNEL,
     linked_discussion_id: int | None = 99,
+    message_text: str = "Сегодня встречаемся вечером. Подробности внутри.",
+    matched_terms: tuple[str, ...] = (),
 ) -> TelegramCommunitySnapshot:
     now = datetime.now(UTC)
     is_group = kind == TelegramSurfaceKind.GROUP
@@ -100,16 +102,16 @@ def _snapshot(
         recent_context=(
             TelegramRecentContext(
                 message_id=123,
-                text="Сегодня встречаемся вечером. Подробности внутри.",
+                text=message_text,
                 published_at=now - timedelta(hours=1),
                 url="https://t.me/example/123",
-                matched_terms=(),
+                matched_terms=matched_terms,
             ),
         ),
     )
 
 
-def test_relevant_community_can_resolve_fresh_post_even_when_post_text_has_no_query_terms() -> None:
+def test_relevant_community_keeps_non_conversational_fresh_post_as_research_only() -> None:
     adapter = ExpandedTelegramDiscoveryAdapter(use_default_research_connector=False)
 
     metadata = adapter._native_metadata(
@@ -120,11 +122,12 @@ def test_relevant_community_can_resolve_fresh_post_even_when_post_text_has_no_qu
         ),
     )
 
-    assert metadata["action_target_specific"] is True
-    assert metadata["action_target_url"] == "https://t.me/example/123"
-    assert metadata["action_target_resolution"] == "COMMUNITY_RELEVANCE_FRESH_POST"
-    assert metadata["opportunity_scope"] == "POST"
-    assert metadata["actionability"] == "NEEDS_PREFLIGHT"
+    assert metadata["action_target_specific"] is False
+    assert metadata["action_target_url"] is None
+    assert metadata["action_target_resolution"] == "COMMUNITY_ONLY"
+    assert metadata["opportunity_scope"] == "COMMUNITY"
+    assert metadata["actionability"] == "RESEARCH_ONLY"
+    assert metadata["community_only_reason"] == "NO_FRESH_CONVERSATIONAL_ACTION_TARGET"
     assert set(metadata["community_match_terms"]) & {"femdom", "bdsm", "знакомства"}
 
 
@@ -169,7 +172,7 @@ def test_relevant_broadcast_without_discussion_never_gets_fallback_action_target
     assert set(metadata["community_match_terms"]) & {"femdom", "bdsm", "знакомства"}
 
 
-def test_relevant_group_can_use_fresh_post_without_linked_discussion() -> None:
+def test_relevant_group_can_use_conversation_ready_post_without_linked_discussion() -> None:
     adapter = ExpandedTelegramDiscoveryAdapter(use_default_research_connector=False)
 
     metadata = adapter._native_metadata(
@@ -179,10 +182,14 @@ def test_relevant_group_can_use_fresh_post_without_linked_discussion() -> None:
             about="BDSM знакомства, события и безопасные практики",
             kind=TelegramSurfaceKind.GROUP,
             linked_discussion_id=None,
+            message_text="Кто-нибудь может посоветовать FemDom-сообщество для новичка?",
+            matched_terms=("femdom",),
         ),
     )
 
     assert metadata["action_target_specific"] is True
     assert metadata["action_target_url"] == "https://t.me/example/123"
+    assert metadata["action_target_resolution"] == "COMMUNITY_RELEVANCE_FRESH_CONVERSATION"
+    assert metadata["action_target_quality"] == "FRESH_CONVERSATION"
     assert metadata["opportunity_scope"] == "POST"
     assert metadata["actionability"] == "NEEDS_PREFLIGHT"
