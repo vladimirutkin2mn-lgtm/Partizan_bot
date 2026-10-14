@@ -66,6 +66,48 @@ def test_expanded_telegram_discovery_searches_participation_and_adjacent_topics(
     assert "kink" in queries or "kink" in topics
 
 
+def test_generated_prompt_boilerplate_does_not_pollute_telegram_queries() -> None:
+    adapter = ExpandedTelegramDiscoveryAdapter(use_default_research_connector=False)
+    product = SimpleNamespace(
+        id=uuid4(),
+        name="Promoted asset: FemDom",
+        problem_or_desire="",
+        known_audience="",
+        market="",
+        language="",
+        description=(
+            "What the product does: Helps identify actionable audience-conversation "
+            "opportunities. Context to use: Product / offer name: Promoted asset: FemDom"
+        ),
+    )
+    icp = SimpleNamespace(
+        id=uuid4(),
+        title="People exploring FemDom communities",
+        description="Generated audience description",
+        pain=(
+            "I want direct access to relevant conversations. Context to use: Product / "
+            "offer name: Promoted asset: FemDom Known audience / community: unknown"
+        ),
+        trigger=(
+            "I want richer contextual or interpretive detail. Context to use: Product URL "
+            "and Obvious terms from the intake prompt"
+        ),
+        alternatives=[],
+    )
+
+    requests = adapter.build_requests(product, icp)
+    queries = [item.discovery_query.query for item in requests]
+    joined = "\n".join(queries).casefold()
+
+    assert len(requests) == TELEGRAM_DISCOVERY_QUERY_BUDGET
+    assert all(query.casefold().startswith("site:t.me femdom ") for query in queries)
+    assert "context to use" not in joined
+    assert "what the product does" not in joined
+    assert "product / offer name" not in joined
+    assert "i want direct access" not in joined
+    assert "i want richer contextual" not in joined
+
+
 def test_adaptive_hints_replace_repeated_default_queries_inside_same_budget() -> None:
     adapter = ExpandedTelegramDiscoveryAdapter(
         use_default_research_connector=False,
