@@ -55,7 +55,10 @@ _CONVERSATION_REQUEST_PATTERNS = tuple(
     for pattern in (
         r"\b(?:can|could|would)\s+(?:anyone|someone|you)\b",
         r"\b(?:anyone|anybody|someone)\s+(?:know|recommend|suggest|help|tried|used|have|has)\b",
-        r"\b(?:i|we)\s+(?:need|want|am looking for|are looking for|could use|struggle|struggling|can't|cannot)\b",
+        (
+            r"\b(?:i|we)\s+(?:need|want|am looking for|are looking for|could use|"
+            r"struggle|struggling|can't|cannot)\b"
+        ),
         r"\b(?:need|looking for|seeking)\s+(?:help|advice|recommendations?|suggestions?|feedback)\b",
         r"\b(?:any|some)\s+(?:advice|recommendations?|suggestions?|feedback|thoughts)\b",
         r"\b(?:подскажите|посоветуйте|помогите|кто[- ]?нибудь|кто знает|есть ли|что думаете|как думаете)\b",
@@ -67,7 +70,10 @@ _CONVERSATION_REQUEST_PATTERNS = tuple(
 _PROMOTIONAL_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
-        r"\b(?:dm|dms|direct message|message me|contact me|subscribe|join|buy|order|book|register|discount|sale|promo|shop|store|price|pricing|apply|sign up)\b",
+        (
+            r"\b(?:dm|dms|direct message|message me|contact me|subscribe|join|buy|order|book|"
+            r"register|discount|sale|promo|shop|store|price|pricing|apply|sign up)\b"
+        ),
         r"\bspecial\s+offer\b",
         r"\b(?:подписывай|подпишись|вступай|присоединяй|покупай|купить|заказать|заказ|скидка|акция|регистрация|записаться|цена|стоимость)\w*\b",
         r"\b(?:пишите\s+в\s+лс|в\s+личку)\b",
