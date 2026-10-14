@@ -35,8 +35,21 @@ TELEGRAM_DISCOVERY_QUERY_BUDGET = 6
 TARGET_READY_TELEGRAM_OPPORTUNITIES = 5
 MAX_ADAPTIVE_DISCOVERY_ROUNDS = 3
 TELEGRAM_ACTION_TARGET_MAX_AGE = timedelta(days=7)
+TELEGRAM_QUERY_ANCHOR_MAX_CHARS = 180
 
 _RUSSIAN_LANGUAGE_MARKERS = ("ru", "russian", "рус", "русский", "русская")
+_QUERY_BOILERPLATE_MARKERS = (
+    "context to use",
+    "product / offer name",
+    "what the product does",
+    "known audience / community",
+    "product url",
+    "obvious terms",
+)
+_PRODUCT_NAME_PREFIX = re.compile(
+    r"^(?:promoted\s+asset|product|offer|продукт|оффер)\s*:\s*",
+    re.IGNORECASE,
+)
 _SEMANTIC_UTILITY_TERMS = {
     "site",
     "telegram",
@@ -103,31 +116,8 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
         market, language = self._market_language(product)
         discussion_terms, learning_terms, community_terms = self._participation_terms(language)
 
-        title = self._clean(getattr(icp, "title", ""))
-        pain = self._clean(getattr(icp, "pain", ""))
-        trigger = self._clean(getattr(icp, "trigger", ""))
-        alternatives = self._clean(" ".join(getattr(icp, "alternatives", [])[:3]))
-        product_theme = self._clean(
-            " ".join(
-                part
-                for part in (
-                    getattr(product, "name", ""),
-                    getattr(product, "problem_or_desire", "") or "",
-                    getattr(product, "value_proposition", "") or "",
-                    getattr(product, "description", "") or "",
-                    " ".join(getattr(product, "known_audience", [])[:3]),
-                )
-                if part
-            )
-        )
-        audience_theme = self._clean(
-            " ".join(part for part in (title, pain, trigger) if part)
-        )
-        stable_anchor = (
-            self._clean(f"{product_theme} {audience_theme}")
-            or audience_theme
-            or product_theme
-        )
+        alternatives = self._compact_alternatives(getattr(icp, "alternatives", []))
+        stable_anchor = self._stable_search_anchor(product, icp)
         if not stable_anchor:
             return []
 
@@ -164,7 +154,7 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
                 kind = OpportunityKind.GROUP
                 intent = community_terms
                 surface_hint = "Telegram public community replies"
-            anchored_hint = self._clean(f"{stable_anchor} {hint}")
+            anchored_hint = self._bounded_anchor(stable_anchor, self._concise_fragment(hint, 72))
             expansions.append(
                 (
                     kind,
@@ -179,6 +169,7 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
                 )
             )
 
+        adjacent_anchor = self._bounded_anchor(stable_anchor, alternatives)
         default_expansions = [
             (
                 OpportunityKind.CHANNEL,
@@ -215,9 +206,9 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
             ),
             (
                 OpportunityKind.CHANNEL,
-                self._clean(f"{stable_anchor} {alternatives}"),
+                adjacent_anchor,
                 self._query(
-                    self._clean(f"{stable_anchor} {alternatives}"),
+                    adjacent_anchor,
                     discussion_terms,
                     "Telegram adjacent community",
                     market,
@@ -390,6 +381,83 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
     @staticmethod
     def _clean(value: str) -> str:
         return " ".join(str(value or "").split()).strip()
+
+    @classmethod
+    def _concise_fragment(cls, value: object, max_chars: int = 96) -> str:
+        cleaned = cls._clean(str(value or ""))
+        if not cleaned:
+            return ""
+        lowered = cleaned.casefold()
+        if any(marker in lowered for marker in _QUERY_BOILERPLATE_MARKERS):
+            return ""
+        if len(cleaned) > max_chars:
+            return ""
+        return cleaned
+
+    @classmethod
+    def _product_name_anchor(cls, value: object) -> str:
+        cleaned = cls._clean(str(value or ""))
+        cleaned = _PRODUCT_NAME_PREFIX.sub("", cleaned).strip()
+        return cls._concise_fragment(cleaned, 80)
+
+    @classmethod
+    def _audience_fragments(cls, value: object) -> list[str]:
+        if isinstance(value, str):
+            values = [value]
+        else:
+            try:
+                values = list(value or [])
+            except TypeError:
+                values = [value]
+        return [
+            fragment
+            for fragment in (cls._concise_fragment(item, 72) for item in values[:2])
+            if fragment
+        ]
+
+    @classmethod
+    def _bounded_anchor(cls, *parts: object) -> str:
+        anchor = cls._clean(" ".join(str(part or "") for part in parts if part))
+        if len(anchor) <= TELEGRAM_QUERY_ANCHOR_MAX_CHARS:
+            return anchor
+        words = anchor.split()
+        bounded: list[str] = []
+        for word in words:
+            candidate = " ".join((*bounded, word))
+            if len(candidate) > TELEGRAM_QUERY_ANCHOR_MAX_CHARS:
+                break
+            bounded.append(word)
+        return " ".join(bounded)
+
+    @classmethod
+    def _stable_search_anchor(cls, product: ProductProfileView, icp: ICPView) -> str:
+        product_name = cls._product_name_anchor(getattr(product, "name", ""))
+        problem = cls._concise_fragment(getattr(product, "problem_or_desire", ""), 96)
+        known_audience = cls._audience_fragments(getattr(product, "known_audience", []))
+        icp_title = cls._concise_fragment(getattr(icp, "title", ""), 80)
+
+        # Product identity is intentionally first so query truncation cannot remove the most
+        # discriminative niche term (for example, "FemDom" from "Promoted asset: FemDom").
+        # Long generated pain/trigger/description fields are intentionally excluded: the
+        # search trace showed that they can contain prompt/context boilerplate rather than
+        # audience language and drown the product signal in web search.
+        return cls._bounded_anchor(product_name, problem, *known_audience, icp_title)
+
+    @classmethod
+    def _compact_alternatives(cls, value: object) -> str:
+        if isinstance(value, str):
+            values = [value]
+        else:
+            try:
+                values = list(value or [])
+            except TypeError:
+                values = [value]
+        fragments = [
+            fragment
+            for fragment in (cls._concise_fragment(item, 48) for item in values[:3])
+            if fragment
+        ]
+        return cls._bounded_anchor(*fragments)
 
     @classmethod
     def _topic(cls, anchor: str, intent: str) -> str:
