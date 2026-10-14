@@ -50,6 +50,30 @@ _PRODUCT_NAME_PREFIX = re.compile(
     r"^(?:promoted\s+asset|product|offer|продукт|оффер)\s*:\s*",
     re.IGNORECASE,
 )
+_CONVERSATION_REQUEST_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\b(?:can|could|would)\s+(?:anyone|someone|you)\b",
+        r"\b(?:anyone|anybody|someone)\s+(?:know|recommend|suggest|help|tried|used|have|has)\b",
+        r"\b(?:i|we)\s+(?:need|want|am looking for|are looking for|could use|struggle|struggling|can't|cannot)\b",
+        r"\b(?:need|looking for|seeking)\s+(?:help|advice|recommendations?|suggestions?|feedback)\b",
+        r"\b(?:any|some)\s+(?:advice|recommendations?|suggestions?|feedback|thoughts)\b",
+        r"\b(?:подскажите|посоветуйте|помогите|кто[- ]?нибудь|кто знает|есть ли|что думаете|как думаете)\b",
+        r"\b(?:я|мы)\s+(?:ищу|ищем|не могу|не можем|хочу|хотим)\b",
+        r"\bмне\s+(?:нужен|нужна|нужно|нужны)\b",
+        r"\b(?:нужен|нужна|нужно|нужны)\s+(?:совет|помощь|рекомендац)",
+    )
+)
+_PROMOTIONAL_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\b(?:dm|dms|direct message|message me|contact me|subscribe|join|buy|order|book|register|discount|sale|promo|shop|store|price|pricing|apply|sign up)\b",
+        r"\bspecial\s+offer\b",
+        r"\b(?:подписывай|подпишись|вступай|присоединяй|покупай|купить|заказать|заказ|скидка|акция|регистрация|записаться|цена|стоимость)\w*\b",
+        r"\b(?:пишите\s+в\s+лс|в\s+личку)\b",
+    )
+)
+_OUTBOUND_LINK_PATTERN = re.compile(r"(?:https?://|www\.|\bt\.me/)", re.IGNORECASE)
 _SEMANTIC_UTILITY_TERMS = {
     "site",
     "telegram",
@@ -269,32 +293,58 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
         return enriched
 
     def _native_metadata(self, request, snapshot) -> dict:
-        """Keep community discovery separate from action-target resolution.
+        """Separate relevant communities from concrete conversation opportunities.
 
-        Native Telegram research can prove that a community is relevant even when none of
-        the last few messages repeats the full search query. A concrete post is actionable
-        only when it is recent, has inspectable text and the surface can support a later
-        interaction. Publisher preflight remains mandatory before any write action.
+        A concrete Telegram target is actionable only when it is recent, inspectable,
+        semantically relevant and contains a real conversation cue such as a question or
+        request for help/advice. Promotional calls-to-action and broadcast-only content remain
+        research evidence, not opportunities. Publisher preflight remains mandatory before
+        any write action.
         """
         metadata = super()._native_metadata(request, snapshot)
         now = datetime.now(UTC)
+        query_terms = self._semantic_terms(request.topic or request.discovery_query.query)
 
         if metadata.get("action_target_specific") is True:
             target_url = str(metadata.get("action_target_url") or "").strip()
             direct_context = self._context_for_target(snapshot, target_url)
             direct_quality = self._target_context_quality(direct_context, now)
-            if direct_quality != "ELIGIBLE":
-                return self._community_only_metadata(
-                    metadata,
-                    reason=f"DIRECT_TARGET_{direct_quality}",
+            direct_reason = direct_quality
+            if direct_quality == "ELIGIBLE":
+                ready, direct_reason, signals, match_terms = self._conversation_readiness(
+                    direct_context,
+                    query_terms,
                 )
-            metadata["action_target_resolution"] = "DIRECT_MESSAGE_MATCH"
-            metadata["action_target_quality"] = "FRESH_TEXT"
-            metadata["opportunity_scope"] = "POST"
-            metadata["actionability"] = "NEEDS_PREFLIGHT"
-            return metadata
+                if ready:
+                    return self._promote_action_target(
+                        metadata,
+                        direct_context,
+                        resolution="DIRECT_MESSAGE_MATCH",
+                        conversation_signals=signals,
+                        target_match_terms=match_terms,
+                    )
 
-        query_terms = self._semantic_terms(request.topic or request.discovery_query.query)
+            recovered = self._select_conversation_target(
+                snapshot,
+                now,
+                query_terms,
+                exclude_url=target_url,
+            )
+            if recovered is not None:
+                item, signals, match_terms = recovered
+                return self._promote_action_target(
+                    metadata,
+                    item,
+                    resolution="RECOVERED_FRESH_CONVERSATION",
+                    conversation_signals=signals,
+                    target_match_terms=match_terms,
+                )
+
+            return self._community_only_metadata(
+                metadata,
+                reason=f"DIRECT_TARGET_{direct_reason}",
+            )
+
         community_terms = self._semantic_terms(
             f"{getattr(snapshot, 'title', '')} {getattr(snapshot, 'about', '')}"
         )
@@ -317,30 +367,23 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
                 reason="NO_INTERACTION_SURFACE",
             )
 
-        eligible = []
-        for item in getattr(snapshot, "recent_context", ()) or ():
-            if self._target_context_quality(item, now) != "ELIGIBLE":
-                continue
-            published_at = self._aware_datetime(getattr(item, "published_at", None))
-            url = str(getattr(item, "url", "") or "").strip()
-            if published_at is not None and url:
-                eligible.append((published_at, url))
-        if not eligible:
+        selected = self._select_conversation_target(snapshot, now, query_terms)
+        if selected is None:
             return self._community_only_metadata(
                 metadata,
                 overlap=overlap,
-                reason="NO_FRESH_TEXT_ACTION_TARGET",
+                reason="NO_FRESH_CONVERSATIONAL_ACTION_TARGET",
             )
 
-        _, target_url = max(eligible, key=lambda item: item[0])
-        metadata["action_target_url"] = target_url
-        metadata["action_target_specific"] = True
-        metadata["action_target_resolution"] = "COMMUNITY_RELEVANCE_FRESH_POST"
-        metadata["action_target_quality"] = "FRESH_TEXT"
-        metadata["community_match_terms"] = overlap[:12]
-        metadata["opportunity_scope"] = "POST"
-        metadata["actionability"] = "NEEDS_PREFLIGHT"
-        return metadata
+        item, signals, match_terms = selected
+        return self._promote_action_target(
+            metadata,
+            item,
+            resolution="COMMUNITY_RELEVANCE_FRESH_CONVERSATION",
+            conversation_signals=signals,
+            target_match_terms=match_terms,
+            overlap=overlap,
+        )
 
     @classmethod
     def _context_for_target(cls, snapshot, target_url: str):
@@ -352,6 +395,76 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
             if item_url == normalized:
                 return item
         return None
+
+    @classmethod
+    def _select_conversation_target(
+        cls,
+        snapshot,
+        now: datetime,
+        query_terms: set[str],
+        *,
+        exclude_url: str | None = None,
+    ):
+        excluded = str(exclude_url or "").strip().rstrip("/")
+        eligible = []
+        for item in getattr(snapshot, "recent_context", ()) or ():
+            item_url = str(getattr(item, "url", "") or "").strip().rstrip("/")
+            if excluded and item_url == excluded:
+                continue
+            if cls._target_context_quality(item, now) != "ELIGIBLE":
+                continue
+            ready, _, signals, match_terms = cls._conversation_readiness(item, query_terms)
+            if not ready:
+                continue
+            published_at = cls._aware_datetime(getattr(item, "published_at", None))
+            if published_at is not None and item_url:
+                eligible.append((published_at, item, signals, match_terms))
+        if not eligible:
+            return None
+        _, item, signals, match_terms = max(eligible, key=lambda candidate: candidate[0])
+        return item, signals, match_terms
+
+    @classmethod
+    def _conversation_readiness(
+        cls,
+        item,
+        query_terms: set[str],
+    ) -> tuple[bool, str, list[str], list[str]]:
+        text = cls._clean(str(getattr(item, "text", "") or ""))
+        if not text:
+            return False, "EMPTY_TEXT", [], []
+
+        matched = cls._semantic_terms(
+            " ".join(str(term or "") for term in getattr(item, "matched_terms", ()) or ())
+        )
+        match_terms = sorted(
+            (matched & query_terms) | (cls._semantic_terms(text) & query_terms)
+        )
+        if not match_terms:
+            return False, "NO_TARGET_SEMANTIC_MATCH", [], []
+
+        signals: list[str] = []
+        if any(marker in text for marker in ("?", "؟", "¿")):
+            signals.append("QUESTION")
+        if any(pattern.search(text) for pattern in _CONVERSATION_REQUEST_PATTERNS):
+            signals.append("REQUEST")
+        if not signals:
+            return False, "NO_CONVERSATION_CUE", [], match_terms
+
+        promo_signals: list[str] = []
+        if _OUTBOUND_LINK_PATTERN.search(text):
+            promo_signals.append("OUTBOUND_LINK")
+        if any(pattern.search(text) for pattern in _PROMOTIONAL_PATTERNS):
+            promo_signals.append("PROMOTIONAL_CTA")
+
+        # A question alone does not make an advertisement a useful conversation target.
+        # Two independent conversational signals can still survive one incidental link.
+        if len(promo_signals) >= 2 or (
+            promo_signals and signals == ["QUESTION"]
+        ):
+            return False, "PROMOTIONAL", signals, match_terms
+
+        return True, "READY", signals, match_terms
 
     @classmethod
     def _target_context_quality(cls, item, now: datetime) -> str:
@@ -377,6 +490,31 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
             return value.replace(tzinfo=UTC)
         return value.astimezone(UTC)
 
+    @classmethod
+    def _promote_action_target(
+        cls,
+        metadata: dict,
+        item,
+        *,
+        resolution: str,
+        conversation_signals: list[str],
+        target_match_terms: list[str],
+        overlap: list[str] | None = None,
+    ) -> dict:
+        target_url = str(getattr(item, "url", "") or "").strip()
+        metadata["action_target_url"] = target_url
+        metadata["action_target_specific"] = True
+        metadata["action_target_resolution"] = resolution
+        metadata["action_target_quality"] = "FRESH_CONVERSATION"
+        metadata["conversation_signals"] = conversation_signals
+        metadata["target_match_terms"] = target_match_terms[:12]
+        metadata["opportunity_scope"] = "POST"
+        metadata["actionability"] = "NEEDS_PREFLIGHT"
+        metadata.pop("community_only_reason", None)
+        if overlap:
+            metadata["community_match_terms"] = overlap[:12]
+        return metadata
+
     @staticmethod
     def _community_only_metadata(
         metadata: dict,
@@ -390,6 +528,9 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
         metadata["opportunity_scope"] = "COMMUNITY"
         metadata["actionability"] = "RESEARCH_ONLY"
         metadata["community_only_reason"] = reason
+        metadata.pop("action_target_quality", None)
+        metadata.pop("conversation_signals", None)
+        metadata.pop("target_match_terms", None)
         if overlap:
             metadata["community_match_terms"] = overlap[:12]
         return metadata
