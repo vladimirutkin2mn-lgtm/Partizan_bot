@@ -86,7 +86,7 @@ def test_fresh_conversational_direct_match_remains_specific() -> None:
     assert metadata["action_target_specific"] is True
     assert metadata["action_target_resolution"] == "DIRECT_MESSAGE_MATCH"
     assert metadata["action_target_quality"] == "FRESH_CONVERSATION"
-    assert metadata["conversation_signals"] == ["QUESTION"]
+    assert metadata["conversation_signals"] == ["QUESTION", "REQUEST"]
     assert metadata["target_match_terms"] == ["femdom"]
     assert metadata["opportunity_scope"] == "POST"
     assert metadata["actionability"] == "NEEDS_PREFLIGHT"
