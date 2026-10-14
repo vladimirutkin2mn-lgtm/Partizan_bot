@@ -75,10 +75,14 @@ def _snapshot(*, relevant: bool, message_id: int = 123) -> TelegramCommunitySnap
         recent_context=(
             TelegramRecentContext(
                 message_id=message_id,
-                text="Сегодня встречаемся вечером. Подробности внутри.",
+                text=(
+                    "Кто-нибудь может посоветовать FemDom-сообщество для новичка?"
+                    if relevant
+                    else "Сегодня встречаемся вечером. Подробности внутри."
+                ),
                 published_at=now - timedelta(hours=1),
                 url=f"https://t.me/example/{message_id}",
-                matched_terms=(),
+                matched_terms=(("femdom",) if relevant else ()),
             ),
         ),
     )
