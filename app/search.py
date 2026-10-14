@@ -77,6 +77,9 @@ class OpenAIWebSearchProvider(SearchProvider):
 
         self._client = OpenAI(api_key=api_key)
         self._model = model
+        self._first_request_lock = asyncio.Lock()
+        self._first_request_completed = False
+        self._fatal_search_error: Exception | None = None
 
     async def search(self, discovery_query: DiscoveryQuery, limit: int = 5) -> list[SearchHit]:
         source_instruction = {
@@ -118,16 +121,66 @@ class OpenAIWebSearchProvider(SearchProvider):
             "because it contains matching keywords. If no source clears that evidence bar, return "
             "no citations rather than inventing or stretching relevance."
         )
-        response = await asyncio.to_thread(
-            self._client.responses.create,
-            model=self._model,
-            tools=[{"type": "web_search"}],
-            input=prompt,
-        )
+        response = await self._create_response(prompt)
         hits = self._extract_hits(response, discovery_query)
         # No citations is a valid research outcome: the evidence bar was not met.
         # Transport/provider failures still raise from responses.create above.
         return hits[:limit]
+
+    async def _create_response(self, prompt: str) -> Any:
+        if self._fatal_search_error is not None:
+            raise self._fatal_search_error
+
+        # Let one request establish that the provider is usable before the engine fans out.
+        # If that first request proves the account has no API credits, every queued search
+        # can fail locally instead of sending the same doomed request to the provider.
+        if not self._first_request_completed:
+            async with self._first_request_lock:
+                if self._fatal_search_error is not None:
+                    raise self._fatal_search_error
+                if not self._first_request_completed:
+                    try:
+                        return await self._request_response(prompt)
+                    finally:
+                        self._first_request_completed = True
+
+        return await self._request_response(prompt)
+
+    async def _request_response(self, prompt: str) -> Any:
+        try:
+            return await asyncio.to_thread(
+                self._client.responses.create,
+                model=self._model,
+                tools=[{"type": "web_search"}],
+                input=prompt,
+            )
+        except Exception as exc:
+            if self._is_credit_balance_exhausted(exc):
+                self._fatal_search_error = exc
+            raise
+
+    @staticmethod
+    def _is_credit_balance_exhausted(exc: Exception) -> bool:
+        body = getattr(exc, "body", None)
+        if isinstance(body, dict):
+            details = body.get("error", body)
+            if isinstance(details, dict):
+                error_type = str(details.get("type") or "").lower()
+                error_code = str(details.get("code") or "").lower()
+                if error_type == "insufficient_quota":
+                    return True
+                if error_code == "credit_balance_exhausted":
+                    return True
+
+        message = f"{exc} {body or ''}".lower()
+        return any(
+            marker in message
+            for marker in (
+                "insufficient_quota",
+                "credit_balance_exhausted",
+                "no credits remaining",
+            )
+        )
 
     def _extract_hits(
         self,
