@@ -7,7 +7,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from app.config import get_settings
-from app.openai_usage import log_openai_usage
+from app.openai_usage import log_openai_usage, openai_task_options
 
 StructuredModelT = TypeVar("StructuredModelT", bound=BaseModel)
 
@@ -40,10 +40,11 @@ class OpenAIResponsesProvider(LLMProvider):
         messages: list[LLMMessage],
         response_model: type[StructuredModelT],
     ) -> StructuredModelT:
+        options = openai_task_options(self._model)
         started = time.perf_counter()
         response = await asyncio.to_thread(
             self._client.responses.parse,
-            model=self._model,
+            **options,
             input=[
                 {"role": message.role, "content": message.content}
                 for message in messages
@@ -52,7 +53,7 @@ class OpenAIResponsesProvider(LLMProvider):
         )
         log_openai_usage(
             response,
-            model=self._model,
+            options=options,
             duration_seconds=time.perf_counter() - started,
         )
         parsed = response.output_parsed

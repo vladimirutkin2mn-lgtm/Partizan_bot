@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Any
 
 from app.config import get_settings
-from app.openai_usage import log_openai_usage
+from app.openai_usage import log_openai_usage, openai_task_options
 
 
 class SourceClass(StrEnum):
@@ -149,11 +149,12 @@ class OpenAIWebSearchProvider(SearchProvider):
         return await self._request_response(prompt)
 
     async def _request_response(self, prompt: str) -> Any:
+        options = openai_task_options(self._model)
         started = time.perf_counter()
         try:
             response = await asyncio.to_thread(
                 self._client.responses.create,
-                model=self._model,
+                **options,
                 tools=[{"type": "web_search"}],
                 input=prompt,
             )
@@ -163,7 +164,7 @@ class OpenAIWebSearchProvider(SearchProvider):
             raise
         log_openai_usage(
             response,
-            model=self._model,
+            options=options,
             duration_seconds=time.perf_counter() - started,
         )
         return response
