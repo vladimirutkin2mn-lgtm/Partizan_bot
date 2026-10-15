@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-5.6"
     search_provider: str = "mock"
     search_model: str = "gpt-5.6-terra"
+    # Per-task overrides as "task=value,task=value". Unlisted tasks keep LLM_MODEL /
+    # SEARCH_MODEL and send no reasoning parameter.
+    openai_task_models: str = ""
+    openai_task_reasoning_effort: str = ""
     openai_api_key: str | None = None
     telegram_research_provider: str = "unavailable"
     telegram_research_public_ready: bool = False

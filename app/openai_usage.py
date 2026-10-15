@@ -6,6 +6,7 @@ from contextvars import ContextVar
 from typing import Any
 from uuid import UUID
 
+from app.config import get_settings
 from app.logging import JsonFormatter
 
 _logger = logging.getLogger(__name__)
@@ -33,7 +34,30 @@ def openai_usage_context(task: str, product_id: UUID | str | None = None) -> Ite
         _product_id.reset(product_token)
 
 
-def log_openai_usage(response: Any, *, model: str, duration_seconds: float) -> None:
+def _task_map(raw: str) -> dict[str, str]:
+    pairs = (item.split("=", 1) for item in raw.split(",") if "=" in item)
+    return {task.strip(): value.strip() for task, value in pairs if task.strip() and value.strip()}
+
+
+def openai_task_options(default_model: str) -> dict[str, Any]:
+    """Model and reasoning for the current task; unconfigured tasks keep today's request."""
+    settings = get_settings()
+    task = _task.get()
+    options: dict[str, Any] = {
+        "model": _task_map(settings.openai_task_models).get(task, default_model),
+    }
+    effort = _task_map(settings.openai_task_reasoning_effort).get(task)
+    if effort:
+        options["reasoning"] = {"effort": effort}
+    return options
+
+
+def log_openai_usage(
+    response: Any,
+    *,
+    options: dict[str, Any],
+    duration_seconds: float,
+) -> None:
     """Write one JSON line with the call's token usage. Never raises."""
     response_id = None
     try:
@@ -44,7 +68,8 @@ def log_openai_usage(response: Any, *, model: str, duration_seconds: float) -> N
         payload = {
             "event": "openai_usage",
             "task": _task.get(),
-            "model": model,
+            "model": options["model"],
+            "reasoning_effort": options.get("reasoning", {}).get("effort"),
             "product_id": _product_id.get(),
             "response_id": response_id,
             "input_tokens": getattr(usage, "input_tokens", None),
