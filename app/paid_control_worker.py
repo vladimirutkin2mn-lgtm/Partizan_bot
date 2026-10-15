@@ -5,6 +5,7 @@ import json
 import time
 from collections.abc import Callable
 
+from app.logging import configure_logging
 from app.paid_control_sweep import PaidControlSweepService, paid_control_sweep_service
 from app.worker_health import PAID_CONTROL_WORKER, WorkerHeartbeatService
 
@@ -85,6 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    configure_logging()
     args = build_parser().parse_args()
     worker = PaidControlWorker()
     try:

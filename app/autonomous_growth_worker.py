@@ -28,6 +28,7 @@ from app.growth_autoresearch_loop import (
     GrowthAutoResearchLoopService,
     growth_autoresearch_loop_service,
 )
+from app.logging import configure_logging
 from app.worker_health import AUTONOMOUS_GROWTH_WORKER, WorkerHeartbeatService
 
 AUTONOMOUS_SWEEP_CONTENTION_RETRY_SECONDS = 5.0
@@ -168,6 +169,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    configure_logging()
     args = build_parser().parse_args()
     worker = AutonomousGrowthWorker()
     try:
