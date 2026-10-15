@@ -6,6 +6,7 @@ from app.distribution_schemas import (
     AudienceDistributionMapView,
     DistributionOpportunityView,
 )
+from app.openai_usage import openai_usage_context
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ICPGenerationResponse, ProductProfileView
 from app.search import get_search_provider
@@ -86,7 +87,8 @@ class InMemoryAudienceIntelligenceService:
         if not top_icps:
             raise ValueError("ICP generation must contain at least one segment")
 
-        seeds = await engine.discover(product=product, icps=top_icps)
+        with openai_usage_context("audience_discovery", product.id):
+            seeds = await engine.discover(product=product, icps=top_icps)
         discovered = [
             DistributionOpportunityView(id=uuid4(), **seed.model_dump())
             for seed in seeds

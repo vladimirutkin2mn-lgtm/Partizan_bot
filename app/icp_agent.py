@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.llm import LLMMessage, LLMProvider
 from app.marketing_intelligence import MarketingTask, render_marketing_guidance
+from app.openai_usage import openai_usage_context
 
 
 class ICPDimensionScores(BaseModel):
@@ -104,10 +105,11 @@ class ICPEngine:
             generation = self._fallback_generation(product_profile)
         else:
             try:
-                generation = await self._provider.parse(
-                    messages=self._build_messages(product_profile),
-                    response_model=ICPGeneration,
-                )
+                with openai_usage_context("icp_generation", product_profile.get("id")):
+                    generation = await self._provider.parse(
+                        messages=self._build_messages(product_profile),
+                        response_model=ICPGeneration,
+                    )
             except Exception:
                 generation = self._fallback_generation(product_profile)
         return self.rank(generation.candidates)

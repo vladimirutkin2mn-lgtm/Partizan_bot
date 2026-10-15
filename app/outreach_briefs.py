@@ -23,6 +23,7 @@ from app.distribution_types import AttributionLevel, AutomationLevel, Distributi
 from app.llm import LLMMessage, LLMProvider, get_llm_provider
 from app.marketing_intelligence import MarketingTask, render_marketing_guidance
 from app.models import ProductProfileStatus
+from app.openai_usage import openai_usage_context
 from app.outreach_targets import OutreachTargetType, OutreachTargetView, outreach_target_service
 from app.product_intake import product_intake_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
@@ -149,23 +150,24 @@ class OutreachBriefComposer:
                 operator_offer_context=operator_offer_context,
                 tone=tone,
             )
-        return await self._provider.parse(
-            messages=[
-                LLMMessage(role="system", content=OUTREACH_BRIEF_MARKETING_PROMPT),
-                LLMMessage(
-                    role="user",
-                    content=(
-                        f"Product name: {product.name}\n"
-                        f"Allowed product facts: {allowed_product_facts}\n"
-                        f"Target: {target.model_dump(mode='json')}\n"
-                        f"Exact offer type: {offer_type.value}\n"
-                        f"Operator offer context: {operator_offer_context}\n"
-                        f"Requested tone: {tone or 'concise, professional, human'}\n"
+        with openai_usage_context("outreach_brief", product.id):
+            return await self._provider.parse(
+                messages=[
+                    LLMMessage(role="system", content=OUTREACH_BRIEF_MARKETING_PROMPT),
+                    LLMMessage(
+                        role="user",
+                        content=(
+                            f"Product name: {product.name}\n"
+                            f"Allowed product facts: {allowed_product_facts}\n"
+                            f"Target: {target.model_dump(mode='json')}\n"
+                            f"Exact offer type: {offer_type.value}\n"
+                            f"Operator offer context: {operator_offer_context}\n"
+                            f"Requested tone: {tone or 'concise, professional, human'}\n"
+                        ),
                     ),
-                ),
-            ],
-            response_model=OutreachBriefCore,
-        )
+                ],
+                response_model=OutreachBriefCore,
+            )
 
     def _mock_core(
         self,

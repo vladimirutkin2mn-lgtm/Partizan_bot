@@ -1,11 +1,13 @@
 import asyncio
 import hashlib
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
 from app.config import get_settings
+from app.openai_usage import log_openai_usage
 
 
 class SourceClass(StrEnum):
@@ -147,8 +149,9 @@ class OpenAIWebSearchProvider(SearchProvider):
         return await self._request_response(prompt)
 
     async def _request_response(self, prompt: str) -> Any:
+        started = time.perf_counter()
         try:
-            return await asyncio.to_thread(
+            response = await asyncio.to_thread(
                 self._client.responses.create,
                 model=self._model,
                 tools=[{"type": "web_search"}],
@@ -158,6 +161,12 @@ class OpenAIWebSearchProvider(SearchProvider):
             if self._is_credit_balance_exhausted(exc):
                 self._fatal_search_error = exc
             raise
+        log_openai_usage(
+            response,
+            model=self._model,
+            duration_seconds=time.perf_counter() - started,
+        )
+        return response
 
     @staticmethod
     def _is_credit_balance_exhausted(exc: Exception) -> bool:
