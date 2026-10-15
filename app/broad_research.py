@@ -10,6 +10,7 @@ from uuid import UUID, uuid5
 from pydantic import BaseModel, Field
 
 from app.distribution_types import DistributionPlatform
+from app.openai_usage import openai_usage_context
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ICPGenerationResponse, ICPView, ProductProfileView
 from app.search import (
@@ -203,7 +204,8 @@ class BroadResearchService:
             query = by_surface[surface]
             attempted = True
             try:
-                hits = await provider.search(query.discovery_query, limit=2)
+                with openai_usage_context("preview_scan", product.id):
+                    hits = await provider.search(query.discovery_query, limit=2)
             except Exception:
                 continue
             successful_search = True
@@ -245,7 +247,8 @@ class BroadResearchService:
             f"{self._context(product, icp)} {suffix}",
         )
         try:
-            hits = await provider.search(query.discovery_query, limit=3)
+            with openai_usage_context("selected_channel_research", product.id):
+                hits = await provider.search(query.discovery_query, limit=3)
         except Exception as exc:
             raise PreviewResearchUnavailableError(
                 "Selected-channel public-web research is temporarily unavailable."
@@ -266,10 +269,11 @@ class BroadResearchService:
         icps = list(icp_result.icps[:2])
         queries = [query for icp in icps for query in self._queries(product, icp)]
         provider = self._search_provider or get_search_provider()
-        results = await asyncio.gather(
-            *(provider.search(item.discovery_query, limit=2) for item in queries),
-            return_exceptions=True,
-        )
+        with openai_usage_context("broad_research", product.id):
+            results = await asyncio.gather(
+                *(provider.search(item.discovery_query, limit=2) for item in queries),
+                return_exceptions=True,
+            )
 
         opportunities: list[BroadResearchOpportunityView] = []
         seen: set[tuple[ResearchSurface, str]] = set()

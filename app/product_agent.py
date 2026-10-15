@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.llm import LLMMessage, LLMProvider
 from app.marketing_intelligence import MarketingTask, render_marketing_guidance
+from app.openai_usage import openai_usage_context
 
 
 class ClarificationCandidate(BaseModel):
@@ -131,10 +132,11 @@ class ProductIntakeAgent:
             analysis = self._fallback_analysis(brief, answers)
         else:
             try:
-                analysis = await self._provider.parse(
-                    messages=self._build_messages(brief, reference_links, answers),
-                    response_model=ProductAnalysis,
-                )
+                with openai_usage_context("product_intake"):
+                    analysis = await self._provider.parse(
+                        messages=self._build_messages(brief, reference_links, answers),
+                        response_model=ProductAnalysis,
+                    )
             except Exception:
                 analysis = self._fallback_analysis(brief, answers)
         analysis = self._normalize(analysis, brief)

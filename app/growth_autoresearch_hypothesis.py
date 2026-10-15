@@ -29,6 +29,7 @@ from app.growth_autoresearch_schemas import (
 )
 from app.llm import LLMMessage, LLMProvider, get_llm_provider
 from app.marketing_intelligence import MarketingTask, render_marketing_guidance
+from app.openai_usage import openai_usage_context
 from app.product_intake import product_intake_service
 from app.schemas import ProductProfileView
 
@@ -97,10 +98,11 @@ class GrowthAutoResearchHypothesisGenerator:
                 source="fallback",
             )
 
-        parsed = await self._provider.parse(
-            messages=self._build_messages(context, mode, rejection_notes),
-            response_model=GrowthHypothesisDraft,
-        )
+        with openai_usage_context("growth_hypothesis", context.product.id):
+            parsed = await self._provider.parse(
+                messages=self._build_messages(context, mode, rejection_notes),
+                response_model=GrowthHypothesisDraft,
+            )
         return GeneratedHypothesis(
             draft=self._normalize_draft(context, parsed, mode),
             source="llm",

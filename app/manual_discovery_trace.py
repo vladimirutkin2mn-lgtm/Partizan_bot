@@ -10,6 +10,7 @@ from uuid import UUID
 from app.audience_intelligence import AudienceIntelligenceEngine
 from app.discovery_relevance_learning import discovery_relevance_learning_service
 from app.icp_service import icp_service
+from app.openai_usage import openai_usage_context
 from app.product_intake import product_intake_service
 from app.search import DiscoveryQuery, SearchHit, SearchProvider, get_search_provider
 from app.telegram_discovery_strategy import ExpandedTelegramDiscoveryAdapter
@@ -233,7 +234,8 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
     # Deliberately use the base AudienceIntelligenceEngine. It performs the same current
     # Telegram query construction, search and enrichment, but does not call the semantic
     # gate's filter_and_learn method and therefore cannot add rejection memory.
-    raw = await engine.discover(product=product, icps=icps)
+    with openai_usage_context("discovery_trace", product_id):
+        raw = await engine.discover(product=product, icps=icps)
     snapshot = discovery_relevance_learning_service.snapshot(product_id)
 
     opportunities: list[dict] = []

@@ -23,6 +23,7 @@ from app.distribution_schemas import (
 from app.distribution_types import DistributionActionType, DistributionPlatform
 from app.llm import LLMMessage, LLMProvider, get_llm_provider
 from app.marketing_intelligence import marketing_task_for_action, render_marketing_guidance
+from app.openai_usage import openai_usage_context
 from app.project_marketing_memory import (
     ProjectMarketingMemoryService,
     project_marketing_memory_service,
@@ -289,31 +290,32 @@ class DistributionActionComposer:
             platform=opportunity.platform.value,
             action_type=play.action_type.value,
         )
-        return await self._provider.parse(
-            messages=[
-                LLMMessage(
-                    role="system",
-                    content=f"{ACTION_DRAFT_SYSTEM_PROMPT}\n\n{marketing_guidance}",
-                ),
-                LLMMessage(
-                    role="user",
-                    content=(
-                        f"Product: {product.model_dump(mode='json')}\n"
-                        f"Project marketing memory: {memory.rendered or None}\n"
-                        f"Distribution play: {play.model_dump(mode='json')}\n"
-                        f"Opportunity: {opportunity.model_dump(mode='json')}\n"
-                        f"Selected target: {target}\n"
-                        f"Applied CommunityPolicy: "
-                        f"{policy.model_dump(mode='json') if policy else None}\n"
-                        f"Tactic allows direct product link: {template.has_direct_product_link}\n"
-                        f"Tactic includes product mention: {template.has_product_mention}\n"
-                        f"Conversion brief: "
-                        f"{self._variant_prompt(variant) if variant else None}\n"
+        with openai_usage_context("action_variant_draft" if variant else "action_auto_prepare", product.id):
+            return await self._provider.parse(
+                messages=[
+                    LLMMessage(
+                        role="system",
+                        content=f"{ACTION_DRAFT_SYSTEM_PROMPT}\n\n{marketing_guidance}",
                     ),
-                ),
-            ],
-            response_model=DistributionContentDraft,
-        )
+                    LLMMessage(
+                        role="user",
+                        content=(
+                            f"Product: {product.model_dump(mode='json')}\n"
+                            f"Project marketing memory: {memory.rendered or None}\n"
+                            f"Distribution play: {play.model_dump(mode='json')}\n"
+                            f"Opportunity: {opportunity.model_dump(mode='json')}\n"
+                            f"Selected target: {target}\n"
+                            f"Applied CommunityPolicy: "
+                            f"{policy.model_dump(mode='json') if policy else None}\n"
+                            f"Tactic allows direct product link: {template.has_direct_product_link}\n"
+                            f"Tactic includes product mention: {template.has_product_mention}\n"
+                            f"Conversion brief: "
+                            f"{self._variant_prompt(variant) if variant else None}\n"
+                        ),
+                    ),
+                ],
+                response_model=DistributionContentDraft,
+            )
 
     def _mock_draft(
         self,

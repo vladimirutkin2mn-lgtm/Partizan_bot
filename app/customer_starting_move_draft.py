@@ -16,6 +16,7 @@ from app.customer_channel_schemas import (
 )
 from app.customer_starting_move import customer_starting_move_service
 from app.llm import LLMMessage, LLMProvider, get_llm_provider
+from app.openai_usage import openai_usage_context
 from app.product_intake import product_intake_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ProductProfileView
@@ -45,22 +46,23 @@ class CustomerStartingMoveDraftComposer:
     ) -> DistributionContentDraft:
         if self._provider is None:
             return self._mock_draft(product=product, move=move, target=target)
-        return await self._provider.parse(
-            messages=[
-                LLMMessage(role="system", content=REVIEW_ONLY_DRAFT_PROMPT),
-                LLMMessage(
-                    role="user",
-                    content=(
-                        f"Product: {product.model_dump(mode='json')}\n"
-                        f"Selected starting move: {move.model_dump(mode='json')}\n"
-                        f"Evidence target: {target}\n"
-                        "Prepare one concise first-test draft for review. Keep claims factual and "
-                        "source-bound. Publishing and spend remain outside this task."
+        with openai_usage_context("starting_move_draft", product.id):
+            return await self._provider.parse(
+                messages=[
+                    LLMMessage(role="system", content=REVIEW_ONLY_DRAFT_PROMPT),
+                    LLMMessage(
+                        role="user",
+                        content=(
+                            f"Product: {product.model_dump(mode='json')}\n"
+                            f"Selected starting move: {move.model_dump(mode='json')}\n"
+                            f"Evidence target: {target}\n"
+                            "Prepare one concise first-test draft for review. Keep claims factual and "
+                            "source-bound. Publishing and spend remain outside this task."
+                        ),
                     ),
-                ),
-            ],
-            response_model=DistributionContentDraft,
-        )
+                ],
+                response_model=DistributionContentDraft,
+            )
 
     @staticmethod
     def _mock_draft(

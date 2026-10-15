@@ -6,6 +6,7 @@ from uuid import UUID
 from app.audience_intelligence_service import audience_intelligence_service
 from app.distribution_schemas import DistributionOpportunityView
 from app.distribution_types import DistributionPlatform
+from app.openai_usage import openai_usage_context
 from app.opportunity_enrichment_schemas import (
     CommunityPolicyProposalView,
     OpportunityEnrichmentView,
@@ -60,21 +61,22 @@ class OpportunityEnrichmentService:
         limit: int = 6,
     ) -> OpportunityEnrichmentView:
         query = self._query(product, opportunity)
-        try:
-            hits = await self._provider.search(query, limit=limit)
-            thread_hits: list[SearchHit] = []
-            if opportunity.platform == DistributionPlatform.REDDIT:
-                thread_hits = await self._provider.search(
-                    self._reddit_thread_query(product, opportunity),
-                    limit=min(REDDIT_MAX_ACTION_TARGETS, max(1, limit)),
+        with openai_usage_context("opportunity_enrichment", product.id):
+            try:
+                hits = await self._provider.search(query, limit=limit)
+                thread_hits: list[SearchHit] = []
+                if opportunity.platform == DistributionPlatform.REDDIT:
+                    thread_hits = await self._provider.search(
+                        self._reddit_thread_query(product, opportunity),
+                        limit=min(REDDIT_MAX_ACTION_TARGETS, max(1, limit)),
+                    )
+            except Exception as exc:
+                return OpportunityEnrichmentView(
+                    opportunity=opportunity,
+                    new_evidence_count=0,
+                    partial_failure=True,
+                    failure_reason=f"{type(exc).__name__}: {str(exc)[:400]}",
                 )
-        except Exception as exc:
-            return OpportunityEnrichmentView(
-                opportunity=opportunity,
-                new_evidence_count=0,
-                partial_failure=True,
-                failure_reason=f"{type(exc).__name__}: {str(exc)[:400]}",
-            )
 
         relevant_hits = [
             hit for hit in hits if self._matches_platform(opportunity.platform, hit.url)

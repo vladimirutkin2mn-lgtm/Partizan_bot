@@ -1,4 +1,5 @@
 import asyncio
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TypeVar
@@ -6,6 +7,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from app.config import get_settings
+from app.openai_usage import log_openai_usage
 
 StructuredModelT = TypeVar("StructuredModelT", bound=BaseModel)
 
@@ -38,6 +40,7 @@ class OpenAIResponsesProvider(LLMProvider):
         messages: list[LLMMessage],
         response_model: type[StructuredModelT],
     ) -> StructuredModelT:
+        started = time.perf_counter()
         response = await asyncio.to_thread(
             self._client.responses.parse,
             model=self._model,
@@ -46,6 +49,11 @@ class OpenAIResponsesProvider(LLMProvider):
                 for message in messages
             ],
             text_format=response_model,
+        )
+        log_openai_usage(
+            response,
+            model=self._model,
+            duration_seconds=time.perf_counter() - started,
         )
         parsed = response.output_parsed
         if parsed is None:
