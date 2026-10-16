@@ -115,6 +115,14 @@ def test_telegram_auto_requires_explicit_automation_but_not_paid_settlement(monk
             _request(mode="AUTO"),
         )
 
+    service.update(project_id, "customer-token", _request(mode="OFF"))
+    rows = service.update(project_id, "customer-token", _request(mode="RESEARCH_ONLY"))
+    telegram = next(item for item in rows if item.platform == DistributionPlatform.TELEGRAM)
+    assert telegram.mode == "RESEARCH_ONLY"
+    assert telegram.publisher_mode == PublisherMode.CLIENT_OWNED
+    assert telegram.execution_ready is False
+    assert governance.status == TelegramAutomationStatus.DISABLED
+
     governance.status = TelegramAutomationStatus.ENABLED
     rows = service.update(
         project_id,

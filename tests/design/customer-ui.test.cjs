@@ -208,6 +208,52 @@ test('simple workspace keeps live metrics, result sections and all server channe
   assert.equal(ids.length, new Set(ids).size, 'rearranging the live UI must not duplicate IDs');
 });
 
+test('channel toggle uses execution readiness separately from publishing access', async t => {
+  const scenarios = [
+    { name: 'connected Telegram without automation consent', publisher: 'CLIENT_OWNED', ready: false, expected: 'RESEARCH_ONLY' },
+    { name: 'managed publisher with an execution blocker', publisher: 'PARTIZAN_MANAGED', ready: false, expected: 'RESEARCH_ONLY' },
+    { name: 'older channel response without execution readiness', publisher: 'CLIENT_OWNED', expected: 'RESEARCH_ONLY' },
+    { name: 'explicitly authorized and ready Telegram automation', publisher: 'CLIENT_OWNED', ready: true, expected: 'AUTO' },
+    { name: 'manual publishing stays research only', publisher: 'MANUAL', ready: true, expected: 'RESEARCH_ONLY' },
+  ];
+  for (const scenario of scenarios) await t.test(scenario.name, async t => {
+    const rows = structuredClone(channels);
+    const telegram = rows.find(row => row.platform === 'TELEGRAM');
+    Object.assign(telegram, {
+      mode: 'OFF', connected: true, publisher_mode: scenario.publisher,
+      publisher_modes: ['MANUAL', 'CLIENT_OWNED', 'PARTIZAN_MANAGED'].map(mode => ({ mode, available: true })),
+      capabilities: [{ capability: 'PUBLISH', ready: true }],
+      autonomous_execution_available: true,
+      ...(scenario.ready === undefined ? {} : { execution_ready: scenario.ready }),
+    });
+    const ui = await open('/workspace', { respond(call) {
+      if (call.url.endsWith('/channels')) {
+        if (call.method === 'PUT') telegram.mode = call.body.channels[0].mode;
+        return rows;
+      }
+      if (call.url.endsWith('/telegram/connection')) return { status: 'ACTIVE' };
+      if (call.url.endsWith('/telegram/automation')) return { status: scenario.ready ? 'ENABLED' : 'DISABLED' };
+    } });
+    t.after(ui.close);
+    const toggle = () => ui.d.querySelector('.channel-toggle[data-platform="TELEGRAM"]');
+    assert.equal(toggle().checked, false);
+    toggle().click(); await flush(); await flush();
+    assert.equal(toggle().checked, true);
+    assert.deepEqual(mutations(ui).map(call => ({ url: call.url, method: call.method, body: call.body })), [{
+      url: '/customer/workspace/project-1/channels', method: 'PUT',
+      body: { channels: [{ platform: 'TELEGRAM', mode: scenario.expected }] },
+    }]);
+    assert.equal(telegram.publisher_mode, scenario.publisher);
+    toggle().click(); await flush(); await flush();
+    assert.equal(toggle().checked, false);
+    assert.deepEqual(mutations(ui).map(call => call.body), [
+      { channels: [{ platform: 'TELEGRAM', mode: scenario.expected }] },
+      { channels: [{ platform: 'TELEGRAM', mode: 'OFF' }] },
+    ]);
+    assert.deepEqual(ui.errors, []);
+  });
+});
+
 test('review opens the exact prepared action without confirming or publishing it', async t => {
   const prepared = { action_id: 'action-1', action_status: 'PREPARED', customer_publish_confirmed: false, operator_approval_required: true, draft_title: 'Useful practice', content_text: 'Exact prepared copy with a real call to action.', context_text: 'Relevant conversation context.', target_url: 'https://t.me/example_test/123', source_url: 'https://example.test/evidence', source_title: 'Source evidence' };
   const ui = await open('/workspace', { respond(call) {

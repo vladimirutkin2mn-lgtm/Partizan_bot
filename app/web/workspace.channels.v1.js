@@ -39,7 +39,9 @@
   const clientOwnedMode = (channel) => publisherMode(channel, 'CLIENT_OWNED');
   const managedMode = (channel) => publisherMode(channel, 'PARTIZAN_MANAGED');
   const canPublish = (channel) => Boolean(capability(channel, 'PUBLISH')?.ready);
-  const enabledMode = (channel) => channel.publisher_mode !== 'MANUAL' && canPublish(channel) ? 'AUTO' : 'RESEARCH_ONLY';
+  // Publishing access alone does not authorize or make autonomous execution ready.
+  const enabledMode = (channel) => channel.publisher_mode !== 'MANUAL' && canPublish(channel)
+    && channel.execution_ready === true ? 'AUTO' : 'RESEARCH_ONLY';
 
   const api = async (path, options = {}) => {
     const response = await fetch(path, {
