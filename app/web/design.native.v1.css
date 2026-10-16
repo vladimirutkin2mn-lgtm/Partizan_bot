@@ -175,6 +175,15 @@ body.rd-surface { margin:0; font-family:Arial,Helvetica,sans-serif; -webkit-font
 .design-dialog-head { display:flex; justify-content:space-between; align-items:center; gap:20px; margin-bottom:22px; }
 .design-dialog-head h2 { margin:0; font-size:27px; }
 .design-dialog-head button { border:0; background:transparent; color:var(--rd-muted); font-size:28px; line-height:1; padding:8px; }
+.design-step-status { display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; margin:-5px 0 15px; color:var(--rd-muted); font-size:13px; line-height:1.5; }
+.design-step-status > span:last-child { color:var(--rd-green); background:#fff; border-radius:5px; padding:3px 8px; }
+.design-pending-actions { margin-top:22px; }
+.design-pending-actions h2 { font-size:14px; font-weight:500; color:var(--rd-muted); margin:0; }
+.design-pending-row { display:flex; align-items:center; justify-content:space-between; gap:12px 20px; padding:17px 0; border-bottom:1px solid var(--rd-line); }
+.design-pending-row strong { font-size:15px; line-height:1.5; font-weight:500; }
+.design-pending-row button { flex-shrink:0; }
+#design-next-content > [data-review-hidden] { display:none!important; }
+.design-earlier-steps { margin-top:24px; border:0; background:none; padding:8px 0; }
 .rd-surface .design-dialog .activation-card { border:0; padding:0; background:#fff; box-shadow:none; }
 .rd-surface .activation-head h2 { font-size:23px; line-height:1.3; }
 .rd-surface :is(.activation-list li,.activation-preview,.activation-preview-opportunity article,.activation-preview-directions article,.activation-action-primary,.distribution-channel-card,.research-state-card) { background:#f7faf8; border-color:var(--rd-line); box-shadow:none; }
@@ -204,6 +213,7 @@ body.rd-surface { margin:0; font-family:Arial,Helvetica,sans-serif; -webkit-font
   .ws-simple:has(#login-gate:not(.hidden)) .ws-header-inner { padding:21px 20px; }
   .design-auth-nav { gap:15px; font-size:13px; margin-left:auto; }
   .design-dialog { padding:24px 20px; }
+  .design-pending-row { align-items:flex-start; flex-direction:column; gap:10px; }
   .rd-surface .channel-execution-panel { grid-template-columns:1fr; }
 }
 @media(max-width:680px) {
