@@ -20,7 +20,11 @@ from app.distribution_schemas import (
     CommunityPolicyView,
     DistributionOpportunityView,
 )
-from app.distribution_types import DistributionActionType, DistributionPlatform
+from app.distribution_types import (
+    DistributionActionStatus,
+    DistributionActionType,
+    DistributionPlatform,
+)
 from app.llm import LLMMessage, LLMProvider, get_llm_provider
 from app.marketing_intelligence import marketing_task_for_action, render_marketing_guidance
 from app.openai_usage import openai_usage_context
@@ -485,6 +489,48 @@ class DistributionActionDraftingService:
         self._selector = selector or ActionTargetSelector()
         self._composer = composer or DistributionActionComposer(get_llm_provider())
 
+    @staticmethod
+    def _require_unprocessed_telegram_target(
+        product: ProductProfileView,
+        play: DistributionPlayView,
+        target: SelectedActionTarget,
+    ) -> None:
+        """Block duplicate target drafts before any LLM or execution state mutation."""
+        if (
+            play.platform != DistributionPlatform.TELEGRAM
+            or play.action_type
+            not in {DistributionActionType.COMMENT, DistributionActionType.REPLY}
+            or not target.url
+        ):
+            return
+
+        def key(url: object) -> str:
+            return str(url or "").strip().rstrip("/").split("?", 1)[0].casefold()
+
+        target_key = key(target.url)
+        for experiment in distribution_execution_service.list_experiments(product.id):
+            try:
+                action = distribution_execution_service.get_action(experiment.action_id)
+            except KeyError:
+                continue
+            if (
+                action.platform == DistributionPlatform.TELEGRAM
+                and action.action_type == play.action_type
+                and action.distribution_identity_id == play.selected_identity_id
+                and key(action.target_url) == target_key
+                and action.status
+                in {
+                    DistributionActionStatus.PREPARED,
+                    DistributionActionStatus.APPROVED,
+                    DistributionActionStatus.EXECUTED,
+                    DistributionActionStatus.FAILED,
+                }
+            ):
+                raise ValueError(
+                    "Telegram target already has a prepared, attempted or executed "
+                    "action for this identity; reconcile it instead of drafting again"
+                )
+
     async def auto_prepare(
         self,
         *,
@@ -496,6 +542,7 @@ class DistributionActionDraftingService:
             raise ValueError("Only READY DistributionPlay objects can be auto-prepared")
         opportunity = audience_intelligence_service.find_opportunity(play.opportunity_id)
         target = self._selector.select(play, opportunity)
+        self._require_unprocessed_telegram_target(product, play, target)
         policy = self._applied_policy(play, opportunity)
         draft = await self._composer.compose(
             product=product,
@@ -529,6 +576,7 @@ class DistributionActionDraftingService:
             raise ValueError("Only READY DistributionPlay objects can be auto-prepared")
         opportunity = audience_intelligence_service.find_opportunity(play.opportunity_id)
         target = self._selector.select(play, opportunity)
+        self._require_unprocessed_telegram_target(product, play, target)
         policy = self._applied_policy(play, opportunity)
         template = next(item for item in TACTIC_CATALOG if item.tactic_id == play.tactic_id)
         briefs = conversion_scenario_planner.variants(
