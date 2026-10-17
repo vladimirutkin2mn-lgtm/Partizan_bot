@@ -162,7 +162,11 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         by_handle: dict[str, dict] = {}
         for row in rows:
             stored = self._registry.hydrate_metadata(row)
-            if str(stored.get("access_state") or "").upper() == "JOIN_REQUIRED":
+            original = row.get("metadata") or {}
+            if any(
+                str(source.get("access_state") or "").upper() == "JOIN_REQUIRED"
+                for source in (stored, original)
+            ):
                 continue
             handle = str(stored.get("handle") or "").strip().lstrip("@").casefold()
             if not handle:
