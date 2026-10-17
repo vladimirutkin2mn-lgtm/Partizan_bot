@@ -409,3 +409,66 @@ async def test_registered_telegram_community_skips_repeat_web_search() -> None:
     assert len(opportunities) == 1
     assert opportunities[0].canonical_key == "telegram:42:community"
     assert opportunities[0].metadata["community_fit_reason"] == "REGISTRY_CONFIRMED"
+
+
+@pytest.mark.asyncio
+async def test_empty_active_mandate_runs_no_platform_search() -> None:
+    store = MemoryRuntimeStateStore()
+    product = _product()
+    store.put(
+        GROWTH_MANDATE_NAMESPACE,
+        str(product.id),
+        {
+            "product_id": str(product.id),
+            "status": "ACTIVE",
+            "allowed_platforms": [],
+        },
+    )
+    engine = CommunityFirstAudienceIntelligenceEngine(MockSearchProvider(), store=store)
+
+    opportunities = await engine.discover(product, [_icp()], max_opportunities=20)
+
+    assert opportunities == []
+    assert engine.last_attempts == []
+
+
+@pytest.mark.asyncio
+async def test_native_registry_refresh_keeps_confirmed_community_fit() -> None:
+    from app.community_first_telegram_adapter import TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE
+
+    class FakeConnector:
+        async def discover(self, query, known_handles):
+            del query, known_handles
+            return [_snapshot()]
+
+    store = MemoryRuntimeStateStore()
+    product = _product()
+    store.put(
+        TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE,
+        f"{product.id}:entity:42",
+        {
+            "id": f"{product.id}:entity:42",
+            "product_id": str(product.id),
+            "canonical_key": "telegram:42:community",
+            "title": "Play.Hard FemDom community",
+            "url": "https://t.me/play_hard_community",
+            "kind": "CHANNEL",
+            "metadata": {
+                "handle": "play_hard_community",
+                "telegram_entity_id": 42,
+                "community_fit_pass": True,
+                "community_fit_terms": ["femdom", "bdsm"],
+            },
+        },
+    )
+    adapter = CommunityFirstTelegramDiscoveryAdapter(
+        research_connector=FakeConnector(),
+        store=store,
+    )
+
+    refreshed = await adapter.refresh_registered(product, [_icp()])
+
+    assert len(refreshed) == 1
+    assert refreshed[0].metadata["registry_confirmed"] is True
+    assert refreshed[0].metadata["community_fit_pass"] is True
+    assert refreshed[0].metadata["community_fit_reason"] == "REGISTRY_CONFIRMED"
