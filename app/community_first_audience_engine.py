@@ -165,13 +165,16 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             return {adapter.platform for adapter in self._all_adapters}
         if str(payload.get("status") or "ACTIVE").upper() != "ACTIVE":
             return set()
+        configured = payload.get("allowed_platforms")
+        if configured is None:
+            return {adapter.platform for adapter in self._all_adapters}
         result: set[DistributionPlatform] = set()
-        for raw in list(payload.get("allowed_platforms") or []):
+        for raw in list(configured or []):
             try:
                 result.add(DistributionPlatform(str(getattr(raw, "value", raw)).upper()))
             except ValueError:
                 continue
-        return result or {adapter.platform for adapter in self._all_adapters}
+        return result
 
 
 def collapse_telegram_communities(opportunities: list) -> list:
