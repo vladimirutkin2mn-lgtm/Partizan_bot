@@ -27,7 +27,7 @@ from app.telegram_community_registry import (
 )
 from app.telegram_community_registry import TelegramCommunityRegistry
 from app.telegram_discovery_strategy import ExpandedTelegramDiscoveryAdapter
-from app.telegram_research import SurfaceAvailability, TelegramSurfaceKind
+from app.telegram_participation_target import select_telegram_participation_target
 
 COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET = 3
 TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE = _TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE
@@ -283,70 +283,13 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                 "opportunity_scope": "COMMUNITY",
                 "source_type": snapshot.kind.value,
                 "community_registry_key": f"telegram:{snapshot.entity_id}:community",
-                "action_target_url": None,
-                "action_target_specific": False,
-                "action_target_resolution": "COMMUNITY_ONLY",
-                "actionability": "RESEARCH_ONLY",
             }
         )
-        blocked = self._known_bad_targets()
-        context = sorted(
-            list(getattr(snapshot, "recent_context", ()) or ()),
-            key=lambda item: self._sort_date(getattr(item, "published_at", None)),
-            reverse=True,
+        target = select_telegram_participation_target(
+            snapshot,
+            blocked_urls=self._known_bad_targets(),
         )
-        selected = next(
-            (
-                item
-                for item in context
-                if str(getattr(item, "url", "") or "").strip()
-                and self._normalize_url(str(getattr(item, "url", ""))) not in blocked
-            ),
-            None,
-        )
-        if snapshot.kind == TelegramSurfaceKind.CHANNEL:
-            if snapshot.comment_surface != SurfaceAvailability.AVAILABLE:
-                metadata["community_only_reason"] = "NO_COMMENT_SURFACE"
-                return metadata
-            mode = "CHANNEL_COMMENT"
-        elif snapshot.kind == TelegramSurfaceKind.GROUP:
-            if (
-                snapshot.reply_surface != SurfaceAvailability.AVAILABLE
-                and snapshot.standalone_post_surface != SurfaceAvailability.AVAILABLE
-            ):
-                metadata["community_only_reason"] = "NO_GROUP_WRITE_SURFACE"
-                return metadata
-            mode = "GROUP_REPLY_OR_POST"
-        else:
-            metadata["community_only_reason"] = "UNSUPPORTED_TELEGRAM_ENTITY"
-            return metadata
-        if selected is None:
-            metadata["community_only_reason"] = "NO_UNBLOCKED_TARGET"
-            return metadata
-
-        target_url = str(getattr(selected, "url", "") or "").strip()
-        published_at = self._sort_date(getattr(selected, "published_at", None))
-        metadata.update(
-            {
-                "action_target_url": target_url,
-                "action_target_specific": True,
-                "action_target_resolution": "LATEST_UNBLOCKED_COMMUNITY_TARGET",
-                "action_target_quality": "LATEST_COMMUNITY_SURFACE",
-                "action_target_mode": mode,
-                "actionability": "NEEDS_PREFLIGHT",
-                "target_published_at": (
-                    None if published_at.year == 1 else published_at.isoformat()
-                ),
-                "target_age_days": (
-                    None
-                    if published_at.year == 1
-                    else round(
-                        max(0.0, (datetime.now(UTC) - published_at).total_seconds()) / 86400,
-                        2,
-                    )
-                ),
-            }
-        )
+        metadata.update(target.metadata())
         return metadata
 
     def _community_fit(
