@@ -104,8 +104,8 @@ class DiscoveryRelevanceLearningService:
 
     Learning is scoped to a product. An exact platform/community candidate is suppressed
     after repeated weak semantic observations for 30 days, unless the same candidate also
-    produced a valid multi-signal match for another ICP in that discovery batch. Theme
-    terms are activated only after they are independently observed in at least two rejected
+    produced a valid final match for another ICP in that discovery batch. Theme terms are
+    activated only after they are independently observed in at least two finally rejected
     communities and only when they are not part of the product/ICP vocabulary.
 
     Telegram gets one additional audience-first rule: generic generated-ICP words cannot
@@ -117,13 +117,13 @@ class DiscoveryRelevanceLearningService:
     def __init__(self, store: RuntimeStateStore | None = None) -> None:
         self._store = store or get_runtime_store()
 
-    def filter_and_learn(
+    def filter(
         self,
         *,
         product: Any,
-        icps: list[Any],
         opportunities: list[Any],
     ) -> tuple[list[Any], list[dict]]:
+        """Classify candidates without mutating negative-learning state."""
         product_id = self._product_id(product)
         snapshot = (
             self.snapshot(product_id)
@@ -171,32 +171,59 @@ class DiscoveryRelevanceLearningService:
                     "signal_families": decision["signal_families"],
                 }
             )
-
-        if product_id is not None and rejected:
-            accepted_keys = {
-                self._memory_key(
-                    self._platform_value(getattr(item, "platform", None)),
-                    str(getattr(item, "canonical_key", "") or ""),
-                )
-                for item in accepted
-            }
-            learning_rejections = [
-                row
-                for row in rejected
-                if self._memory_key(
-                    str(row.get("platform") or ""),
-                    str(row.get("canonical_key") or ""),
-                )
-                not in accepted_keys
-            ]
-            if learning_rejections:
-                self.observe_rejections(
-                    product_id=product_id,
-                    product=product,
-                    icps=icps,
-                    rejections=learning_rejections,
-                )
         return accepted, rejected
+
+    def learn_final_rejections(
+        self,
+        *,
+        product: Any,
+        icps: list[Any],
+        accepted: list[Any],
+        rejections: list[dict],
+    ) -> list[dict]:
+        """Persist only candidates that remain rejected after all rescue/final rules."""
+        accepted_keys = {
+            self._memory_key(
+                self._platform_value(getattr(item, "platform", None)),
+                str(getattr(item, "canonical_key", "") or ""),
+            )
+            for item in accepted
+        }
+        final_rejections = [
+            row
+            for row in rejections
+            if self._memory_key(
+                str(row.get("platform") or ""),
+                str(row.get("canonical_key") or ""),
+            )
+            not in accepted_keys
+        ]
+        product_id = self._product_id(product)
+        if product_id is not None and final_rejections:
+            self.observe_rejections(
+                product_id=product_id,
+                product=product,
+                icps=icps,
+                rejections=final_rejections,
+            )
+        return final_rejections
+
+    def filter_and_learn(
+        self,
+        *,
+        product: Any,
+        icps: list[Any],
+        opportunities: list[Any],
+    ) -> tuple[list[Any], list[dict]]:
+        """Compatibility path for callers whose filter result is already final."""
+        accepted, rejected = self.filter(product=product, opportunities=opportunities)
+        final_rejections = self.learn_final_rejections(
+            product=product,
+            icps=icps,
+            accepted=accepted,
+            rejections=rejected,
+        )
+        return accepted, final_rejections
 
     def filter_hints(
         self,
