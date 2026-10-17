@@ -1,9 +1,12 @@
 name: Trace FemDom discovery once
 
 on:
-  workflow_run:
-    workflows: ["Deploy production"]
-    types: [completed]
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Optional deployed commit SHA. Defaults to current main.
+        required: false
+        type: string
 
 concurrency:
   group: femdom-discovery-trace-once
@@ -11,47 +14,30 @@ concurrency:
 
 jobs:
   trace:
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     environment: production
     permissions:
       contents: read
 
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
       - name: Resolve deployed release
         id: release
         env:
-          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+          REQUESTED_SHA: ${{ inputs.release_sha }}
         shell: bash
         run: |
-          if [[ ! "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+          release_sha="${REQUESTED_SHA:-$(git rev-parse HEAD)}"
+          if [[ ! "${release_sha}" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Unable to resolve deployed release"
             exit 1
           fi
-          echo "sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ steps.release.outputs.sha }}
-
-      - name: Refuse stale trace
-        id: freshness
-        env:
-          RELEASE_SHA: ${{ steps.release.outputs.sha }}
-        shell: bash
-        run: |
-          current_main_sha="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
-          if [[ "${RELEASE_SHA}" != "${current_main_sha}" ]]; then
-            echo "trace_allowed=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipping stale discovery trace"
-            exit 0
-          fi
-          echo "trace_allowed=true" >> "$GITHUB_OUTPUT"
+          echo "sha=${release_sha}" >> "$GITHUB_OUTPUT"
 
       - name: Require production trace configuration
-        if: ${{ steps.freshness.outputs.trace_allowed == 'true' }}
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
@@ -70,13 +56,11 @@ jobs:
           fi
 
       - name: Start SSH agent
-        if: ${{ steps.freshness.outputs.trace_allowed == 'true' }}
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
 
       - name: Pin production host key
-        if: ${{ steps.freshness.outputs.trace_allowed == 'true' }}
         env:
           DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
         shell: bash
@@ -87,7 +71,6 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
       - name: Trace current Telegram discovery without mutations
-        if: ${{ steps.freshness.outputs.trace_allowed == 'true' }}
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
@@ -112,7 +95,6 @@ jobs:
           PY
 
       - name: Upload trace artifact
-        if: ${{ steps.freshness.outputs.trace_allowed == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: femdom-discovery-trace
