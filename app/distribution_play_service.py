@@ -13,6 +13,7 @@ from app.distribution_schemas import (
     CommunityPolicyView,
     DistributionIdentityView,
 )
+from app.distribution_types import DistributionPlatform
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ProductProfileView
 
@@ -33,6 +34,7 @@ class InMemoryDistributionPlayService:
         community_policies: list[CommunityPolicyView] | None = None,
         campaign_slots: list[CampaignSlotView] | None = None,
     ) -> DistributionPlayGenerationResponse:
+        distribution_map = self._apply_telegram_publisher_preflight(distribution_map)
         planned = DistributionPlayPlanner().plan(
             product=product,
             distribution_map=distribution_map,
@@ -96,6 +98,61 @@ class InMemoryDistributionPlayService:
         self._results.clear()
         if self._store.ephemeral:
             self._store.clear_namespace(DISTRIBUTION_PLAY_NAMESPACE)
+
+    @staticmethod
+    def _apply_telegram_publisher_preflight(
+        distribution_map: AudienceDistributionMapView,
+    ) -> AudienceDistributionMapView:
+        """Translate account-specific preflight into planner capability truth.
+
+        Native research answers whether the community surface exists. Publisher preflight
+        answers whether the connected customer account can use that surface now. Keep the
+        planner strict, but make the READY preflight the source of truth for the account-
+        specific capability that native research alone cannot prove.
+        """
+        updated = []
+        changed = False
+        for opportunity in distribution_map.opportunities:
+            if opportunity.platform != DistributionPlatform.TELEGRAM:
+                updated.append(opportunity)
+                continue
+            metadata = (
+                dict(opportunity.metadata)
+                if isinstance(opportunity.metadata, dict)
+                else {}
+            )
+            preflight = metadata.get("publisher_participation_preflight")
+            if not isinstance(preflight, dict):
+                updated.append(opportunity)
+                continue
+            mode = str(
+                preflight.get("action_target_mode")
+                or metadata.get("action_target_mode")
+                or ""
+            ).upper()
+            status = str(preflight.get("status") or "").upper()
+            capabilities = (
+                dict(metadata.get("surface_capabilities"))
+                if isinstance(metadata.get("surface_capabilities"), dict)
+                else {}
+            )
+            ready = status == "READY"
+            if mode == "CHANNEL_COMMENT":
+                capabilities["comment"] = "AVAILABLE" if ready else "UNAVAILABLE"
+            elif mode == "GROUP_REPLY":
+                capabilities["reply"] = "AVAILABLE" if ready else "UNAVAILABLE"
+            elif mode == "STANDALONE_POST":
+                capabilities["standalone_post"] = "AVAILABLE" if ready else "UNAVAILABLE"
+                capabilities["publisher_permission_verified"] = ready
+            else:
+                updated.append(opportunity)
+                continue
+            metadata["surface_capabilities"] = capabilities
+            updated.append(opportunity.model_copy(update={"metadata": metadata}))
+            changed = True
+        if not changed:
+            return distribution_map
+        return distribution_map.model_copy(update={"opportunities": updated})
 
     def _persisted_outreach_plays(self, product_id: UUID) -> list[DistributionPlayView]:
         payload = self._store.get(DISTRIBUTION_PLAY_NAMESPACE, str(product_id))
