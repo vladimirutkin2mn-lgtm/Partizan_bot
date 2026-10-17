@@ -171,12 +171,12 @@ def test_latest_post_is_selected_even_when_it_is_old() -> None:
 
     assert metadata["action_target_specific"] is True
     assert metadata["action_target_url"] == "https://t.me/play_hard_community/147"
-    assert metadata["action_target_resolution"] == "LATEST_UNBLOCKED_COMMUNITY_TARGET"
+    assert metadata["action_target_resolution"] == "LATEST_COMMUNITY_TARGET"
     assert metadata["action_target_quality"] == "LATEST_COMMUNITY_SURFACE"
     assert metadata["target_age_days"] > 30
 
 
-def test_known_no_discussion_target_is_skipped_for_same_product() -> None:
+def test_known_no_discussion_latest_post_does_not_fall_back_for_same_product() -> None:
     store = MemoryRuntimeStateStore()
     product = _product()
     project_id = uuid4()
@@ -203,7 +203,9 @@ def test_known_no_discussion_target_is_skipped_for_same_product() -> None:
 
     metadata = adapter._native_metadata(_request(), _snapshot())
 
-    assert metadata["action_target_url"] == "https://t.me/play_hard_community/111"
+    assert metadata["action_target_url"] is None
+    assert metadata["community_only_reason"] == "LATEST_POST_BLOCKED"
+    assert metadata["actionability"] == "RESEARCH_ONLY"
 
 
 @pytest.mark.asyncio

@@ -58,7 +58,7 @@ def _snapshot(
     )
 
 
-def test_channel_comment_uses_newest_unblocked_post() -> None:
+def test_channel_does_not_fall_back_to_older_post_when_latest_is_blocked() -> None:
     snapshot = _snapshot(
         kind=TelegramSurfaceKind.CHANNEL,
         comment=SurfaceAvailability.AVAILABLE,
@@ -70,9 +70,46 @@ def test_channel_comment_uses_newest_unblocked_post() -> None:
         blocked_urls={"https://t.me/community/147"},
     )
 
+    assert target.mode is None
+    assert target.target_url is None
+    assert target.reason == "LATEST_POST_BLOCKED"
+    assert target.actionability == "RESEARCH_ONLY"
+
+
+def test_channel_uses_highest_native_message_id_not_dates_or_search_relevance() -> None:
+    snapshot = _snapshot(
+        kind=TelegramSurfaceKind.CHANNEL,
+        comment=SurfaceAvailability.AVAILABLE,
+        recent_context=(
+            TelegramRecentContext(
+                message_id=147,
+                text="",  # Native media posts can lack a text caption.
+                published_at=None,
+                url="https://t.me/community/147",
+            ),
+            _context(111, 1),
+        ),
+    )
+    target = select_telegram_participation_target(snapshot)
     assert target.mode == TelegramParticipationMode.CHANNEL_COMMENT
-    assert target.target_url == "https://t.me/community/111"
-    assert target.target_specific is True
+    assert target.target_url == "https://t.me/community/147"
+    assert target.target_published_at is None
+
+
+def test_channel_does_not_fall_back_if_latest_post_has_no_url() -> None:
+    snapshot = _snapshot(
+        kind=TelegramSurfaceKind.CHANNEL,
+        comment=SurfaceAvailability.AVAILABLE,
+        recent_context=(
+            TelegramRecentContext(
+                message_id=147, text="video", published_at=None, url=None,
+            ),
+            _context(111, 2),
+        ),
+    )
+    target = select_telegram_participation_target(snapshot)
+    assert target.target_url is None
+    assert target.reason == "LATEST_POST_URL_UNKNOWN"
 
 
 def test_group_prefers_reply_when_recent_message_exists() -> None:
@@ -122,6 +159,20 @@ def test_group_can_be_actionable_without_any_recent_message() -> None:
     assert target.mode == TelegramParticipationMode.STANDALONE_POST
     assert target.target_url == "https://t.me/community"
     assert target.resolution == "COMMUNITY_STANDALONE_POST"
+
+
+def test_group_reply_does_not_fall_back_to_older_message_when_latest_is_blocked() -> None:
+    snapshot = _snapshot(
+        kind=TelegramSurfaceKind.GROUP,
+        reply=SurfaceAvailability.AVAILABLE,
+        standalone=SurfaceAvailability.UNAVAILABLE,
+        recent_context=(_context(147), _context(111, 2)),
+    )
+    target = select_telegram_participation_target(
+        snapshot, blocked_urls={"https://t.me/community/147"}
+    )
+    assert target.target_url is None
+    assert target.reason == "LATEST_POST_BLOCKED"
 
 
 class FakeGroupClient:

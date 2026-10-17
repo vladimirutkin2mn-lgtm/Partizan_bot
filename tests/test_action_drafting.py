@@ -1,12 +1,15 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.action_drafting import ActionTargetSelector
 from app.audience_intelligence_service import audience_intelligence_service
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_service import distribution_play_service
+from app.distribution_types import DistributionActionType, DistributionPlatform
 from app.icp_service import icp_service
 from app.main import app
 from app.product_intake import product_intake_service
@@ -340,3 +343,95 @@ def test_telegram_comment_accepts_concrete_public_post_target() -> None:
     action = response.json()["action"]
     assert action["target_url"] == "https://t.me/relationship_daily/321"
     assert "public post" in action["content_payload"]["context_text"].lower()
+
+
+def _telegram_selector_opportunity(
+    *,
+    target_url: str | None,
+    recent_context: list[dict],
+    verified: bool = True,
+):
+    return SimpleNamespace(
+        platform=DistributionPlatform.TELEGRAM,
+        title="Real native community",
+        rationale="Evidence-backed community",
+        url="https://t.me/community",
+        evidence=[
+            {
+                "url": "https://t.me/community/111",
+                "snippet": "Older search result must not become the action target",
+            }
+        ],
+        metadata={
+            "native_research_status": "VERIFIED" if verified else "NOT_CHECKED",
+            "action_target_specific": bool(target_url),
+            "action_target_mode": "CHANNEL_COMMENT",
+            "action_target_url": target_url,
+            "enrichment": {
+                "action_targets": [
+                    {
+                        "url": "https://t.me/community/111",
+                        "snippet": "Older post returned by search",
+                    }
+                ]
+            },
+            "recent_context": recent_context,
+        },
+    )
+
+
+def test_telegram_drafting_never_uses_enrichment_when_latest_is_blocked() -> None:
+    opportunity = _telegram_selector_opportunity(
+        target_url=None,
+        recent_context=[
+            {"message_id": 147, "url": "https://t.me/community/147", "text": "Latest"},
+            {"message_id": 111, "url": "https://t.me/community/111", "text": "Older"},
+        ],
+    )
+    play = SimpleNamespace(action_type=DistributionActionType.COMMENT)
+    with pytest.raises(ValueError, match="latest"):
+        ActionTargetSelector().select(play, opportunity)
+
+
+def test_telegram_drafting_rejects_stale_native_target_even_if_enrichment_has_it() -> None:
+    opportunity = _telegram_selector_opportunity(
+        target_url="https://t.me/community/111",
+        recent_context=[
+            {"message_id": 147, "url": "https://t.me/community/147", "text": "Latest"},
+            {"message_id": 111, "url": "https://t.me/community/111", "text": "Older"},
+        ],
+    )
+    play = SimpleNamespace(action_type=DistributionActionType.COMMENT)
+    with pytest.raises(ValueError, match="not the latest"):
+        ActionTargetSelector().select(play, opportunity)
+
+
+def test_telegram_drafting_uses_verified_latest_with_unknown_date() -> None:
+    opportunity = _telegram_selector_opportunity(
+        target_url="https://t.me/community/147",
+        recent_context=[
+            {"message_id": 147, "url": "https://t.me/community/147", "text": "Caption"}
+        ],
+    )
+    play = SimpleNamespace(action_type=DistributionActionType.COMMENT)
+    target = ActionTargetSelector().select(play, opportunity)
+    assert target.url == "https://t.me/community/147"
+    assert target.source == "telegram_native.latest_message"
+
+
+def test_telegram_drafting_requires_native_observation_and_correct_action_mode() -> None:
+    opportunity = _telegram_selector_opportunity(
+        target_url="https://t.me/community/147",
+        recent_context=[
+            {"message_id": 147, "url": "https://t.me/community/147", "text": "Caption"}
+        ],
+        verified=False,
+    )
+    play = SimpleNamespace(action_type=DistributionActionType.COMMENT)
+    with pytest.raises(ValueError, match="verified native"):
+        ActionTargetSelector().select(play, opportunity)
+
+    opportunity.metadata["native_research_status"] = "VERIFIED"
+    opportunity.metadata["action_target_mode"] = "GROUP_REPLY"
+    with pytest.raises(ValueError, match="mode differs"):
+        ActionTargetSelector().select(play, opportunity)
