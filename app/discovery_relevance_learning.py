@@ -42,9 +42,6 @@ _GENERIC_TERMS = {
     "чат",
 }
 
-# Telegram search results frequently echo transport/search boilerplate in matched_terms.
-# Keep this stricter cleanup local to Telegram so discovery contracts for Instagram,
-# Reddit and TikTok are not changed by a Telegram regression fix.
 _TELEGRAM_MATCH_UTILITY_TERMS = {
     "active",
     "any",
@@ -60,10 +57,6 @@ _TELEGRAM_MATCH_UTILITY_TERMS = {
     "ссылка",
 }
 
-# These words are frequently introduced by generic generated ICP labels and fallback
-# alternatives rather than by a real audience/community observation. They must not be
-# allowed to satisfy Telegram semantic-evidence counts. Their underlying ratios/intent
-# remain available as separate evidence families, so we only remove the literal words.
 _TELEGRAM_GENERATED_ICP_BOILERPLATE_TERMS = {
     "alternative",
     "alternatives",
@@ -125,11 +118,7 @@ class DiscoveryRelevanceLearningService:
     ) -> tuple[list[Any], list[dict]]:
         """Classify candidates without mutating negative-learning state."""
         product_id = self._product_id(product)
-        snapshot = (
-            self.snapshot(product_id)
-            if product_id is not None
-            else self._empty_snapshot()
-        )
+        snapshot = self.snapshot(product_id) if product_id is not None else self._empty_snapshot()
         product_anchor_terms = self._product_anchor_terms(product)
         accepted: list[Any] = []
         rejected: list[dict] = []
@@ -215,15 +204,15 @@ class DiscoveryRelevanceLearningService:
         icps: list[Any],
         opportunities: list[Any],
     ) -> tuple[list[Any], list[dict]]:
-        """Compatibility path for callers whose filter result is already final."""
+        """Compatibility path: return raw rejects but learn only final rejects."""
         accepted, rejected = self.filter(product=product, opportunities=opportunities)
-        final_rejections = self.learn_final_rejections(
+        self.learn_final_rejections(
             product=product,
             icps=icps,
             accepted=accepted,
             rejections=rejected,
         )
-        return accepted, final_rejections
+        return accepted, rejected
 
     def filter_hints(
         self,
@@ -252,8 +241,7 @@ class DiscoveryRelevanceLearningService:
             str(key).casefold()
             for key, entry in (payload.get("blocked_keys") or {}).items()
             if self._entry_active(entry, now)
-            and int((entry or {}).get("count") or 0)
-            >= MIN_NEGATIVE_COMMUNITY_OBSERVATIONS
+            and int((entry or {}).get("count") or 0) >= MIN_NEGATIVE_COMMUNITY_OBSERVATIONS
         }
         negative_terms = {
             str(term).casefold()
@@ -587,6 +575,4 @@ class DiscoveryRelevanceLearningService:
         return {"blocked_keys": set(), "negative_terms": set()}
 
 
-# Production singleton. Per-product state in RuntimeStateStore keeps learning isolated
-# between customers while allowing the same generic algorithm to be reused everywhere.
 discovery_relevance_learning_service = DiscoveryRelevanceLearningService()
