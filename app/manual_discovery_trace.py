@@ -171,7 +171,7 @@ class _TracingSearchProvider(SearchProvider):
             raise RuntimeError(
                 f"Network search is disabled in {self._execution_context.mode.value} mode"
             )
-        query_id = self._execution_context.next_query_id()
+        query_id = self._execution_context.reserve_query_id()
         step_id = self._execution_context.next_step_id("search")
         with openai_usage_step_context(step_id=step_id, query_id=query_id):
             hits = await self._delegate.search(discovery_query, limit=limit)
@@ -285,10 +285,16 @@ def _trace_decision(opportunity: object, snapshot: dict, product: object) -> dic
     )
 
 
-async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
+async def build_trace(
+    product_id: UUID,
+    *,
+    top_icp_count: int = 3,
+    max_query_count: int | None = None,
+) -> dict:
     execution_context = DiscoveryExecutionContext.create(
         DiscoveryExecutionMode.DEBUG_TRACE,
         product_id,
+        max_logical_queries=max_query_count,
     )
     product = product_intake_service.get_product(product_id)
     icp_result = icp_service.get(product_id)
@@ -443,6 +449,7 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
             "verdicts": dict(sorted(verdict_counts.items())),
             "reasons": dict(sorted(reason_counts.items())),
             "search_failures": dict(sorted(failure_counts.items())),
+            "budget_stops": int(failure_counts.get("DiscoveryBudgetExhausted", 0)),
         },
         "opportunities": opportunities,
     }
@@ -456,6 +463,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--product-id", type=UUID, required=True)
     parser.add_argument("--top-icp-count", type=int, default=3)
+    parser.add_argument(
+        "--max-query-count",
+        type=int,
+        default=1,
+        help="Maximum logical search-provider calls for this trace. Default: 1.",
+    )
     return parser
 
 
@@ -463,7 +476,11 @@ def main() -> int:
     args = build_parser().parse_args()
     try:
         payload = asyncio.run(
-            build_trace(args.product_id, top_icp_count=max(1, min(args.top_icp_count, 5)))
+            build_trace(
+                args.product_id,
+                top_icp_count=max(1, min(args.top_icp_count, 5)),
+                max_query_count=max(0, min(args.max_query_count, 50)),
+            )
         )
     except (KeyError, RuntimeError, ValueError) as exc:
         print(json.dumps({"status": "FAILED", "error": str(exc)}, ensure_ascii=False))

@@ -11,6 +11,10 @@ class DiscoveryExecutionMode(StrEnum):
     REPLAY = "REPLAY"
 
 
+class DiscoveryBudgetExhausted(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True)
 class DiscoveryEffectPolicy:
     allow_network: bool
@@ -46,35 +50,64 @@ class DiscoveryExecutionContext:
     mode: DiscoveryExecutionMode
     product_id: str | None = None
     run_id: str = field(default_factory=lambda: str(uuid4()))
+    max_logical_queries: int | None = None
     _step_sequence: int = field(default=0, init=False, repr=False)
     _query_sequence: int = field(default=0, init=False, repr=False)
+    _reserved_logical_queries: int = field(default=0, init=False, repr=False)
 
     @classmethod
     def create(
         cls,
         mode: DiscoveryExecutionMode,
         product_id: UUID | str | None = None,
+        *,
+        max_logical_queries: int | None = None,
     ) -> DiscoveryExecutionContext:
+        if max_logical_queries is not None and max_logical_queries < 0:
+            raise ValueError("max_logical_queries must be non-negative or None")
         return cls(
             mode=mode,
             product_id=(None if product_id is None else str(product_id)),
+            max_logical_queries=max_logical_queries,
         )
 
     @property
     def policy(self) -> DiscoveryEffectPolicy:
         return _POLICIES[self.mode]
 
+    @property
+    def logical_query_budget_exhausted(self) -> bool:
+        return (
+            self.max_logical_queries is not None
+            and self._reserved_logical_queries >= self.max_logical_queries
+        )
+
     def next_step_id(self, stage: str) -> str:
         self._step_sequence += 1
         normalized = "_".join(str(stage or "step").strip().casefold().split()) or "step"
         return f"{self.run_id}:step:{self._step_sequence}:{normalized}"
 
+    def reserve_query_id(self) -> str:
+        if self.logical_query_budget_exhausted:
+            raise DiscoveryBudgetExhausted(
+                "Logical discovery query budget exhausted before provider call"
+            )
+        self._reserved_logical_queries += 1
+        self._query_sequence += 1
+        return f"{self.run_id}:query:{self._query_sequence}"
+
     def next_query_id(self) -> str:
+        """Backward-compatible unbudgeted ID allocation for non-provider diagnostics."""
         self._query_sequence += 1
         return f"{self.run_id}:query:{self._query_sequence}"
 
     def as_dict(self) -> dict:
         policy = self.policy
+        remaining = (
+            None
+            if self.max_logical_queries is None
+            else max(0, self.max_logical_queries - self._reserved_logical_queries)
+        )
         return {
             "run_id": self.run_id,
             "mode": self.mode.value,
@@ -84,5 +117,11 @@ class DiscoveryExecutionContext:
                 "state_writes": policy.allow_state_writes,
                 "learning_writes": policy.allow_learning_writes,
                 "external_actions": policy.allow_external_actions,
+            },
+            "logical_query_budget": {
+                "max": self.max_logical_queries,
+                "reserved": self._reserved_logical_queries,
+                "remaining": remaining,
+                "exhausted": self.logical_query_budget_exhausted,
             },
         }
