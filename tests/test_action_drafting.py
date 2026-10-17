@@ -1,15 +1,24 @@
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.action_drafting import ActionTargetSelector
+from app.action_drafting import (
+    ActionTargetSelector,
+    DistributionActionDraftingService,
+    SelectedActionTarget,
+)
 from app.audience_intelligence_service import audience_intelligence_service
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_execution_service import distribution_execution_service
 from app.distribution_play_service import distribution_play_service
-from app.distribution_types import DistributionActionType, DistributionPlatform
+from app.distribution_types import (
+    DistributionActionStatus,
+    DistributionActionType,
+    DistributionPlatform,
+)
 from app.icp_service import icp_service
 from app.main import app
 from app.product_intake import product_intake_service
@@ -435,3 +444,85 @@ def test_telegram_drafting_requires_native_observation_and_correct_action_mode()
     opportunity.metadata["action_target_mode"] = "GROUP_REPLY"
     with pytest.raises(ValueError, match="mode differs"):
         ActionTargetSelector().select(play, opportunity)
+
+
+def _processed_telegram_target_fixture(monkeypatch, *, status, action_type=None):
+    product = SimpleNamespace(id=uuid4())
+    identity_id = uuid4()
+    action_id = uuid4()
+    play = SimpleNamespace(
+        platform=DistributionPlatform.TELEGRAM,
+        action_type=action_type or DistributionActionType.COMMENT,
+        selected_identity_id=identity_id,
+    )
+    experiment = SimpleNamespace(action_id=action_id)
+    saved = SimpleNamespace(
+        platform=DistributionPlatform.TELEGRAM,
+        action_type=play.action_type,
+        distribution_identity_id=identity_id,
+        target_url="https://t.me/community/147",
+        status=status,
+    )
+    monkeypatch.setattr(
+        distribution_execution_service, "list_experiments", lambda product_id: [experiment]
+    )
+    monkeypatch.setattr(
+        distribution_execution_service, "get_action", lambda checked_id: saved
+    )
+    return product, play, saved
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        DistributionActionStatus.PREPARED,
+        DistributionActionStatus.APPROVED,
+        DistributionActionStatus.EXECUTED,
+        DistributionActionStatus.FAILED,
+    ],
+)
+def test_telegram_target_already_attempted_is_not_drafted_again(
+    monkeypatch, status
+) -> None:
+    product, play, _ = _processed_telegram_target_fixture(monkeypatch, status=status)
+    target = SelectedActionTarget("https://t.me/community/147", "context", "native")
+    with pytest.raises(ValueError, match="already has a prepared"):
+        DistributionActionDraftingService._require_unprocessed_telegram_target(
+            product, play, target
+        )
+
+
+def test_telegram_repeat_guard_is_scoped_to_identity_action_kind_and_message(
+    monkeypatch,
+) -> None:
+    product, play, saved = _processed_telegram_target_fixture(
+        monkeypatch, status=DistributionActionStatus.EXECUTED
+    )
+    service = DistributionActionDraftingService
+    target = SelectedActionTarget("https://t.me/community/148", "new context", "native")
+    service._require_unprocessed_telegram_target(product, play, target)
+    saved.target_url = "https://t.me/community/147"
+    play.selected_identity_id = uuid4()
+    service._require_unprocessed_telegram_target(
+        product, play, SelectedActionTarget("https://t.me/community/147", "x", "native")
+    )
+    play.selected_identity_id = saved.distribution_identity_id
+    play.action_type = DistributionActionType.REPLY
+    service._require_unprocessed_telegram_target(
+        product, play, SelectedActionTarget("https://t.me/community/147", "x", "native")
+    )
+    play.action_type = DistributionActionType.STANDALONE_POST
+    service._require_unprocessed_telegram_target(
+        product, play, SelectedActionTarget("https://t.me/community", "x", "native")
+    )
+
+
+def test_skipped_telegram_target_can_be_drafted_again(monkeypatch) -> None:
+    product, play, _ = _processed_telegram_target_fixture(
+        monkeypatch, status=DistributionActionStatus.SKIPPED
+    )
+    DistributionActionDraftingService._require_unprocessed_telegram_target(
+        product,
+        play,
+        SelectedActionTarget("https://t.me/community/147", "context", "native"),
+    )
