@@ -26,6 +26,7 @@ from app.telegram_discovery_strategy import ExpandedTelegramDiscoveryAdapter
 from app.telegram_research import SurfaceAvailability, TelegramSurfaceKind
 
 COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET = 3
+TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE = "telegram_community_registry"
 
 _SEMANTIC_UTILITY_TERMS = {
     "site", "telegram", "channel", "group", "chat", "community", "discussion",
@@ -114,6 +115,47 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
             result.append(request)
         return result[:COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET]
 
+    async def refresh_registered(self, product, icps) -> list[PlatformCandidate]:
+        """Refresh known communities natively without paying for another web search."""
+        self._product_id = getattr(product, "id", None)
+        if self._product_id is None or not icps:
+            return []
+        rows = [
+            row
+            for row in self._store.list_namespace(TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE)
+            if str(row.get("product_id") or "") == str(self._product_id)
+        ]
+        if not rows:
+            return []
+        requests = self.build_requests(product, icps[0])
+        if not requests:
+            return []
+        request = requests[0]
+        candidates: list[PlatformCandidate] = []
+        for row in rows:
+            metadata = dict(row.get("metadata") or {})
+            metadata["registry_confirmed"] = True
+            metadata["community_fit_pass"] = True
+            metadata.setdefault("community_fit_reason", "REGISTRY_CONFIRMED")
+            raw_kind = str(row.get("kind") or "CHANNEL").upper()
+            kind = (
+                OpportunityKind.GROUP
+                if raw_kind == OpportunityKind.GROUP.value
+                else OpportunityKind.CHANNEL
+            )
+            candidates.append(
+                PlatformCandidate(
+                    platform=DistributionPlatform.TELEGRAM,
+                    kind=kind,
+                    canonical_key=str(row.get("canonical_key") or ""),
+                    title=str(row.get("title") or metadata.get("handle") or "Telegram community"),
+                    url=str(row.get("url") or "") or None,
+                    metadata=metadata,
+                    hits=[],
+                )
+            )
+        return await self.enrich_candidates(request, candidates)
+
     def candidates(
         self, request: PlatformDiscoveryRequest, hits: list[SearchHit]
     ) -> list[PlatformCandidate]:
@@ -182,12 +224,19 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
             else:
                 metadata["source_type"] = "UNKNOWN"
 
-            passed, reason, terms = self._community_fit(request, candidate)
+            if metadata.get("registry_confirmed") is True:
+                passed = True
+                reason = "REGISTRY_CONFIRMED"
+                terms = list(metadata.get("community_fit_terms") or [])
+            else:
+                passed, reason, terms = self._community_fit(request, candidate)
             metadata["community_fit_pass"] = passed
             metadata["community_fit_reason"] = reason
             metadata["community_fit_terms"] = terms[:12]
             metadata["opportunity_scope"] = "COMMUNITY"
             candidate.metadata = metadata
+            if passed:
+                self._remember_community(candidate)
             result.append(candidate)
         return result
 
@@ -352,6 +401,38 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                 "discovery_query": request.discovery_query.query,
             },
             hits=[hit],
+        )
+
+    def _remember_community(self, candidate: PlatformCandidate) -> None:
+        if self._product_id is None:
+            return
+        metadata = dict(candidate.metadata or {})
+        entity_id = metadata.get("telegram_entity_id")
+        handle = str(metadata.get("handle") or "").casefold()
+        invite_hash = str(metadata.get("invite_token_hash") or "")
+        identity = (
+            f"entity:{entity_id}"
+            if entity_id is not None
+            else f"handle:{handle}"
+            if handle
+            else f"invite:{invite_hash}"
+            if invite_hash
+            else str(candidate.canonical_key)
+        )
+        key = f"{self._product_id}:{identity}"
+        self._store.put(
+            TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE,
+            key,
+            {
+                "id": key,
+                "product_id": str(self._product_id),
+                "canonical_key": candidate.canonical_key,
+                "title": candidate.title,
+                "url": candidate.url,
+                "kind": candidate.kind.value,
+                "metadata": metadata,
+                "updated_at": datetime.now(UTC).isoformat(),
+            },
         )
 
     def _known_bad_targets(self) -> set[str]:
