@@ -35,6 +35,11 @@ class DistributionOpportunitySeed(BaseModel):
             raise ValueError(
                 f"Opportunity kind {self.kind.value} is not valid for {self.platform.value}"
             )
+        if self.platform == DistributionPlatform.TELEGRAM:
+            self.metadata = _normalize_legacy_telegram_action_mode(
+                self.kind,
+                self.metadata,
+            )
         return self
 
 
@@ -137,3 +142,38 @@ class DistributionActionView(BaseModel):
                 f"Action type {self.action_type.value} is not valid for {self.platform.value}"
             )
         return self
+
+
+def _normalize_legacy_telegram_action_mode(
+    kind: OpportunityKind,
+    metadata: dict,
+) -> dict:
+    """Backfill action mode for persisted Telegram opportunities created before #498."""
+    normalized = dict(metadata or {})
+    if str(normalized.get("action_target_mode") or "").strip():
+        return normalized
+    target_url = str(normalized.get("action_target_url") or "").strip()
+    if not target_url:
+        return normalized
+    capabilities = (
+        dict(normalized.get("surface_capabilities"))
+        if isinstance(normalized.get("surface_capabilities"), dict)
+        else {}
+    )
+    specific = normalized.get("action_target_specific") is True
+    if (
+        kind == OpportunityKind.CHANNEL
+        and specific
+        and str(capabilities.get("comment") or "").upper() == "AVAILABLE"
+    ):
+        normalized["action_target_mode"] = "CHANNEL_COMMENT"
+        return normalized
+    if kind != OpportunityKind.GROUP:
+        return normalized
+    if specific and str(capabilities.get("reply") or "").upper() == "AVAILABLE":
+        normalized["action_target_mode"] = "GROUP_REPLY"
+        return normalized
+    if str(capabilities.get("standalone_post") or "").upper() == "AVAILABLE":
+        normalized["action_target_mode"] = "STANDALONE_POST"
+        normalized.setdefault("action_target_specific", False)
+    return normalized
