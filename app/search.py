@@ -86,10 +86,10 @@ class OpenAIWebSearchProvider(SearchProvider):
     async def search(self, discovery_query: DiscoveryQuery, limit: int = 5) -> list[SearchHit]:
         source_instruction = {
             SourceClass.COMMUNITY: (
-                "Find concrete public communities and recent discussion threads where this "
-                "audience is actively discussing the problem, alternatives or desired outcome. "
-                "Prefer a recent discussion URL when it provides stronger evidence than a generic "
-                "community home page."
+                "Find concrete public communities where this audience is present and can be "
+                "reached. A post or thread may be used as evidence that the community fits, but "
+                "return the community as the primary distribution surface rather than treating "
+                "multiple posts from the same community as separate opportunities."
             ),
             SourceClass.CREATOR: (
                 "Find concrete creators whose public profile or recent content demonstrates a "
@@ -125,17 +125,12 @@ class OpenAIWebSearchProvider(SearchProvider):
         )
         response = await self._create_response(prompt)
         hits = self._extract_hits(response, discovery_query)
-        # No citations is a valid research outcome: the evidence bar was not met.
-        # Transport/provider failures still raise from responses.create above.
         return hits[:limit]
 
     async def _create_response(self, prompt: str) -> Any:
         if self._fatal_search_error is not None:
             raise self._fatal_search_error
 
-        # Let one request establish that the provider is usable before the engine fans out.
-        # If that first request proves the account has no API credits, every queued search
-        # can fail locally instead of sending the same doomed request to the provider.
         if not self._first_request_completed:
             async with self._first_request_lock:
                 if self._fatal_search_error is not None:
@@ -202,13 +197,18 @@ class OpenAIWebSearchProvider(SearchProvider):
         seen: set[str] = set()
         for output_item in getattr(response, "output", []) or []:
             for content in getattr(output_item, "content", []) or []:
-                snippet = str(getattr(content, "text", "") or fallback_text)
+                content_text = str(getattr(content, "text", "") or fallback_text)
                 for annotation in getattr(content, "annotations", []) or []:
                     url = self._read(annotation, "url")
                     if not url or url in seen:
                         continue
                     seen.add(url)
                     title = self._read(annotation, "title") or url
+                    snippet, binding = self._annotation_snippet(
+                        content_text,
+                        annotation,
+                        fallback=str(title),
+                    )
                     hits.append(
                         SearchHit(
                             title=str(title),
@@ -216,9 +216,56 @@ class OpenAIWebSearchProvider(SearchProvider):
                             snippet=snippet[:800],
                             query=discovery_query.query,
                             source_class=discovery_query.source_class,
+                            metadata={"evidence_binding": binding},
                         )
                     )
         return hits
+
+    def _annotation_snippet(
+        self,
+        text: str,
+        annotation: Any,
+        *,
+        fallback: str,
+    ) -> tuple[str, str]:
+        """Bind evidence to one citation instead of copying the whole answer to every URL."""
+        start = self._read(annotation, "start_index")
+        end = self._read(annotation, "end_index")
+        if isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(text):
+            window_start = self._source_boundary(text, start, backwards=True)
+            window_end = self._source_boundary(text, end, backwards=False)
+            snippet = " ".join(text[window_start:window_end].split())
+            if snippet:
+                return snippet, "ANNOTATION_WINDOW"
+
+        annotation_text = self._read(annotation, "text")
+        if annotation_text:
+            snippet = " ".join(str(annotation_text).split())
+            if snippet:
+                return snippet, "ANNOTATION_TEXT"
+
+        return " ".join(str(fallback or "").split()), "TITLE_ONLY"
+
+    @staticmethod
+    def _source_boundary(text: str, index: int, *, backwards: bool) -> int:
+        separators = ("\n", ". ", "! ", "? ")
+        if backwards:
+            positions = [text.rfind(separator, 0, index) for separator in separators]
+            boundary = max(positions)
+            if boundary < 0:
+                return max(0, index - 180)
+            if text.startswith("\n", boundary):
+                return boundary + 1
+            return boundary + 2
+        positions = [
+            position
+            for separator in separators
+            if (position := text.find(separator, index)) >= 0
+        ]
+        if not positions:
+            return min(len(text), index + 180)
+        boundary = min(positions)
+        return boundary + 1
 
     def _read(self, value: Any, key: str) -> Any:
         if isinstance(value, dict):

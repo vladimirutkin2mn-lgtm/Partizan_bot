@@ -84,11 +84,12 @@ def test_trace_explains_non_telegram_search_hit_rejection() -> None:
     }
 
 
-def test_trace_explains_unsupported_telegram_invite_link() -> None:
+def test_trace_retains_telegram_invite_link_for_join_flow() -> None:
     result = _telegram_normalization_diagnostic("https://t.me/+InviteToken")
 
-    assert result["normalized"] is False
-    assert result["normalization_reason"] == "INVITE_LINK_UNSUPPORTED"
+    assert result["normalized"] is True
+    assert result["normalization_reason"] == "TELEGRAM_INVITE_ACCEPTED"
+    assert result["access_state"] == "JOIN_REQUIRED"
 
 
 def test_trace_normalization_matches_public_post_to_channel_slug() -> None:
