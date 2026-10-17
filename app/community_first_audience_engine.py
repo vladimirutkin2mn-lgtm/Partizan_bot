@@ -112,8 +112,9 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             self._last_relevance_rejections = []
             return []
         scored = annotate_base_intelligence(raw)
-        accepted, rejected = self._relevance_learning.filter_and_learn(
-            product=product, icps=icps, opportunities=scored
+        accepted, rejected = self._relevance_learning.filter(
+            product=product,
+            opportunities=scored,
         )
         accepted_keys = {
             (str(item.icp_id), item.platform, str(item.canonical_key)) for item in accepted
@@ -150,8 +151,15 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             rescued.append(item)
             accepted_keys.add(key)
 
-        self._last_relevance_rejections = rejected
-        propagated = propagate_surface_corroboration([*accepted, *rescued])
+        final_accepted = [*accepted, *rescued]
+        final_rejections = self._relevance_learning.learn_final_rejections(
+            product=product,
+            icps=icps,
+            accepted=final_accepted,
+            rejections=rejected,
+        )
+        self._last_relevance_rejections = final_rejections
+        propagated = propagate_surface_corroboration(final_accepted)
         collapsed = collapse_telegram_communities(propagated)
         return self._coverage_first_limit(collapsed, max_opportunities)
 
