@@ -28,6 +28,7 @@ from app.telegram_community_registry import (
 from app.telegram_community_registry import TelegramCommunityRegistry
 from app.telegram_discovery_strategy import ExpandedTelegramDiscoveryAdapter
 from app.telegram_participation_target import select_telegram_participation_target
+from app.telegram_research import TelegramSurfaceKind
 
 COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET = 3
 TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE = _TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE
@@ -173,7 +174,7 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         cursor = self._store.get(cursor_namespace, cursor_key) or {}
         offset = int(cursor.get("next_index") or 0) % len(handles) if handles else 0
         batch_size = 3  # Matches the conservative known-peer native request budget.
-        batch = (handles[offset:] + handles[:offset])[:batch_size]
+        batch = handles[offset : offset + batch_size]
         results = {}
         inspection_error = None
         connector = self._research_connector
