@@ -10,6 +10,7 @@ from uuid import UUID
 from app.audience_intelligence import AudienceIntelligenceEngine
 from app.community_first_audience_engine import collapse_telegram_communities
 from app.community_first_telegram_adapter import CommunityFirstTelegramDiscoveryAdapter
+from app.discovery_execution_context import DiscoveryExecutionContext, DiscoveryExecutionMode
 from app.discovery_relevance_learning import discovery_relevance_learning_service
 from app.icp_service import icp_service
 from app.openai_usage import openai_usage_context
@@ -134,9 +135,27 @@ def _telegram_normalization_diagnostic(url: str) -> dict:
     }
 
 
+class _TraceCommunityFirstTelegramDiscoveryAdapter(CommunityFirstTelegramDiscoveryAdapter):
+    """Use production discovery logic while honoring trace side-effect policy."""
+
+    def __init__(self, *args, execution_context: DiscoveryExecutionContext, **kwargs) -> None:
+        self._execution_context = execution_context
+        super().__init__(*args, **kwargs)
+
+    def _remember_community(self, candidate) -> None:
+        if not self._execution_context.policy.allow_state_writes:
+            return
+        super()._remember_community(candidate)
+
+
 class _TracingSearchProvider(SearchProvider):
-    def __init__(self, delegate: SearchProvider) -> None:
+    def __init__(
+        self,
+        delegate: SearchProvider,
+        execution_context: DiscoveryExecutionContext,
+    ) -> None:
         self._delegate = delegate
+        self._execution_context = execution_context
         self._calls: list[dict] = []
 
     async def search(
@@ -144,9 +163,17 @@ class _TracingSearchProvider(SearchProvider):
         discovery_query: DiscoveryQuery,
         limit: int = 5,
     ) -> list[SearchHit]:
+        if not self._execution_context.policy.allow_network:
+            raise RuntimeError(
+                f"Network search is disabled in {self._execution_context.mode.value} mode"
+            )
+        query_id = self._execution_context.next_query_id()
+        step_id = self._execution_context.next_step_id("search")
         hits = await self._delegate.search(discovery_query, limit=limit)
         self._calls.append(
             {
+                "query_id": query_id,
+                "step_id": step_id,
                 "query": discovery_query.query,
                 "source_class": discovery_query.source_class.value,
                 "hits": list(hits),
@@ -156,10 +183,12 @@ class _TracingSearchProvider(SearchProvider):
 
     def raw_hit_rows(self) -> list[dict]:
         rows: list[dict] = []
-        for call in sorted(self._calls, key=lambda item: item["query"]):
+        for call in sorted(self._calls, key=lambda item: item["query_id"]):
             for index, hit in enumerate(call["hits"], start=1):
                 rows.append(
                     {
+                        "query_id": call["query_id"],
+                        "step_id": call["step_id"],
                         "query": call["query"],
                         "source_class": call["source_class"],
                         "rank": index,
@@ -173,6 +202,15 @@ class _TracingSearchProvider(SearchProvider):
                     }
                 )
         return rows
+
+    def call_metadata(self, query: str) -> dict:
+        for call in self._calls:
+            if call["query"] == query:
+                return {
+                    "query_id": call["query_id"],
+                    "step_id": call["step_id"],
+                }
+        return {}
 
 
 def _filters() -> dict:
@@ -243,6 +281,10 @@ def _trace_decision(opportunity: object, snapshot: dict, product: object) -> dic
 
 
 async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
+    execution_context = DiscoveryExecutionContext.create(
+        DiscoveryExecutionMode.DEBUG_TRACE,
+        product_id,
+    )
     product = product_intake_service.get_product(product_id)
     icp_result = icp_service.get(product_id)
     icps = list(icp_result.icps[:top_icp_count])
@@ -250,9 +292,10 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
         raise ValueError("ICP generation must contain at least one segment")
 
     provider = get_search_provider()
-    tracing_provider = _TracingSearchProvider(provider)
-    adapter = CommunityFirstTelegramDiscoveryAdapter(
+    tracing_provider = _TracingSearchProvider(provider, execution_context)
+    adapter = _TraceCommunityFirstTelegramDiscoveryAdapter(
         relevance_learning_service=discovery_relevance_learning_service,
+        execution_context=execution_context,
     )
     engine = AudienceIntelligenceEngine(tracing_provider, adapters=[adapter])
 
@@ -286,6 +329,7 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
         queries = sorted({row["query"] for row in evidence if row["query"]})
         opportunities.append(
             {
+                "community_id": str(getattr(opportunity, "canonical_key", "") or ""),
                 "verdict": verdict,
                 "gate_reason": reason,
                 "legacy_gate_reason": legacy_reason,
@@ -314,17 +358,20 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
         )
     )
 
-    attempts = [
-        {
-            "query": attempt.query,
-            "search_hits": attempt.search_hit_count,
-            "normalized_candidates": attempt.normalized_candidate_count,
-            "enriched_candidates": attempt.enriched_candidate_count,
-            "search_error_type": attempt.search_error_type,
-            "enrichment_error_type": attempt.enrichment_error_type,
-        }
-        for attempt in engine.last_attempts
-    ]
+    attempts = []
+    for attempt in engine.last_attempts:
+        identifiers = tracing_provider.call_metadata(attempt.query)
+        attempts.append(
+            {
+                **identifiers,
+                "query": attempt.query,
+                "search_hits": attempt.search_hit_count,
+                "normalized_candidates": attempt.normalized_candidate_count,
+                "enriched_candidates": attempt.enriched_candidate_count,
+                "search_error_type": attempt.search_error_type,
+                "enrichment_error_type": attempt.enrichment_error_type,
+            }
+        )
     failures = _failure_rows(engine.last_failures)
     failure_counts = Counter(row["error_type"] for row in failures if row["error_type"])
     raw_hits = tracing_provider.raw_hit_rows()
@@ -333,6 +380,7 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
     return {
         "status": "TRACE_COMPLETE",
         "read_only": True,
+        "execution_context": execution_context.as_dict(),
         "product": {
             "id": str(product.id),
             "name": product.name,
