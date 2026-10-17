@@ -30,6 +30,7 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
     ) -> None:
         self._store = store or get_runtime_store()
         self._telegram_only = telegram_only
+        self._prefer_registered_telegram = not bool(telegram_hints)
         relevance_service = relevance_learning_service or discovery_relevance_learning_service
         super().__init__(
             provider,
@@ -59,28 +60,57 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
         max_opportunities: int = 80,
     ):
         allowed = self._allowed_platforms(getattr(product, "id", None))
-        self._adapters = [
+        eligible = [
             adapter
             for adapter in self._all_adapters
             if adapter.platform in allowed
             and (not self._telegram_only or adapter.platform == DistributionPlatform.TELEGRAM)
         ]
-        if not self._adapters:
+
+        registry_raw = []
+        telegram_adapter = next(
+            (
+                adapter
+                for adapter in eligible
+                if isinstance(adapter, CommunityFirstTelegramDiscoveryAdapter)
+            ),
+            None,
+        )
+        if self._prefer_registered_telegram and telegram_adapter is not None:
+            registered = await telegram_adapter.refresh_registered(product, icps)
+            if registered:
+                registry_raw = [
+                    self._candidate_to_seed(icp, candidate)
+                    for candidate in registered
+                    for icp in icps
+                ]
+                eligible = [
+                    adapter
+                    for adapter in eligible
+                    if adapter.platform != DistributionPlatform.TELEGRAM
+                ]
+
+        self._adapters = eligible
+        if self._adapters:
+            collection_limit = max(
+                max_opportunities, max_opportunities * max(1, len(self._adapters))
+            )
+            web_raw = await AudienceIntelligenceEngine.discover(
+                self,
+                product,
+                icps,
+                per_query_limit=per_query_limit,
+                max_opportunities=collection_limit,
+            )
+        else:
             self._last_attempts = []
             self._last_failures = []
+            web_raw = []
+
+        raw = [*registry_raw, *web_raw]
+        if not raw:
             self._last_relevance_rejections = []
             return []
-
-        collection_limit = max(
-            max_opportunities, max_opportunities * max(1, len(self._adapters))
-        )
-        raw = await AudienceIntelligenceEngine.discover(
-            self,
-            product,
-            icps,
-            per_query_limit=per_query_limit,
-            max_opportunities=collection_limit,
-        )
         scored = annotate_base_intelligence(raw)
         accepted, rejected = self._relevance_learning.filter_and_learn(
             product=product, icps=icps, opportunities=scored
