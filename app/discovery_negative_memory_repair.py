@@ -98,10 +98,22 @@ def plan_discovery_negative_memory_repair(
         "negative_terms_untouched": True,
         "access_restrictions_untouched": True,
         "notes": [
-            "Only exact Telegram negative-memory keys matching natively VERIFIED, audience-fit registry communities are eligible.",
-            "Invite-only, unverified and non-fit registry rows are not promoted or repaired by this operation.",
-            "Theme-level negative terms are left unchanged because historical rows do not contain enough provenance to remove their counts safely.",
-            "Telegram permissions, NO_DISCUSSION and other access restrictions live outside this namespace and are not modified.",
+            (
+                "Only exact Telegram negative-memory keys matching natively VERIFIED, "
+                "audience-fit registry communities are eligible."
+            ),
+            (
+                "Invite-only, unverified and non-fit registry rows are not promoted or "
+                "repaired by this operation."
+            ),
+            (
+                "Theme-level negative terms are left unchanged because historical rows do "
+                "not contain enough provenance to remove their counts safely."
+            ),
+            (
+                "Telegram permissions, NO_DISCUSSION and other access restrictions live "
+                "outside this namespace and are not modified."
+            ),
         ],
     }
 
