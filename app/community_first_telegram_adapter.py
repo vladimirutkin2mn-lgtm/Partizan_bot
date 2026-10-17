@@ -141,41 +141,136 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         return result[:COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET]
 
     async def refresh_registered(self, product, icps) -> list[PlatformCandidate]:
-        """Refresh known communities natively without paying for another web search."""
+        """Rotate saved peers through native inspection; never run contacts.Search."""
         self._product_id = getattr(product, "id", None)
         if self._product_id is None or not icps:
             return []
-        rows = self._registry.list_for_product(self._product_id)
+        rows = sorted(
+            self._registry.list_for_product(self._product_id),
+            key=lambda item: str(item.get("id") or item.get("canonical_key") or ""),
+        )
         if not rows:
             return []
         requests = self.build_requests(product, icps[0])
         if not requests:
             return []
         request = requests[0]
+
+        # Only public handles can be inspected directly. Unverified invite
+        # links remain in the registry and cannot become READY by refresh.
+        by_handle: dict[str, dict] = {}
+        for row in rows:
+            stored = self._registry.hydrate_metadata(row)
+            if str(stored.get("access_state") or "").upper() == "JOIN_REQUIRED":
+                continue
+            handle = str(stored.get("handle") or "").strip().lstrip("@").casefold()
+            if not handle:
+                continue
+            by_handle.setdefault(handle, row)
+        handles = sorted(by_handle)
+        cursor_namespace = "telegram_registered_native_refresh_cursor"
+        cursor_key = str(self._product_id)
+        cursor = self._store.get(cursor_namespace, cursor_key) or {}
+        offset = int(cursor.get("next_index") or 0) % len(handles) if handles else 0
+        batch_size = 3  # Matches the conservative known-peer native request budget.
+        batch = (handles[offset:] + handles[:offset])[:batch_size]
+        results = {}
+        inspection_error = None
+        connector = self._research_connector
+        inspector = getattr(connector, "inspect_known", None)
+        if batch and callable(inspector):
+            try:
+                inspected = await inspector(batch)
+                results = {str(item.handle).casefold(): item for item in inspected}
+            except Exception as exc:
+                inspection_error = type(exc).__name__
+        elif batch:
+            inspection_error = "INSPECTION_UNAVAILABLE"
+
+        if batch and inspection_error is None:
+            statuses = {
+                handle: str(getattr(results.get(handle), "status", "RETRYABLE_FAILED"))
+                for handle in batch
+            }
+            self._store.put(
+                cursor_namespace,
+                cursor_key,
+                {
+                    "next_index": (offset + len(batch)) % len(handles),
+                    "last_batch": batch,
+                    "last_batch_statuses": statuses,
+                    "last_attempt_at": datetime.now(UTC).isoformat(),
+                },
+            )
+
         candidates: list[PlatformCandidate] = []
         for row in rows:
             metadata = self._registry.hydrate_metadata(row)
-            metadata["registry_confirmed"] = True
-            metadata["community_fit_pass"] = True
-            metadata.setdefault("community_fit_reason", "REGISTRY_CONFIRMED")
+            handle = str(metadata.get("handle") or "").strip().lstrip("@").casefold()
+            fit = row.get("audience_fit") or {}
+            has_fit = (
+                fit.get("confirmed") is True
+                or metadata.get("community_fit_pass") is True
+            )
+            metadata["registry_confirmed"] = bool(has_fit)
+            metadata["community_fit_pass"] = bool(has_fit)
+            metadata.setdefault(
+                "community_fit_reason",
+                "REGISTRY_CONFIRMED" if has_fit else "NOT_YET_QUALIFIED",
+            )
+            status = "DEFERRED"
+            if handle in batch:
+                status = (
+                    "INSPECTION_UNAVAILABLE"
+                    if inspection_error is not None
+                    else str(getattr(results.get(handle), "status", "RETRYABLE_FAILED"))
+                )
+            metadata["registry_refresh_status"] = status
+            metadata["registry_refresh_attempted"] = handle in batch
+            if status == "INSPECTION_UNAVAILABLE":
+                metadata["registry_refresh_error_type"] = inspection_error
+
             raw_kind = str(row.get("kind") or "CHANNEL").upper()
             kind = (
                 OpportunityKind.GROUP
                 if raw_kind == OpportunityKind.GROUP.value
                 else OpportunityKind.CHANNEL
             )
-            candidates.append(
-                PlatformCandidate(
-                    platform=DistributionPlatform.TELEGRAM,
-                    kind=kind,
-                    canonical_key=str(row.get("canonical_key") or ""),
-                    title=str(row.get("title") or metadata.get("handle") or "Telegram community"),
-                    url=str(row.get("url") or "") or None,
-                    metadata=metadata,
-                    hits=[],
+            hits = []
+            canonical_key = str(row.get("canonical_key") or "")
+            title = str(row.get("title") or metadata.get("handle") or "Telegram community")
+            url = str(row.get("url") or "") or None
+            inspected = results.get(handle) if status == "VERIFIED" else None
+            snapshot = getattr(inspected, "snapshot", None)
+            if snapshot is not None:
+                metadata.update(self._native_metadata(request, snapshot))
+                metadata["registry_confirmed"] = bool(has_fit)
+                metadata["community_fit_pass"] = bool(has_fit)
+                metadata["registry_refresh_status"] = "VERIFIED"
+                metadata["registry_refresh_attempted"] = True
+                canonical_key = f"telegram:{snapshot.entity_id}:community"
+                kind = (
+                    OpportunityKind.GROUP
+                    if snapshot.kind == TelegramSurfaceKind.GROUP
+                    else OpportunityKind.CHANNEL
                 )
+                title = snapshot.title
+                url = snapshot.url
+                hits.append(self._native_hit(request, snapshot))
+
+            candidate = PlatformCandidate(
+                platform=DistributionPlatform.TELEGRAM,
+                kind=kind,
+                canonical_key=canonical_key,
+                title=title,
+                url=url,
+                metadata=metadata,
+                hits=hits,
             )
-        return await self.enrich_candidates(request, candidates)
+            if snapshot is not None and has_fit:
+                self._remember_community(candidate)
+            candidates.append(candidate)
+        return candidates
 
     def candidates(
         self, request: PlatformDiscoveryRequest, hits: list[SearchHit]
