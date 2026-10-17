@@ -663,6 +663,7 @@ class TelethonClientPublishTransport:
             entity = await client.get_entity(f"@{target.username}")
             if not isinstance(entity, telegram_types.Channel):
                 raise TelegramClientPublishTransportError("COMMUNITY_TARGET_REQUIRED")
+            await self._require_latest_reply_target(client, entity, action_type, target)
             message = await client.send_message(
                 entity,
                 text,
@@ -683,6 +684,38 @@ class TelethonClientPublishTransport:
             raise self._safe_error(exc, "PUBLISH_FAILED") from None
         finally:
             await client.disconnect()
+
+    async def _require_latest_reply_target(
+        self,
+        client,
+        entity,
+        action_type: DistributionActionType,
+        target: TelegramPublishTarget,
+    ) -> None:
+        """Fail closed when a drafted COMMENT/REPLY no longer targets the latest message.
+
+        The check runs on the publisher's connected account immediately before send;
+        it does not rewrite the prepared action or cause an extra LLM call.
+        """
+        if action_type not in {
+            DistributionActionType.COMMENT,
+            DistributionActionType.REPLY,
+        }:
+            return
+        if target.reply_to_message_id is None:
+            raise TelegramClientPublishTransportError("MESSAGE_TARGET_REQUIRED")
+        try:
+            messages = await client.get_messages(entity, limit=1)
+        except Exception as exc:
+            raise TelegramClientPublishTransportError(
+                "LATEST_MESSAGE_CHECK_FAILED"
+            ) from exc
+        latest = messages[0] if messages else None
+        latest_id = int(getattr(latest, "id", 0) or 0)
+        if latest_id <= 0:
+            raise TelegramClientPublishTransportError("LATEST_MESSAGE_UNKNOWN")
+        if latest_id != target.reply_to_message_id:
+            raise TelegramClientPublishTransportError("TARGET_NO_LONGER_LATEST")
 
     def _send_message_thread_kwargs(
         self,
