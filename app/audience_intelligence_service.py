@@ -1,5 +1,6 @@
 from uuid import UUID, uuid4
 
+from app import customer_live_opportunities as _customer_live_opportunities
 from app.community_first_audience_engine import (
     CommunityFirstAudienceIntelligenceEngine as AudienceIntelligenceEngine,
 )
@@ -20,6 +21,10 @@ from app.telegram_discovery_strategy import (
 )
 from app.telegram_participant_research import telegram_participant_research_service
 
+customer_live_opportunity_service = (
+    _customer_live_opportunities.customer_live_opportunity_service
+)
+
 AUDIENCE_MAP_NAMESPACE = "audience_distribution_map"
 AUDIENCE_OPPORTUNITY_NAMESPACE = "audience_distribution_opportunity"
 
@@ -37,7 +42,7 @@ class InMemoryAudienceIntelligenceService:
         top_icp_count: int = 3,
     ) -> AudienceDistributionMapView:
         """Run discovery only on platforms enabled by the product's active mandate."""
-        engine = AudienceIntelligenceEngine(get_search_provider(), store=self._store)
+        engine = self._build_engine(get_search_provider())
         return await self._discover_with_engine(
             product,
             icp_result,
@@ -61,11 +66,10 @@ class InMemoryAudienceIntelligenceService:
         search hypotheses only; they do not bypass publisher preflight, mandate, approval
         or execution controls.
         """
-        engine = AudienceIntelligenceEngine(
+        engine = self._build_engine(
             get_search_provider(),
             telegram_hints=telegram_hints,
             telegram_only=True,
-            store=self._store,
         )
         return await self._discover_with_engine(
             product,
@@ -74,6 +78,16 @@ class InMemoryAudienceIntelligenceService:
             top_icp_count=top_icp_count,
             merge_existing=merge_existing,
         )
+
+    def _build_engine(self, provider, **kwargs):
+        try:
+            return AudienceIntelligenceEngine(provider, store=self._store, **kwargs)
+        except TypeError as exc:
+            # A small compatibility seam for tests/custom engines written before the
+            # runtime-store dependency was introduced. The production engine accepts store.
+            if "unexpected keyword argument 'store'" not in str(exc):
+                raise
+            return AudienceIntelligenceEngine(provider, **kwargs)
 
     async def _discover_with_engine(
         self,
