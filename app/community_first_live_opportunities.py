@@ -10,6 +10,7 @@ from app.customer_live_opportunities import (
 )
 from app.distribution_types import DistributionPlatform
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.telegram_participation_target import TelegramParticipationMode
 
 RECHECK_INTERVAL = timedelta(days=7)
 
@@ -20,7 +21,7 @@ def sync_community_first_live_opportunities(
     *,
     store: RuntimeStateStore | None = None,
 ) -> int:
-    """Surface join-required communities and latest targets without a 7-day source-age gate."""
+    """Surface join-required communities and explicit participation actions."""
     runtime_store = store or get_runtime_store()
     project_ids = _project_ids(runtime_store, product_id)
     if not project_ids:
@@ -67,26 +68,42 @@ def sync_community_first_live_opportunities(
             synced += _upsert(project_ids, request)
             continue
 
+        mode = str(metadata.get("action_target_mode") or "").upper()
         target_url = str(metadata.get("action_target_url") or "").strip()
-        if not target_url or metadata.get("action_target_specific") is not True:
+        if not target_url or mode not in _LIVE_KIND_BY_MODE:
             continue
-        published_at = _target_published_at(metadata, target_url)
+        target_specific = metadata.get("action_target_specific") is True
+        if mode != TelegramParticipationMode.STANDALONE_POST.value and not target_specific:
+            continue
+
+        published_at = _target_published_at(metadata, target_url) if target_specific else None
+        standalone = mode == TelegramParticipationMode.STANDALONE_POST.value
         request = CustomerLiveOpportunityUpsert(
             source="RESEARCH",
             platform="TELEGRAM",
             surface="COMMUNITY",
-            kind=str(getattr(getattr(opportunity, "kind", None), "value", "COMMENT")),
-            title=f"{title} — latest participation surface",
+            kind=_LIVE_KIND_BY_MODE[mode],
+            title=(
+                f"{title} — community post surface"
+                if standalone
+                else f"{title} — latest participation surface"
+            ),
             url=target_url,
             rationale=rationale,
             recommended_action=(
-                "Preflight this latest unblocked Telegram surface before drafting content."
+                "Preflight this Telegram community before drafting a standalone post."
+                if standalone
+                else "Preflight this latest unblocked Telegram surface before drafting content."
             ),
             relevance_score=float(score) if score is not None else None,
             publishability="NEEDS_REVIEW",
             publishability_detail=(
-                "Post age is context, not a hard rejection rule; membership and write access "
-                "still require preflight."
+                "Community write access still requires account-specific preflight."
+                if standalone
+                else (
+                    "Post age is context, not a hard rejection rule; membership and write access "
+                    "still require preflight."
+                )
             ),
             discovered_at=checked_at,
             expires_at=checked_at + RECHECK_INTERVAL,
@@ -98,11 +115,19 @@ def sync_community_first_live_opportunities(
                 "linked_discussion_id": metadata.get("linked_discussion_id"),
                 "source_published_at": published_at.isoformat() if published_at else None,
                 "target_age_days": metadata.get("target_age_days"),
-                "action_target_mode": metadata.get("action_target_mode"),
+                "action_target_mode": mode,
+                "action_target_specific": target_specific,
             },
         )
         synced += _upsert(project_ids, request)
     return synced
+
+
+_LIVE_KIND_BY_MODE = {
+    TelegramParticipationMode.CHANNEL_COMMENT.value: "COMMENT",
+    TelegramParticipationMode.GROUP_REPLY.value: "REPLY",
+    TelegramParticipationMode.STANDALONE_POST.value: "STANDALONE_POST",
+}
 
 
 def _project_ids(store: RuntimeStateStore, product_id: UUID) -> list[UUID]:
