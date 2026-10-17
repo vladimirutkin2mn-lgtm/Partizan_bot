@@ -59,7 +59,19 @@ class TelegramCommunitySnapshot:
     recent_context: tuple[TelegramRecentContext, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class TelegramKnownCommunityInspection:
+    handle: str
+    status: str
+    snapshot: TelegramCommunitySnapshot | None = None
+
+
+# Direct inspection deliberately does not use contacts.Search.
 class TelegramResearchTransport(Protocol):
+    async def inspect_known(
+        self, handles: list[str], *, recent_message_limit: int
+    ) -> list[TelegramKnownCommunityInspection]: ...
+
     async def discover_public(
         self,
         query: str,
@@ -108,6 +120,32 @@ class TelegramResearchConnector:
         self._recent_message_limit = max(0, min(recent_message_limit, 8))
         self._query_length_limit = max(16, min(query_length_limit, 160))
         self._lock = asyncio.Lock()
+
+    async def inspect_known(
+        self, handles: list[str]
+    ) -> list[TelegramKnownCommunityInspection]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw in handles:
+            handle = str(raw or "").strip().lstrip("@").lower()
+            if not handle or handle in seen:
+                continue
+            seen.add(handle)
+            normalized.append(handle)
+            if len(normalized) >= self._known_handle_limit:
+                break
+        if not normalized:
+            return []
+        method = getattr(self._transport, "inspect_known", None)
+        if not callable(method):
+            raise TelegramResearchUnavailableError(
+                "Telegram research transport does not support direct known-peer inspection"
+            )
+        async with self._lock:
+            return await method(
+                normalized,
+                recent_message_limit=self._recent_message_limit,
+            )
 
     async def discover(
         self,
@@ -237,6 +275,72 @@ class TelethonTelegramResearchTransport:
             # may still be retained, but native Telegram evidence is never fabricated.
             raise TelegramResearchUnavailableError(
                 f"Telegram native research failed: {type(exc).__name__}"
+            ) from exc
+        finally:
+            await client.disconnect()
+
+    async def inspect_known(
+        self, handles: list[str], *, recent_message_limit: int
+    ) -> list[TelegramKnownCommunityInspection]:
+        """Resolve saved peers directly without a Telegram search query."""
+        try:
+            from telethon import TelegramClient
+            from telethon.errors import FloodWaitError
+            from telethon.sessions import StringSession
+            from telethon.tl.functions.channels import GetFullChannelRequest
+            from telethon.tl.types import Channel
+        except ImportError as exc:
+            raise TelegramResearchUnavailableError(
+                "Telethon is not installed for Telegram research"
+            ) from exc
+
+        client = TelegramClient(
+            StringSession(self._session_string), self._api_id, self._api_hash
+        )
+        await client.connect()
+        try:
+            if not await client.is_user_authorized():
+                raise TelegramResearchUnavailableError(
+                    "Telegram research session is not authorized"
+                )
+            inspections: list[TelegramKnownCommunityInspection] = []
+            for handle in handles:
+                try:
+                    entity = await client.get_entity(f"@{handle}")
+                    if not isinstance(entity, Channel) or not self._public_username(entity):
+                        inspections.append(
+                            TelegramKnownCommunityInspection(handle, "NOT_FOUND")
+                        )
+                        continue
+                    peer = await client.get_input_entity(entity)
+                    full = await client(GetFullChannelRequest(peer))
+                    messages = await client.get_messages(
+                        peer, limit=recent_message_limit
+                    )
+                    inspections.append(
+                        TelegramKnownCommunityInspection(
+                            handle,
+                            "VERIFIED",
+                            self._snapshot(
+                                entity, full, list(messages or []), query=""
+                            ),
+                        )
+                    )
+                except FloodWaitError:
+                    # Respect Telegram's full prescribed wait; the caller will
+                    # retry this batch on a later refresh rather than sleeping.
+                    raise TelegramResearchUnavailableError("TELEGRAM_FLOOD_WAIT") from None
+                except Exception:
+                    # Failure to resolve a known peer is not evidence of deletion.
+                    inspections.append(
+                        TelegramKnownCommunityInspection(handle, "RETRYABLE_FAILED")
+                    )
+            return inspections
+        except TelegramResearchUnavailableError:
+            raise
+        except Exception as exc:
+            raise TelegramResearchUnavailableError(
+                f"Telegram native peer inspection failed: {type(exc).__name__}"
             ) from exc
         finally:
             await client.disconnect()
