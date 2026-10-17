@@ -7,7 +7,6 @@ from enum import StrEnum
 from app.telegram_research import (
     SurfaceAvailability,
     TelegramCommunitySnapshot,
-    TelegramRecentContext,
     TelegramSurfaceKind,
 )
 
