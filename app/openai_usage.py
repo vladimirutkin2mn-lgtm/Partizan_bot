@@ -20,18 +20,48 @@ _logger.propagate = False
 
 _task: ContextVar[str] = ContextVar("openai_usage_task", default="unknown")
 _product_id: ContextVar[str | None] = ContextVar("openai_usage_product_id", default=None)
+_run_id: ContextVar[str | None] = ContextVar("openai_usage_run_id", default=None)
+_step_id: ContextVar[str | None] = ContextVar("openai_usage_step_id", default=None)
+_query_id: ContextVar[str | None] = ContextVar("openai_usage_query_id", default=None)
+_collector: ContextVar[list[dict] | None] = ContextVar("openai_usage_collector", default=None)
 
 
 @contextmanager
-def openai_usage_context(task: str, product_id: UUID | str | None = None) -> Iterator[None]:
-    """Label every OpenAI call made inside this block with a task and product."""
+def openai_usage_context(
+    task: str,
+    product_id: UUID | str | None = None,
+    *,
+    run_id: str | None = None,
+    collector: list[dict] | None = None,
+) -> Iterator[None]:
+    """Label OpenAI calls with task/product and optional diagnostic-run context."""
     task_token = _task.set(task)
     product_token = _product_id.set(str(product_id) if product_id is not None else None)
+    run_token = _run_id.set(run_id)
+    collector_token = _collector.set(collector)
     try:
         yield
     finally:
-        _task.reset(task_token)
+        _collector.reset(collector_token)
+        _run_id.reset(run_token)
         _product_id.reset(product_token)
+        _task.reset(task_token)
+
+
+@contextmanager
+def openai_usage_step_context(
+    *,
+    step_id: str | None = None,
+    query_id: str | None = None,
+) -> Iterator[None]:
+    """Attach one provider call to a run step/query without replacing task context."""
+    step_token = _step_id.set(step_id)
+    query_token = _query_id.set(query_id)
+    try:
+        yield
+    finally:
+        _query_id.reset(query_token)
+        _step_id.reset(step_token)
 
 
 def _task_map(raw: str) -> dict[str, str]:
@@ -58,7 +88,7 @@ def log_openai_usage(
     options: dict[str, Any],
     duration_seconds: float,
 ) -> None:
-    """Write one JSON line with the call's token usage. Never raises."""
+    """Write one JSON line with the call's token usage and collect it when requested."""
     response_id = None
     try:
         response_id = getattr(response, "id", None)
@@ -83,6 +113,15 @@ def log_openai_usage(
             ),
             "duration_ms": round(duration_seconds * 1000),
         }
+        correlations = {
+            "run_id": _run_id.get(),
+            "step_id": _step_id.get(),
+            "query_id": _query_id.get(),
+        }
+        payload.update({key: value for key, value in correlations.items() if value is not None})
+        collector = _collector.get()
+        if collector is not None:
+            collector.append(dict(payload))
         _logger.info(json.dumps(payload))
     except Exception as exc:
         # JsonFormatter drops tracebacks, so keep the error itself in the message.
@@ -92,3 +131,24 @@ def log_openai_usage(
             response_id,
             exc,
         )
+
+
+def summarize_openai_usage(rows: list[dict]) -> dict:
+    """Aggregate captured provider usage without inventing a pricing model."""
+
+    def _sum(field: str) -> int:
+        return sum(int(row.get(field) or 0) for row in rows)
+
+    return {
+        "response_count": len(rows),
+        "input_tokens": _sum("input_tokens"),
+        "cached_input_tokens": _sum("cached_input_tokens"),
+        "output_tokens": _sum("output_tokens"),
+        "reasoning_tokens": _sum("reasoning_tokens"),
+        "web_search_calls": _sum("web_search_calls"),
+        "duration_ms": _sum("duration_ms"),
+        "estimated_cost_usd": None,
+        "estimated_cost_status": "PRICING_NOT_CONFIGURED",
+        "actual_billed_cost_usd": None,
+        "actual_billed_cost_status": "NOT_AVAILABLE_FROM_RESPONSE_USAGE",
+    }
