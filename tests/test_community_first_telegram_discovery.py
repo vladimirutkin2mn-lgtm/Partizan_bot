@@ -327,3 +327,85 @@ def test_web_search_without_offsets_does_not_copy_shared_answer_to_every_hit() -
 
     assert [hit.snippet for hit in hits] == ["Play.Hard", "Bizarre"]
     assert all(hit.metadata["evidence_binding"] == "TITLE_ONLY" for hit in hits)
+
+
+@pytest.mark.asyncio
+async def test_relevant_community_is_persisted_in_registry() -> None:
+    from app.community_first_telegram_adapter import TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE
+
+    store = MemoryRuntimeStateStore()
+    product = _product()
+    adapter = CommunityFirstTelegramDiscoveryAdapter(
+        use_default_research_connector=False,
+        store=store,
+    )
+    adapter.build_requests(product, _icp())
+    candidates = adapter.candidates(
+        _request(),
+        [_hit("https://t.me/s/play_hard_community/147")],
+    )
+
+    enriched = await adapter.enrich_candidates(_request(), candidates)
+
+    assert enriched[0].metadata["community_fit_pass"] is True
+    rows = store.list_namespace(TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE)
+    assert len(rows) == 1
+    assert rows[0]["product_id"] == str(product.id)
+    assert rows[0]["url"] == "https://t.me/play_hard_community"
+
+
+@pytest.mark.asyncio
+async def test_registered_telegram_community_skips_repeat_web_search() -> None:
+    from app.community_first_telegram_adapter import TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE
+
+    class CountingProvider(MockSearchProvider):
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def search(self, discovery_query, limit=5):
+            self.calls += 1
+            return await super().search(discovery_query, limit=limit)
+
+    store = MemoryRuntimeStateStore()
+    product = _product()
+    icp = _icp()
+    store.put(
+        GROWTH_MANDATE_NAMESPACE,
+        str(product.id),
+        {
+            "product_id": str(product.id),
+            "status": "ACTIVE",
+            "allowed_platforms": ["TELEGRAM"],
+        },
+    )
+    store.put(
+        TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE,
+        f"{product.id}:entity:42",
+        {
+            "id": f"{product.id}:entity:42",
+            "product_id": str(product.id),
+            "canonical_key": "telegram:42:community",
+            "title": "Play.Hard FemDom community",
+            "url": "https://t.me/play_hard_community",
+            "kind": "CHANNEL",
+            "metadata": {
+                "handle": "play_hard_community",
+                "telegram_entity_id": 42,
+                "source_type": "CHANNEL",
+                "native_research_status": "VERIFIED",
+                "community_fit_pass": True,
+                "community_fit_terms": ["femdom", "bdsm"],
+                "opportunity_scope": "COMMUNITY",
+                "actionability": "RESEARCH_ONLY",
+            },
+        },
+    )
+    provider = CountingProvider()
+    engine = CommunityFirstAudienceIntelligenceEngine(provider, store=store)
+
+    opportunities = await engine.discover(product, [icp], max_opportunities=20)
+
+    assert provider.calls == 0
+    assert len(opportunities) == 1
+    assert opportunities[0].canonical_key == "telegram:42:community"
+    assert opportunities[0].metadata["community_fit_reason"] == "REGISTRY_CONFIRMED"
