@@ -113,24 +113,63 @@ class TelegramCommunityRegistry:
         return merged
 
     def _matching_rows(self, product_id: object, incoming: dict) -> list[dict]:
-        rows = self.list_for_product(product_id)
-        aliases = self._aliases(incoming)
-        matched: list[dict] = []
-        remaining = list(rows)
-        changed = True
-        while changed:
-            changed = False
-            next_remaining: list[dict] = []
-            for row in remaining:
-                row_aliases = self._aliases(row)
-                if aliases & row_aliases:
-                    matched.append(row)
-                    aliases.update(row_aliases)
-                    changed = True
-                else:
-                    next_remaining.append(row)
-            remaining = next_remaining
-        return matched
+        """Resolve likely rows by stable storage identities, never by a namespace scan."""
+        aliases = set(self._aliases(incoming))
+        matched_by_id: dict[str, dict] = {}
+        checked_keys: set[str] = set()
+
+        while True:
+            storage_keys = self._storage_keys_for_aliases(product_id, aliases)
+            pending = storage_keys - checked_keys
+            if not pending:
+                break
+            checked_keys.update(pending)
+            discovered_alias = False
+            for storage_key in sorted(pending):
+                row = self._store.get(
+                    TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE,
+                    storage_key,
+                )
+                if not isinstance(row, dict):
+                    continue
+                row_id = str(row.get("id") or storage_key)
+                if row_id in matched_by_id:
+                    continue
+                matched_by_id[row_id] = row
+                before = len(aliases)
+                aliases.update(self._aliases(row))
+                discovered_alias = discovered_alias or len(aliases) > before
+            if not discovered_alias:
+                break
+        return list(matched_by_id.values())
+
+    @staticmethod
+    def _storage_keys_for_aliases(product_id: object, aliases: set[str]) -> set[str]:
+        keys: set[str] = set()
+        prefix = f"{product_id}:"
+        for alias in aliases:
+            value = str(alias or "").casefold()
+            if value.startswith(("entity:", "handle:", "invite:")):
+                keys.add(f"{prefix}{value}")
+                continue
+            if not value.startswith("canonical:telegram:"):
+                continue
+            canonical = value.removeprefix("canonical:telegram:")
+            if canonical.startswith("invite:") and canonical.endswith(":community"):
+                token = canonical.removeprefix("invite:").removesuffix(":community")
+                if token:
+                    keys.add(f"{prefix}invite:{token}")
+                continue
+            if not canonical.endswith(":community"):
+                continue
+            identity = canonical.removesuffix(":community")
+            if not identity:
+                continue
+            if identity.lstrip("-").isdigit():
+                keys.add(f"{prefix}entity:{identity}")
+            else:
+                keys.add(f"{prefix}handle:{identity}")
+        return keys
 
     def _merge_rows(self, product_id: object, rows: list[dict], incoming: dict) -> dict:
         now = datetime.now(UTC).isoformat()
