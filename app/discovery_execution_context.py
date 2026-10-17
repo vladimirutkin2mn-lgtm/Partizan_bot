@@ -54,7 +54,7 @@ class DiscoveryExecutionContext:
         cls,
         mode: DiscoveryExecutionMode,
         product_id: UUID | str | None = None,
-    ) -> "DiscoveryExecutionContext":
+    ) -> DiscoveryExecutionContext:
         return cls(
             mode=mode,
             product_id=(None if product_id is None else str(product_id)),
