@@ -64,8 +64,23 @@ def select_telegram_participation_target(
     *,
     blocked_urls: set[str] | None = None,
 ) -> TelegramParticipationTarget:
+    """Choose the actual newest native message; never rescue an older message."""
     blocked = {_normalize_url(value) for value in (blocked_urls or set()) if value}
-    selected = _latest_unblocked_context(snapshot.recent_context, blocked)
+    # Telegram message IDs are monotonic within one peer. A post without a
+    # publication date (e.g. a media post) is still the newest if its ID is highest.
+    latest = max(snapshot.recent_context, key=lambda item: item.message_id, default=None)
+    latest_url = str(latest.url or "").strip() if latest is not None else ""
+    latest_blocked = bool(latest_url and _normalize_url(latest_url) in blocked)
+    latest_usable = bool(latest_url and not latest_blocked)
+    unavailable_reason = (
+        "NO_RECENT_POST"
+        if latest is None
+        else "LATEST_POST_URL_UNKNOWN"
+        if not latest_url
+        else "LATEST_POST_BLOCKED"
+        if latest_blocked
+        else None
+    )
 
     if snapshot.kind == TelegramSurfaceKind.CHANNEL:
         if snapshot.comment_surface != SurfaceAvailability.AVAILABLE:
@@ -77,34 +92,36 @@ def select_telegram_participation_target(
                 actionability="RESEARCH_ONLY",
                 reason="NO_COMMENT_SURFACE",
             )
-        if selected is None:
+        if not latest_usable:
             return TelegramParticipationTarget(
                 mode=None,
                 target_url=None,
                 target_specific=False,
                 resolution="COMMUNITY_ONLY",
                 actionability="RESEARCH_ONLY",
-                reason="NO_UNBLOCKED_TARGET",
+                reason=unavailable_reason,
             )
         return TelegramParticipationTarget(
             mode=TelegramParticipationMode.CHANNEL_COMMENT,
-            target_url=str(selected.url),
+            target_url=latest_url,
             target_specific=True,
-            resolution="LATEST_UNBLOCKED_COMMUNITY_TARGET",
+            resolution="LATEST_COMMUNITY_TARGET",
             actionability="NEEDS_PREFLIGHT",
-            target_published_at=_aware(selected.published_at),
+            target_published_at=_aware(latest.published_at),
         )
 
     if snapshot.kind == TelegramSurfaceKind.GROUP:
-        if snapshot.reply_surface == SurfaceAvailability.AVAILABLE and selected is not None:
+        if snapshot.reply_surface == SurfaceAvailability.AVAILABLE and latest_usable:
             return TelegramParticipationTarget(
                 mode=TelegramParticipationMode.GROUP_REPLY,
-                target_url=str(selected.url),
+                target_url=latest_url,
                 target_specific=True,
-                resolution="LATEST_UNBLOCKED_COMMUNITY_TARGET",
+                resolution="LATEST_COMMUNITY_TARGET",
                 actionability="NEEDS_PREFLIGHT",
-                target_published_at=_aware(selected.published_at),
+                target_published_at=_aware(latest.published_at),
             )
+        # Standalone posting is a different action against the group itself,
+        # not a reply to an older message.
         if snapshot.standalone_post_surface == SurfaceAvailability.AVAILABLE:
             return TelegramParticipationTarget(
                 mode=TelegramParticipationMode.STANDALONE_POST,
@@ -113,17 +130,17 @@ def select_telegram_participation_target(
                 resolution="COMMUNITY_STANDALONE_POST",
                 actionability="NEEDS_PREFLIGHT",
             )
-        if snapshot.reply_surface == SurfaceAvailability.AVAILABLE:
-            reason = "NO_UNBLOCKED_TARGET"
-        else:
-            reason = "NO_GROUP_WRITE_SURFACE"
         return TelegramParticipationTarget(
             mode=None,
             target_url=None,
             target_specific=False,
             resolution="COMMUNITY_ONLY",
             actionability="RESEARCH_ONLY",
-            reason=reason,
+            reason=(
+                unavailable_reason
+                if snapshot.reply_surface == SurfaceAvailability.AVAILABLE
+                else "NO_GROUP_WRITE_SURFACE"
+            ),
         )
 
     return TelegramParticipationTarget(
@@ -134,25 +151,6 @@ def select_telegram_participation_target(
         actionability="RESEARCH_ONLY",
         reason="UNSUPPORTED_TELEGRAM_ENTITY",
     )
-
-
-def _latest_unblocked_context(
-    contexts: tuple[TelegramRecentContext, ...],
-    blocked_urls: set[str],
-) -> TelegramRecentContext | None:
-    candidates = [
-        item
-        for item in contexts
-        if str(item.url or "").strip()
-        and _normalize_url(str(item.url)) not in blocked_urls
-    ]
-    if not candidates:
-        return None
-    return max(candidates, key=lambda item: _sort_date(item.published_at))
-
-
-def _sort_date(value: datetime | None) -> datetime:
-    return _aware(value) or datetime.min.replace(tzinfo=UTC)
 
 
 def _aware(value: datetime | None) -> datetime | None:
