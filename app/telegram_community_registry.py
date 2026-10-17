@@ -16,18 +16,23 @@ _DYNAMIC_METADATA_KEYS = {
     "action_target_url",
     "actionability",
     "about",
+    "comment_surface",
     "community_only_reason",
+    "community_registry_key",
     "handle",
     "last_activity_at",
     "linked_discussion_id",
     "member_count",
     "native_research_status",
     "recent_context",
+    "reply_surface",
     "source_checked_at",
     "source_type",
     "standalone_post_surface",
     "surface_capabilities",
     "surface_kind",
+    "target_age_days",
+    "target_published_at",
     "telegram_entity_id",
 }
 
@@ -40,7 +45,7 @@ _FIT_METADATA_KEYS = {
 
 
 class TelegramCommunityRegistry:
-    """Persist one logical Telegram community while keeping fit and native state separate."""
+    """Persist one logical Telegram community with fit and native state separated."""
 
     def __init__(self, store: RuntimeStateStore | None = None) -> None:
         self._store = store or get_runtime_store()
@@ -65,7 +70,9 @@ class TelegramCommunityRegistry:
             metadata["registry_confirmed"] = True
             metadata["community_fit_pass"] = True
             metadata["community_fit_reason"] = str(
-                fit.get("reason") or metadata.get("community_fit_reason") or "REGISTRY_CONFIRMED"
+                fit.get("reason")
+                or metadata.get("community_fit_reason")
+                or "REGISTRY_CONFIRMED"
             )
             metadata["community_fit_terms"] = list(
                 fit.get("terms") or metadata.get("community_fit_terms") or []
@@ -166,7 +173,12 @@ class TelegramCommunityRegistry:
         return {
             "id": storage_key,
             "product_id": str(product_id),
-            "canonical_key": self._canonical_key(entity_id, handle, invite_hash, incoming),
+            "canonical_key": self._canonical_key(
+                entity_id,
+                handle,
+                invite_hash,
+                incoming,
+            ),
             "title": str(display_source.get("title") or incoming.get("title") or ""),
             "url": str(display_source.get("url") or incoming.get("url") or ""),
             "kind": str(display_source.get("kind") or incoming.get("kind") or ""),
@@ -190,27 +202,40 @@ class TelegramCommunityRegistry:
                 historical.append(
                     {
                         "confirmed": True,
-                        "reason": str(metadata.get("community_fit_reason") or "REGISTRY_CONFIRMED"),
+                        "reason": str(
+                            metadata.get("community_fit_reason")
+                            or "REGISTRY_CONFIRMED"
+                        ),
                         "terms": list(metadata.get("community_fit_terms") or []),
                         "confirmed_at": str(row.get("updated_at") or now),
                     }
                 )
 
+        prior = next(
+            (item for item in reversed(historical) if item.get("confirmed") is True),
+            {},
+        )
         incoming_metadata = dict(incoming.get("metadata") or {})
         incoming_pass = incoming_metadata.get("community_fit_pass") is True
-        confirmed = incoming_pass or any(item.get("confirmed") is True for item in historical)
-        if incoming_pass:
-            reason = str(incoming_metadata.get("community_fit_reason") or "COMMUNITY_FIT")
+        incoming_reason = str(incoming_metadata.get("community_fit_reason") or "")
+        confirmed = incoming_pass or bool(prior)
+
+        if incoming_pass and incoming_reason != "REGISTRY_CONFIRMED":
+            reason = incoming_reason or "COMMUNITY_FIT"
             terms = list(incoming_metadata.get("community_fit_terms") or [])
             confirmed_at = now
-        else:
-            prior = next(
-                (item for item in reversed(historical) if item.get("confirmed") is True),
-                {},
-            )
+        elif prior:
             reason = str(prior.get("reason") or "")
             terms = list(prior.get("terms") or [])
             confirmed_at = str(prior.get("confirmed_at") or "")
+        elif incoming_pass:
+            reason = incoming_reason or "REGISTRY_CONFIRMED"
+            terms = list(incoming_metadata.get("community_fit_terms") or [])
+            confirmed_at = now
+        else:
+            reason = ""
+            terms = []
+            confirmed_at = ""
 
         return {
             "confirmed": confirmed,
@@ -242,7 +267,9 @@ class TelegramCommunityRegistry:
         verified = [
             row
             for row in candidates
-            if str(self.hydrate_metadata(row).get("native_research_status") or "").upper()
+            if str(
+                self.hydrate_metadata(row).get("native_research_status") or ""
+            ).upper()
             == "VERIFIED"
         ]
         if not verified:
@@ -285,11 +312,17 @@ class TelegramCommunityRegistry:
     @classmethod
     def _aliases(cls, row: dict) -> set[str]:
         metadata = cls._row_metadata(row)
-        aliases = {str(item).casefold() for item in list(row.get("aliases") or []) if item}
+        aliases = {
+            str(item).casefold()
+            for item in list(row.get("aliases") or [])
+            if item
+        }
         canonical_key = str(row.get("canonical_key") or "").strip().casefold()
         if canonical_key:
             aliases.add(f"canonical:{canonical_key}")
-        registry_key = str(metadata.get("community_registry_key") or "").strip().casefold()
+        registry_key = str(
+            metadata.get("community_registry_key") or ""
+        ).strip().casefold()
         if registry_key:
             aliases.add(f"canonical:{registry_key}")
 
@@ -300,7 +333,9 @@ class TelegramCommunityRegistry:
         if handle:
             aliases.add(f"handle:{handle}")
             aliases.add(f"canonical:telegram:{handle}:community")
-        invite_hash = str(metadata.get("invite_token_hash") or "").strip().casefold()
+        invite_hash = str(
+            metadata.get("invite_token_hash") or ""
+        ).strip().casefold()
         if invite_hash:
             aliases.add(f"invite:{invite_hash}")
 
@@ -329,7 +364,9 @@ class TelegramCommunityRegistry:
     @classmethod
     def _first_handle(cls, rows: list[dict]) -> str:
         for row in reversed(rows):
-            value = str(cls._row_metadata(row).get("handle") or "").strip().lstrip("@").casefold()
+            value = str(
+                cls._row_metadata(row).get("handle") or ""
+            ).strip().lstrip("@").casefold()
             if value:
                 return value
         for row in reversed(rows):
@@ -341,7 +378,9 @@ class TelegramCommunityRegistry:
     @classmethod
     def _first_invite_hash(cls, rows: list[dict]) -> str:
         for row in reversed(rows):
-            value = str(cls._row_metadata(row).get("invite_token_hash") or "").strip().casefold()
+            value = str(
+                cls._row_metadata(row).get("invite_token_hash") or ""
+            ).strip().casefold()
             if value:
                 return value
         return ""
@@ -363,13 +402,18 @@ class TelegramCommunityRegistry:
 
     @classmethod
     def _native_fields(cls, metadata: dict) -> dict:
-        return {key: metadata[key] for key in _DYNAMIC_METADATA_KEYS if key in metadata}
+        return {
+            key: metadata[key]
+            for key in _DYNAMIC_METADATA_KEYS
+            if key in metadata
+        }
 
     @classmethod
     def _native_rank(cls, metadata: dict) -> tuple[int, float]:
         verified = (
             1
-            if str(metadata.get("native_research_status") or "").upper() == "VERIFIED"
+            if str(metadata.get("native_research_status") or "").upper()
+            == "VERIFIED"
             else 0
         )
         timestamp = cls._timestamp_value(
@@ -397,7 +441,8 @@ class TelegramCommunityRegistry:
         if not value:
             return ""
         parts = urlsplit(value)
-        if parts.netloc.casefold().removeprefix("www.") not in {"t.me", "telegram.me"}:
+        host = parts.netloc.casefold().removeprefix("www.")
+        if host not in {"t.me", "telegram.me"}:
             return ""
         segments = [segment for segment in parts.path.split("/") if segment]
         if not segments:
