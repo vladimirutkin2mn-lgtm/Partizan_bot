@@ -16,7 +16,7 @@ from app.customer_live_opportunities import (
 )
 from app.distribution_control_plane_service import distribution_control_plane_service
 from app.distribution_play_service import distribution_play_service
-from app.distribution_types import DistributionPlatform, OpportunityKind
+from app.distribution_types import DistributionPlatform
 from app.icp_service import icp_service
 from app.product_intake import product_intake_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
@@ -29,11 +29,25 @@ from app.telegram_opportunity_preflight import (
     TelegramOpportunityPreflightService,
     telegram_opportunity_preflight_service,
 )
+from app.telegram_participation_target import TelegramParticipationMode
 
 AUTONOMOUS_OPPORTUNITY_REFRESH_NAMESPACE = "autonomous_opportunity_refresh"
 DISTRIBUTION_LEARNING_NAMESPACE = "distribution_learning_entry"
 DEFAULT_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS = 6 * 60 * 60
 MIN_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS = 15 * 60
+
+_LIVE_MODE_BY_KIND = {
+    "COMMENT": TelegramParticipationMode.CHANNEL_COMMENT.value,
+    "CHANNEL": TelegramParticipationMode.CHANNEL_COMMENT.value,
+    "REPLY": TelegramParticipationMode.GROUP_REPLY.value,
+    "STANDALONE_POST": TelegramParticipationMode.STANDALONE_POST.value,
+}
+
+_CAPABILITY_BY_MODE = {
+    TelegramParticipationMode.CHANNEL_COMMENT.value: "comment",
+    TelegramParticipationMode.GROUP_REPLY.value: "reply",
+    TelegramParticipationMode.STANDALONE_POST.value: "standalone_post",
+}
 
 
 class AutonomousOpportunityRefreshService:
@@ -43,12 +57,11 @@ class AutonomousOpportunityRefreshService:
     evidence, persist fresh opportunities and rebuild Distribution Plays, but it never
     publishes, joins a community, changes a profile or mutates a provider account.
 
-    The refresh is adaptive: after the first discovery pass it checks exact Telegram
-    targets with the connected customer account. If fewer than the target number are
-    READY, it creates new search hypotheses from ICP alternatives, product audience
-    context, failed preflight outcomes and prior growth learning, then runs another
-    bounded Telegram-only discovery round. The loop stops when the READY target is met,
-    no genuinely new hypotheses remain, or the maximum round budget is exhausted.
+    The refresh is adaptive: after the first discovery pass it checks explicit Telegram
+    participation targets with the connected customer account. If fewer than the target
+    number are READY, it creates new search hypotheses from ICP alternatives, product
+    audience context, failed preflight outcomes and prior growth learning, then runs
+    another bounded Telegram-only discovery round.
     """
 
     def __init__(
@@ -235,26 +248,21 @@ class AutonomousOpportunityRefreshService:
     ) -> list[str]:
         hints: list[str] = []
 
-        # First preference: themes that have already produced positive observed growth
-        # signals. This closes the Learn -> Discovery part of the loop rather than only
-        # using learning to re-rank already-found plays.
         hints.extend(self._learning_hints(product_id))
 
         top_icps = list(getattr(icps, "icps", []) or [])[:3]
         if round_number == 2:
-            # Split alternatives into independent hypotheses. The first pass previously
-            # bundled them, which could hide useful adjacent communities from search.
             for icp in top_icps:
                 for alternative in list(getattr(icp, "alternatives", []) or [])[:3]:
                     hints.append(str(alternative))
                 trigger = str(getattr(icp, "trigger", "") or "").strip()
                 if trigger:
                     hints.append(trigger)
-            hints.extend(str(item) for item in list(getattr(product, "known_audience", []) or [])[:3])
+            hints.extend(
+                str(item)
+                for item in list(getattr(product, "known_audience", []) or [])[:3]
+            )
         else:
-            # Final bounded round explores the underlying problem/outcome rather than the
-            # category name. This is useful when direct category communities are closed,
-            # stale or non-writable.
             for icp in top_icps:
                 for value in (
                     getattr(icp, "pain", ""),
@@ -273,9 +281,6 @@ class AutonomousOpportunityRefreshService:
                     hints.append(value)
 
         statuses = [item.status for item in preflight_by_url.values()]
-        # Failure-aware exploration: if direct channel posts mostly fail because no
-        # discussion surface exists, prefer audience/trigger hypotheses that the adaptive
-        # adapter will search as public groups and discussion-heavy communities.
         if statuses.count("NO_DISCUSSION") >= max(1, statuses.count("READY")):
             for icp in top_icps:
                 title = str(getattr(icp, "title", "") or "").strip()
@@ -384,24 +389,23 @@ class AutonomousOpportunityRefreshService:
         self,
         project_id: UUID,
     ) -> dict[str, TelegramOpportunityPreflightResult]:
+        """Compatibility name; now preflights all explicit Telegram participation modes."""
         results: dict[str, TelegramOpportunityPreflightResult] = {}
         for opportunity in customer_live_opportunity_service.list_for_project(project_id):
             if opportunity.status != "ACTIVE" or opportunity.freshness == "STALE":
                 continue
             if opportunity.platform != "TELEGRAM":
                 continue
-            if opportunity.kind not in {"COMMENT", "CHANNEL"}:
+            mode = _LIVE_MODE_BY_KIND.get(str(opportunity.kind).upper())
+            if mode is None:
                 continue
             target_url = str(opportunity.url)
-            normalized = self._normalized_url(target_url)
-            if normalized in results:
+            key = self._preflight_key(target_url, mode)
+            if key in results:
                 continue
-            result = await self._telegram_preflight.check_comment_target(
-                project_id,
-                target_url,
-            )
-            results[normalized] = result
-            self._persist_live_preflight(project_id, target_url, result)
+            result = await self._preflight_target(project_id, target_url, mode)
+            results[key] = result
+            self._persist_live_preflight(project_id, target_url, result, mode=mode)
         return results
 
     async def _apply_comment_preflight_to_distribution(
@@ -410,16 +414,14 @@ class AutonomousOpportunityRefreshService:
         distribution,
         preflight_by_url: dict[str, TelegramOpportunityPreflightResult],
     ):
+        """Compatibility name; applies mode-aware preflight to every Telegram action target."""
         opportunities = list(getattr(distribution, "opportunities", []) or [])
         if not opportunities:
             return distribution
 
         updated_opportunities = []
         for opportunity in opportunities:
-            if (
-                getattr(opportunity, "platform", None) != DistributionPlatform.TELEGRAM
-                or getattr(opportunity, "kind", None) != OpportunityKind.CHANNEL
-            ):
+            if getattr(opportunity, "platform", None) != DistributionPlatform.TELEGRAM:
                 updated_opportunities.append(opportunity)
                 continue
 
@@ -428,8 +430,16 @@ class AutonomousOpportunityRefreshService:
                 if isinstance(getattr(opportunity, "metadata", None), dict)
                 else {}
             )
+            mode = str(metadata.get("action_target_mode") or "").upper()
+            capability = _CAPABILITY_BY_MODE.get(mode)
             target_url = str(metadata.get("action_target_url") or "").strip()
-            if not target_url or metadata.get("action_target_specific") is not True:
+            if capability is None or not target_url:
+                updated_opportunities.append(opportunity)
+                continue
+            if (
+                mode != TelegramParticipationMode.STANDALONE_POST.value
+                and metadata.get("action_target_specific") is not True
+            ):
                 updated_opportunities.append(opportunity)
                 continue
 
@@ -438,36 +448,43 @@ class AutonomousOpportunityRefreshService:
                 if isinstance(metadata.get("surface_capabilities"), dict)
                 else {}
             )
-            native_comment_surface = str(capabilities.get("comment") or "").upper()
-            metadata["native_comment_surface"] = native_comment_surface or "UNKNOWN"
+            native_surface = str(capabilities.get(capability) or "").upper()
+            metadata[f"native_{capability}_surface"] = native_surface or "UNKNOWN"
 
-            normalized = self._normalized_url(target_url)
-            result = preflight_by_url.get(normalized)
+            key = self._preflight_key(target_url, mode)
+            result = preflight_by_url.get(key)
             if result is None:
-                if native_comment_surface != "AVAILABLE":
+                if native_surface != "AVAILABLE":
                     result = TelegramOpportunityPreflightResult(
-                        status="NO_DISCUSSION",
+                        status=(
+                            "NO_DISCUSSION"
+                            if mode == TelegramParticipationMode.CHANNEL_COMMENT.value
+                            else "PRECHECK_FAILED"
+                        ),
                         handle=str(metadata.get("handle") or "") or None,
-                        reason="NATIVE_COMMENT_SURFACE_UNAVAILABLE",
+                        reason=f"NATIVE_{capability.upper()}_SURFACE_UNAVAILABLE",
+                        action_target_mode=mode,
                     )
                 else:
-                    result = await self._telegram_preflight.check_comment_target(
+                    result = await self._preflight_target(project_id, target_url, mode)
+                    preflight_by_url[key] = result
+                    self._persist_live_preflight(
                         project_id,
                         target_url,
+                        result,
+                        mode=mode,
                     )
-                    preflight_by_url[normalized] = result
-                    self._persist_live_preflight(project_id, target_url, result)
 
-            metadata["publisher_comment_preflight"] = {
+            preflight_payload = {
                 **result.public_dict(),
                 "checked_at": datetime.now(UTC).isoformat(),
             }
-            # Existing DistributionPlayPlanner already blocks client-owned COMMENT
-            # execution when comment capability is not AVAILABLE. Reuse that boundary:
-            # only a preflight-confirmed READY target remains executable. JOIN_REQUIRED
-            # stays visible to the customer but cannot be selected until membership is
-            # handled through a separately authorized operation.
-            capabilities["comment"] = "AVAILABLE" if result.execution_ready else "UNAVAILABLE"
+            metadata["publisher_participation_preflight"] = preflight_payload
+            if mode == TelegramParticipationMode.CHANNEL_COMMENT.value:
+                metadata["publisher_comment_preflight"] = preflight_payload
+            capabilities[capability] = (
+                "AVAILABLE" if result.execution_ready else "UNAVAILABLE"
+            )
             metadata["surface_capabilities"] = capabilities
 
             updated = opportunity.model_copy(update={"metadata": metadata})
@@ -480,11 +497,32 @@ class AutonomousOpportunityRefreshService:
             return distribution.model_copy(update={"opportunities": updated_opportunities})
         return distribution
 
+    async def _preflight_target(
+        self,
+        project_id: UUID,
+        target_url: str,
+        mode: str,
+    ) -> TelegramOpportunityPreflightResult:
+        check_target = getattr(self._telegram_preflight, "check_target", None)
+        if callable(check_target):
+            return await check_target(project_id, target_url, mode)
+        if mode == TelegramParticipationMode.CHANNEL_COMMENT.value:
+            check_comment = getattr(self._telegram_preflight, "check_comment_target", None)
+            if callable(check_comment):
+                return await check_comment(project_id, target_url)
+        return TelegramOpportunityPreflightResult(
+            status="PRECHECK_FAILED",
+            reason="MODE_AWARE_PREFLIGHT_UNAVAILABLE",
+            action_target_mode=mode,
+        )
+
     def _persist_live_preflight(
         self,
         project_id: UUID,
         target_url: str,
         result: TelegramOpportunityPreflightResult,
+        *,
+        mode: str | None = None,
     ) -> None:
         normalized = self._normalized_url(target_url)
         publishability = (
@@ -503,11 +541,14 @@ class AutonomousOpportunityRefreshService:
         detail = f"Telegram publisher preflight: {result.status}"
         if result.reason:
             detail = f"{detail} ({result.reason})"
+        allowed_kinds = self._live_kinds_for_mode(mode)
 
         for row in self._store.list_namespace(CUSTOMER_LIVE_OPPORTUNITY_NAMESPACE):
             if str(row.get("project_id") or "") != str(project_id):
                 continue
             if self._normalized_url(str(row.get("url") or "")) != normalized:
+                continue
+            if allowed_kinds and str(row.get("kind") or "").upper() not in allowed_kinds:
                 continue
             if str(row.get("status") or "") == "PUBLISHED":
                 continue
@@ -518,6 +559,20 @@ class AutonomousOpportunityRefreshService:
             row["updated_at"] = now
             key = f"{project_id}:{row['opportunity_id']}"
             self._store.put(CUSTOMER_LIVE_OPPORTUNITY_NAMESPACE, key, row)
+
+    @staticmethod
+    def _live_kinds_for_mode(mode: str | None) -> set[str]:
+        if mode == TelegramParticipationMode.CHANNEL_COMMENT.value:
+            return {"COMMENT", "CHANNEL"}
+        if mode == TelegramParticipationMode.GROUP_REPLY.value:
+            return {"REPLY"}
+        if mode == TelegramParticipationMode.STANDALONE_POST.value:
+            return {"STANDALONE_POST"}
+        return set()
+
+    @classmethod
+    def _preflight_key(cls, target_url: str, mode: str) -> str:
+        return f"{str(mode).upper()}|{cls._normalized_url(target_url)}"
 
     def _project_id_for_product(self, product_id: UUID) -> UUID | None:
         matches: list[UUID] = []
