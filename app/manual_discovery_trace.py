@@ -36,6 +36,9 @@ def _selected_metadata(metadata: object) -> dict:
         "action_target_specific",
         "action_target_resolution",
         "action_target_quality",
+        "conversation_signals",
+        "target_match_terms",
+        "community_match_terms",
         "action_target_mode",
         "target_published_at",
         "target_age_days",
@@ -183,10 +186,42 @@ def _filters() -> dict:
             "post_age_is_hard_gate": False,
         },
         "semantic_gate": {
+            "signal_family_ratio_threshold": 0.15,
+            "minimum_matched_terms": 2,
+            "direct_product_anchor_minimum_matched_terms": 1,
+            "pass_paths": {
+                "DIVERSIFIED_MATCH": (
+                    "at least 2 signal families and at least 2 matched terms"
+                ),
+                "DIRECT_PROBLEM_MATCH": (
+                    "pain or trigger >= 0.25, at least 1 intent hit, "
+                    "and at least 2 matched terms"
+                ),
+                "CORROBORATED_FIT": (
+                    "fit >= 0.35, at least 2 independent evidence items, "
+                    "intent or alternative signal, and at least 2 matched terms"
+                ),
+                "CONFIDENCE_SUPPORTED": (
+                    "MEDIUM/HIGH confidence, at least 2 signal families, "
+                    "and at least 2 matched terms"
+                ),
+                "DIRECT_PRODUCT_ANCHOR": (
+                    "at least 1 direct product-anchor term, MEDIUM/HIGH confidence, "
+                    "and either at least 2 signal families or strong pain/trigger plus intent"
+                ),
+            },
+            "reject_paths": [
+                "NEGATIVE_COMMUNITY_MEMORY",
+                "NEGATIVE_THEME_MEMORY",
+                "INSUFFICIENT_SEMANTIC_EVIDENCE",
+            ],
             "legacy_gate_still_recorded": True,
             "community_fit_can_rescue": "INSUFFICIENT_SEMANTIC_EVIDENCE only",
         },
         "negative_learning": {
+            "exact_community_min_observations": 2,
+            "negative_theme_min_observations": 2,
+            "ttl_days": 30,
             "trace_writes_learning": False,
         },
         "note": (
