@@ -68,7 +68,11 @@ class ActionTargetSelector:
             DistributionActionType.COMMENT,
             DistributionActionType.REPLY,
         }:
-            candidates = self._candidate_targets(opportunity)
+            candidates = (
+                self._telegram_latest_target(play, opportunity)
+                if opportunity.platform == DistributionPlatform.TELEGRAM
+                else self._candidate_targets(opportunity)
+            )
             if not candidates:
                 raise ValueError(
                     "No concrete public ActionTarget is available; enrich the opportunity first"
@@ -100,32 +104,74 @@ class ActionTargetSelector:
             source="opportunity",
         )
 
+    def _telegram_latest_target(
+        self,
+        play: DistributionPlayView,
+        opportunity: DistributionOpportunityView,
+    ) -> list[dict]:
+        """Never substitute a stale enrichment/evidence hit for the native latest post."""
+        metadata = opportunity.metadata if isinstance(opportunity.metadata, dict) else {}
+        if str(metadata.get("native_research_status") or "").upper() != "VERIFIED":
+            raise ValueError("Telegram ActionTarget requires verified native research")
+        expected_mode = (
+            "CHANNEL_COMMENT"
+            if play.action_type == DistributionActionType.COMMENT
+            else "GROUP_REPLY"
+        )
+        mode = str(metadata.get("action_target_mode") or "").upper()
+        if mode and mode != expected_mode:
+            raise ValueError("Telegram ActionTarget mode differs from the planned action")
+        target_url = str(metadata.get("action_target_url") or "").strip()
+        if not metadata.get("action_target_specific") or not self._is_action_target(
+            DistributionPlatform.TELEGRAM, target_url
+        ):
+            raise ValueError("Telegram ActionTarget has no available latest message")
+
+        recent = metadata.get("recent_context")
+        if not isinstance(recent, list) or not recent:
+            raise ValueError("Telegram ActionTarget latest message has not been observed")
+        candidates = [
+            item
+            for item in recent
+            if isinstance(item, dict)
+            and self._telegram_message_id(item) is not None
+        ]
+        if not candidates:
+            raise ValueError("Telegram ActionTarget latest message identity is unknown")
+        latest = max(candidates, key=self._telegram_message_id)
+        latest_url = str(latest.get("url") or "").strip()
+        if (
+            not latest_url
+            or latest_url.rstrip("/").split("?", 1)[0]
+            != target_url.rstrip("/").split("?", 1)[0]
+        ):
+            raise ValueError("Telegram ActionTarget is not the latest native message")
+        return [
+            {
+                "url": target_url,
+                "title": opportunity.title,
+                "snippet": str(latest.get("text") or ""),
+                "source": "telegram_native.latest_message",
+            }
+        ]
+
+    @staticmethod
+    def _telegram_message_id(context: dict) -> int | None:
+        raw = context.get("message_id")
+        if raw is not None:
+            try:
+                message_id = int(raw)
+                return message_id if message_id > 0 else None
+            except (TypeError, ValueError):
+                return None
+        # Legacy saved snapshots have URLs but no explicit message_id.
+        path = urlsplit(str(context.get("url") or "")).path
+        tail = path.strip("/").rsplit("/", 1)[-1]
+        return int(tail) if tail.isdigit() and int(tail) > 0 else None
+
     def _candidate_targets(self, opportunity: DistributionOpportunityView) -> list[dict]:
         candidates: list[dict] = []
         seen: set[str] = set()
-
-        if opportunity.platform == DistributionPlatform.TELEGRAM:
-            native_url = str(opportunity.metadata.get("action_target_url") or "").strip()
-            if native_url and self._is_action_target(opportunity.platform, native_url):
-                recent_context = opportunity.metadata.get("recent_context")
-                recent_context = recent_context if isinstance(recent_context, list) else []
-                matched = next(
-                    (
-                        item
-                        for item in recent_context
-                        if isinstance(item, dict) and str(item.get("url") or "") == native_url
-                    ),
-                    None,
-                )
-                candidates.append(
-                    {
-                        "url": native_url,
-                        "title": opportunity.title,
-                        "snippet": str((matched or {}).get("text") or ""),
-                        "source": "telegram_native.action_target_url",
-                    }
-                )
-                seen.add(native_url)
 
         enrichment = opportunity.metadata.get("enrichment", {})
         raw_targets = enrichment.get("action_targets", [])
