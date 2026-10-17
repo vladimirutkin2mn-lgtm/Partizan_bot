@@ -439,9 +439,18 @@ async def test_native_registry_refresh_keeps_confirmed_community_fit() -> None:
     from app.community_first_telegram_adapter import TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE
 
     class FakeConnector:
+        async def inspect_known(self, handles):
+            from app.telegram_research import TelegramKnownCommunityInspection
+
+            assert handles == ["play_hard_community"]
+            return [
+                TelegramKnownCommunityInspection(
+                    "play_hard_community", "VERIFIED", _snapshot()
+                )
+            ]
+
         async def discover(self, query, known_handles):
-            del query, known_handles
-            return [_snapshot()]
+            raise AssertionError("refresh must not call contacts.Search")
 
     store = MemoryRuntimeStateStore()
     product = _product()
@@ -474,3 +483,4 @@ async def test_native_registry_refresh_keeps_confirmed_community_fit() -> None:
     assert refreshed[0].metadata["registry_confirmed"] is True
     assert refreshed[0].metadata["community_fit_pass"] is True
     assert refreshed[0].metadata["community_fit_reason"] == "REGISTRY_CONFIRMED"
+    assert refreshed[0].metadata["registry_refresh_status"] == "VERIFIED"
