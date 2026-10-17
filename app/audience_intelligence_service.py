@@ -1,6 +1,10 @@
 from uuid import UUID, uuid4
 
-from app.customer_live_opportunities import customer_live_opportunity_service
+from app.community_first_audience_engine import (
+    CommunityFirstAudienceIntelligenceEngine as AudienceIntelligenceEngine,
+)
+from app.community_first_live_opportunities import sync_community_first_live_opportunities
+from app.community_first_telegram_adapter import COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET
 from app.discovery_persistence_propagation import recompute_persisted_discovery_signals
 from app.distribution_schemas import (
     AudienceDistributionMapView,
@@ -13,10 +17,6 @@ from app.search import get_search_provider
 from app.telegram_discovery_strategy import (
     MAX_ADAPTIVE_DISCOVERY_ROUNDS,
     TARGET_READY_TELEGRAM_OPPORTUNITIES,
-    TELEGRAM_DISCOVERY_QUERY_BUDGET,
-)
-from app.telegram_discovery_strategy import (
-    ExpandedAudienceIntelligenceEngine as AudienceIntelligenceEngine,
 )
 from app.telegram_participant_research import telegram_participant_research_service
 
@@ -36,8 +36,8 @@ class InMemoryAudienceIntelligenceService:
         icp_result: ICPGenerationResponse,
         top_icp_count: int = 3,
     ) -> AudienceDistributionMapView:
-        """Run the normal multi-platform discovery pass."""
-        engine = AudienceIntelligenceEngine(get_search_provider())
+        """Run discovery only on platforms enabled by the product's active mandate."""
+        engine = AudienceIntelligenceEngine(get_search_provider(), store=self._store)
         return await self._discover_with_engine(
             product,
             icp_result,
@@ -58,13 +58,14 @@ class InMemoryAudienceIntelligenceService:
         """Run a Telegram-only adaptive pass and merge it into the current map.
 
         Hints come from observed growth outcomes and prior preflight failures. They alter
-        search hypotheses only; they do not bypass freshness, publisher preflight,
-        mandate, approval or execution controls.
+        search hypotheses only; they do not bypass publisher preflight, mandate, approval
+        or execution controls.
         """
         engine = AudienceIntelligenceEngine(
             get_search_provider(),
             telegram_hints=telegram_hints,
             telegram_only=True,
+            store=self._store,
         )
         return await self._discover_with_engine(
             product,
@@ -93,8 +94,6 @@ class InMemoryAudienceIntelligenceService:
             DistributionOpportunityView(id=uuid4(), **seed.model_dump())
             for seed in seeds
         ]
-        # Optional Telegram participant research is aggregate and read-only. Raw sender
-        # identities are used only transiently for distinct counts and are never persisted.
         discovered = await telegram_participant_research_service.enrich(
             discovered,
             top_icps,
@@ -115,9 +114,6 @@ class InMemoryAudienceIntelligenceService:
                     merged_opportunity_count=len(opportunities),
                 )
 
-        # Recompute participant, exact-surface and parent/child evidence over the accumulated
-        # map. Recorded prior bonuses are removed first, so adaptive rounds cannot compound
-        # their own research confidence. This remains scoring only, not execution permission.
         opportunities = recompute_persisted_discovery_signals(opportunities)
 
         response = AudienceDistributionMapView(
@@ -133,12 +129,13 @@ class InMemoryAudienceIntelligenceService:
             self._opportunities[opportunity.id] = opportunity
             self._persist_opportunity(opportunity)
 
-        # Promote only concrete, native, fresh Telegram action targets into the
-        # owning customer's live feed. This is research persistence only: the bridge
-        # has no permission to join a group or publish on the customer's behalf.
-        customer_live_opportunity_service.sync_distribution_opportunities(
+        # Community-first Telegram discovery keeps one community record and resolves the
+        # newest currently usable participation surface inside it. Source-post age is useful
+        # context, but is no longer a hard reason to discard an otherwise valid community.
+        sync_community_first_live_opportunities(
             product.id,
             list(opportunities),
+            store=self._store,
         )
         return response
 
@@ -290,11 +287,13 @@ class InMemoryAudienceIntelligenceService:
             "enrichment_error_types": enrichment_error_types,
             "platforms": by_platform,
             "telegram_discovery": {
-                "query_budget_per_icp": TELEGRAM_DISCOVERY_QUERY_BUDGET,
+                "query_budget_per_icp": COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET,
                 "target_ready_opportunities": TARGET_READY_TELEGRAM_OPPORTUNITIES,
                 "max_adaptive_rounds": MAX_ADAPTIVE_DISCOVERY_ROUNDS,
-                "expansion_lenses_enabled": True,
-                "adaptive_hypotheses_enabled": True,
+                "community_first": True,
+                "dedupe_by_community": True,
+                "freshness_is_hard_gate": False,
+                "invite_links_retained": True,
             },
         }
 
