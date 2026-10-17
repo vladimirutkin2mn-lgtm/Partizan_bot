@@ -232,8 +232,8 @@ class OpenAIWebSearchProvider(SearchProvider):
         start = self._read(annotation, "start_index")
         end = self._read(annotation, "end_index")
         if isinstance(start, int) and isinstance(end, int) and 0 <= start < end <= len(text):
-            window_start = max(0, start - 220)
-            window_end = min(len(text), end + 220)
+            window_start = self._source_boundary(text, start, backwards=True)
+            window_end = self._source_boundary(text, end, backwards=False)
             snippet = " ".join(text[window_start:window_end].split())
             if snippet:
                 return snippet, "ANNOTATION_WINDOW"
@@ -245,6 +245,27 @@ class OpenAIWebSearchProvider(SearchProvider):
                 return snippet, "ANNOTATION_TEXT"
 
         return " ".join(str(fallback or "").split()), "TITLE_ONLY"
+
+    @staticmethod
+    def _source_boundary(text: str, index: int, *, backwards: bool) -> int:
+        separators = ("\n", ". ", "! ", "? ")
+        if backwards:
+            positions = [text.rfind(separator, 0, index) for separator in separators]
+            boundary = max(positions)
+            if boundary < 0:
+                return max(0, index - 180)
+            if text.startswith("\n", boundary):
+                return boundary + 1
+            return boundary + 2
+        positions = [
+            position
+            for separator in separators
+            if (position := text.find(separator, index)) >= 0
+        ]
+        if not positions:
+            return min(len(text), index + 180)
+        boundary = min(positions)
+        return boundary + 1
 
     def _read(self, value: Any, key: str) -> Any:
         if isinstance(value, dict):
