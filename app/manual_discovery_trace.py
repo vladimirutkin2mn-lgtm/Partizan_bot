@@ -13,7 +13,11 @@ from app.community_first_telegram_adapter import CommunityFirstTelegramDiscovery
 from app.discovery_execution_context import DiscoveryExecutionContext, DiscoveryExecutionMode
 from app.discovery_relevance_learning import discovery_relevance_learning_service
 from app.icp_service import icp_service
-from app.openai_usage import openai_usage_context
+from app.openai_usage import (
+    openai_usage_context,
+    openai_usage_step_context,
+    summarize_openai_usage,
+)
 from app.product_intake import product_intake_service
 from app.search import DiscoveryQuery, SearchHit, SearchProvider, get_search_provider
 
@@ -169,7 +173,8 @@ class _TracingSearchProvider(SearchProvider):
             )
         query_id = self._execution_context.next_query_id()
         step_id = self._execution_context.next_step_id("search")
-        hits = await self._delegate.search(discovery_query, limit=limit)
+        with openai_usage_step_context(step_id=step_id, query_id=query_id):
+            hits = await self._delegate.search(discovery_query, limit=limit)
         self._calls.append(
             {
                 "query_id": query_id,
@@ -298,8 +303,14 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
         execution_context=execution_context,
     )
     engine = AudienceIntelligenceEngine(tracing_provider, adapters=[adapter])
+    usage_rows: list[dict] = []
 
-    with openai_usage_context("discovery_trace", product_id):
+    with openai_usage_context(
+        "discovery_trace",
+        product_id,
+        run_id=execution_context.run_id,
+        collector=usage_rows,
+    ):
         raw = await engine.discover(product=product, icps=icps)
     raw = collapse_telegram_communities(raw)
     snapshot = discovery_relevance_learning_service.snapshot(product_id)
@@ -358,9 +369,15 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
         )
     )
 
+    usage_by_query = {
+        str(row.get("query_id")): row
+        for row in usage_rows
+        if row.get("query_id") is not None
+    }
     attempts = []
     for attempt in engine.last_attempts:
         identifiers = tracing_provider.call_metadata(attempt.query)
+        query_id = str(identifiers.get("query_id") or "")
         attempts.append(
             {
                 **identifiers,
@@ -370,6 +387,7 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
                 "enriched_candidates": attempt.enriched_candidate_count,
                 "search_error_type": attempt.search_error_type,
                 "enrichment_error_type": attempt.enrichment_error_type,
+                "provider_usage": usage_by_query.get(query_id),
             }
         )
     failures = _failure_rows(engine.last_failures)
@@ -409,6 +427,10 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
             "failures": failures,
             "raw_hits": raw_hits,
             "normalization_reasons": dict(sorted(normalization_counts.items())),
+        },
+        "usage": {
+            "summary": summarize_openai_usage(usage_rows),
+            "calls": usage_rows,
         },
         "current_negative_memory": {
             "blocked_keys": sorted(snapshot["blocked_keys"]),

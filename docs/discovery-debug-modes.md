@@ -10,6 +10,10 @@ Partizan separates production discovery from diagnostic and replay execution.
 
 `DEBUG_TRACE` is allowed to perform an explicitly requested bounded live read, but it must not persist Telegram communities, negative learning, publications, profile changes, or other working-state mutations.
 
+A live diagnostic OpenAI call is correlated as `run_id → step_id → query_id → response_id`. The trace captures input, cached input, output and reasoning tokens, internal web-search call count and duration. Reasoning tokens stay a separate diagnostic field and are not added to output tokens again.
+
+Dollar fields are deliberately separate from provider usage. Until an explicit pricing source/version is configured, `estimated_cost_usd` is `null` with `PRICING_NOT_CONFIGURED`. The OpenAI response usage does not expose the final billed dollar amount, so `actual_billed_cost_usd` stays `null` with `NOT_AVAILABLE_FROM_RESPONSE_USAGE` instead of being guessed.
+
 `REPLAY` reprocesses a saved discovery trace without network access or working-state mutations. Run it with:
 
 ```bash
