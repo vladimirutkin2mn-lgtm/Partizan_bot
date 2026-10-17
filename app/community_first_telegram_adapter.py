@@ -23,13 +23,14 @@ from app.platform_discovery import (
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.search import SearchHit
 from app.telegram_community_registry import (
-    TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE,
-    TelegramCommunityRegistry,
+    TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE as _TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE,
 )
+from app.telegram_community_registry import TelegramCommunityRegistry
 from app.telegram_discovery_strategy import ExpandedTelegramDiscoveryAdapter
 from app.telegram_research import SurfaceAvailability, TelegramSurfaceKind
 
 COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET = 3
+TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE = _TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE
 
 _SEMANTIC_UTILITY_TERMS = {
     "site",
