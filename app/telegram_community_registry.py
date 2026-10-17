@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE = "telegram_community_registry"
+TELEGRAM_COMMUNITY_ALIAS_NAMESPACE = "telegram_community_registry_alias"
 
 _DYNAMIC_METADATA_KEYS = {
     "access_state",
@@ -106,6 +107,7 @@ class TelegramCommunityRegistry:
             storage_key,
             merged,
         )
+        self._index_aliases(product_id, merged)
         for row in matched:
             old_key = str(row.get("id") or "")
             if old_key and old_key != storage_key:
@@ -113,18 +115,30 @@ class TelegramCommunityRegistry:
         return merged
 
     def _matching_rows(self, product_id: object, incoming: dict) -> list[dict]:
-        """Resolve likely rows by stable storage identities, never by a namespace scan."""
+        """Resolve rows through stable keys and reverse aliases without a namespace scan."""
         aliases = set(self._aliases(incoming))
         matched_by_id: dict[str, dict] = {}
-        checked_keys: set[str] = set()
+        checked_storage_keys: set[str] = set()
+        checked_aliases: set[str] = set()
 
         while True:
             storage_keys = self._storage_keys_for_aliases(product_id, aliases)
-            pending = storage_keys - checked_keys
+            for alias in sorted(self._identity_aliases(aliases) - checked_aliases):
+                checked_aliases.add(alias)
+                index = self._store.get(
+                    TELEGRAM_COMMUNITY_ALIAS_NAMESPACE,
+                    self._alias_index_key(product_id, alias),
+                )
+                if isinstance(index, dict):
+                    registry_id = str(index.get("registry_id") or "")
+                    if registry_id:
+                        storage_keys.add(registry_id)
+
+            pending = storage_keys - checked_storage_keys
             if not pending:
                 break
-            checked_keys.update(pending)
-            discovered_alias = False
+            checked_storage_keys.update(pending)
+            before_alias_count = len(aliases)
             for storage_key in sorted(pending):
                 row = self._store.get(
                     TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE,
@@ -136,12 +150,37 @@ class TelegramCommunityRegistry:
                 if row_id in matched_by_id:
                     continue
                 matched_by_id[row_id] = row
-                before = len(aliases)
                 aliases.update(self._aliases(row))
-                discovered_alias = discovered_alias or len(aliases) > before
-            if not discovered_alias:
+            if len(aliases) == before_alias_count:
                 break
         return list(matched_by_id.values())
+
+    def _index_aliases(self, product_id: object, row: dict) -> None:
+        registry_id = str(row.get("id") or "")
+        if not registry_id:
+            return
+        for alias in sorted(self._identity_aliases(self._aliases(row))):
+            self._store.put(
+                TELEGRAM_COMMUNITY_ALIAS_NAMESPACE,
+                self._alias_index_key(product_id, alias),
+                {
+                    "product_id": str(product_id),
+                    "alias": alias,
+                    "registry_id": registry_id,
+                },
+            )
+
+    @staticmethod
+    def _alias_index_key(product_id: object, alias: str) -> str:
+        return f"{product_id}:{str(alias or '').casefold()}"
+
+    @staticmethod
+    def _identity_aliases(aliases: set[str]) -> set[str]:
+        return {
+            alias
+            for alias in aliases
+            if str(alias).startswith(("entity:", "handle:", "invite:"))
+        }
 
     @staticmethod
     def _storage_keys_for_aliases(product_id: object, aliases: set[str]) -> set[str]:
