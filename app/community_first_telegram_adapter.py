@@ -22,17 +22,41 @@ from app.platform_discovery import (
 )
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.search import SearchHit
+from app.telegram_community_registry import (
+    TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE as _TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE,
+)
+from app.telegram_community_registry import TelegramCommunityRegistry
 from app.telegram_discovery_strategy import ExpandedTelegramDiscoveryAdapter
 from app.telegram_research import SurfaceAvailability, TelegramSurfaceKind
 
 COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET = 3
-TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE = "telegram_community_registry"
+TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE = _TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE
 
 _SEMANTIC_UTILITY_TERMS = {
-    "site", "telegram", "channel", "group", "chat", "community", "discussion",
-    "comments", "questions", "public", "replies", "education", "advice", "online",
-    "any", "https", "канал", "группа", "чат", "сообщество", "обсуждение",
-    "комментарии", "вопросы", "советы",
+    "site",
+    "telegram",
+    "channel",
+    "group",
+    "chat",
+    "community",
+    "discussion",
+    "comments",
+    "questions",
+    "public",
+    "replies",
+    "education",
+    "advice",
+    "online",
+    "any",
+    "https",
+    "канал",
+    "группа",
+    "чат",
+    "сообщество",
+    "обсуждение",
+    "комментарии",
+    "вопросы",
+    "советы",
 }
 
 
@@ -57,6 +81,7 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
             ),
         )
         self._store = store or get_runtime_store()
+        self._registry = TelegramCommunityRegistry(self._store)
         self._product_id: UUID | None = None
 
     def build_requests(self, product, icp) -> list[PlatformDiscoveryRequest]:
@@ -120,11 +145,7 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         self._product_id = getattr(product, "id", None)
         if self._product_id is None or not icps:
             return []
-        rows = [
-            row
-            for row in self._store.list_namespace(TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE)
-            if str(row.get("product_id") or "") == str(self._product_id)
-        ]
+        rows = self._registry.list_for_product(self._product_id)
         if not rows:
             return []
         requests = self.build_requests(product, icps[0])
@@ -133,7 +154,7 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         request = requests[0]
         candidates: list[PlatformCandidate] = []
         for row in rows:
-            metadata = dict(row.get("metadata") or {})
+            metadata = self._registry.hydrate_metadata(row)
             metadata["registry_confirmed"] = True
             metadata["community_fit_pass"] = True
             metadata.setdefault("community_fit_reason", "REGISTRY_CONFIRMED")
@@ -421,33 +442,13 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
     def _remember_community(self, candidate: PlatformCandidate) -> None:
         if self._product_id is None:
             return
-        metadata = dict(candidate.metadata or {})
-        entity_id = metadata.get("telegram_entity_id")
-        handle = str(metadata.get("handle") or "").casefold()
-        invite_hash = str(metadata.get("invite_token_hash") or "")
-        identity = (
-            f"entity:{entity_id}"
-            if entity_id is not None
-            else f"handle:{handle}"
-            if handle
-            else f"invite:{invite_hash}"
-            if invite_hash
-            else str(candidate.canonical_key)
-        )
-        key = f"{self._product_id}:{identity}"
-        self._store.put(
-            TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE,
-            key,
-            {
-                "id": key,
-                "product_id": str(self._product_id),
-                "canonical_key": candidate.canonical_key,
-                "title": candidate.title,
-                "url": candidate.url,
-                "kind": candidate.kind.value,
-                "metadata": metadata,
-                "updated_at": datetime.now(UTC).isoformat(),
-            },
+        self._registry.upsert(
+            product_id=self._product_id,
+            canonical_key=candidate.canonical_key,
+            title=candidate.title,
+            url=candidate.url,
+            kind=candidate.kind.value,
+            metadata=dict(candidate.metadata or {}),
         )
 
     def _known_bad_targets(self) -> set[str]:
