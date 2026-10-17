@@ -8,12 +8,13 @@ from urllib.parse import unquote, urlsplit
 from uuid import UUID
 
 from app.audience_intelligence import AudienceIntelligenceEngine
+from app.community_first_audience_engine import collapse_telegram_communities
+from app.community_first_telegram_adapter import CommunityFirstTelegramDiscoveryAdapter
 from app.discovery_relevance_learning import discovery_relevance_learning_service
 from app.icp_service import icp_service
 from app.openai_usage import openai_usage_context
 from app.product_intake import product_intake_service
 from app.search import DiscoveryQuery, SearchHit, SearchProvider, get_search_provider
-from app.telegram_discovery_strategy import ExpandedTelegramDiscoveryAdapter
 
 
 def _as_value(value: object) -> str:
@@ -25,16 +26,22 @@ def _selected_metadata(metadata: object) -> dict:
         return {}
     keys = (
         "handle",
+        "source_type",
+        "access_state",
+        "community_fit_pass",
+        "community_fit_reason",
+        "community_fit_terms",
+        "community_registry_key",
         "action_target_url",
         "action_target_specific",
         "action_target_resolution",
         "action_target_quality",
-        "conversation_signals",
-        "target_match_terms",
+        "action_target_mode",
+        "target_published_at",
+        "target_age_days",
         "opportunity_scope",
         "actionability",
         "community_only_reason",
-        "community_match_terms",
         "telegram_entity_id",
         "linked_discussion_id",
         "native_research_status",
@@ -44,6 +51,7 @@ def _selected_metadata(metadata: object) -> dict:
         "recent_context",
         "research_signals",
         "relevance_guard",
+        "matched_icp_ids",
     )
     return {key: metadata.get(key) for key in keys if key in metadata}
 
@@ -61,13 +69,13 @@ def _evidence_rows(opportunity: object) -> list[dict]:
                 "snippet": str(item.get("snippet") or "")[:1200],
                 "source_class": str(item.get("source_class") or ""),
                 "signal_tags": list(item.get("signal_tags") or []),
+                "source_metadata": dict(item.get("source_metadata") or {}),
             }
         )
     return rows
 
 
 def _failure_rows(failures: object) -> list[dict]:
-    """Serialize bounded provider failures without exposing credentials or mutable state."""
     rows: list[dict] = []
     for failure in list(failures or []):
         rows.append(
@@ -82,14 +90,9 @@ def _failure_rows(failures: object) -> list[dict]:
 
 
 def _telegram_normalization_diagnostic(url: str) -> dict:
-    """Explain the current Telegram adapter URL-normalization outcome without mutating it."""
     parts = urlsplit(str(url or "").strip())
     host = parts.netloc.lower().removeprefix("www.")
-    segments = [
-        unquote(segment)
-        for segment in parts.path.split("/")
-        if segment
-    ]
+    segments = [unquote(segment) for segment in parts.path.split("/") if segment]
     if host not in {"t.me", "telegram.me"}:
         return {
             "normalized": False,
@@ -105,11 +108,19 @@ def _telegram_normalization_diagnostic(url: str) -> dict:
     if segments[0] == "s" and len(segments) >= 2:
         segments = segments[1:]
     slug = segments[0]
-    if slug.startswith("+") or slug.lower() == "joinchat":
+    if slug.startswith("+"):
         return {
-            "normalized": False,
-            "normalization_reason": "INVITE_LINK_UNSUPPORTED",
+            "normalized": True,
+            "normalization_reason": "TELEGRAM_INVITE_ACCEPTED",
             "host": host,
+            "access_state": "JOIN_REQUIRED",
+        }
+    if slug.lower() == "joinchat":
+        return {
+            "normalized": True,
+            "normalization_reason": "TELEGRAM_INVITE_ACCEPTED",
+            "host": host,
+            "access_state": "JOIN_REQUIRED",
         }
     return {
         "normalized": True,
@@ -121,8 +132,6 @@ def _telegram_normalization_diagnostic(url: str) -> dict:
 
 
 class _TracingSearchProvider(SearchProvider):
-    """Read-only wrapper that records exactly what the underlying provider returned."""
-
     def __init__(self, delegate: SearchProvider) -> None:
         self._delegate = delegate
         self._calls: list[dict] = []
@@ -154,6 +163,9 @@ class _TracingSearchProvider(SearchProvider):
                         "title": str(hit.title or "")[:500],
                         "url": str(hit.url or ""),
                         "snippet": str(hit.snippet or "")[:1200],
+                        "evidence_binding": str(
+                            getattr(hit, "metadata", {}).get("evidence_binding") or ""
+                        ),
                         **_telegram_normalization_diagnostic(hit.url),
                     }
                 )
@@ -162,53 +174,31 @@ class _TracingSearchProvider(SearchProvider):
 
 def _filters() -> dict:
     return {
+        "community_first": {
+            "opportunity_identity": "TELEGRAM_COMMUNITY",
+            "post_urls_are_evidence_not_separate_opportunities": True,
+            "invite_links_are_retained": True,
+            "source_type_bot_is_excluded": True,
+            "latest_unblocked_target_selected": True,
+            "post_age_is_hard_gate": False,
+        },
         "semantic_gate": {
-            "signal_family_ratio_threshold": 0.15,
-            "minimum_matched_terms": 2,
-            "direct_product_anchor_minimum_matched_terms": 1,
-            "pass_paths": {
-                "DIVERSIFIED_MATCH": (
-                    "at least 2 signal families and at least 2 matched terms"
-                ),
-                "DIRECT_PROBLEM_MATCH": (
-                    "pain or trigger >= 0.25, at least 1 intent hit, "
-                    "and at least 2 matched terms"
-                ),
-                "CORROBORATED_FIT": (
-                    "fit >= 0.35, at least 2 independent evidence items, "
-                    "intent or alternative signal, and at least 2 matched terms"
-                ),
-                "CONFIDENCE_SUPPORTED": (
-                    "MEDIUM/HIGH confidence, at least 2 signal families, "
-                    "and at least 2 matched terms"
-                ),
-                "DIRECT_PRODUCT_ANCHOR": (
-                    "at least 1 direct product-anchor term, MEDIUM/HIGH confidence, "
-                    "and either at least 2 signal families or strong pain/trigger plus intent"
-                ),
-            },
-            "reject_paths": [
-                "NEGATIVE_COMMUNITY_MEMORY",
-                "NEGATIVE_THEME_MEMORY",
-                "INSUFFICIENT_SEMANTIC_EVIDENCE",
-            ],
+            "legacy_gate_still_recorded": True,
+            "community_fit_can_rescue": "INSUFFICIENT_SEMANTIC_EVIDENCE only",
         },
         "negative_learning": {
-            "exact_community_min_observations": 2,
-            "negative_theme_min_observations": 2,
-            "ttl_days": 30,
+            "trace_writes_learning": False,
         },
         "note": (
-            "This trace evaluates the current gate but never calls filter_and_learn, "
-            "so it does not add negative-learning observations."
+            "This trace uses community-first Telegram discovery and records the legacy "
+            "semantic decision for comparison. It never calls filter_and_learn."
         ),
     }
 
 
 def _trace_decision(opportunity: object, snapshot: dict, product: object) -> dict:
-    """Evaluate exactly the same semantic inputs as production without learning writes."""
-    product_anchor_terms = discovery_relevance_learning_service._product_anchor_terms(  # noqa: SLF001
-        product
+    product_anchor_terms = (
+        discovery_relevance_learning_service._product_anchor_terms(product)  # noqa: SLF001
     )
     return discovery_relevance_learning_service._decision(  # noqa: SLF001
         opportunity,
@@ -226,16 +216,14 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
 
     provider = get_search_provider()
     tracing_provider = _TracingSearchProvider(provider)
-    adapter = ExpandedTelegramDiscoveryAdapter(
+    adapter = CommunityFirstTelegramDiscoveryAdapter(
         relevance_learning_service=discovery_relevance_learning_service,
     )
     engine = AudienceIntelligenceEngine(tracing_provider, adapters=[adapter])
 
-    # Deliberately use the base AudienceIntelligenceEngine. It performs the same current
-    # Telegram query construction, search and enrichment, but does not call the semantic
-    # gate's filter_and_learn method and therefore cannot add rejection memory.
     with openai_usage_context("discovery_trace", product_id):
         raw = await engine.discover(product=product, icps=icps)
+    raw = collapse_telegram_communities(raw)
     snapshot = discovery_relevance_learning_service.snapshot(product_id)
 
     opportunities: list[dict] = []
@@ -243,12 +231,21 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
     reason_counts: Counter[str] = Counter()
     for opportunity in raw:
         decision = _trace_decision(opportunity, snapshot, product)
-        verdict = "PASS" if decision.get("accepted") else "REJECT"
-        reason = str(decision.get("reason") or "UNKNOWN")
+        metadata = getattr(opportunity, "metadata", {})
+        legacy_accepted = bool(decision.get("accepted"))
+        legacy_reason = str(decision.get("reason") or "UNKNOWN")
+        community_fit = bool(
+            isinstance(metadata, dict) and metadata.get("community_fit_pass") is True
+        )
+        rescued = community_fit and not legacy_accepted and legacy_reason in {
+            "INSUFFICIENT_SEMANTIC_EVIDENCE",
+            "UNKNOWN",
+        }
+        verdict = "PASS" if legacy_accepted or rescued else "REJECT"
+        reason = "COMMUNITY_FIRST_FIT" if rescued else legacy_reason
         verdict_counts[verdict] += 1
         reason_counts[reason] += 1
 
-        metadata = getattr(opportunity, "metadata", {})
         signals = metadata.get("research_signals") if isinstance(metadata, dict) else None
         evidence = _evidence_rows(opportunity)
         queries = sorted({row["query"] for row in evidence if row["query"]})
@@ -256,6 +253,8 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
             {
                 "verdict": verdict,
                 "gate_reason": reason,
+                "legacy_gate_reason": legacy_reason,
+                "community_first_rescue": rescued,
                 "signal_families": list(decision.get("signal_families") or []),
                 "direct_product_anchor_count": int(
                     decision.get("direct_product_anchor_count") or 0
@@ -294,10 +293,7 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
     failures = _failure_rows(engine.last_failures)
     failure_counts = Counter(row["error_type"] for row in failures if row["error_type"])
     raw_hits = tracing_provider.raw_hit_rows()
-    normalization_counts = Counter(
-        str(row["normalization_reason"])
-        for row in raw_hits
-    )
+    normalization_counts = Counter(str(row["normalization_reason"]) for row in raw_hits)
 
     return {
         "status": "TRACE_COMPLETE",
@@ -338,6 +334,7 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
         "filters": _filters(),
         "summary": {
             "raw_opportunity_count": len(opportunities),
+            "unique_telegram_communities": len(opportunities),
             "verdicts": dict(sorted(verdict_counts.items())),
             "reasons": dict(sorted(reason_counts.items())),
             "search_failures": dict(sorted(failure_counts.items())),
@@ -348,7 +345,9 @@ async def build_trace(product_id: UUID, *, top_icp_count: int = 3) -> dict:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Trace current Telegram discovery and semantic-gate decisions without mutations."
+        description=(
+            "Trace community-first Telegram discovery and semantic decisions without mutations."
+        )
     )
     parser.add_argument("--product-id", type=UUID, required=True)
     parser.add_argument("--top-icp-count", type=int, default=3)
