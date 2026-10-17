@@ -206,10 +206,25 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         public = [
             item for item in candidates if item.metadata.get("access_state") != "JOIN_REQUIRED"
         ]
+        registry_by_handle = {
+            str(item.metadata.get("handle") or "").casefold(): dict(item.metadata)
+            for item in public
+            if item.metadata.get("registry_confirmed") is True
+            and item.metadata.get("handle")
+        }
         enriched = await TelegramDiscoveryAdapter.enrich_candidates(self, request, public)
         result: list[PlatformCandidate] = []
         for candidate in [*enriched, *invites]:
             metadata = dict(candidate.metadata or {})
+            prior_registry = registry_by_handle.get(
+                str(metadata.get("handle") or "").casefold()
+            )
+            if prior_registry is not None:
+                metadata["registry_confirmed"] = True
+                metadata.setdefault(
+                    "community_fit_terms",
+                    list(prior_registry.get("community_fit_terms") or []),
+                )
             if self._looks_like_bot(candidate):
                 continue
             if metadata.get("native_research_status") == "VERIFIED":
