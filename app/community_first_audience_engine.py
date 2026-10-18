@@ -14,6 +14,7 @@ from app.distribution_types import DistributionPlatform
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.search import OpenAIWebSearchProvider, SearchProvider
 from app.telegram_discovery_strategy import ExpandedAudienceIntelligenceEngine
+from app.telegram_tgstat_catalog import TGStatCatalogExpansion
 
 GROWTH_MANDATE_NAMESPACE = "growth_mandate"
 TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE = "telegram_paid_discovery_daily_claim"
@@ -61,9 +62,15 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
         telegram_only: bool = False,
         relevance_learning_service: DiscoveryRelevanceLearningService | None = None,
         store: RuntimeStateStore | None = None,
+        catalog_expansion: TGStatCatalogExpansion | None = None,
     ) -> None:
         self._store = store or get_runtime_store()
         self._telegram_only = telegram_only
+        self._catalog_expansion = catalog_expansion or TGStatCatalogExpansion(
+            self._store,
+            enabled=bool(getattr(get_settings(), "telegram_catalog_discovery_enabled", False)),
+        )
+        self.last_catalog_status = "NOT_ATTEMPTED"
         # Adaptive hints change the native query plan, not the permission to bypass
         # saved communities and issue new paid web searches.
         self._prefer_registered_telegram = True
@@ -112,6 +119,8 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             ),
             None,
         )
+        self.last_catalog_status = "NOT_APPLICABLE"
+        catalog_result = {"status": "NOT_APPLICABLE", "staged_count": 0}
         if self._prefer_registered_telegram and telegram_adapter is not None:
             registered = await telegram_adapter.refresh_registered(product, icps)
             confirmed_count = sum(
@@ -125,12 +134,26 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             new_communities = await telegram_adapter.replenish_native(
                 product, icps, confirmed_count=confirmed_count
             )
+            # A catalog candidate is NOT usable until the next native peer
+            # inspection verifies actual Telegram identity and audience fit.
+            # The catalog is only consulted when the native search has not
+            # already found a qualifying community.
+            if confirmed_count < 3 and not any(
+                item.metadata.get("community_fit_pass") is True
+                for item in new_communities
+            ):
+                catalog_result = await self._catalog_expansion.replenish(
+                    product, icps, confirmed_count=confirmed_count
+                )
+            else:
+                catalog_result = {"status": "NATIVE_COVERAGE", "staged_count": 0}
+            self.last_catalog_status = str(catalog_result["status"])
             registry_raw = [
                 self._candidate_to_seed(icp, candidate)
                 for candidate in [*registered, *new_communities]
                 for icp in icps
             ]
-            if registered or new_communities:
+            if registered or new_communities or catalog_result["staged_count"]:
                 eligible = [
                     adapter
                     for adapter in eligible
@@ -139,7 +162,13 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             elif isinstance(self._provider, OpenAIWebSearchProvider):
                 # Only when native was insufficient, require an explicit
                 # operator opt-in before attempting paid web discovery.
-                if not get_settings().telegram_paid_discovery_enabled:
+                # Never convert a blocked/failed catalog request into an
+                # unbounded paid fallback. Only an explicitly disabled or
+                # non-applicable catalog permits the separate paid opt-in.
+                if (
+                    not get_settings().telegram_paid_discovery_enabled
+                    or catalog_result["status"] not in {"DISABLED", "NO_CATEGORY"}
+                ):
                     eligible = [
                         adapter
                         for adapter in eligible

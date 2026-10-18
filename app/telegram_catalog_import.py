@@ -21,6 +21,7 @@ CATALOG_SOURCES = (
     "telegram-groups-parser",
     "telegram-chat-scraper",
     "tgscan-export",
+    "tgstat-public",
 )
 MAX_CATALOG_ROWS = 200
 _PUBLIC_HANDLE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
@@ -84,7 +85,7 @@ def parse_public_catalog(payload: object, *, source: str) -> list[dict]:
             continue
         if source == "telegram-chat-scraper" and raw.get("is_group") is not True:
             continue
-        if source == "tgscan-export" and kind_hint not in {
+        if source in {"tgscan-export", "tgstat-public"} and kind_hint not in {
             "group", "supergroup", "megagroup", "channel",
         }:
             continue
@@ -107,6 +108,12 @@ def parse_public_catalog(payload: object, *, source: str) -> list[dict]:
                 "title": title,
                 "description": description,
                 "kind": kind,
+                "source_url": (
+                    str(raw.get("source_url") or "")[:320]
+                    if source == "tgstat-public"
+                    and str(raw.get("source_url") or "").startswith("https://tgstat.com/")
+                    else ""
+                ),
             }
     return list(communities.values())
 
@@ -150,6 +157,7 @@ def import_public_catalog(
             "catalog_source": source,
             "catalog_observed_at": timestamp,
             "catalog_description": str(item.get("description") or "")[:600],
+            "catalog_evidence_url": str(item.get("source_url") or "")[:320],
             "native_research_status": "NOT_CHECKED",
             "community_fit_pass": False,
             "actionability": "RESEARCH_ONLY",
