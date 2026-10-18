@@ -282,6 +282,148 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
         collapsed = collapse_telegram_communities(propagated)
         return self._coverage_first_limit(collapsed, max_opportunities)
 
+    @staticmethod
+    def _record_registry_stage(queue: TelegramDiscoveryStageQueue, registered: list) -> None:
+        attempted = [
+            item for item in registered
+            if item.metadata.get("registry_refresh_attempted") is True
+        ]
+        statuses = {
+            str(item.metadata.get("registry_refresh_status") or "")
+            for item in registered
+        }
+        if not registered:
+            status, reason = "SKIPPED_NO_CANDIDATES", "EMPTY_REGISTRY"
+        elif "DEFERRED_FLOOD_WAIT" in statuses:
+            status, reason = "DEFERRED_RATE_LIMIT", "TELEGRAM_FLOOD_WAIT"
+        elif any(s in statuses for s in ("RETRYABLE_FAILED", "INSPECTION_UNAVAILABLE")):
+            status, reason = "FAILED_RETRYABLE", "NATIVE_PEER_INSPECTION_FAILED"
+        elif attempted:
+            status, reason = "COMPLETED", "PEER_INSPECTION_COMPLETED"
+        else:
+            status, reason = "SKIPPED_NO_CANDIDATES", "NO_ELIGIBLE_REFRESH_BATCH"
+        next_attempt = next(
+            (
+                str(item.metadata["native_resume_after"])
+                for item in registered
+                if item.metadata.get("native_resume_after")
+            ),
+            None,
+        )
+        queue.mark(
+            "registry", status, reason=reason,
+            candidate_count=len(registered), next_attempt_at=next_attempt,
+        )
+
+    def _record_native_stage(
+        self,
+        queue: TelegramDiscoveryStageQueue,
+        adapter: CommunityFirstTelegramDiscoveryAdapter,
+        confirmed_count: int,
+        candidates: list,
+        before: dict,
+    ) -> None:
+        product_id = queue.product_id
+        after = self._store.get(TELEGRAM_NATIVE_REPLENISH_NAMESPACE, product_id) or {}
+        blocked = research_flood_wait_until(self._store)
+        next_attempt = str(after.get("next_attempt_at") or "") or None
+        if blocked:
+            status, reason = "DEFERRED_RATE_LIMIT", "TELEGRAM_FLOOD_WAIT"
+            next_attempt = blocked.isoformat()
+        elif confirmed_count >= 3:
+            status, reason = "SKIPPED_SUFFICIENT", "VERIFIED_REGISTRY_COVERAGE"
+        elif before.get("last_attempt_at") != after.get("last_attempt_at") and after:
+            last_status = str(after.get("last_status") or "")
+            if last_status == "RETRYABLE_FAILED":
+                status, reason = "FAILED_RETRYABLE", str(after.get("last_error_type") or "")
+            elif candidates:
+                status, reason = "COMPLETED", "NATIVE_CANDIDATES_FOUND"
+            else:
+                status, reason = "NO_FIT", last_status or "NO_FIT_MATCH"
+        elif after.get("last_attempt_at"):
+            status, reason = "DEFERRED_COOLDOWN", "NATIVE_QUERY_ALREADY_ATTEMPTED"
+            if not next_attempt:
+                try:
+                    at = datetime.fromisoformat(str(after["last_attempt_at"]))
+                    next_attempt = (
+                        at.replace(tzinfo=UTC) if at.tzinfo is None else at.astimezone(UTC)
+                    ) + timedelta(hours=24)
+                    next_attempt = next_attempt.isoformat()
+                except ValueError:
+                    next_attempt = None
+        elif not callable(getattr(adapter._research_connector, "discover", None)):
+            status, reason = "SKIPPED_DISABLED", "NATIVE_RESEARCH_UNAVAILABLE"
+        else:
+            status, reason = "SKIPPED_NO_CANDIDATES", "NATIVE_QUERY_NOT_PLANNED"
+        queue.mark(
+            "native", status, reason=reason,
+            candidate_count=len(candidates), next_attempt_at=next_attempt,
+            error_type=(
+                str(after.get("last_error_type"))
+                if status == "FAILED_RETRYABLE" and after.get("last_error_type")
+                else None
+            ),
+        )
+
+    def _record_catalog_stage(
+        self, queue: TelegramDiscoveryStageQueue, result: dict
+    ) -> None:
+        source_status = str(result.get("status") or "NOT_APPLICABLE")
+        status = {
+            "STAGED_UNVERIFIED": "STAGED_UNVERIFIED",
+            "NOT_DUE": "DEFERRED_COOLDOWN",
+            "ALREADY_CLAIMED": "DEFERRED_COOLDOWN",
+            "SOURCE_THROTTLED": "DEFERRED_RATE_LIMIT",
+            "RETRYABLE_FAILED": "FAILED_RETRYABLE",
+            "FORMAT_UNKNOWN": "FAILED_RETRYABLE",
+            "SOURCE_UNAVAILABLE": "FAILED_RETRYABLE",
+            "SOURCE_HTTP_ERROR": "FAILED_RETRYABLE",
+            "NO_VALID_COMMUNITIES": "FAILED_RETRYABLE",
+            "DISABLED": "SKIPPED_DISABLED",
+            "NATIVE_COVERAGE": "SKIPPED_SUFFICIENT",
+            "SUFFICIENT_REGISTRY": "SKIPPED_SUFFICIENT",
+            "NO_CATEGORY": "SKIPPED_NO_CANDIDATES",
+        }.get(source_status, "NOT_APPLICABLE")
+        source_state = self._store.get(TGSTAT_CATALOG_RUN_NAMESPACE, queue.product_id) or {}
+        queue.mark(
+            "catalog", status, reason=source_status,
+            candidate_count=int(result.get("staged_count") or 0),
+            next_attempt_at=(
+                str(source_state["next_attempt_at"])
+                if status in {"DEFERRED_COOLDOWN", "DEFERRED_RATE_LIMIT", "FAILED_RETRYABLE"}
+                and source_state.get("next_attempt_at")
+                else None
+            ),
+            error_type=(
+                str(source_state.get("error_type"))
+                if status == "FAILED_RETRYABLE" and source_state.get("error_type")
+                else None
+            ),
+        )
+
+    def _record_paid_stage(
+        self, queue: TelegramDiscoveryStageQueue, paid_provider
+    ) -> None:
+        result = (
+            str(paid_provider.last_paid_status)
+            if paid_provider is not None
+            else "NOT_APPLICABLE"
+        )
+        if result == "NOT_ATTEMPTED":
+            result = self.last_paid_fallback_gate
+        status = {
+            "COMPLETED_BILLING_UNKNOWN": "COMPLETED",
+            "PROVIDER_FAILED_CHARGE_UNKNOWN": "FAILED_RETRYABLE",
+            "DAILY_QUERY_LIMIT": "DEFERRED_COOLDOWN",
+            "MONTHLY_BUDGET_EXHAUSTED": "BUDGET_EXHAUSTED",
+            "MONTHLY_BUDGET_INSUFFICIENT": "BUDGET_EXHAUSTED",
+            "COST_ENVELOPE_NOT_CONFIGURED": "BLOCKED",
+            "PAID_SEARCH_DISABLED": "SKIPPED_DISABLED",
+            "NATIVE_SEARCH_NOT_COMPLETED": "BLOCKED",
+            "CATALOG_NOT_EXHAUSTED": "BLOCKED",
+        }.get(result, "NOT_APPLICABLE")
+        queue.mark("paid", status, reason=result)
+
     def _native_no_fit_confirmed(self, product_id: object) -> bool:
         if product_id is None:
             return False
