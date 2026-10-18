@@ -9,8 +9,8 @@ from uuid import uuid4
 import pytest
 
 from app.autonomous_opportunity_refresh import (
-    MIN_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS,
     AUTONOMOUS_OPPORTUNITY_REFRESH_NAMESPACE,
+    MIN_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS,
     AutonomousOpportunityRefreshService,
 )
 from app.autonomy_schemas import GrowthMandateStatus, GrowthMandateView
