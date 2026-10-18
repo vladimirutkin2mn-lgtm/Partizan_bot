@@ -3,7 +3,6 @@
 No live Telegram sessions, web searches or outbound publication occur in these tests.
 """
 
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
@@ -101,10 +100,19 @@ class FakeNative:
 
     async def inspect_known(self, handles):
         self.inspected.append(tuple(handles))
-        return [
-            TelegramKnownCommunityInspection(handle, "VERIFIED", _snapshot(handle, 41))
-            for handle in handles
-        ]
+        inspections = []
+        for handle in handles:
+            entity_id = (
+                41 + int(handle.rsplit("_", 1)[-1])
+                if handle.startswith("saved_femdom_")
+                else 41
+            )
+            inspections.append(
+                TelegramKnownCommunityInspection(
+                    handle, "VERIFIED", _snapshot(handle, entity_id)
+                )
+            )
+        return inspections
 
     async def discover(self, *, query, known_handles):
         assert known_handles == []
