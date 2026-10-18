@@ -286,7 +286,7 @@ async def test_stage_queue_marks_catalog_candidates_unverified_and_paid_blocked(
     catalog = TGStatCatalogExpansion(store, source=FakeSource(), enabled=True)
     engine = _engine(store, product, catalog, native, paid)
     assert await engine.discover(product, [_icp()]) == []
-    snapshot = TelegramDiscoveryStageQueue.latest(store, product)
+    snapshot = TelegramDiscoveryStageQueue.latest(store, product.id)
     assert snapshot["complete"] is True
     rows = {item["stage"]: item for item in snapshot["stages"]}
     assert rows["registry"]["status"] == "SKIPPED_NO_CANDIDATES"
