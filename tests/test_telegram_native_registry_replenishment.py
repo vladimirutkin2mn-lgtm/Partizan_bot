@@ -236,3 +236,27 @@ async def test_native_failure_is_retryable_and_never_falls_back_to_paid_web():
     assert state["last_status"] == "RETRYABLE_FAILED"
     assert state["last_error_type"] == "RuntimeError"
     assert len(store.list_namespace(TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE)) == 1
+
+
+@pytest.mark.asyncio
+async def test_adaptive_hints_cannot_bypass_saved_registry_to_paid_web():
+    store, product = MemoryRuntimeStateStore(), _product()
+    _registered(store, product, "first_femdom_group", 41)
+    native, web = FakeNative(), ForbiddenWeb()
+    store.put(
+        GROWTH_MANDATE_NAMESPACE,
+        str(product.id),
+        {"product_id": str(product.id), "status": "ACTIVE", "allowed_platforms": ["TELEGRAM"]},
+    )
+    engine = CommunityFirstAudienceIntelligenceEngine(
+        web, store=store, telegram_hints=["BDSM conversations"], telegram_only=True
+    )
+    for adapter in engine._all_adapters:
+        if isinstance(adapter, CommunityFirstTelegramDiscoveryAdapter):
+            adapter._research_connector = native
+
+    found = await engine.discover(product, [_icp()], max_opportunities=20)
+
+    assert found
+    assert len(native.search_queries) == 1
+    assert web.calls == 0
