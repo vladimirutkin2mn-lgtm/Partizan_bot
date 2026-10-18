@@ -3,12 +3,19 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from uuid import uuid4
+
+import pytest
 
 from app.autonomous_opportunity_refresh import (
     MIN_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS,
+    AUTONOMOUS_OPPORTUNITY_REFRESH_NAMESPACE,
     AutonomousOpportunityRefreshService,
 )
+from app.autonomy_schemas import GrowthMandateStatus, GrowthMandateView
+from app.autonomy_service import GROWTH_MANDATE_NAMESPACE
+from app.distribution_types import DistributionActionType, DistributionPlatform
 from app.runtime_store import MemoryRuntimeStateStore
 from app.telegram_discovery_stage_queue import TelegramDiscoveryStageQueue
 
@@ -94,3 +101,76 @@ def test_previous_run_or_incomplete_stage_queue_does_not_control_new_refresh():
         store, product_id, now=t + timedelta(minutes=2), run_id="crashed"
     ).start()
     assert service._next_source_retry(product_id, after=t, now=t) is None
+
+
+@pytest.mark.asyncio
+async def test_worker_refresh_persists_source_wait_without_any_followup_discovery(
+    monkeypatch,
+):
+    store, product_id = MemoryRuntimeStateStore(), uuid4()
+    t = datetime.now(UTC)
+    mandate = GrowthMandateView(
+        id=uuid4(),
+        product_id=product_id,
+        version=1,
+        status=GrowthMandateStatus.ACTIVE,
+        total_budget_cap=100,
+        target_max_cac=10,
+        max_autonomous_spend_per_experiment=0,
+        max_autonomous_spend_per_day=0,
+        max_concurrent_running_experiments=1,
+        allowed_platforms=[DistributionPlatform.TELEGRAM],
+        allowed_actions=[DistributionActionType.COMMENT],
+        autonomous_prepare=True,
+        autonomous_approve=True,
+        autonomous_paid_activation=False,
+        approval_threshold=0,
+        created_at=t,
+        updated_at=t,
+    )
+    store.put(GROWTH_MANDATE_NAMESPACE, str(product_id), mandate.model_dump(mode="json"))
+
+    class EmptyResearch:
+        calls = 0
+
+        async def discover(self, product, icps):
+            self.calls += 1
+            _queue(store, product.id, datetime.now(UTC))
+            return SimpleNamespace(opportunity_count=0)
+
+    audience = EmptyResearch()
+    monkeypatch.setattr(
+        "app.autonomous_opportunity_refresh.product_intake_service.get_product",
+        lambda _: SimpleNamespace(id=product_id),
+    )
+    monkeypatch.setattr(
+        "app.autonomous_opportunity_refresh.icp_service.get",
+        lambda _: SimpleNamespace(product_id=product_id),
+    )
+    monkeypatch.setattr(
+        "app.autonomous_opportunity_refresh.distribution_control_plane_service.list_identities",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        "app.autonomous_opportunity_refresh.distribution_control_plane_service.list_policies",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        "app.autonomous_opportunity_refresh.distribution_control_plane_service.list_campaign_slots",
+        lambda: [],
+    )
+    monkeypatch.setattr(
+        "app.autonomous_opportunity_refresh.distribution_play_service.generate",
+        lambda *args, **kwargs: SimpleNamespace(play_count=0, ready_count=0),
+    )
+    service = AutonomousOpportunityRefreshService(store=store, audience_service=audience)
+
+    first = await service.run_once(product_id=product_id, interval_seconds=21600)
+    assert first[0]["status"] == "REFRESHED"
+    assert first[0]["next_attempt_reason"] == "AWAITING_SOURCE_RETRY"
+    assert datetime.fromisoformat(first[0]["next_attempt_at"]) > t + timedelta(hours=47)
+    again = await service.run_once(product_id=product_id, interval_seconds=21600)
+    assert again[0]["status"] == "NOT_DUE"
+    assert audience.calls == 1
+    saved = store.get(AUTONOMOUS_OPPORTUNITY_REFRESH_NAMESPACE, str(product_id))
+    assert saved["consecutive_failures"] == 0
