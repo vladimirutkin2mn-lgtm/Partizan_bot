@@ -35,6 +35,9 @@ AUTONOMOUS_OPPORTUNITY_REFRESH_NAMESPACE = "autonomous_opportunity_refresh"
 DISTRIBUTION_LEARNING_NAMESPACE = "distribution_learning_entry"
 DEFAULT_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS = 6 * 60 * 60
 MIN_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS = 15 * 60
+AUTONOMOUS_DISCOVERY_RETRY_BASE_SECONDS = 15 * 60
+AUTONOMOUS_DISCOVERY_RETRY_MAX_SECONDS = 6 * 60 * 60
+AUTONOMOUS_DISCOVERY_RETRY_MAX_EXPONENT = 5
 
 _LIVE_MODE_BY_KIND = {
     "COMMENT": TelegramParticipationMode.CHANNEL_COMMENT.value,
@@ -100,6 +103,12 @@ class AutonomousOpportunityRefreshService:
                     {
                         "product_id": str(candidate.product_id),
                         "status": "NOT_DUE",
+                        "reason": "PERSISTENT_RETRY_BACKOFF" if previous and previous.get(
+                            "status"
+                        ) == "FAILED" else "NORMAL_DISCOVERY_INTERVAL",
+                        "next_attempt_at": (
+                            previous.get("next_attempt_at") if previous else None
+                        ),
                         "last_success_at": previous.get("last_success_at") if previous else None,
                     }
                 )
@@ -191,13 +200,25 @@ class AutonomousOpportunityRefreshService:
                 # Discovery failures must not disable the existing portfolio. Persist a
                 # safe diagnostic and allow the normal autonomous sweep to continue using
                 # the last known-good plays.
+                failed_at = datetime.now(UTC)
+                consecutive_failures = (
+                    max(0, int(previous.get("consecutive_failures") or 0)) + 1
+                    if previous and previous.get("status") == "FAILED"
+                    else 1
+                )
+                retry_delay_seconds = self._failure_retry_delay(consecutive_failures)
                 record = {
                     "product_id": str(candidate.product_id),
                     "status": "FAILED",
                     "error_type": type(exc).__name__,
+                    "consecutive_failures": consecutive_failures,
+                    "retry_delay_seconds": retry_delay_seconds,
+                    "next_attempt_at": (
+                        failed_at + timedelta(seconds=retry_delay_seconds)
+                    ).isoformat(),
                     "attempted_at": started_at.isoformat(),
                     "last_success_at": previous.get("last_success_at") if previous else None,
-                    "updated_at": datetime.now(UTC).isoformat(),
+                    "updated_at": failed_at.isoformat(),
                 }
                 self._store.put(
                     AUTONOMOUS_OPPORTUNITY_REFRESH_NAMESPACE,
@@ -212,6 +233,10 @@ class AutonomousOpportunityRefreshService:
             record = {
                 "product_id": str(candidate.product_id),
                 "status": "REFRESHED",
+                "consecutive_failures": 0,
+                "next_attempt_at": (
+                    completed_at + timedelta(seconds=interval_seconds)
+                ).isoformat(),
                 "opportunity_count": distribution.opportunity_count,
                 "play_count": plays.play_count,
                 "ready_play_count": plays.ready_count,
@@ -617,15 +642,41 @@ class AutonomousOpportunityRefreshService:
         )
 
     @staticmethod
+    def _failure_retry_delay(consecutive_failures: int) -> int:
+        """Bound retries to worker-safe intervals; no hot-loop on provider errors."""
+        exponent = min(
+            AUTONOMOUS_DISCOVERY_RETRY_MAX_EXPONENT,
+            max(0, consecutive_failures - 1),
+        )
+        return min(
+            AUTONOMOUS_DISCOVERY_RETRY_MAX_SECONDS,
+            AUTONOMOUS_DISCOVERY_RETRY_BASE_SECONDS * (2**exponent),
+        )
+
+    @staticmethod
     def _due(previous: dict | None, *, now: datetime, interval_seconds: int) -> bool:
         if not previous:
             return True
+        # Persisted next due time survives process restarts. Legacy records
+        # retain the original successful discovery cadence.
+        scheduled = previous.get("next_attempt_at")
+        if scheduled:
+            try:
+                scheduled_at = datetime.fromisoformat(str(scheduled))
+            except (TypeError, ValueError):
+                scheduled_at = None
+            if scheduled_at is not None:
+                if scheduled_at.tzinfo is None:
+                    scheduled_at = scheduled_at.replace(tzinfo=UTC)
+                else:
+                    scheduled_at = scheduled_at.astimezone(UTC)
+                return now >= scheduled_at
         raw = previous.get("last_success_at")
         if not raw:
             return True
         try:
             last_success = datetime.fromisoformat(str(raw))
-        except ValueError:
+        except (TypeError, ValueError):
             return True
         if last_success.tzinfo is None:
             last_success = last_success.replace(tzinfo=UTC)
