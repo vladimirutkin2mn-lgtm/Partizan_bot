@@ -49,6 +49,36 @@ def openai_usage_context(
 
 
 @contextmanager
+def capture_openai_usage_rows(
+    rows: list[dict], *, task: str, product_id: UUID | str | None = None
+) -> Iterator[None]:
+    """Capture a paid subcall without dropping the parent run and usage trace.
+
+    The outer collector must still receive the same provider response once.
+    The existing run/step/query contextvars remain unchanged.
+    """
+    parent = _collector.get()
+
+    class _ForwardingCollector(list):
+        def append(self, payload: dict) -> None:
+            rows.append(dict(payload))
+            if parent is not None:
+                parent.append(dict(payload))
+
+    token = _collector.set(_ForwardingCollector())
+    task_token = _task.set(task)
+    product_token = _product_id.set(
+        str(product_id) if product_id is not None else _product_id.get()
+    )
+    try:
+        yield
+    finally:
+        _product_id.reset(product_token)
+        _task.reset(task_token)
+        _collector.reset(token)
+
+
+@contextmanager
 def openai_usage_step_context(
     *,
     step_id: str | None = None,
