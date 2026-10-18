@@ -5,7 +5,7 @@ publication, profile changes, and any paid web discovery.
 
 ## Trigger and source priority
 
-For an **already saved** Telegram community registry, the autonomous
+For Telegram products with **zero or more** saved communities, the autonomous
 CommunityFirstAudienceIntelligenceEngine:
 
 1. rotates up to three known public handles through the existing read-only
@@ -43,10 +43,18 @@ join communities, publish content, modify profiles or initiate dialogs.
 
 ## Intentional limits of this PR
 
-- The initial discovery path for a product with **no saved communities** is
-  unchanged; it still uses the existing generic web-search pipeline. A
-  subsequent change must put native/catalog sources before it and add a hard
-  paid budget and explicit opt-in.
+- **Empty registries now bootstrap with native Telegram search** using the
+  same product-level native cooldown, query history and canonical registry.
+  A successful native candidate skips all Telegram web discovery for that run.
+- Paid Telegram web discovery is **off by default**. Operators may explicitly
+  set `TELEGRAM_PAID_DISCOVERY_ENABLED=true` for a last-resort fallback when
+  native search leaves the registry empty. The OpenAI web provider is
+  atomically limited to **one Telegram query per product per UTC day**,
+  including provider failures and adaptive rounds; other enabled platform
+  searches are not affected.
+- The budget is a **query-count guard** rather than a verified dollar cap.
+  For a monetary hard cap, provider-side billing/spend controls and explicit
+  cost reconciliation are still required.
 - Catalog/parsers (tgscan, telegram-groups-parser, Telegram-Chat-Scraper) are
   not run by this PR. They must be reviewed for safety, ToS, licensing,
   resilience and canonical deduplication before integration.

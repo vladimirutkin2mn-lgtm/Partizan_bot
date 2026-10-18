@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from app.audience_intelligence import AudienceIntelligenceEngine
 from app.community_first_telegram_adapter import CommunityFirstTelegramDiscoveryAdapter
+from app.config import get_settings
 from app.discovery_intelligence import annotate_base_intelligence, propagate_surface_corroboration
 from app.discovery_relevance_learning import (
     DiscoveryRelevanceLearningService,
@@ -9,10 +12,41 @@ from app.discovery_relevance_learning import (
 )
 from app.distribution_types import DistributionPlatform
 from app.runtime_store import RuntimeStateStore, get_runtime_store
-from app.search import SearchProvider
+from app.search import OpenAIWebSearchProvider, SearchProvider
 from app.telegram_discovery_strategy import ExpandedAudienceIntelligenceEngine
 
 GROWTH_MANDATE_NAMESPACE = "growth_mandate"
+TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE = "telegram_paid_discovery_daily_claim"
+
+
+class _PaidTelegramDiscoveryBudgetProvider:
+    """Allow at most one paid Telegram web query per product and UTC day."""
+
+    def __init__(self, delegate: SearchProvider, store: RuntimeStateStore, product_id: object):
+        self._delegate = delegate
+        self._store = store
+        self._product_id = str(product_id)
+
+    async def search(self, discovery_query, limit: int = 5):
+        query = str(getattr(discovery_query, "query", "") or "").casefold()
+        if "site:t.me" not in query:
+            return await self._delegate.search(discovery_query, limit=limit)
+        claim_key = f"{self._product_id}:{datetime.now(UTC).date().isoformat()}"
+        if not self._store.put_if_absent(
+            TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE,
+            claim_key,
+            {
+                "product_id": self._product_id,
+                "claimed_at": datetime.now(UTC).isoformat(),
+                "query": str(getattr(discovery_query, "query", ""))[:500],
+                "maximum_paid_queries": 1,
+            },
+        ):
+            return []
+        return await self._delegate.search(discovery_query, limit=limit)
+
+
+
 
 
 class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngine):
@@ -80,45 +114,62 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
         )
         if self._prefer_registered_telegram and telegram_adapter is not None:
             registered = await telegram_adapter.refresh_registered(product, icps)
-            if registered:
-                confirmed_count = sum(
-                    candidate.metadata.get("community_fit_pass") is True
-                    and candidate.metadata.get("native_research_status") == "VERIFIED"
-                    and candidate.metadata.get("access_state") != "JOIN_REQUIRED"
-                    for candidate in registered
-                )
-                new_communities = await telegram_adapter.replenish_native(
-                    product, icps, confirmed_count=confirmed_count
-                )
-                registry_raw = [
-                    self._candidate_to_seed(icp, candidate)
-                    for candidate in [*registered, *new_communities]
-                    for icp in icps
-                ]
-                # A sparse existing registry is replenished via native Telegram
-                # research, not by automatically starting paid web searches.
+            confirmed_count = sum(
+                candidate.metadata.get("community_fit_pass") is True
+                and candidate.metadata.get("native_research_status") == "VERIFIED"
+                and candidate.metadata.get("access_state") != "JOIN_REQUIRED"
+                for candidate in registered
+            )
+            # Zero-community products take the same read-only, free native
+            # route as sparse registries, before any potentially paid search.
+            new_communities = await telegram_adapter.replenish_native(
+                product, icps, confirmed_count=confirmed_count
+            )
+            registry_raw = [
+                self._candidate_to_seed(icp, candidate)
+                for candidate in [*registered, *new_communities]
+                for icp in icps
+            ]
+            if registered or new_communities:
                 eligible = [
                     adapter
                     for adapter in eligible
                     if adapter.platform != DistributionPlatform.TELEGRAM
                 ]
+            elif isinstance(self._provider, OpenAIWebSearchProvider):
+                # Only when native was insufficient, require an explicit
+                # operator opt-in before attempting paid web discovery.
+                if not get_settings().telegram_paid_discovery_enabled:
+                    eligible = [
+                        adapter
+                        for adapter in eligible
+                        if adapter.platform != DistributionPlatform.TELEGRAM
+                    ]
 
         self._adapters = eligible
-        if self._adapters:
-            collection_limit = max(
-                max_opportunities, max_opportunities * max(1, len(self._adapters))
+        web_provider = self._provider
+        if isinstance(web_provider, OpenAIWebSearchProvider):
+            self._provider = _PaidTelegramDiscoveryBudgetProvider(
+                web_provider, self._store, getattr(product, "id", "")
             )
-            web_raw = await AudienceIntelligenceEngine.discover(
-                self,
-                product,
-                icps,
-                per_query_limit=per_query_limit,
-                max_opportunities=collection_limit,
-            )
-        else:
-            self._last_attempts = []
-            self._last_failures = []
-            web_raw = []
+        try:
+            if self._adapters:
+                collection_limit = max(
+                    max_opportunities, max_opportunities * max(1, len(self._adapters))
+                )
+                web_raw = await AudienceIntelligenceEngine.discover(
+                    self,
+                    product,
+                    icps,
+                    per_query_limit=per_query_limit,
+                    max_opportunities=collection_limit,
+                )
+            else:
+                self._last_attempts = []
+                self._last_failures = []
+                web_raw = []
+        finally:
+            self._provider = web_provider
 
         raw = [*registry_raw, *web_raw]
         if not raw:

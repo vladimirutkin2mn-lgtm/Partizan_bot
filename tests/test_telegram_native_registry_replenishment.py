@@ -11,6 +11,7 @@ import pytest
 
 from app.community_first_audience_engine import (
     GROWTH_MANDATE_NAMESPACE,
+    TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE,
     CommunityFirstAudienceIntelligenceEngine,
 )
 from app.community_first_telegram_adapter import (
@@ -18,6 +19,7 @@ from app.community_first_telegram_adapter import (
     CommunityFirstTelegramDiscoveryAdapter,
 )
 from app.runtime_store import MemoryRuntimeStateStore
+from app.search import OpenAIWebSearchProvider
 from app.telegram_community_registry import TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE
 from app.telegram_research import (
     TelegramCommunitySnapshot,
@@ -260,3 +262,91 @@ async def test_adaptive_hints_cannot_bypass_saved_registry_to_paid_web():
     assert found
     assert len(native.search_queries) == 1
     assert web.calls == 0
+
+
+class EmptyNative(FakeNative):
+    async def discover(self, *, query, known_handles):
+        assert known_handles == []
+        self.search_queries.append(query)
+        return []
+
+
+class PaidSearchSpy(OpenAIWebSearchProvider):
+    def __init__(self):
+        self.calls = []
+
+    async def search(self, discovery_query, limit=5):
+        self.calls.append(discovery_query.query)
+        return []
+
+
+@pytest.mark.asyncio
+async def test_empty_registry_bootstraps_from_native_before_paid_web():
+    store, product, icp = MemoryRuntimeStateStore(), _product(), _icp()
+    native, web = FakeNative(), ForbiddenWeb()
+    engine = _engine(store, product, native, web)
+
+    found = await engine.discover(product, [icp], max_opportunities=20)
+
+    assert web.calls == 0
+    assert len(native.search_queries) == 1
+    assert {row.canonical_key for row in found} == {"telegram:91:community"}
+    assert len(store.list_namespace(TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE)) == 1
+    # The next run inspects the saved community, not the same native query.
+    await engine.discover(product, [icp], max_opportunities=20)
+    assert web.calls == 0
+    assert len(native.search_queries) == 1
+
+
+@pytest.mark.asyncio
+async def test_empty_registry_no_results_does_not_spend_without_opt_in(monkeypatch):
+    store, product = MemoryRuntimeStateStore(), _product()
+    native, web = EmptyNative(), PaidSearchSpy()
+    monkeypatch.setattr(
+        "app.community_first_audience_engine.get_settings",
+        lambda: SimpleNamespace(telegram_paid_discovery_enabled=False),
+    )
+    engine = _engine(store, product, native, web)
+
+    found = await engine.discover(product, [_icp()], max_opportunities=20)
+
+    assert found == []
+    assert len(native.search_queries) == 1
+    assert web.calls == []
+    assert not store.list_namespace(TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE)
+
+
+@pytest.mark.asyncio
+async def test_explicit_paid_fallback_claims_at_most_one_call_per_day(monkeypatch):
+    store, product = MemoryRuntimeStateStore(), _product()
+    native, web = EmptyNative(), PaidSearchSpy()
+    monkeypatch.setattr(
+        "app.community_first_audience_engine.get_settings",
+        lambda: SimpleNamespace(telegram_paid_discovery_enabled=True),
+    )
+    engine = _engine(store, product, native, web)
+    icps = [_icp(), _icp(), _icp()]
+
+    assert await engine.discover(product, icps, max_opportunities=20) == []
+    assert len(web.calls) == 1
+    assert await engine.discover(product, icps, max_opportunities=20) == []
+    assert len(web.calls) == 1
+    claims = store.list_namespace(TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE)
+    assert len(claims) == 1
+    assert claims[0]["product_id"] == str(product.id)
+    assert claims[0]["maximum_paid_queries"] == 1
+
+
+@pytest.mark.asyncio
+async def test_native_success_never_calls_opted_in_paid_search(monkeypatch):
+    store, product = MemoryRuntimeStateStore(), _product()
+    native, web = FakeNative(), PaidSearchSpy()
+    monkeypatch.setattr(
+        "app.community_first_audience_engine.get_settings",
+        lambda: SimpleNamespace(telegram_paid_discovery_enabled=True),
+    )
+    engine = _engine(store, product, native, web)
+    found = await engine.discover(product, [_icp()])
+
+    assert found
+    assert web.calls == []
