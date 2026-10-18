@@ -111,7 +111,9 @@ def test_owner_only_read_and_no_cross_account_stage_data():
     data = response.json()
     assert data["status"] == "COMPLETED"
     assert data["last_run_complete"] is True
-    assert data["next_refresh_at"] == next_check
+    assert datetime.fromisoformat(data["next_refresh_at"].replace("Z", "+00:00")) == (
+        datetime.fromisoformat(next_check)
+    )
     assert len(data["stages"]) == 4
     by_stage = {item["stage"]: item for item in data["stages"]}
     assert by_stage["native"]["source"] == "Telegram"
