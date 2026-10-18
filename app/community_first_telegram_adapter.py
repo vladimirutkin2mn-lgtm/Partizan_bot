@@ -192,9 +192,16 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         elif batch:
             inspection_error = "INSPECTION_UNAVAILABLE"
 
-        if batch and inspection_error is None:
+        if batch and callable(inspector):
+            # An inspector-wide transient failure must not pin the cursor to the
+            # same first three handles forever. Each failed peer stays unverified;
+            # the next refresh can make progress on the rest of the registry.
             statuses = {
-                handle: str(getattr(results.get(handle), "status", "RETRYABLE_FAILED"))
+                handle: (
+                    "RETRYABLE_FAILED"
+                    if inspection_error is not None
+                    else str(getattr(results.get(handle), "status", "RETRYABLE_FAILED"))
+                )
                 for handle in batch
             }
             self._store.put(
@@ -204,6 +211,7 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                     "next_index": (offset + len(batch)) % len(handles),
                     "last_batch": batch,
                     "last_batch_statuses": statuses,
+                    "last_batch_error_type": inspection_error,
                     "last_attempt_at": datetime.now(UTC).isoformat(),
                 },
             )
@@ -227,12 +235,14 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
             if handle in batch:
                 status = (
                     "INSPECTION_UNAVAILABLE"
+                    if not callable(inspector)
+                    else "RETRYABLE_FAILED"
                     if inspection_error is not None
                     else str(getattr(results.get(handle), "status", "RETRYABLE_FAILED"))
                 )
             metadata["registry_refresh_status"] = status
             metadata["registry_refresh_attempted"] = handle in batch
-            if status == "INSPECTION_UNAVAILABLE":
+            if handle in batch and inspection_error is not None:
                 metadata["registry_refresh_error_type"] = inspection_error
 
             raw_kind = str(row.get("kind") or "CHANNEL").upper()
