@@ -133,7 +133,7 @@ async def test_historical_records_from_both_namespaces_are_deduped_and_inspected
 
     checked = datetime(2026, 10, 18, 19, tzinfo=UTC)
     connector = ReadOnlySpy(checked)
-    before = dict(store._data)
+    before = dict(store._payloads)
     result = await audit(
         product_id,
         store=store,
@@ -150,7 +150,7 @@ async def test_historical_records_from_both_namespaces_are_deduped_and_inspected
     assert result["summary"]["publishable_without_separate_checks"] == 0
     assert len(connector.inspected) == 2
     assert connector.search_calls == 0
-    assert store._data == before
+    assert store._payloads == before
     for item in result["communities"]:
         assert item["inspection"]["selected_target_is_fresh"] is True
         assert item["inspection"]["selected_target_keyword_match"] is False
@@ -191,14 +191,14 @@ async def test_floodwait_prevents_research_and_produces_no_store_writes():
         {"id": "token", "blocked_until": (now + timedelta(days=1)).isoformat()},
     )
     connector = ReadOnlySpy(now)
-    before = dict(store._data)
+    before = dict(store._payloads)
     result = await audit(
         product_id, store=store, connector=connector,
         product=SimpleNamespace(name="FemDom"), max_groups=2, now=now,
     )
     assert result["mode"] == "DEFERRED_FLOOD_WAIT"
     assert connector.inspected == []
-    assert store._data == before
+    assert store._payloads == before
 
 
 @pytest.mark.asyncio
