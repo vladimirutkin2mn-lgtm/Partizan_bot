@@ -21,6 +21,12 @@ reservations**, not an invoice.
 
 1. Only the genuine `site:t.me` web fallback is gated; the existing
    registry → native Telethon → enabled TGStat checks run first.
+   The fallback requires a **recent successful native search that finished
+   with `NO_FIT_MATCH`** (within the 7-day native query cache window).
+   A native error, FloodWait, unavailable research transport, skipped
+   native step or stale historical no-fit state is **not** permission to
+   spend money. The engine reports `NATIVE_SEARCH_NOT_COMPLETED`.
+   Catalog source failures likewise do not silently authorize paid search.
 2. Before calling the paid provider, a stable per-product UTC-day claim
    permits at most one query. Adaptive rounds and concurrent workers
    cannot bypass the claim.
