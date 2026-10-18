@@ -12,7 +12,6 @@ import json
 import re
 from collections import Counter
 from datetime import UTC, datetime, timedelta
-from types import SimpleNamespace
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -33,7 +32,7 @@ _STOPWORDS = {
     "this", "that", "from", "with", "they", "their", "about", "people",
     "person", "social", "online", "product", "looking", "interested",
     "users", "find", "want", "dating", "community", "group", "telegram",
-    "the", "for", "app", "new", "and", "who", "have", "and", "into",
+    "the", "for", "app", "new", "and", "who", "have", "into",
     "для", "или", "этом", "есть", "где", "кто", "через", "здесь",
     "люди", "группы", "найти", "сайт", "сервис", "общение",
 }
@@ -310,7 +309,7 @@ async def audit(
             "Inspects a bounded sample from the complete saved inventory, not every historical community.",
             "Keyword overlap does not prove semantic relevance or publication access.",
             "Only the most recent native posts returned by the research transport are sampled.",
-            "A missing or blocked live connector is reported explicitly; historical metadata is not passed off as live evidence.",
+            "Missing or blocked live access is explicit; old metadata is never treated as a fresh inspection.",
         ],
     }
 
