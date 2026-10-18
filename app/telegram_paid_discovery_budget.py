@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation, ROUND_FLOOR
 
-from app.openai_usage import openai_usage_context, summarize_openai_usage
+from app.openai_usage import capture_openai_usage_rows, summarize_openai_usage
 from app.runtime_store import RuntimeStateStore
 from app.search import SearchProvider
 
@@ -138,10 +138,8 @@ class _PaidTelegramDiscoveryBudgetProvider:
         self._store.put(TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE, day_key, day_claim)
         usage_rows: list[dict] = []
         try:
-            with openai_usage_context(
-                "telegram_paid_discovery",
-                self._product_id,
-                collector=usage_rows,
+            with capture_openai_usage_rows(
+                usage_rows, task="telegram_paid_discovery", product_id=self._product_id
             ):
                 results = await self._delegate.search(discovery_query, limit=limit)
         except Exception as exc:
