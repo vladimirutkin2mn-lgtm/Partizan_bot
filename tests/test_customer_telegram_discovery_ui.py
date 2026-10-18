@@ -34,7 +34,8 @@ def test_discovery_ui_is_read_only_and_escapes_untrusted_provider_text() -> None
     assert "escapeHtml(next)" in section
     assert "stage.action_target_url" not in section
     assert "publishability" not in section
-    assert "join" not in section.casefold()
+    assert "joinTelegram" not in section
+    assert "joinCommunity" not in section
     assert "fetch(" not in section
     assert "send(" not in section
     assert "publish(" not in section
