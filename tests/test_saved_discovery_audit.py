@@ -69,7 +69,7 @@ def test_valid_but_recent_record_remains_unpublishable_without_live_revalidation
         "url": "https://t.me/example_group/89",
         "title": "Current group post",
         "discovered_at": (at - timedelta(minutes=5)).isoformat(),
-        "expires_at": (at + timedelta(days=2)).isoformat(),
+        "expires_at": (at + timedelta(days=3)).isoformat(),
         "publishability": "READY",
     }
     audit = audit_saved_opportunities([row], as_of=at)
