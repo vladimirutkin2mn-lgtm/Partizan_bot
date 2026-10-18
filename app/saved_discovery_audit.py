@@ -165,7 +165,7 @@ def audit_saved_opportunities(rows: list[dict], *, as_of: datetime) -> dict[str,
         "limitations": [
             "Saved posts prove only that these targets were previously collected.",
             "No current Telegram content, membership, write permission, or linked discussion was checked.",
-            "The persisted expires_at is an operator-supplied research deadline, not a verified post timestamp.",
+            "The saved expiry deadline is not a verified Telegram post timestamp.",
             "Saved relevance does not prove conversion or publication eligibility.",
         ],
     }
