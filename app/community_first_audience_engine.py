@@ -79,11 +79,22 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
         if self._prefer_registered_telegram and telegram_adapter is not None:
             registered = await telegram_adapter.refresh_registered(product, icps)
             if registered:
+                confirmed_count = sum(
+                    candidate.metadata.get("community_fit_pass") is True
+                    and candidate.metadata.get("native_research_status") == "VERIFIED"
+                    and candidate.metadata.get("access_state") != "JOIN_REQUIRED"
+                    for candidate in registered
+                )
+                new_communities = await telegram_adapter.replenish_native(
+                    product, icps, confirmed_count=confirmed_count
+                )
                 registry_raw = [
                     self._candidate_to_seed(icp, candidate)
-                    for candidate in registered
+                    for candidate in [*registered, *new_communities]
                     for icp in icps
                 ]
+                # A sparse existing registry is replenished via native Telegram
+                # research, not by automatically starting paid web searches.
                 eligible = [
                     adapter
                     for adapter in eligible
