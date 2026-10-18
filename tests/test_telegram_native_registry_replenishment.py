@@ -424,3 +424,62 @@ async def test_paid_web_requires_recent_native_no_fit_not_stale_record(monkeypat
     assert await engine.discover(product, [_icp()]) == []
     assert paid.calls == []
     assert engine.last_paid_fallback_gate == "NATIVE_SEARCH_NOT_COMPLETED"
+
+
+@pytest.mark.asyncio
+async def test_stage_queue_records_native_success_without_fake_paid_or_catalog():
+    from app.telegram_discovery_stage_queue import TelegramDiscoveryStageQueue
+
+    store, product = MemoryRuntimeStateStore(), _product()
+    native, paid = FakeNative(), PaidSearchSpy()
+    engine = _engine(store, product, native, paid)
+    found = await engine.discover(product, [_icp()], max_opportunities=20)
+    assert found
+    snapshot = engine.last_telegram_stage_queue
+    assert snapshot is not None and snapshot["complete"] is True
+    assert snapshot == TelegramDiscoveryStageQueue.latest(store, product.id)
+    states = {item["stage"]: item for item in snapshot["stages"]}
+    assert states["registry"]["status"] == "SKIPPED_NO_CANDIDATES"
+    assert states["native"]["status"] == "COMPLETED"
+    assert states["native"]["candidate_count"] == 1
+    assert states["catalog"]["status"] == "SKIPPED_SUFFICIENT"
+    assert states["paid"]["status"] == "NOT_APPLICABLE"
+    assert paid.calls == []
+
+
+@pytest.mark.asyncio
+async def test_stage_queue_separates_native_provider_failure_from_no_fit():
+    store, product = MemoryRuntimeStateStore(), _product()
+    native, paid = FakeNative(error=True), PaidSearchSpy()
+    engine = _engine(store, product, native, paid)
+    assert await engine.discover(product, [_icp()]) == []
+    snapshot = engine.last_telegram_stage_queue
+    states = {item["stage"]: item for item in snapshot["stages"]}
+    assert snapshot["complete"] is True
+    assert states["native"]["status"] == "FAILED_RETRYABLE"
+    assert states["native"]["error_type"] == "RuntimeError"
+    assert states["paid"]["status"] == "BLOCKED"
+    assert states["paid"]["reason"] == "NATIVE_SEARCH_NOT_COMPLETED"
+    assert paid.calls == []
+
+
+@pytest.mark.asyncio
+async def test_stage_queue_is_not_created_for_disabled_telegram_mandate():
+    from app.telegram_discovery_stage_queue import TELEGRAM_DISCOVERY_STAGE_NAMESPACE
+
+    store, product = MemoryRuntimeStateStore(), _product()
+    store.put(
+        GROWTH_MANDATE_NAMESPACE,
+        str(product.id),
+        {"product_id": str(product.id), "status": "ACTIVE", "allowed_platforms": []},
+    )
+    native, paid = FakeNative(), PaidSearchSpy()
+    engine = CommunityFirstAudienceIntelligenceEngine(paid, store=store)
+    for adapter in engine._all_adapters:
+        if isinstance(adapter, CommunityFirstTelegramDiscoveryAdapter):
+            adapter._research_connector = native
+
+    assert await engine.discover(product, [_icp()]) == []
+    assert engine.last_telegram_stage_queue is None
+    assert store.list_namespace(TELEGRAM_DISCOVERY_STAGE_NAMESPACE) == []
+    assert paid.calls == []
