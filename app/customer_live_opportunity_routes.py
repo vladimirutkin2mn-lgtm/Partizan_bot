@@ -19,6 +19,10 @@ from app.customer_research_communities import (
     CustomerResearchCommunityView,
     customer_research_community_service,
 )
+from app.customer_telegram_discovery_diagnostics import (
+    CustomerTelegramDiscoveryView,
+    customer_telegram_discovery_service,
+)
 
 router = APIRouter(tags=["customer-live-opportunities"])
 
@@ -65,3 +69,16 @@ def list_customer_research_communities(
 ) -> list[CustomerResearchCommunityView]:
     _require_project_access(project_id, session_token)
     return customer_research_community_service.list_for_project(project_id)
+
+
+@router.get(
+    "/customer/workspace/{project_id}/telegram-discovery",
+    response_model=CustomerTelegramDiscoveryView,
+)
+def get_customer_telegram_discovery(
+    project_id: UUID,
+    session_token: Annotated[str | None, Cookie(alias=CUSTOMER_ACCOUNT_SESSION_COOKIE)] = None,
+) -> CustomerTelegramDiscoveryView:
+    """Read-only source and retry diagnostics, scoped to the project's owner."""
+    _require_project_access(project_id, session_token)
+    return customer_telegram_discovery_service.for_project(project_id)

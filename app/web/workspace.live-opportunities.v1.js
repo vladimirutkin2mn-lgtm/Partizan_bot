@@ -2,6 +2,7 @@
   const STYLE_ID = 'partizan-live-opportunities-style';
   const PANEL_ID = 'live-opportunities-panel';
   const RESEARCH_PANEL_ID = 'research-communities-panel';
+  const DISCOVERY_PANEL_ID = 'telegram-discovery-panel';
   let lastProjectId = null;
   let refreshTimer = null;
 
@@ -31,7 +32,12 @@
       .live-opportunity-meta{margin:7px 0 0;color:var(--muted);font-size:9px}.live-opportunity p{margin:9px 0 0;color:var(--soft);font-size:10px;line-height:1.55}.live-opportunity-action{margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}.live-opportunity-action b{display:block;margin-bottom:3px;font-size:9px;color:var(--muted)}
       .live-opportunity-links{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}.live-opportunity-links a{font-size:10px;color:var(--accent);text-decoration:none}.live-opportunity details{margin-top:10px}.live-opportunity summary{cursor:pointer;color:var(--muted);font-size:9px}.live-opportunity pre{margin:7px 0 0;padding:10px;border:1px solid var(--line);border-radius:9px;background:rgba(0,0,0,.18);color:var(--soft);white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;font-size:10px;line-height:1.5}
       .live-opportunity-stale{opacity:.68}.live-opportunities-history{margin-top:12px}.live-opportunities-history summary{cursor:pointer;color:var(--muted);font-size:10px}.live-opportunities-empty{color:var(--muted);font-size:10px;line-height:1.55}.live-opportunities-error{color:var(--warn);font-size:10px;line-height:1.55}
-      .research-community-note{margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;color:var(--muted);font-size:9px;line-height:1.5}
+      .tg-discovery-list{display:grid;gap:7px}.tg-discovery-row{padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:rgba(0,0,0,.08)}
+      .tg-discovery-row-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.tg-discovery-row-head b{font-size:11px;font-weight:650}.tg-discovery-row-head span{font-size:9px;color:var(--muted);font-weight:600}
+      .tg-discovery-row p{margin:5px 0 0;color:var(--soft);font-size:10px;line-height:1.5}.tg-discovery-row small{display:block;margin-top:5px;color:var(--muted);font-size:9px;overflow-wrap:anywhere}
+      .tg-discovery-meta{margin:9px 0 0;color:var(--muted);font-size:10px;line-height:1.5}.tg-discovery-meta b{color:var(--soft);font-weight:650}
+      .tg-discovery-row .tg-discovery-muted{color:var(--muted)}.tg-discovery-row .tg-discovery-warn{color:var(--warn)}
+            .research-community-note{margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;color:var(--muted);font-size:9px;line-height:1.5}
       .research-score-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}.research-score{padding:4px 7px;border:1px solid var(--line);border-radius:9px;color:var(--soft);font-size:8px}.research-score b{color:var(--muted);font-weight:600}
       .research-audience-evidence{margin-top:9px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.012);color:var(--soft);font-size:9px;line-height:1.5}.research-audience-evidence b{color:var(--muted);font-weight:600}
       @media(max-width:700px){.live-opportunities-head,.live-opportunity-top{display:block}.live-opportunity-badges{justify-content:flex-start;margin-top:8px}}
@@ -67,6 +73,77 @@
     if (livePanel && livePanel.nextSibling) activity.insertBefore(panel, livePanel.nextSibling);
     else activity.appendChild(panel);
     return panel;
+  };
+
+  const ensureDiscoveryPanel = () => {
+    let panel = document.getElementById(DISCOVERY_PANEL_ID);
+    if (panel) return panel;
+    const activity = activityPanel();
+    if (!activity) return null;
+    panel = document.createElement('section');
+    panel.id = DISCOVERY_PANEL_ID;
+    panel.className = 'live-opportunities-panel';
+    panel.innerHTML = '<div class="live-opportunities-head"><div><span class="eyebrow">Telegram discovery</span><h2>How Partizan is finding opportunities</h2><p>Read-only progress through saved communities, Telegram, public catalogs and optional web research. A candidate is not approval to publish.</p></div><span class="live-opportunities-count">Loading…</span></div><div class="tg-discovery-list live-opportunities-list"><div class="live-opportunities-empty">Reading the latest search checks…</div></div><p class="tg-discovery-meta"></p>';
+    const livePanel = ensurePanel();
+    if (livePanel) activity.insertBefore(panel, livePanel);
+    else activity.insertBefore(panel, activity.firstChild);
+    return panel;
+  };
+
+  const scheduleLabel = (value) => {
+    if (!value) return '';
+    const when = new Date(value);
+    if (Number.isNaN(when.getTime())) return '';
+    return when.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  };
+
+  const discoveryStatus = (status) => ({
+    PENDING: 'Not checked',
+    COMPLETED: 'Checked',
+    NO_FIT: 'No match',
+    STAGED_UNVERIFIED: 'Needs verification',
+    FAILED_RETRYABLE: 'Retry needed',
+    DEFERRED_COOLDOWN: 'Waiting',
+    DEFERRED_RATE_LIMIT: 'Paused',
+    SKIPPED_DISABLED: 'Off',
+    SKIPPED_SUFFICIENT: 'Covered',
+    SKIPPED_NO_CANDIDATES: 'No candidates',
+    SKIPPED_OTHER_SOURCE: 'Skipped',
+    BLOCKED: 'Unavailable',
+    BUDGET_EXHAUSTED: 'Budget limit',
+    NOT_APPLICABLE: 'Not needed',
+  })[status] || 'Not checked';
+
+  const renderDiscovery = (data) => {
+    const panel = ensureDiscoveryPanel();
+    if (!panel) return;
+    const count = panel.querySelector('.live-opportunities-count');
+    const list = panel.querySelector('.tg-discovery-list');
+    const meta = panel.querySelector('.tg-discovery-meta');
+    const stages = data && Array.isArray(data.stages) ? data.stages : [];
+    panel.classList.remove('hidden');
+    if (!stages.length) {
+      count.textContent = 'Not started';
+      list.innerHTML = '<div class="live-opportunities-empty">No Telegram discovery run recorded for this project yet. Partizan will show each source as research proceeds.</div>';
+    } else {
+      count.textContent = data.last_run_complete ? 'Latest run complete' : 'Checking';
+      list.innerHTML = stages.map((stage) => {
+        const isWarning = ['FAILED_RETRYABLE', 'DEFERRED_RATE_LIMIT', 'BLOCKED', 'BUDGET_EXHAUSTED'].includes(stage.status);
+        const query = stage.search_query ? `<small>Search: ${escapeHtml(stage.search_query)}</small>` : '';
+        const source = stage.source ? `<small>Source: ${escapeHtml(stage.source)}</small>` : '';
+        const checked = Number.isFinite(Number(stage.candidate_count)) && Number(stage.candidate_count) > 0
+          ? `<small>${Math.max(0, Number(stage.candidate_count))} community records observed · not necessarily publishable</small>` : '';
+        const next = scheduleLabel(stage.next_attempt_at);
+        return `<div class="tg-discovery-row"><div class="tg-discovery-row-head"><b>${escapeHtml(stage.label)}</b><span class="${isWarning ? 'tg-discovery-warn' : ''}">${escapeHtml(discoveryStatus(stage.status))}</span></div><p>${escapeHtml(stage.detail || 'No additional details')}</p>${source}${query}${checked}${next ? `<small>Source may be checked after ${escapeHtml(next)}</small>` : ''}</div>`;
+      }).join('');
+    }
+    const lastRun = scheduleLabel(data && data.last_run_at);
+    const nextRun = scheduleLabel(data && data.next_refresh_at);
+    meta.innerHTML = [
+      lastRun ? `Last run: <b>${escapeHtml(lastRun)}</b>` : '',
+      nextRun ? `Next planned check: <b>${escapeHtml(nextRun)}</b>` : '',
+      data && data.next_refresh_reason ? escapeHtml(data.next_refresh_reason) : '',
+    ].filter(Boolean).join(' · ');
   };
 
   const freshnessLabel = (value) => ({
@@ -236,11 +313,34 @@
     }
   };
 
+  const loadDiscovery = async (projectId) => {
+    const panel = ensureDiscoveryPanel();
+    if (!panel) return;
+    try {
+      const response = await fetch(`/customer/workspace/${encodeURIComponent(projectId)}/telegram-discovery`, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      if (currentProjectId() !== projectId) return;
+      if (response.status === 401 || response.status === 403 || response.status === 404) {
+        panel.classList.add('hidden');
+        return;
+      }
+      if (!response.ok) throw new Error(`Telegram discovery unavailable (${response.status})`);
+      const payload = await response.json();
+      if (currentProjectId() !== projectId) return;
+      renderDiscovery(payload);
+    } catch (error) {
+      if (currentProjectId() !== projectId) return;
+      renderError(panel, 'Telegram discovery progress is temporarily unavailable.');
+    }
+  };
+
   const load = async () => {
     const projectId = currentProjectId();
     if (!projectId) return;
     lastProjectId = projectId;
-    await Promise.allSettled([loadLive(projectId), loadResearch(projectId)]);
+    await Promise.allSettled([loadLive(projectId), loadResearch(projectId), loadDiscovery(projectId)]);
   };
 
   const refreshIfProjectChanged = () => {
@@ -252,6 +352,7 @@
     ensureStyles();
     ensurePanel();
     ensureResearchPanel();
+    ensureDiscoveryPanel();
     load().catch(() => {});
     const switcher = document.getElementById('project-switcher');
     if (switcher) switcher.addEventListener('change', () => window.setTimeout(() => load().catch(() => {}), 120));
