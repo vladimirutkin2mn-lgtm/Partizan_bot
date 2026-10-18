@@ -16,10 +16,10 @@ from app.discovery_relevance_learning import (
 )
 from app.distribution_types import DistributionPlatform
 from app.runtime_store import RuntimeStateStore, get_runtime_store
-from app.telegram_discovery_stage_queue import TelegramDiscoveryStageQueue
-from app.telegram_native_flood_wait import research_flood_wait_until
 from app.search import OpenAIWebSearchProvider, SearchProvider
+from app.telegram_discovery_stage_queue import TelegramDiscoveryStageQueue
 from app.telegram_discovery_strategy import ExpandedAudienceIntelligenceEngine
+from app.telegram_native_flood_wait import research_flood_wait_until
 from app.telegram_paid_discovery_budget import (
     TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE as TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE,
 )
@@ -107,7 +107,7 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
         self.last_paid_fallback_gate = "NOT_APPLICABLE"
         self.last_telegram_stage_queue = None
         queue = (
-            TelegramDiscoveryStageQueue(self._store, getattr(product, "id"))
+            TelegramDiscoveryStageQueue(self._store, product.id)
             if telegram_adapter is not None and getattr(product, "id", None) is not None
             else None
         )
@@ -127,7 +127,7 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             # Zero-community products take the same read-only, free native
             # route as sparse registries, before any potentially paid search.
             native_before = self._store.get(
-                TELEGRAM_NATIVE_REPLENISH_NAMESPACE, str(getattr(product, "id"))
+                TELEGRAM_NATIVE_REPLENISH_NAMESPACE, str(product.id)
             ) or {}
             new_communities = await telegram_adapter.replenish_native(
                 product, icps, confirmed_count=confirmed_count
