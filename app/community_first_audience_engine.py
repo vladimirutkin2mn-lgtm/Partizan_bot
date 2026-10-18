@@ -4,12 +4,12 @@ from datetime import UTC, datetime
 
 from app.audience_intelligence import AudienceIntelligenceEngine
 from app.community_first_telegram_adapter import CommunityFirstTelegramDiscoveryAdapter
+from app.config import get_settings
 from app.discovery_intelligence import annotate_base_intelligence, propagate_surface_corroboration
 from app.discovery_relevance_learning import (
     DiscoveryRelevanceLearningService,
     discovery_relevance_learning_service,
 )
-from app.config import get_settings
 from app.distribution_types import DistributionPlatform
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.search import OpenAIWebSearchProvider, SearchProvider
