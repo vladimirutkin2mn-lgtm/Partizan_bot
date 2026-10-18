@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from app.audience_intelligence import AudienceIntelligenceEngine
-from app.community_first_telegram_adapter import CommunityFirstTelegramDiscoveryAdapter
+from app.community_first_telegram_adapter import (
+    TELEGRAM_NATIVE_QUERY_CACHE_TTL,
+    TELEGRAM_NATIVE_REPLENISH_NAMESPACE,
+    CommunityFirstTelegramDiscoveryAdapter,
+)
 from app.config import get_settings
 from app.discovery_intelligence import annotate_base_intelligence, propagate_surface_corroboration
 from app.discovery_relevance_learning import (
@@ -42,6 +48,7 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             enabled=bool(getattr(get_settings(), "telegram_catalog_discovery_enabled", False)),
         )
         self.last_catalog_status = "NOT_ATTEMPTED"
+        self.last_paid_fallback_gate = "NOT_APPLICABLE"
         # Adaptive hints change the native query plan, not the permission to bypass
         # saved communities and issue new paid web searches.
         self._prefer_registered_telegram = True
@@ -91,6 +98,7 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             None,
         )
         self.last_catalog_status = "NOT_APPLICABLE"
+        self.last_paid_fallback_gate = "NOT_APPLICABLE"
         catalog_result = {"status": "NOT_APPLICABLE", "staged_count": 0}
         if self._prefer_registered_telegram and telegram_adapter is not None:
             registered = await telegram_adapter.refresh_registered(product, icps)
@@ -131,15 +139,23 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
                     if adapter.platform != DistributionPlatform.TELEGRAM
                 ]
             elif isinstance(self._provider, OpenAIWebSearchProvider):
-                # Only when native was insufficient, require an explicit
-                # operator opt-in before attempting paid web discovery.
-                # Never convert a blocked/failed catalog request into an
-                # unbounded paid fallback. Only an explicitly disabled or
-                # non-applicable catalog permits the separate paid opt-in.
-                if (
-                    not get_settings().telegram_paid_discovery_enabled
-                    or catalog_result["status"] not in {"DISABLED", "NO_CATEGORY"}
-                ):
+                # A native transport failure, FloodWait or skipped/cooldown
+                # attempt must never be interpreted as an empty result set.
+                # Paid fallback is only a last resort for an actually completed
+                # recent native query that returned no qualifying communities.
+                native_completed_empty = self._native_no_fit_confirmed(
+                    getattr(product, "id", None)
+                )
+                settings = get_settings()
+                if not native_completed_empty:
+                    self.last_paid_fallback_gate = "NATIVE_SEARCH_NOT_COMPLETED"
+                elif catalog_result["status"] not in {"DISABLED", "NO_CATEGORY"}:
+                    self.last_paid_fallback_gate = "CATALOG_NOT_EXHAUSTED"
+                elif not settings.telegram_paid_discovery_enabled:
+                    self.last_paid_fallback_gate = "PAID_SEARCH_DISABLED"
+                else:
+                    self.last_paid_fallback_gate = "NATIVE_NO_FIT_CONFIRMED"
+                if self.last_paid_fallback_gate != "NATIVE_NO_FIT_CONFIRMED":
                     eligible = [
                         adapter
                         for adapter in eligible
@@ -235,6 +251,24 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
         propagated = propagate_surface_corroboration(final_accepted)
         collapsed = collapse_telegram_communities(propagated)
         return self._coverage_first_limit(collapsed, max_opportunities)
+
+    def _native_no_fit_confirmed(self, product_id: object) -> bool:
+        if product_id is None:
+            return False
+        state = self._store.get(TELEGRAM_NATIVE_REPLENISH_NAMESPACE, str(product_id)) or {}
+        if state.get("last_status") != "NO_FIT_MATCH":
+            return False
+        try:
+            completed = datetime.fromisoformat(str(state.get("last_attempt_at") or ""))
+        except ValueError:
+            return False
+        completed = (
+            completed.replace(tzinfo=UTC)
+            if completed.tzinfo is None
+            else completed.astimezone(UTC)
+        )
+        age = datetime.now(UTC) - completed
+        return timedelta(0) <= age <= TELEGRAM_NATIVE_QUERY_CACHE_TTL
 
     def _allowed_platforms(self, product_id: object) -> set[DistributionPlatform]:
         if self._telegram_only:

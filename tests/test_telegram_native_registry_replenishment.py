@@ -356,3 +356,71 @@ async def test_native_success_never_calls_opted_in_paid_search(monkeypatch):
 
     assert found
     assert web.calls == []
+
+
+@pytest.mark.asyncio
+async def test_paid_web_does_not_replace_failed_native_discovery(monkeypatch):
+    monkeypatch.setattr(
+        "app.community_first_audience_engine.get_settings",
+        lambda: SimpleNamespace(
+            telegram_catalog_discovery_enabled=False,
+            telegram_paid_discovery_enabled=True,
+            telegram_paid_discovery_monthly_budget_usd="1",
+            telegram_paid_discovery_query_reservation_usd="0.25",
+        ),
+    )
+    store, product = MemoryRuntimeStateStore(), _product()
+    native, paid = FakeNative(error=True), PaidSearchSpy()
+    engine = _engine(store, product, native, paid)
+
+    assert await engine.discover(product, [_icp()]) == []
+    assert native.search_queries
+    assert paid.calls == []
+    assert engine.last_paid_fallback_gate == "NATIVE_SEARCH_NOT_COMPLETED"
+    state = store.get(TELEGRAM_NATIVE_REPLENISH_NAMESPACE, str(product.id))
+    assert state["last_status"] == "RETRYABLE_FAILED"
+    assert store.list_namespace(TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE) == []
+
+
+@pytest.mark.asyncio
+async def test_paid_web_does_not_replace_missing_native_research(monkeypatch):
+    monkeypatch.setattr(
+        "app.community_first_audience_engine.get_settings",
+        lambda: SimpleNamespace(
+            telegram_catalog_discovery_enabled=False,
+            telegram_paid_discovery_enabled=True,
+            telegram_paid_discovery_monthly_budget_usd="1",
+            telegram_paid_discovery_query_reservation_usd="0.25",
+        ),
+    )
+    store, product = MemoryRuntimeStateStore(), _product()
+    paid = PaidSearchSpy()
+    engine = _engine(store, product, None, paid)
+
+    assert await engine.discover(product, [_icp()]) == []
+    assert paid.calls == []
+    assert engine.last_paid_fallback_gate == "NATIVE_SEARCH_NOT_COMPLETED"
+
+
+@pytest.mark.asyncio
+async def test_paid_web_requires_recent_native_no_fit_not_stale_record(monkeypatch):
+    monkeypatch.setattr(
+        "app.community_first_audience_engine.get_settings",
+        lambda: SimpleNamespace(
+            telegram_catalog_discovery_enabled=False,
+            telegram_paid_discovery_enabled=True,
+            telegram_paid_discovery_monthly_budget_usd="1",
+            telegram_paid_discovery_query_reservation_usd="0.25",
+        ),
+    )
+    store, product = MemoryRuntimeStateStore(), _product()
+    store.put(
+        TELEGRAM_NATIVE_REPLENISH_NAMESPACE, str(product.id),
+        {"last_status": "NO_FIT_MATCH", "last_attempt_at": "2020-01-01T00:00:00+00:00"},
+    )
+    paid = PaidSearchSpy()
+    engine = _engine(store, product, None, paid)
+
+    assert await engine.discover(product, [_icp()]) == []
+    assert paid.calls == []
+    assert engine.last_paid_fallback_gate == "NATIVE_SEARCH_NOT_COMPLETED"
