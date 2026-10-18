@@ -268,3 +268,30 @@ async def test_disabled_growth_mandate_skips_native_catalog_and_web():
     assert source.calls == []
     assert paid.calls == 0
     assert native.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_stage_queue_marks_catalog_candidates_unverified_and_paid_blocked(monkeypatch):
+    from app.telegram_discovery_stage_queue import TelegramDiscoveryStageQueue
+
+    monkeypatch.setattr(
+        "app.community_first_audience_engine.get_settings",
+        lambda: SimpleNamespace(
+            telegram_catalog_discovery_enabled=True,
+            telegram_paid_discovery_enabled=True,
+        ),
+    )
+    store, product = MemoryRuntimeStateStore(), _product()
+    native, paid = EmptyNative(), PaidSpy()
+    catalog = TGStatCatalogExpansion(store, source=FakeSource(), enabled=True)
+    engine = _engine(store, product, catalog, native, paid)
+    assert await engine.discover(product, [_icp()]) == []
+    snapshot = TelegramDiscoveryStageQueue.latest(store, product)
+    assert snapshot["complete"] is True
+    rows = {item["stage"]: item for item in snapshot["stages"]}
+    assert rows["registry"]["status"] == "SKIPPED_NO_CANDIDATES"
+    assert rows["native"]["status"] == "NO_FIT"
+    assert rows["catalog"]["status"] == "STAGED_UNVERIFIED"
+    assert rows["catalog"]["candidate_count"] == 1
+    assert rows["paid"]["status"] == "NOT_APPLICABLE"
+    assert paid.calls == 0
