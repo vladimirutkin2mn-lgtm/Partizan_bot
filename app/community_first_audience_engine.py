@@ -313,6 +313,7 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
         queue.mark(
             "registry", status, reason=reason,
             candidate_count=len(registered), next_attempt_at=next_attempt,
+            source="REGISTRY_NATIVE_REFRESH", gate="PUBLIC_HANDLES_ONLY",
         )
 
     def _record_native_stage(
@@ -358,6 +359,8 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
         queue.mark(
             "native", status, reason=reason,
             candidate_count=len(candidates), next_attempt_at=next_attempt,
+            source="TELETHON_NATIVE", query=str(after.get("last_query") or ""),
+            gate="COMMUNITY_FIT_AND_NATIVE_VERIFICATION",
             error_type=(
                 str(after.get("last_error_type"))
                 if status == "FAILED_RETRYABLE" and after.get("last_error_type")
@@ -388,6 +391,12 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
         queue.mark(
             "catalog", status, reason=source_status,
             candidate_count=int(result.get("staged_count") or 0),
+            source="TGSTAT_PUBLIC",
+            query=(
+                f"{source_state.get('category') or ''}:{source_state.get('surface') or ''}"
+                if source_state.get("category") else None
+            ),
+            gate="CATALOG_UNVERIFIED_REQUIRES_NATIVE",
             next_attempt_at=(
                 str(source_state["next_attempt_at"])
                 if status in {"DEFERRED_COOLDOWN", "DEFERRED_RATE_LIMIT", "FAILED_RETRYABLE"}
@@ -422,7 +431,15 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             "NATIVE_SEARCH_NOT_COMPLETED": "BLOCKED",
             "CATALOG_NOT_EXHAUSTED": "BLOCKED",
         }.get(result, "NOT_APPLICABLE")
-        queue.mark("paid", status, reason=result)
+        paid_day = self._store.get(
+            TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE,
+            f"{queue.product_id}:{datetime.now(UTC).date().isoformat()}",
+        ) or {}
+        queue.mark(
+            "paid", status, reason=result, source="OPENAI_WEB",
+            query=str(paid_day.get("query") or ""),
+            gate="OPERATOR_OPT_IN_AND_MONTHLY_ENVELOPE",
+        )
 
     def _native_no_fit_confirmed(self, product_id: object) -> bool:
         if product_id is None:
