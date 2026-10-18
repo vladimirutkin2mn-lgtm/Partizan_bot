@@ -114,45 +114,62 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
         )
         if self._prefer_registered_telegram and telegram_adapter is not None:
             registered = await telegram_adapter.refresh_registered(product, icps)
-            if registered:
-                confirmed_count = sum(
-                    candidate.metadata.get("community_fit_pass") is True
-                    and candidate.metadata.get("native_research_status") == "VERIFIED"
-                    and candidate.metadata.get("access_state") != "JOIN_REQUIRED"
-                    for candidate in registered
-                )
-                new_communities = await telegram_adapter.replenish_native(
-                    product, icps, confirmed_count=confirmed_count
-                )
-                registry_raw = [
-                    self._candidate_to_seed(icp, candidate)
-                    for candidate in [*registered, *new_communities]
-                    for icp in icps
-                ]
-                # A sparse existing registry is replenished via native Telegram
-                # research, not by automatically starting paid web searches.
+            confirmed_count = sum(
+                candidate.metadata.get("community_fit_pass") is True
+                and candidate.metadata.get("native_research_status") == "VERIFIED"
+                and candidate.metadata.get("access_state") != "JOIN_REQUIRED"
+                for candidate in registered
+            )
+            # Zero-community products take the same read-only, free native
+            # route as sparse registries, before any potentially paid search.
+            new_communities = await telegram_adapter.replenish_native(
+                product, icps, confirmed_count=confirmed_count
+            )
+            registry_raw = [
+                self._candidate_to_seed(icp, candidate)
+                for candidate in [*registered, *new_communities]
+                for icp in icps
+            ]
+            if registered or new_communities:
                 eligible = [
                     adapter
                     for adapter in eligible
                     if adapter.platform != DistributionPlatform.TELEGRAM
                 ]
+            elif isinstance(self._provider, OpenAIWebSearchProvider):
+                # Only when native was insufficient, require an explicit
+                # operator opt-in before attempting paid web discovery.
+                if not get_settings().telegram_paid_discovery_enabled:
+                    eligible = [
+                        adapter
+                        for adapter in eligible
+                        if adapter.platform != DistributionPlatform.TELEGRAM
+                    ]
 
         self._adapters = eligible
-        if self._adapters:
-            collection_limit = max(
-                max_opportunities, max_opportunities * max(1, len(self._adapters))
+        web_provider = self._provider
+        if isinstance(web_provider, OpenAIWebSearchProvider):
+            self._provider = _PaidTelegramDiscoveryBudgetProvider(
+                web_provider, self._store, getattr(product, "id", "")
             )
-            web_raw = await AudienceIntelligenceEngine.discover(
-                self,
-                product,
-                icps,
-                per_query_limit=per_query_limit,
-                max_opportunities=collection_limit,
-            )
-        else:
-            self._last_attempts = []
-            self._last_failures = []
-            web_raw = []
+        try:
+            if self._adapters:
+                collection_limit = max(
+                    max_opportunities, max_opportunities * max(1, len(self._adapters))
+                )
+                web_raw = await AudienceIntelligenceEngine.discover(
+                    self,
+                    product,
+                    icps,
+                    per_query_limit=per_query_limit,
+                    max_opportunities=collection_limit,
+                )
+            else:
+                self._last_attempts = []
+                self._last_failures = []
+                web_raw = []
+        finally:
+            self._provider = web_provider
 
         raw = [*registry_raw, *web_raw]
         if not raw:
