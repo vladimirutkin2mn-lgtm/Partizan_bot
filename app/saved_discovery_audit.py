@@ -13,8 +13,8 @@ import json
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlsplit
 from typing import Any
+from urllib.parse import urlsplit
 
 from app.customer_live_opportunities import CustomerLiveOpportunityService
 from app.runtime_store import MemoryRuntimeStateStore
@@ -45,7 +45,10 @@ def _telegram_target(value: object) -> tuple[str | None, str | None]:
         return None, None
     if parsed.scheme != "https" or (parsed.hostname or "").casefold() not in _ALLOWED_HOSTS:
         return None, None
-    if parsed.username or parsed.password or parsed.port:
+    try:
+        if parsed.username or parsed.password or parsed.port:
+            return None, None
+    except ValueError:
         return None, None
     path = [piece for piece in parsed.path.split("/") if piece]
     if len(path) != 2 or not path[1].isdigit():
