@@ -1,0 +1,117 @@
+name: One-time FemDom historical community freshness audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/femdom-historical-community-audit.yml
+
+concurrency:
+  group: one-time-femdom-historical-community-audit
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-audit:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify production SSH access
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          missing=()
+          [[ -z "${DEPLOY_HOST}" ]] && missing+=(DEPLOY_HOST)
+          [[ -z "${DEPLOY_SSH_KEY}" ]] && missing+=(DEPLOY_SSH_KEY)
+          [[ -z "${DEPLOY_SSH_KNOWN_HOSTS}" ]] && missing+=(DEPLOY_SSH_KNOWN_HOSTS)
+          [[ -z "${DEPLOY_PATH}" ]] && missing+=(DEPLOY_PATH)
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing read-only trace access: ${missing[*]}"
+            exit 1
+          fi
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Pin production host key
+        env:
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${DEPLOY_SSH_KNOWN_HOSTS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Wait for audited main release to be deployed
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          AUDIT_RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 40); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+                python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${AUDIT_RELEASE_SHA}' else 2)\"" \
+                >/dev/null 2>&1; then
+              echo "Expected production release is ready for read-only inspection."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Audited production release was not ready. No Telegram calls made."
+          exit 1
+
+      - name: Inspect saved FemDom communities without paid discovery or publishing
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -m app.historical_telegram_community_audit \
+                --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+                --max-groups 12" > femdom-historical-community-audit.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("femdom-historical-community-audit.json").read_text())
+          if payload.get("status") != "HISTORICAL_COMMUNITY_AUDIT_COMPLETE":
+              raise SystemExit("Live read-only audit did not complete")
+          if payload.get("read_only") is not True:
+              raise SystemExit("Read-only assertion failed")
+          effects = payload.get("effects", {})
+          if any(effects.get(key) != 0 for key in (
+              "new_paid_search_calls", "new_contact_search_calls",
+              "write_actions", "publications", "state_writes"
+          )):
+              raise SystemExit("Unexpected action reported in read-only audit")
+          print(json.dumps({
+              "mode": payload["mode"],
+              "inventory": payload["inventory"],
+              "summary": payload["summary"],
+              "blocking_flood_wait_until": payload.get("blocking_flood_wait_until"),
+          }, ensure_ascii=False, sort_keys=True))
+          PY
+
+      - name: Upload saved-community audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: femdom-historical-community-read-only-audit
+          path: femdom-historical-community-audit.json
+          if-no-files-found: error
+          retention-days: 7
