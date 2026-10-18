@@ -309,7 +309,7 @@ async def audit(
             "Inspects a bounded sample from the complete saved inventory, not every historical community.",
             "Keyword overlap does not prove semantic relevance or publication access.",
             "Only the most recent native posts returned by the research transport are sampled.",
-            "Missing or blocked live access is explicit; old metadata is never treated as a fresh inspection.",
+            "Unverified historical metadata is never treated as a fresh inspection.",
         ],
     }
 
