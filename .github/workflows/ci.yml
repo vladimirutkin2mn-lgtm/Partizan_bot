@@ -11,7 +11,7 @@ jobs:
 
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:16
+        image: postgres:16
         env:
           POSTGRES_USER: partizan
           POSTGRES_PASSWORD: partizan

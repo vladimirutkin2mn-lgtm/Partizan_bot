@@ -264,8 +264,6 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
             snapshot = getattr(inspected, "snapshot", None)
             if snapshot is not None:
                 metadata.update(self._native_metadata(request, snapshot))
-                metadata["registry_confirmed"] = bool(has_fit)
-                metadata["community_fit_pass"] = bool(has_fit)
                 metadata["registry_refresh_status"] = "VERIFIED"
                 metadata["registry_refresh_attempted"] = True
                 canonical_key = f"telegram:{snapshot.entity_id}:community"
@@ -278,6 +276,33 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                 url = snapshot.url
                 hits.append(self._native_hit(request, snapshot))
 
+                if not has_fit:
+                    # A catalog row is only an untrusted discovery lead.
+                    # Require actual Telegram-native community overlap before
+                    # promoting it into the usable audience registry.
+                    probe = PlatformCandidate(
+                        platform=DistributionPlatform.TELEGRAM,
+                        kind=kind,
+                        canonical_key=canonical_key,
+                        title=title,
+                        url=url,
+                        metadata=dict(metadata),
+                        hits=list(hits),
+                    )
+                    has_fit, fit_reason, fit_terms = self._community_fit(request, probe)
+                    metadata["community_fit_reason"] = fit_reason
+                    metadata["community_fit_terms"] = fit_terms[:12]
+
+                metadata["registry_confirmed"] = bool(has_fit)
+                metadata["community_fit_pass"] = bool(has_fit)
+                if not has_fit:
+                    # Native identity verification alone is NOT permission to
+                    # draft against this audience, regardless of send access.
+                    metadata["actionability"] = "RESEARCH_ONLY"
+                    metadata["action_target_url"] = None
+                    metadata["action_target_specific"] = False
+                    metadata["community_only_reason"] = "AUDIENCE_FIT_UNCONFIRMED"
+
             candidate = PlatformCandidate(
                 platform=DistributionPlatform.TELEGRAM,
                 kind=kind,
@@ -287,7 +312,7 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                 metadata=metadata,
                 hits=hits,
             )
-            if snapshot is not None and has_fit:
+            if snapshot is not None:
                 self._remember_community(candidate)
             candidates.append(candidate)
         return candidates
