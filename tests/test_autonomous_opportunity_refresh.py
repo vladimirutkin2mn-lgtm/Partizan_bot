@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -170,5 +170,73 @@ async def test_failed_refresh_preserves_retryability_and_safe_diagnostic(monkeyp
     assert first[0]["status"] == "FAILED"
     assert first[0]["error_type"] == "RuntimeError"
     assert "provider detail" not in str(first[0])
-    assert second[0]["status"] == "FAILED"
+    assert second[0]["status"] == "NOT_DUE"
+    assert second[0]["reason"] == "PERSISTENT_RETRY_BACKOFF"
+    assert second[0]["next_attempt_at"] == first[0]["next_attempt_at"]
     assert first[0]["last_success_at"] is None
+    assert first[0]["consecutive_failures"] == 1
+    assert first[0]["retry_delay_seconds"] == 900
+
+
+@pytest.mark.asyncio
+async def test_failed_refresh_resumes_after_due_and_backoff_grows(monkeypatch) -> None:
+    store, mandate = MemoryRuntimeStateStore(), _mandate()
+    store.put(
+        GROWTH_MANDATE_NAMESPACE,
+        str(mandate.product_id),
+        mandate.model_dump(mode="json"),
+    )
+
+    class CountingFailures:
+        calls = 0
+
+        async def discover(self, product, icps):
+            self.calls += 1
+            raise RuntimeError("private provider detail")
+
+    audience = CountingFailures()
+    service = AutonomousOpportunityRefreshService(store=store, audience_service=audience)
+    monkeypatch.setattr(
+        "app.autonomous_opportunity_refresh.product_intake_service.get_product",
+        lambda product_id: SimpleNamespace(id=product_id),
+    )
+    monkeypatch.setattr(
+        "app.autonomous_opportunity_refresh.icp_service.get",
+        lambda product_id: SimpleNamespace(product_id=product_id),
+    )
+    initial = await service.run_once(product_id=mandate.product_id)
+    assert initial[0]["status"] == "FAILED"
+    assert audience.calls == 1
+    assert initial[0]["retry_delay_seconds"] == 900
+
+    # A completely new service instance gets the same persisted schedule.
+    restarted = AutonomousOpportunityRefreshService(store=store, audience_service=audience)
+    assert (await restarted.run_once(product_id=mandate.product_id))[0]["status"] == "NOT_DUE"
+    assert audience.calls == 1
+
+    record = store.get(AUTONOMOUS_OPPORTUNITY_REFRESH_NAMESPACE, str(mandate.product_id))
+    record["next_attempt_at"] = (datetime.now(UTC) - timedelta(seconds=1)).isoformat()
+    store.put(AUTONOMOUS_OPPORTUNITY_REFRESH_NAMESPACE, str(mandate.product_id), record)
+    second = await restarted.run_once(product_id=mandate.product_id)
+    assert second[0]["status"] == "FAILED"
+    assert second[0]["consecutive_failures"] == 2
+    assert second[0]["retry_delay_seconds"] == 1800
+    assert audience.calls == 2
+    assert "private provider detail" not in str(second)
+
+
+def test_retry_policy_clamps_and_respects_existing_success_cadence() -> None:
+    refresh = AutonomousOpportunityRefreshService(store=MemoryRuntimeStateStore())
+    assert [refresh._failure_retry_delay(n) for n in (1, 2, 3, 4, 5, 6, 7, 40)] == [
+        900, 1800, 3600, 7200, 14400, 21600, 21600, 21600
+    ]
+    clock = datetime(2026, 10, 18, 12, tzinfo=UTC)
+    previous = {
+        "status": "FAILED",
+        "next_attempt_at": (clock + timedelta(minutes=30)).isoformat(),
+    }
+    assert not refresh._due(previous, now=clock, interval_seconds=21600)
+    assert refresh._due(previous, now=clock + timedelta(minutes=30), interval_seconds=21600)
+    older = {"status": "REFRESHED", "last_success_at": clock.isoformat()}
+    assert not refresh._due(older, now=clock + timedelta(hours=5), interval_seconds=21600)
+    assert refresh._due(older, now=clock + timedelta(hours=6), interval_seconds=21600)
