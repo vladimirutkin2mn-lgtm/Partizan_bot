@@ -321,7 +321,7 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         checked_at = checked_at.astimezone(UTC)
         state_key = str(self._product_id)
         state = self._store.get(TELEGRAM_NATIVE_REPLENISH_NAMESPACE, state_key) or {}
-        last_attempt = self._sort_date(state.get("last_attempt_at"))
+        last_attempt = self._replenishment_timestamp(state.get("last_attempt_at"))
         if (
             last_attempt > datetime.min.replace(tzinfo=UTC)
             and checked_at - last_attempt < TELEGRAM_NATIVE_REPLENISH_COOLDOWN
@@ -330,7 +330,7 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
 
         recent_queries: dict[str, str] = {}
         for digest, raw_timestamp in dict(state.get("recent_queries") or {}).items():
-            timestamp = self._sort_date(raw_timestamp)
+            timestamp = self._replenishment_timestamp(raw_timestamp)
             if timedelta(0) <= checked_at - timestamp < TELEGRAM_NATIVE_QUERY_CACHE_TTL:
                 recent_queries[str(digest)] = str(raw_timestamp)
 
@@ -392,6 +392,18 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         state.pop("last_error_type", None)
         self._store.put(TELEGRAM_NATIVE_REPLENISH_NAMESPACE, state_key, state)
         return candidates
+
+    @staticmethod
+    def _replenishment_timestamp(value: object) -> datetime:
+        try:
+            parsed = (
+                value
+                if isinstance(value, datetime)
+                else datetime.fromisoformat(str(value))
+            )
+        except (TypeError, ValueError):
+            return datetime.min.replace(tzinfo=UTC)
+        return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
     def candidates(
         self, request: PlatformDiscoveryRequest, hits: list[SearchHit]
