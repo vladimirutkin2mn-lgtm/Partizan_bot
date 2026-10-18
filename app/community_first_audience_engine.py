@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from app.audience_intelligence import AudienceIntelligenceEngine
 from app.community_first_telegram_adapter import CommunityFirstTelegramDiscoveryAdapter
 from app.discovery_intelligence import annotate_base_intelligence, propagate_surface_corroboration
@@ -7,12 +9,44 @@ from app.discovery_relevance_learning import (
     DiscoveryRelevanceLearningService,
     discovery_relevance_learning_service,
 )
+from app.config import get_settings
 from app.distribution_types import DistributionPlatform
 from app.runtime_store import RuntimeStateStore, get_runtime_store
-from app.search import SearchProvider
+from app.search import OpenAIWebSearchProvider, SearchProvider
 from app.telegram_discovery_strategy import ExpandedAudienceIntelligenceEngine
 
 GROWTH_MANDATE_NAMESPACE = "growth_mandate"
+TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE = "telegram_paid_discovery_daily_claim"
+
+
+class _PaidTelegramDiscoveryBudgetProvider:
+    """Allow at most one paid Telegram web query per product and UTC day."""
+
+    def __init__(self, delegate: SearchProvider, store: RuntimeStateStore, product_id: object):
+        self._delegate = delegate
+        self._store = store
+        self._product_id = str(product_id)
+
+    async def search(self, discovery_query, limit: int = 5):
+        query = str(getattr(discovery_query, "query", "") or "").casefold()
+        if "site:t.me" not in query:
+            return await self._delegate.search(discovery_query, limit=limit)
+        claim_key = f"{self._product_id}:{datetime.now(UTC).date().isoformat()}"
+        if not self._store.put_if_absent(
+            TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE,
+            claim_key,
+            {
+                "product_id": self._product_id,
+                "claimed_at": datetime.now(UTC).isoformat(),
+                "query": str(getattr(discovery_query, "query", ""))[:500],
+                "maximum_paid_queries": 1,
+            },
+        ):
+            return []
+        return await self._delegate.search(discovery_query, limit=limit)
+
+
+
 
 
 class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngine):
