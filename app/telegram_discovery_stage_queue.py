@@ -10,13 +10,16 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 TELEGRAM_DISCOVERY_STAGE_NAMESPACE = "telegram_discovery_stage"
 TELEGRAM_DISCOVERY_LATEST_RUN_NAMESPACE = "telegram_discovery_latest_run"
+TELEGRAM_DISCOVERY_RETENTION_NAMESPACE = "telegram_discovery_retention"
+TELEGRAM_DISCOVERY_MAX_HISTORY_RUNS = 64
+TELEGRAM_DISCOVERY_MAX_HISTORY_DAYS = 30
 TELEGRAM_DISCOVERY_STAGES = ("registry", "native", "catalog", "paid")
 TERMINAL_STATUSES = {
     "COMPLETED", "NO_FIT", "STAGED_UNVERIFIED", "FAILED_RETRYABLE",
@@ -85,6 +88,94 @@ class TelegramDiscoveryStageQueue:
             },
         )
         self._started = True
+        # Once-daily bounded housekeeping, never a new background worker.
+        # A cleanup failure cannot prevent discovery or permit publication.
+        try:
+            self._prune_if_due()
+        except Exception:
+            pass
+
+    @staticmethod
+    def _utc(value: object) -> datetime | None:
+        try:
+            timestamp = datetime.fromisoformat(str(value))
+        except (TypeError, ValueError):
+            return None
+        return (
+            timestamp.replace(tzinfo=UTC)
+            if timestamp.tzinfo is None
+            else timestamp.astimezone(UTC)
+        )
+
+    def _prune_if_due(self) -> None:
+        state = self._store.get(TELEGRAM_DISCOVERY_RETENTION_NAMESPACE, self.product_id) or {}
+        last = self._utc(state.get("checked_at"))
+        if last is not None and last.date() >= self.started_at.date():
+            return
+        removed = self.prune(now=self.started_at)
+        self._store.put(
+            TELEGRAM_DISCOVERY_RETENTION_NAMESPACE,
+            self.product_id,
+            {
+                "product_id": self.product_id,
+                "checked_at": self.started_at.isoformat(),
+                "removed_stage_rows": removed,
+                "retention_days": TELEGRAM_DISCOVERY_MAX_HISTORY_DAYS,
+                "max_runs": TELEGRAM_DISCOVERY_MAX_HISTORY_RUNS,
+            },
+        )
+
+    def prune(self, *, now: datetime | None = None) -> int:
+        """Prune only old *checkpoint rows*, never the source budgets or registry.
+
+        Keep the latest run even if an old worker is still finishing. The
+        previous run data is advisory diagnostics; deleting it does not affect
+        any provider or publishing idempotency guarantees.
+        """
+        checked = now or datetime.now(UTC)
+        checked = checked.replace(tzinfo=UTC) if checked.tzinfo is None else checked.astimezone(UTC)
+        cutoff = checked - timedelta(days=TELEGRAM_DISCOVERY_MAX_HISTORY_DAYS)
+        pointer = self._store.get(TELEGRAM_DISCOVERY_LATEST_RUN_NAMESPACE, self.product_id) or {}
+        latest_run_id = str(pointer.get("run_id") or "")
+        groups: dict[str, list[dict]] = {}
+        for row in self._store.list_namespace(TELEGRAM_DISCOVERY_STAGE_NAMESPACE):
+            if str(row.get("product_id")) != self.product_id:
+                continue
+            run_id = str(row.get("run_id") or "")
+            if run_id and row.get("stage") in TELEGRAM_DISCOVERY_STAGES:
+                groups.setdefault(run_id, []).append(row)
+
+        ranked = sorted(
+            groups,
+            key=lambda run_id: max(
+                (
+                    self._utc(row.get("started_at"))
+                    or datetime.min.replace(tzinfo=UTC)
+                    for row in groups[run_id]
+                ),
+                default=datetime.min.replace(tzinfo=UTC),
+            ),
+            reverse=True,
+        )
+        removed = 0
+        for index, run_id in enumerate(ranked):
+            started = max(
+                (
+                    self._utc(row.get("started_at"))
+                    or datetime.min.replace(tzinfo=UTC)
+                    for row in groups[run_id]
+                ),
+                default=datetime.min.replace(tzinfo=UTC),
+            )
+            if run_id == latest_run_id or (index < TELEGRAM_DISCOVERY_MAX_HISTORY_RUNS and started >= cutoff):
+                continue
+            for row in groups[run_id]:
+                expected_id = f"{self.product_id}:{run_id}:{row['stage']}"
+                if str(row.get("id") or "") != expected_id:
+                    continue
+                self._store.delete(TELEGRAM_DISCOVERY_STAGE_NAMESPACE, expected_id)
+                removed += 1
+        return removed
 
     def mark(
         self,
