@@ -16,13 +16,18 @@ from app.discovery_relevance_learning import (
 )
 from app.distribution_types import DistributionPlatform
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.telegram_discovery_stage_queue import TelegramDiscoveryStageQueue
+from app.telegram_native_flood_wait import research_flood_wait_until
 from app.search import OpenAIWebSearchProvider, SearchProvider
 from app.telegram_discovery_strategy import ExpandedAudienceIntelligenceEngine
 from app.telegram_paid_discovery_budget import (
     TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE as TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE,
 )
 from app.telegram_paid_discovery_budget import _PaidTelegramDiscoveryBudgetProvider
-from app.telegram_tgstat_catalog import TGStatCatalogExpansion
+from app.telegram_tgstat_catalog import (
+    TGSTAT_CATALOG_RUN_NAMESPACE,
+    TGStatCatalogExpansion,
+)
 
 GROWTH_MANDATE_NAMESPACE = "growth_mandate"
 
@@ -49,6 +54,7 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
         )
         self.last_catalog_status = "NOT_ATTEMPTED"
         self.last_paid_fallback_gate = "NOT_APPLICABLE"
+        self.last_telegram_stage_queue: dict | None = None
         # Adaptive hints change the native query plan, not the permission to bypass
         # saved communities and issue new paid web searches.
         self._prefer_registered_telegram = True
@@ -99,9 +105,19 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
         )
         self.last_catalog_status = "NOT_APPLICABLE"
         self.last_paid_fallback_gate = "NOT_APPLICABLE"
+        self.last_telegram_stage_queue = None
+        queue = (
+            TelegramDiscoveryStageQueue(self._store, getattr(product, "id"))
+            if telegram_adapter is not None and getattr(product, "id", None) is not None
+            else None
+        )
+        if queue is not None:
+            queue.start()
         catalog_result = {"status": "NOT_APPLICABLE", "staged_count": 0}
         if self._prefer_registered_telegram and telegram_adapter is not None:
             registered = await telegram_adapter.refresh_registered(product, icps)
+            if queue is not None:
+                self._record_registry_stage(queue, registered)
             confirmed_count = sum(
                 candidate.metadata.get("community_fit_pass") is True
                 and candidate.metadata.get("native_research_status") == "VERIFIED"
@@ -110,9 +126,16 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             )
             # Zero-community products take the same read-only, free native
             # route as sparse registries, before any potentially paid search.
+            native_before = self._store.get(
+                TELEGRAM_NATIVE_REPLENISH_NAMESPACE, str(getattr(product, "id"))
+            ) or {}
             new_communities = await telegram_adapter.replenish_native(
                 product, icps, confirmed_count=confirmed_count
             )
+            if queue is not None:
+                self._record_native_stage(
+                    queue, telegram_adapter, confirmed_count, new_communities, native_before
+                )
             # A catalog candidate is NOT usable until the next native peer
             # inspection verifies actual Telegram identity and audience fit.
             # The catalog is only consulted when the native search has not
@@ -127,6 +150,8 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             else:
                 catalog_result = {"status": "NATIVE_COVERAGE", "staged_count": 0}
             self.last_catalog_status = str(catalog_result["status"])
+            if queue is not None:
+                self._record_catalog_stage(queue, catalog_result)
             registry_raw = [
                 self._candidate_to_seed(icp, candidate)
                 for candidate in [*registered, *new_communities]
@@ -164,9 +189,10 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
 
         self._adapters = eligible
         web_provider = self._provider
+        paid_provider = None
         if isinstance(web_provider, OpenAIWebSearchProvider):
             settings = get_settings()
-            self._provider = _PaidTelegramDiscoveryBudgetProvider(
+            paid_provider = _PaidTelegramDiscoveryBudgetProvider(
                 web_provider,
                 self._store,
                 getattr(product, "id", ""),
@@ -177,6 +203,7 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
                     settings, "telegram_paid_discovery_query_reservation_usd", None
                 ),
             )
+            self._provider = paid_provider
         try:
             if self._adapters:
                 collection_limit = max(
@@ -195,6 +222,9 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
                 web_raw = []
         finally:
             self._provider = web_provider
+            if queue is not None:
+                self._record_paid_stage(queue, paid_provider)
+                self.last_telegram_stage_queue = queue.snapshot()
 
         raw = [*registry_raw, *web_raw]
         if not raw:
