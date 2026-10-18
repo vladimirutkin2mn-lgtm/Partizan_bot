@@ -7,7 +7,7 @@ OpenAI usage may report internal web calls and tokens but no final billed USD.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation, ROUND_FLOOR
+from decimal import ROUND_FLOOR, Decimal, InvalidOperation
 
 from app.openai_usage import capture_openai_usage_rows, summarize_openai_usage
 from app.runtime_store import RuntimeStateStore
