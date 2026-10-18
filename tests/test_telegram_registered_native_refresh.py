@@ -183,6 +183,67 @@ async def test_unverified_invitation_is_not_read_as_public_peer():
     assert native.calls == []
 
 
+class FirstBatchFailsConnector(FakeKnownPeerConnector):
+    async def inspect_known(self, handles):
+        self.calls.append(tuple(handles))
+        if len(self.calls) == 1:
+            raise RuntimeError("temporary native lookup failure")
+        return [
+            TelegramKnownCommunityInspection(
+                handle,
+                "VERIFIED",
+                _snapshot(handle, 100 + int(handle[-1])),
+            )
+            for handle in handles
+        ]
+
+
+@pytest.mark.asyncio
+async def test_inspector_wide_failure_does_not_starve_remaining_registry_handles():
+    store = MemoryRuntimeStateStore()
+    product = _product()
+    for i in range(6):
+        _stored(store, product.id, f"founders{i}", 100 + i)
+    native = FirstBatchFailsConnector()
+    adapter = CommunityFirstTelegramDiscoveryAdapter(
+        research_connector=native, store=store
+    )
+
+    first = await adapter.refresh_registered(product, [_icp()])
+    states = {row.metadata["handle"]: row.metadata for row in first}
+    for i in range(3):
+        item = states[f"founders{i}"]
+        assert item["registry_refresh_attempted"] is True
+        assert item["registry_refresh_status"] == "RETRYABLE_FAILED"
+        assert item["registry_refresh_error_type"] == "RuntimeError"
+        assert item["source_checked_at"] == "2026-01-01T00:00:00+00:00"
+    for i in range(3, 6):
+        assert states[f"founders{i}"]["registry_refresh_status"] == "DEFERRED"
+
+    cursor = store.get("telegram_registered_native_refresh_cursor", str(product.id))
+    assert cursor["next_index"] == 3
+    assert cursor["last_batch_error_type"] == "RuntimeError"
+    assert set(cursor["last_batch_statuses"].values()) == {"RETRYABLE_FAILED"}
+
+    second = await adapter.refresh_registered(product, [_icp()])
+    states = {row.metadata["handle"]: row.metadata for row in second}
+    assert native.calls == [
+        ("founders0", "founders1", "founders2"),
+        ("founders3", "founders4", "founders5"),
+    ]
+    for i in range(3, 6):
+        assert states[f"founders{i}"]["registry_refresh_status"] == "VERIFIED"
+    cursor = store.get("telegram_registered_native_refresh_cursor", str(product.id))
+    assert cursor["next_index"] == 0
+    assert cursor["last_batch_error_type"] is None
+
+    # The failed first batch is retryable on the next rotation, not deleted.
+    third = await adapter.refresh_registered(product, [_icp()])
+    states = {row.metadata["handle"]: row.metadata for row in third}
+    assert native.calls[-1] == ("founders0", "founders1", "founders2")
+    assert states["founders0"]["registry_refresh_status"] == "VERIFIED"
+
+
 class FakeReadOnlyTransport:
     def __init__(self):
         self.calls = []
