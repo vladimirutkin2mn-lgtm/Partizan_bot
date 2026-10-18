@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     openai_task_models: str = ""
     openai_task_reasoning_effort: str = ""
     openai_api_key: str | None = None
+    telegram_catalog_discovery_enabled: bool = False
     telegram_paid_discovery_enabled: bool = False
     telegram_research_provider: str = "unavailable"
     telegram_research_public_ready: bool = False
