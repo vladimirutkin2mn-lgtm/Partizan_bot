@@ -14,9 +14,11 @@ CommunityFirstAudienceIntelligenceEngine:
    snapshot and no JOIN_REQUIRED restriction;
 3. when the count is below **three**, attempts **one** native public search query
    through the configured Telegram research session;
-4. runs the existing audience-fit check and upserts accepted discoveries through
+4. keeps adaptive searches with new hints on the same saved-registry path,
+   rather than letting an adaptive round invoke paid web search;
+5. runs the existing audience-fit check and upserts accepted discoveries through
    TelegramCommunityRegistry (entity ID / handle aliases are deduplicated);
-5. preserves the saved communities even when native expansion fails or returns
+6. preserves the saved communities even when native expansion fails or returns
    nothing.
 
 No paid web search is issued for this saved-registry path. The new path does not
