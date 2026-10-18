@@ -83,7 +83,7 @@
     panel = document.createElement('section');
     panel.id = DISCOVERY_PANEL_ID;
     panel.className = 'live-opportunities-panel';
-    panel.innerHTML = '<div class="live-opportunities-head"><div><span class="eyebrow">Telegram discovery</span><h2>How Partizan is finding opportunities</h2><p>Read-only progress through saved communities, Telegram, public catalogs and optional web research. A candidate is not approval to publish.</p></div><span class="live-opportunities-count">Loading…</span></div><div class="tg-discovery-list"><div class="live-opportunities-empty">Reading the latest search checks…</div></div><p class="tg-discovery-meta"></p>';
+    panel.innerHTML = '<div class="live-opportunities-head"><div><span class="eyebrow">Telegram discovery</span><h2>How Partizan is finding opportunities</h2><p>Read-only progress through saved communities, Telegram, public catalogs and optional web research. A candidate is not approval to publish.</p></div><span class="live-opportunities-count">Loading…</span></div><div class="tg-discovery-list live-opportunities-list"><div class="live-opportunities-empty">Reading the latest search checks…</div></div><p class="tg-discovery-meta"></p>';
     const livePanel = ensurePanel();
     if (livePanel) activity.insertBefore(panel, livePanel);
     else activity.insertBefore(panel, activity.firstChild);
