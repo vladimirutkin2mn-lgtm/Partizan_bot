@@ -30,7 +30,9 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
     ) -> None:
         self._store = store or get_runtime_store()
         self._telegram_only = telegram_only
-        self._prefer_registered_telegram = not bool(telegram_hints)
+        # Adaptive hints change the native query plan, not the permission to bypass
+        # saved communities and issue new paid web searches.
+        self._prefer_registered_telegram = True
         relevance_service = relevance_learning_service or discovery_relevance_learning_service
         super().__init__(
             provider,
