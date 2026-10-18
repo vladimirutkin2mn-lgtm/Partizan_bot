@@ -147,7 +147,9 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
             result.append(request)
         return result[:COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET]
 
-    async def refresh_registered(self, product, icps, *, now: datetime | None = None) -> list[PlatformCandidate]:
+    async def refresh_registered(
+        self, product, icps, *, now: datetime | None = None
+    ) -> list[PlatformCandidate]:
         """Rotate saved peers through native inspection; never run contacts.Search."""
         self._product_id = getattr(product, "id", None)
         if self._product_id is None or not icps:
@@ -226,7 +228,9 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                 cursor_namespace,
                 cursor_key,
                 {
-                    "next_index": (offset if blocked_until is not None else offset + len(batch)) % len(handles),
+                    "next_index": (
+                        offset if blocked_until is not None else offset + len(batch)
+                    ) % len(handles),
                     "last_batch": batch,
                     "last_batch_statuses": statuses,
                     "last_batch_error_type": inspection_error,
