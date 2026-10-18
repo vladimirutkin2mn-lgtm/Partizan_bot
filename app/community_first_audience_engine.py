@@ -11,11 +11,11 @@ from app.discovery_relevance_learning import (
 from app.distribution_types import DistributionPlatform
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.search import OpenAIWebSearchProvider, SearchProvider
-from app.telegram_paid_discovery_budget import (
-    TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE,
-    _PaidTelegramDiscoveryBudgetProvider,
-)
 from app.telegram_discovery_strategy import ExpandedAudienceIntelligenceEngine
+from app.telegram_paid_discovery_budget import (
+    TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE as TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE,
+)
+from app.telegram_paid_discovery_budget import _PaidTelegramDiscoveryBudgetProvider
 from app.telegram_tgstat_catalog import TGStatCatalogExpansion
 
 GROWTH_MANDATE_NAMESPACE = "growth_mandate"
