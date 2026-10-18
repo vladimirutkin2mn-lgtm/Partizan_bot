@@ -20,6 +20,7 @@ from app.distribution_types import DistributionPlatform
 from app.icp_service import icp_service
 from app.product_intake import product_intake_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.telegram_discovery_stage_queue import TelegramDiscoveryStageQueue
 from app.telegram_discovery_strategy import (
     MAX_ADAPTIVE_DISCOVERY_ROUNDS,
     TARGET_READY_TELEGRAM_OPPORTUNITIES,
@@ -35,6 +36,9 @@ AUTONOMOUS_OPPORTUNITY_REFRESH_NAMESPACE = "autonomous_opportunity_refresh"
 DISTRIBUTION_LEARNING_NAMESPACE = "distribution_learning_entry"
 DEFAULT_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS = 6 * 60 * 60
 MIN_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS = 15 * 60
+AUTONOMOUS_DISCOVERY_RETRY_BASE_SECONDS = 15 * 60
+AUTONOMOUS_DISCOVERY_RETRY_MAX_SECONDS = 6 * 60 * 60
+AUTONOMOUS_DISCOVERY_RETRY_MAX_EXPONENT = 5
 
 _LIVE_MODE_BY_KIND = {
     "COMMENT": TelegramParticipationMode.CHANNEL_COMMENT.value,
@@ -100,6 +104,12 @@ class AutonomousOpportunityRefreshService:
                     {
                         "product_id": str(candidate.product_id),
                         "status": "NOT_DUE",
+                        "reason": "PERSISTENT_RETRY_BACKOFF" if previous and previous.get(
+                            "status"
+                        ) == "FAILED" else "NORMAL_DISCOVERY_INTERVAL",
+                        "next_attempt_at": (
+                            previous.get("next_attempt_at") if previous else None
+                        ),
                         "last_success_at": previous.get("last_success_at") if previous else None,
                     }
                 )
@@ -191,13 +201,25 @@ class AutonomousOpportunityRefreshService:
                 # Discovery failures must not disable the existing portfolio. Persist a
                 # safe diagnostic and allow the normal autonomous sweep to continue using
                 # the last known-good plays.
+                failed_at = datetime.now(UTC)
+                consecutive_failures = (
+                    max(0, int(previous.get("consecutive_failures") or 0)) + 1
+                    if previous and previous.get("status") == "FAILED"
+                    else 1
+                )
+                retry_delay_seconds = self._failure_retry_delay(consecutive_failures)
                 record = {
                     "product_id": str(candidate.product_id),
                     "status": "FAILED",
                     "error_type": type(exc).__name__,
+                    "consecutive_failures": consecutive_failures,
+                    "retry_delay_seconds": retry_delay_seconds,
+                    "next_attempt_at": (
+                        failed_at + timedelta(seconds=retry_delay_seconds)
+                    ).isoformat(),
                     "attempted_at": started_at.isoformat(),
                     "last_success_at": previous.get("last_success_at") if previous else None,
-                    "updated_at": datetime.now(UTC).isoformat(),
+                    "updated_at": failed_at.isoformat(),
                 }
                 self._store.put(
                     AUTONOMOUS_OPPORTUNITY_REFRESH_NAMESPACE,
@@ -209,9 +231,24 @@ class AutonomousOpportunityRefreshService:
 
             completed_at = datetime.now(UTC)
             statuses = [item.status for item in preflight_by_url.values()]
+            source_retry_at = (
+                self._next_source_retry(candidate.product_id, after=started_at, now=completed_at)
+                if distribution.opportunity_count == 0
+                and plays.ready_count == 0
+                and not statuses
+                else None
+            )
+            next_attempt = source_retry_at or (
+                completed_at + timedelta(seconds=interval_seconds)
+            )
             record = {
                 "product_id": str(candidate.product_id),
                 "status": "REFRESHED",
+                "consecutive_failures": 0,
+                "next_attempt_at": next_attempt.isoformat(),
+                "next_attempt_reason": (
+                    "AWAITING_SOURCE_RETRY" if source_retry_at else "NORMAL_DISCOVERY_INTERVAL"
+                ),
                 "opportunity_count": distribution.opportunity_count,
                 "play_count": plays.play_count,
                 "ready_play_count": plays.ready_count,
@@ -616,16 +653,103 @@ class AutonomousOpportunityRefreshService:
             and DistributionPlatform.TELEGRAM in mandate.allowed_platforms
         )
 
+    def _next_source_retry(
+        self, product_id: UUID, *, after: datetime, now: datetime
+    ) -> datetime | None:
+        """Schedule the earliest useful source retry only when no work is actionable.
+
+        Do not delay refresh if a catalog just staged unverified handles or
+        known-peer inspection can make progress. Source state stays owned by
+        the native/catalog/paid guards; this merely picks the next worker tick.
+        """
+        snapshot = TelegramDiscoveryStageQueue.latest(self._store, product_id)
+        if not snapshot or not snapshot.get("complete"):
+            return None
+        try:
+            queued_at = datetime.fromisoformat(str(snapshot["started_at"]))
+        except (ValueError, TypeError, KeyError):
+            return None
+        if queued_at.tzinfo is None:
+            queued_at = queued_at.replace(tzinfo=UTC)
+        if queued_at < after:
+            return None
+
+        by_stage = {row["stage"]: row for row in snapshot["stages"]}
+        registry = by_stage.get("registry", {})
+        native = by_stage.get("native", {})
+        catalog = by_stage.get("catalog", {})
+        paid = by_stage.get("paid", {})
+
+        if registry.get("status") not in {
+            "SKIPPED_NO_CANDIDATES", "DEFERRED_RATE_LIMIT"
+        }:
+            return None
+        if catalog.get("status") not in {
+            "SKIPPED_DISABLED", "SKIPPED_NO_CANDIDATES",
+            "DEFERRED_COOLDOWN", "DEFERRED_RATE_LIMIT", "NOT_APPLICABLE"
+        }:
+            return None
+        if paid.get("status") not in {
+            "BLOCKED", "BUDGET_EXHAUSTED", "SKIPPED_DISABLED", "NOT_APPLICABLE"
+        }:
+            return None
+        if native.get("status") not in {
+            "DEFERRED_COOLDOWN", "DEFERRED_RATE_LIMIT"
+        }:
+            return None
+
+        due_times = []
+        for row in (native, catalog, registry):
+            if row.get("status") not in {"DEFERRED_COOLDOWN", "DEFERRED_RATE_LIMIT"}:
+                continue
+            raw = row.get("next_attempt_at")
+            if not raw:
+                return None
+            try:
+                due = datetime.fromisoformat(str(raw))
+            except (TypeError, ValueError):
+                return None
+            due_times.append(due.replace(tzinfo=UTC) if due.tzinfo is None else due.astimezone(UTC))
+        if not due_times:
+            return None
+        return max(now + timedelta(seconds=MIN_AUTONOMOUS_DISCOVERY_INTERVAL_SECONDS), min(due_times))
+
+    @staticmethod
+    def _failure_retry_delay(consecutive_failures: int) -> int:
+        """Bound retries to worker-safe intervals; no hot-loop on provider errors."""
+        exponent = min(
+            AUTONOMOUS_DISCOVERY_RETRY_MAX_EXPONENT,
+            max(0, consecutive_failures - 1),
+        )
+        return min(
+            AUTONOMOUS_DISCOVERY_RETRY_MAX_SECONDS,
+            AUTONOMOUS_DISCOVERY_RETRY_BASE_SECONDS * (2**exponent),
+        )
+
     @staticmethod
     def _due(previous: dict | None, *, now: datetime, interval_seconds: int) -> bool:
         if not previous:
             return True
+        # Persisted next due time survives process restarts. Legacy records
+        # retain the original successful discovery cadence.
+        scheduled = previous.get("next_attempt_at")
+        if scheduled:
+            try:
+                scheduled_at = datetime.fromisoformat(str(scheduled))
+            except (TypeError, ValueError):
+                scheduled_at = None
+            if scheduled_at is not None:
+                if scheduled_at.tzinfo is None:
+                    scheduled_at = scheduled_at.replace(tzinfo=UTC)
+                else:
+                    scheduled_at = scheduled_at.astimezone(UTC)
+                return now >= scheduled_at
         raw = previous.get("last_success_at")
         if not raw:
             return True
         try:
             last_success = datetime.fromisoformat(str(raw))
-        except ValueError:
+        except (TypeError, ValueError):
             return True
         if last_success.tzinfo is None:
             last_success = last_success.replace(tzinfo=UTC)
