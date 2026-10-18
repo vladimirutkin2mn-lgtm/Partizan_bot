@@ -9,6 +9,12 @@ from uuid import uuid4
 
 import pytest
 
+from app.openai_usage import (
+    capture_openai_usage_rows,
+    log_openai_usage,
+    openai_usage_context,
+    openai_usage_step_context,
+)
 from app.runtime_store import MemoryRuntimeStateStore
 from app.telegram_paid_discovery_budget import (
     TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE,
@@ -150,3 +156,33 @@ async def test_monthly_slots_are_atomic_across_days_and_reset_next_month():
     ).search(_q()) == []
     assert len(delegate.calls) == 2
     assert len(store.list_namespace(TELEGRAM_PAID_DISCOVERY_MONTHLY_SLOT_NAMESPACE)) == 2
+
+
+def test_usage_capture_preserves_parent_trace_and_correlation():
+    parent_rows = []
+    child_rows = []
+    with openai_usage_context("discovery_trace", "project-123", run_id="run-123", collector=parent_rows):
+        with openai_usage_step_context(step_id="step-1", query_id="query-1"):
+            with capture_openai_usage_rows(
+                child_rows, task="telegram_paid_discovery", product_id="project-123"
+            ):
+                response = SimpleNamespace(
+                    id="response-1",
+                    usage=SimpleNamespace(
+                        input_tokens=16,
+                        input_tokens_details=SimpleNamespace(cached_tokens=4),
+                        output_tokens=8,
+                        output_tokens_details=SimpleNamespace(reasoning_tokens=3),
+                    ),
+                    output=[SimpleNamespace(type="web_search_call")],
+                )
+                log_openai_usage(
+                    response, options={"model": "mock"}, duration_seconds=0.1
+                )
+    assert len(parent_rows) == len(child_rows) == 1
+    assert parent_rows[0] == child_rows[0]
+    assert child_rows[0]["run_id"] == "run-123"
+    assert child_rows[0]["step_id"] == "step-1"
+    assert child_rows[0]["query_id"] == "query-1"
+    assert child_rows[0]["web_search_calls"] == 1
+    assert child_rows[0]["input_tokens"] == 16
