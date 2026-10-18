@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import unquote, urlsplit
 from uuid import UUID
 
@@ -32,6 +32,11 @@ from app.telegram_research import TelegramSurfaceKind
 
 COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET = 3
 TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE = _TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE
+TELEGRAM_NATIVE_REPLENISH_NAMESPACE = "telegram_native_replenishment"
+TELEGRAM_NATIVE_REPLENISH_DAY_CLAIM_NAMESPACE = "telegram_native_replenishment_day"
+TELEGRAM_NATIVE_MIN_CONFIRMED_COMMUNITIES = 3
+TELEGRAM_NATIVE_REPLENISH_COOLDOWN = timedelta(hours=24)
+TELEGRAM_NATIVE_QUERY_CACHE_TTL = timedelta(days=7)
 
 _SEMANTIC_UTILITY_TERMS = {
     "site",
@@ -286,6 +291,119 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                 self._remember_community(candidate)
             candidates.append(candidate)
         return candidates
+
+    async def replenish_native(
+        self,
+        product,
+        icps,
+        *,
+        confirmed_count: int,
+        now: datetime | None = None,
+    ) -> list[PlatformCandidate]:
+        """Fill a sparse saved registry with bounded native search, never paid web.
+
+        One query per product/day at most. Query history suppresses repeats across
+        ICPs and consecutive daily runs; native results still pass the ordinary
+        community-fit and registry identity checks.
+        """
+        self._product_id = getattr(product, "id", None)
+        if (
+            self._product_id is None
+            or not icps
+            or confirmed_count >= TELEGRAM_NATIVE_MIN_CONFIRMED_COMMUNITIES
+            or not callable(getattr(self._research_connector, "discover", None))
+        ):
+            return []
+
+        checked_at = now or datetime.now(UTC)
+        if checked_at.tzinfo is None:
+            checked_at = checked_at.replace(tzinfo=UTC)
+        checked_at = checked_at.astimezone(UTC)
+        state_key = str(self._product_id)
+        state = self._store.get(TELEGRAM_NATIVE_REPLENISH_NAMESPACE, state_key) or {}
+        last_attempt = self._replenishment_timestamp(state.get("last_attempt_at"))
+        if (
+            last_attempt > datetime.min.replace(tzinfo=UTC)
+            and checked_at - last_attempt < TELEGRAM_NATIVE_REPLENISH_COOLDOWN
+        ):
+            return []
+
+        recent_queries: dict[str, str] = {}
+        for digest, raw_timestamp in dict(state.get("recent_queries") or {}).items():
+            timestamp = self._replenishment_timestamp(raw_timestamp)
+            if timedelta(0) <= checked_at - timestamp < TELEGRAM_NATIVE_QUERY_CACHE_TTL:
+                recent_queries[str(digest)] = str(raw_timestamp)
+
+        plans = []
+        planned_queries = set()
+        for icp in icps[:3]:
+            for request in self.build_requests(product, icp):
+                query = " ".join(str(request.topic or "").split())[:96]
+                if not query:
+                    continue
+                digest = hashlib.sha256(query.casefold().encode("utf-8")).hexdigest()
+                if digest in planned_queries or digest in recent_queries:
+                    continue
+                planned_queries.add(digest)
+                plans.append((request, query, digest))
+        if not plans:
+            return []
+
+        request, query, digest = plans[0]
+        # A cross-worker reservation is needed in addition to the timestamp:
+        # repeated autonomous runs must not race into duplicate Telegram queries.
+        claim_key = f"{state_key}:{checked_at.date().isoformat()}"
+        if not self._store.put_if_absent(
+            TELEGRAM_NATIVE_REPLENISH_DAY_CLAIM_NAMESPACE,
+            claim_key,
+            {"product_id": state_key, "claimed_at": checked_at.isoformat()},
+        ):
+            return []
+        # Remove an old day claim; the cooldown and bounded history remain authoritative.
+        old_day = (checked_at - timedelta(days=3)).date().isoformat()
+        self._store.delete(
+            TELEGRAM_NATIVE_REPLENISH_DAY_CLAIM_NAMESPACE,
+            f"{state_key}:{old_day}",
+        )
+        recent_queries[digest] = checked_at.isoformat()
+        state.update(
+            {
+                "last_attempt_at": checked_at.isoformat(),
+                "last_query": query,
+                "last_query_hash": digest,
+                "recent_queries": recent_queries,
+                "last_status": "STARTED",
+                "last_candidate_count": 0,
+                "source": "TELETHON_NATIVE",
+            }
+        )
+        self._store.put(TELEGRAM_NATIVE_REPLENISH_NAMESPACE, state_key, state)
+        try:
+            # No web provider, account writes, contact joins or paid API calls.
+            candidates = await self.enrich_candidates(request, [])
+        except Exception as exc:
+            state["last_status"] = "RETRYABLE_FAILED"
+            state["last_error_type"] = type(exc).__name__
+            self._store.put(TELEGRAM_NATIVE_REPLENISH_NAMESPACE, state_key, state)
+            return []
+
+        state["last_status"] = "FOUND" if candidates else "NO_FIT_MATCH"
+        state["last_candidate_count"] = len(candidates)
+        state.pop("last_error_type", None)
+        self._store.put(TELEGRAM_NATIVE_REPLENISH_NAMESPACE, state_key, state)
+        return candidates
+
+    @staticmethod
+    def _replenishment_timestamp(value: object) -> datetime:
+        try:
+            parsed = (
+                value
+                if isinstance(value, datetime)
+                else datetime.fromisoformat(str(value))
+            )
+        except (TypeError, ValueError):
+            return datetime.min.replace(tzinfo=UTC)
+        return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
     def candidates(
         self, request: PlatformDiscoveryRequest, hits: list[SearchHit]
