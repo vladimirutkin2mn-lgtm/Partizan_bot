@@ -75,7 +75,10 @@ class FakeSource:
                 "username": "femdom_discussion",
                 "title": "FemDom BDSM discussion",
                 "type": "group" if surface == "chats" else "channel",
-                "source_url": f"https://tgstat.com/ru/{'chat' if surface == 'chats' else 'channel'}/@femdom_discussion",
+                "source_url": (
+                    f"https://tgstat.com/ru/"
+                    f"{'chat' if surface == 'chats' else 'channel'}/@femdom_discussion"
+                ),
             }
         ]
 
