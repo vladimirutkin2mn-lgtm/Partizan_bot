@@ -1,3 +1,4 @@
+from decimal import Decimal
 from functools import lru_cache
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -22,6 +23,10 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     telegram_catalog_discovery_enabled: bool = False
     telegram_paid_discovery_enabled: bool = False
+    # No invented provider price. Paid discovery is blocked unless an
+    # operator separately configures BOTH USD ceilings.
+    telegram_paid_discovery_monthly_budget_usd: Decimal | None = None
+    telegram_paid_discovery_query_reservation_usd: Decimal | None = None
     telegram_research_provider: str = "unavailable"
     telegram_research_public_ready: bool = False
     telegram_research_api_id: int | None = None

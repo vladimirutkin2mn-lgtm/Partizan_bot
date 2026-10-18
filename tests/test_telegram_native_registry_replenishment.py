@@ -322,7 +322,11 @@ async def test_explicit_paid_fallback_claims_at_most_one_call_per_day(monkeypatc
     native, web = EmptyNative(), PaidSearchSpy()
     monkeypatch.setattr(
         "app.community_first_audience_engine.get_settings",
-        lambda: SimpleNamespace(telegram_paid_discovery_enabled=True),
+        lambda: SimpleNamespace(
+            telegram_paid_discovery_enabled=True,
+            telegram_paid_discovery_monthly_budget_usd="1.00",
+            telegram_paid_discovery_query_reservation_usd="0.25",
+        ),
     )
     engine = _engine(store, product, native, web)
     icps = [_icp(), _icp(), _icp()]
@@ -335,6 +339,8 @@ async def test_explicit_paid_fallback_claims_at_most_one_call_per_day(monkeypatc
     assert len(claims) == 1
     assert claims[0]["product_id"] == str(product.id)
     assert claims[0]["maximum_paid_queries"] == 1
+    assert claims[0]["estimated_cost_reservation_usd"] == "0.25"
+    assert claims[0]["actual_billed_cost_usd"] is None
 
 
 @pytest.mark.asyncio
