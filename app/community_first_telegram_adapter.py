@@ -27,8 +27,9 @@ from app.telegram_community_registry import (
 )
 from app.telegram_community_registry import TelegramCommunityRegistry
 from app.telegram_discovery_strategy import ExpandedTelegramDiscoveryAdapter
+from app.telegram_native_flood_wait import record_research_flood_wait, research_flood_wait_until
 from app.telegram_participation_target import select_telegram_participation_target
-from app.telegram_research import TelegramSurfaceKind
+from app.telegram_research import TelegramFloodWaitError, TelegramSurfaceKind
 
 COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET = 3
 TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE = _TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE
@@ -146,11 +147,19 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
             result.append(request)
         return result[:COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET]
 
-    async def refresh_registered(self, product, icps) -> list[PlatformCandidate]:
+    async def refresh_registered(
+        self, product, icps, *, now: datetime | None = None
+    ) -> list[PlatformCandidate]:
         """Rotate saved peers through native inspection; never run contacts.Search."""
         self._product_id = getattr(product, "id", None)
         if self._product_id is None or not icps:
             return []
+        checked_at = now or datetime.now(UTC)
+        checked_at = (
+            checked_at.replace(tzinfo=UTC)
+            if checked_at.tzinfo is None
+            else checked_at.astimezone(UTC)
+        )
         rows = sorted(
             self._registry.list_for_product(self._product_id),
             key=lambda item: str(item.get("id") or item.get("canonical_key") or ""),
@@ -188,19 +197,25 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         inspection_error = None
         connector = self._research_connector
         inspector = getattr(connector, "inspect_known", None)
-        if batch and callable(inspector):
+        blocked_until = research_flood_wait_until(self._store, now=checked_at)
+        deferred_for_flood = blocked_until is not None
+        if batch and callable(inspector) and not deferred_for_flood:
             try:
                 inspected = await inspector(batch)
                 results = {str(item.handle).casefold(): item for item in inspected}
+            except TelegramFloodWaitError as exc:
+                blocked_until = record_research_flood_wait(
+                    self._store, exc.seconds, now=checked_at
+                )
+                inspection_error = "TELEGRAM_FLOOD_WAIT"
             except Exception as exc:
                 inspection_error = type(exc).__name__
-        elif batch:
+        elif batch and not deferred_for_flood:
             inspection_error = "INSPECTION_UNAVAILABLE"
 
-        if batch and callable(inspector):
-            # An inspector-wide transient failure must not pin the cursor to the
-            # same first three handles forever. Each failed peer stays unverified;
-            # the next refresh can make progress on the rest of the registry.
+        if batch and callable(inspector) and not deferred_for_flood:
+            # Normal errors rotate to avoid starvation. FloodWait is different:
+            # keep the interrupted batch pending and honor the full wait.
             statuses = {
                 handle: (
                     "RETRYABLE_FAILED"
@@ -213,11 +228,14 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                 cursor_namespace,
                 cursor_key,
                 {
-                    "next_index": (offset + len(batch)) % len(handles),
+                    "next_index": (
+                        offset if blocked_until is not None else offset + len(batch)
+                    ) % len(handles),
                     "last_batch": batch,
                     "last_batch_statuses": statuses,
                     "last_batch_error_type": inspection_error,
-                    "last_attempt_at": datetime.now(UTC).isoformat(),
+                    "last_attempt_at": checked_at.isoformat(),
+                    "blocked_until": blocked_until.isoformat() if blocked_until else None,
                 },
             )
 
@@ -239,14 +257,18 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
             status = "DEFERRED"
             if handle in batch:
                 status = (
-                    "INSPECTION_UNAVAILABLE"
+                    "DEFERRED_FLOOD_WAIT"
+                    if deferred_for_flood
+                    else "INSPECTION_UNAVAILABLE"
                     if not callable(inspector)
                     else "RETRYABLE_FAILED"
                     if inspection_error is not None
                     else str(getattr(results.get(handle), "status", "RETRYABLE_FAILED"))
                 )
             metadata["registry_refresh_status"] = status
-            metadata["registry_refresh_attempted"] = handle in batch
+            metadata["registry_refresh_attempted"] = handle in batch and not deferred_for_flood
+            if blocked_until is not None:
+                metadata["native_resume_after"] = blocked_until.isoformat()
             if handle in batch and inspection_error is not None:
                 metadata["registry_refresh_error_type"] = inspection_error
 
@@ -344,9 +366,15 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         if checked_at.tzinfo is None:
             checked_at = checked_at.replace(tzinfo=UTC)
         checked_at = checked_at.astimezone(UTC)
+        if research_flood_wait_until(self._store, now=checked_at) is not None:
+            # Another product received a shared research-session FloodWait.
+            # Do not consume a query budget or mark a search as attempted.
+            return []
         state_key = str(self._product_id)
         state = self._store.get(TELEGRAM_NATIVE_REPLENISH_NAMESPACE, state_key) or {}
         last_attempt = self._replenishment_timestamp(state.get("last_attempt_at"))
+        if checked_at < self._replenishment_timestamp(state.get("next_attempt_at")):
+            return []
         if (
             last_attempt > datetime.min.replace(tzinfo=UTC)
             and checked_at - last_attempt < TELEGRAM_NATIVE_REPLENISH_COOLDOWN
@@ -409,6 +437,16 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         except Exception as exc:
             state["last_status"] = "RETRYABLE_FAILED"
             state["last_error_type"] = type(exc).__name__
+            if isinstance(exc, TelegramFloodWaitError):
+                blocked = record_research_flood_wait(
+                    self._store, exc.seconds, now=checked_at
+                )
+                state["next_attempt_at"] = blocked.isoformat()
+                state["last_error_type"] = "TELEGRAM_FLOOD_WAIT"
+            # A failed Telegram query is not a completed search hypothesis.
+            # The daily reservation still bounds repeated provider calls.
+            recent_queries.pop(digest, None)
+            state["recent_queries"] = recent_queries
             self._store.put(TELEGRAM_NATIVE_REPLENISH_NAMESPACE, state_key, state)
             return []
 

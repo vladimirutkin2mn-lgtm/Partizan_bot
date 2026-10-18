@@ -20,6 +20,14 @@ class TelegramResearchUnavailableError(TelegramResearchError):
     pass
 
 
+class TelegramFloodWaitError(TelegramResearchUnavailableError):
+    """Preserve Telegram's complete wait duration; never sleep in a worker."""
+
+    def __init__(self, seconds: int):
+        super().__init__("TELEGRAM_FLOOD_WAIT")
+        self.seconds = max(1, int(seconds))
+
+
 class TelegramSurfaceKind(StrEnum):
     CHANNEL = "CHANNEL"
     GROUP = "GROUP"
@@ -208,6 +216,7 @@ class TelethonTelegramResearchTransport:
     ) -> list[TelegramCommunitySnapshot]:
         try:
             from telethon import TelegramClient
+            from telethon.errors import FloodWaitError
             from telethon.sessions import StringSession
             from telethon.tl.functions.channels import GetFullChannelRequest
             from telethon.tl.functions.contacts import SearchRequest
@@ -270,6 +279,8 @@ class TelethonTelegramResearchTransport:
             return snapshots
         except TelegramResearchUnavailableError:
             raise
+        except FloodWaitError as exc:
+            raise TelegramFloodWaitError(exc.seconds) from None
         except Exception as exc:
             # Provider errors are surfaced to Audience Intelligence. Generic web evidence
             # may still be retained, but native Telegram evidence is never fabricated.
@@ -326,10 +337,10 @@ class TelethonTelegramResearchTransport:
                             ),
                         )
                     )
-                except FloodWaitError:
-                    # Respect Telegram's full prescribed wait; the caller will
-                    # retry this batch on a later refresh rather than sleeping.
-                    raise TelegramResearchUnavailableError("TELEGRAM_FLOOD_WAIT") from None
+                except FloodWaitError as exc:
+                    # Caller persists the exact wait for all products sharing
+                    # this research session; never truncate or sleep here.
+                    raise TelegramFloodWaitError(exc.seconds) from None
                 except Exception:
                     # Failure to resolve a known peer is not evidence of deletion.
                     inspections.append(
