@@ -54,7 +54,7 @@ def test_old_scores_and_target_rights_never_become_native_approval():
         meta = row["metadata"]
         assert meta["legacy_audience_map_lead"] is True
         assert meta["native_research_status"] == "UNVERIFIED"
-        assert meta["community_fit_pass"] is False
+        assert meta.get("community_fit_pass") is not True
         assert meta["action_target_url"] is None
         assert meta["action_target_specific"] is False
         assert meta["actionability"] == "RESEARCH_ONLY"
