@@ -8,10 +8,12 @@ clobber one another's stage outcomes.
 
 from __future__ import annotations
 
+import argparse
+import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from app.runtime_store import RuntimeStateStore
+from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 TELEGRAM_DISCOVERY_STAGE_NAMESPACE = "telegram_discovery_stage"
 TELEGRAM_DISCOVERY_LATEST_RUN_NAMESPACE = "telegram_discovery_latest_run"
@@ -63,6 +65,9 @@ class TelegramDiscoveryStageQueue:
                     "status": "PENDING",
                     "reason": "NOT_STARTED",
                     "candidate_count": 0,
+                    "source": None,
+                    "query": None,
+                    "gate": None,
                     "started_at": self.started_at.isoformat(),
                     "finished_at": None,
                     "next_attempt_at": None,
@@ -90,6 +95,9 @@ class TelegramDiscoveryStageQueue:
         candidate_count: int = 0,
         next_attempt_at: str | None = None,
         error_type: str | None = None,
+        source: str | None = None,
+        query: str | None = None,
+        gate: str | None = None,
     ) -> dict:
         if status not in TERMINAL_STATUSES:
             raise ValueError("Unsupported Telegram discovery stage status")
@@ -105,6 +113,9 @@ class TelegramDiscoveryStageQueue:
                 "finished_at": datetime.now(UTC).isoformat(),
                 "next_attempt_at": next_attempt_at,
                 "error_type": error_type,
+                "source": str(source or "")[:60] or None,
+                "query": str(query or "")[:220] or None,
+                "gate": str(gate or "")[:100] or None,
             }
         )
         self._store.put(TELEGRAM_DISCOVERY_STAGE_NAMESPACE, self._key(stage), row)
@@ -137,3 +148,18 @@ class TelegramDiscoveryStageQueue:
             now=datetime.fromisoformat(pointer["started_at"]),
         )
         return queue.snapshot()
+
+
+def main() -> None:
+    """Read-only diagnostic CLI; no new discovery or Telegram account calls."""
+    parser = argparse.ArgumentParser(description="Show latest Telegram discovery stage queue")
+    parser.add_argument("--product-id", required=True)
+    args = parser.parse_args()
+    snapshot = TelegramDiscoveryStageQueue.latest(
+        get_runtime_store(), args.product_id
+    )
+    print(json.dumps(snapshot or {"status": "NO_RECORDED_RUN"}, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()
