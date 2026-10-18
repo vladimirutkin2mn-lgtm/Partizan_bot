@@ -437,7 +437,7 @@ async def test_stage_queue_records_native_success_without_fake_paid_or_catalog()
     assert found
     snapshot = engine.last_telegram_stage_queue
     assert snapshot is not None and snapshot["complete"] is True
-    assert snapshot == TelegramDiscoveryStageQueue.latest(store, product)
+    assert snapshot == TelegramDiscoveryStageQueue.latest(store, product.id)
     states = {item["stage"]: item for item in snapshot["stages"]}
     assert states["registry"]["status"] == "SKIPPED_NO_CANDIDATES"
     assert states["native"]["status"] == "COMPLETED"
