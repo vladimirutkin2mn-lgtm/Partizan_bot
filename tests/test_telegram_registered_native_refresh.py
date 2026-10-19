@@ -13,10 +13,10 @@ from app.runtime_store import MemoryRuntimeStateStore
 from app.telegram_community_registry import TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE
 from app.telegram_research import (
     SurfaceAvailability,
-    TelegramFloodWaitError,
-    TelegramRecentContext,
     TelegramCommunitySnapshot,
+    TelegramFloodWaitError,
     TelegramKnownCommunityInspection,
+    TelegramRecentContext,
     TelegramResearchConnector,
     TelegramSurfaceKind,
 )
