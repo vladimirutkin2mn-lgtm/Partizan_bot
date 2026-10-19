@@ -194,46 +194,79 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         batch_size = 3  # Matches the conservative known-peer native request budget.
         batch = handles[offset : offset + batch_size]
         results = {}
+        per_handle_error: dict[str, str] = {}
         inspection_error = None
         connector = self._research_connector
         inspector = getattr(connector, "inspect_known", None)
-        # Once EVERY peer in this batch has confirmed audience fit, there is
-        # no reason to load extra posts merely to select the newest target.
-        # Unknown audiences retain the existing short evidence sample.
-        confirmed_batch = bool(batch) and all(
-            (by_handle[handle].get("audience_fit") or {}).get("confirmed") is True
+        latest_inspector = getattr(connector, "inspect_latest_known", None)
+
+        # Fit belongs to each individual peer, not the surrounding batch:
+        # a qualified community needs just its newest post even when the
+        # rotation also contains newly discovered, unqualified communities.
+        confirmed_handles = [
+            handle
+            for handle in batch
+            if (by_handle[handle].get("audience_fit") or {}).get("confirmed") is True
             or self._registry.hydrate_metadata(by_handle[handle]).get(
                 "community_fit_pass"
             ) is True
-            for handle in batch
+        ]
+        unconfirmed_handles = [
+            handle for handle in batch if handle not in confirmed_handles
+        ]
+        latest_only_handles = (
+            confirmed_handles if callable(latest_inspector) else []
         )
-        latest_inspector = getattr(connector, "inspect_latest_known", None)
-        latest_only = confirmed_batch and callable(latest_inspector)
-        if latest_only:
-            inspector = latest_inspector
+        # A legacy test/transport with no single-post method can still
+        # inspect old peers normally; production Telethon supports both.
+        plan = [
+            (
+                confirmed_handles,
+                latest_inspector if callable(latest_inspector) else inspector,
+            ),
+            (unconfirmed_handles, inspector),
+        ]
+
         blocked_until = research_flood_wait_until(self._store, now=checked_at)
         deferred_for_flood = blocked_until is not None
-        if batch and callable(inspector) and not deferred_for_flood:
-            try:
-                inspected = await inspector(batch)
-                results = {str(item.handle).casefold(): item for item in inspected}
-            except TelegramFloodWaitError as exc:
-                blocked_until = record_research_flood_wait(
-                    self._store, exc.seconds, now=checked_at
-                )
-                inspection_error = "TELEGRAM_FLOOD_WAIT"
-            except Exception as exc:
-                inspection_error = type(exc).__name__
-        elif batch and not deferred_for_flood:
-            inspection_error = "INSPECTION_UNAVAILABLE"
+        has_inspector = any(
+            handles_for_method and callable(method)
+            for handles_for_method, method in plan
+        )
+        if batch and not deferred_for_flood:
+            for handles_for_method, method in plan:
+                if not handles_for_method:
+                    continue
+                if not callable(method):
+                    for handle in handles_for_method:
+                        per_handle_error[handle] = "INSPECTION_UNAVAILABLE"
+                    inspection_error = inspection_error or "INSPECTION_UNAVAILABLE"
+                    continue
+                try:
+                    inspected = await method(handles_for_method)
+                    results.update(
+                        {str(item.handle).casefold(): item for item in inspected}
+                    )
+                except TelegramFloodWaitError as exc:
+                    blocked_until = record_research_flood_wait(
+                        self._store, exc.seconds, now=checked_at
+                    )
+                    deferred_for_flood = True
+                    inspection_error = "TELEGRAM_FLOOD_WAIT"
+                    break
+                except Exception as exc:
+                    error_type = type(exc).__name__
+                    for handle in handles_for_method:
+                        per_handle_error[handle] = error_type
+                    inspection_error = inspection_error or error_type
 
-        if batch and callable(inspector) and not deferred_for_flood:
-            # Normal errors rotate to avoid starvation. FloodWait is different:
-            # keep the interrupted batch pending and honor the full wait.
+        if batch and has_inspector and blocked_until is None:
+            # A single peer-group error does not erase successfully inspected
+            # neighbours. FloodWait keeps the interrupted batch pending.
             statuses = {
                 handle: (
                     "RETRYABLE_FAILED"
-                    if inspection_error is not None
+                    if handle in per_handle_error
                     else str(getattr(results.get(handle), "status", "RETRYABLE_FAILED"))
                 )
                 for handle in batch
@@ -242,15 +275,37 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                 cursor_namespace,
                 cursor_key,
                 {
-                    "next_index": (
-                        offset if blocked_until is not None else offset + len(batch)
-                    ) % len(handles),
+                    "next_index": (offset + len(batch)) % len(handles),
                     "last_batch": batch,
-                    "last_batch_latest_only": latest_only,
+                    "last_batch_latest_only": len(latest_only_handles) == len(batch),
+                    "last_batch_latest_handles": latest_only_handles,
+                    "last_batch_context_handles": unconfirmed_handles,
                     "last_batch_statuses": statuses,
                     "last_batch_error_type": inspection_error,
                     "last_attempt_at": checked_at.isoformat(),
-                    "blocked_until": blocked_until.isoformat() if blocked_until else None,
+                    "blocked_until": None,
+                },
+            )
+        elif batch and has_inspector and blocked_until is not None and not research_flood_wait_until(
+            self._store, now=checked_at - timedelta(seconds=1)
+        ):
+            # Optional state recording if FloodWait was raised during this
+            # attempt; preserve cursor position for the retry.
+            self._store.put(
+                cursor_namespace,
+                cursor_key,
+                {
+                    "next_index": offset,
+                    "last_batch": batch,
+                    "last_batch_latest_only": len(latest_only_handles) == len(batch),
+                    "last_batch_latest_handles": latest_only_handles,
+                    "last_batch_context_handles": unconfirmed_handles,
+                    "last_batch_statuses": {
+                        handle: "DEFERRED_FLOOD_WAIT" for handle in batch
+                    },
+                    "last_batch_error_type": "TELEGRAM_FLOOD_WAIT",
+                    "last_attempt_at": checked_at.isoformat(),
+                    "blocked_until": blocked_until.isoformat(),
                 },
             )
 
@@ -274,18 +329,16 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                 status = (
                     "DEFERRED_FLOOD_WAIT"
                     if deferred_for_flood
-                    else "INSPECTION_UNAVAILABLE"
-                    if not callable(inspector)
                     else "RETRYABLE_FAILED"
-                    if inspection_error is not None
+                    if handle in per_handle_error
                     else str(getattr(results.get(handle), "status", "RETRYABLE_FAILED"))
                 )
             metadata["registry_refresh_status"] = status
             metadata["registry_refresh_attempted"] = handle in batch and not deferred_for_flood
             if blocked_until is not None:
                 metadata["native_resume_after"] = blocked_until.isoformat()
-            if handle in batch and inspection_error is not None:
-                metadata["registry_refresh_error_type"] = inspection_error
+            if handle in per_handle_error:
+                metadata["registry_refresh_error_type"] = per_handle_error[handle]
 
             raw_kind = str(row.get("kind") or "CHANNEL").upper()
             kind = (
