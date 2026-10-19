@@ -150,6 +150,13 @@ class ActionTargetSelector:
             != target_url.rstrip("/").split("?", 1)[0]
         ):
             raise ValueError("Telegram ActionTarget is not the latest native message")
+        # A verified audience alone cannot justify an unrelated canned reply.
+        # If the newest post is media-only and we have no usable context,
+        # do not silently fall back to the community title or older posts.
+        if not str(latest.get("text") or "").strip():
+            raise ValueError(
+                "Telegram latest native post has no readable context for a relevant draft"
+            )
         return [
             {
                 "url": target_url,
@@ -284,6 +291,12 @@ Non-negotiable rules:
 4. Do not write cold direct messages. The allowed action type is supplied explicitly.
 5. Community comments/replies should be useful in their own right.
    Do not include a product link unless it is explicitly allowed.
+   For a Telegram comment/reply, use ONLY the actual newest native message
+   supplied as the selected target. Respond naturally to what THAT post says;
+   do not blend in older group messages or manufacture a problem or question.
+   Community audience fit is established separately from message context.
+   Mention the product only when it genuinely contributes to that newest post,
+   and otherwise keep the reply useful without promotion. No generic ad copy.
 6. When a Conversion brief is supplied, optimize for that explicit conversion mechanism instead
    of writing a merely polite or generic contribution. The conversion path must still obey every
    community and platform constraint.
