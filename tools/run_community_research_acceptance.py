@@ -21,6 +21,7 @@ from app.distribution_schemas import (
 from app.distribution_types import DistributionPlatform
 from app.icp_service import icp_service
 from app.models import ProductProfileStatus
+from app.openai_usage import openai_usage_context
 from app.opportunity_enrichment import OpportunityEnrichmentService
 from app.platform_discovery import RedditDiscoveryAdapter, TelegramDiscoveryAdapter
 from app.product_intake import product_intake_service
@@ -241,12 +242,13 @@ async def _run() -> dict:
         max_concurrency=2,
         adapters=adapters,
     )
-    seeds = await engine.discover(
-        product=context.product,
-        icps=context.icp_result.icps[:1],
-        per_query_limit=5,
-        max_opportunities=20,
-    )
+    with openai_usage_context("audience_discovery", context.product.id):
+        seeds = await engine.discover(
+            product=context.product,
+            icps=context.icp_result.icps[:1],
+            per_query_limit=5,
+            max_opportunities=20,
+        )
     refreshed = _persist_discovery(context, seeds) if seeds else []
 
     telegram_verified = sum(
