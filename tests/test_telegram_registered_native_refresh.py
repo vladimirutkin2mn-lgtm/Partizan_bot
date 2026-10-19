@@ -398,7 +398,7 @@ async def test_second_inspection_floodwait_keeps_batch_pending():
     )
     assert transport.calls == [(("founders0",), 1), (("founders1",), 4)]
     assert all(
-        c.metadata["registry_refresh_status"] == "DEFERRED_FLOOD_WAIT"
+        c.metadata["registry_refresh_status"] == "RETRYABLE_FAILED"
         for c in results
     )
     cursor = store.get("telegram_registered_native_refresh_cursor", str(product.id))
