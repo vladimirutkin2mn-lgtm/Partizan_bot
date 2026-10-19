@@ -94,7 +94,10 @@ async def test_new_group_with_unconfirmed_audience_keeps_short_fit_sample():
     )
     product = SimpleNamespace(id=product_id, market="US", language="English")
     await adapter.refresh_registered(product, [_icp()])
-    assert transport.calls == [(("founders0", "founders1", "founders2"), 4)]
+    assert transport.calls == [
+        (("founders0", "founders2"), 1),
+        (("founders1",), 4),
+    ]
     cursor = store.get("telegram_registered_native_refresh_cursor", str(product_id))
     assert cursor["last_batch_latest_only"] is False
     assert transport.discover_calls == 0
