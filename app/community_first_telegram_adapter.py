@@ -327,17 +327,25 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
             status = "DEFERRED"
             if handle in batch:
                 status = (
-                    "DEFERRED_FLOOD_WAIT"
+                    "RETRYABLE_FAILED"
+                    if flood_during_attempt
+                    else "DEFERRED_FLOOD_WAIT"
                     if deferred_for_flood
+                    else "INSPECTION_UNAVAILABLE"
+                    if per_handle_error.get(handle) == "INSPECTION_UNAVAILABLE"
                     else "RETRYABLE_FAILED"
                     if handle in per_handle_error
                     else str(getattr(results.get(handle), "status", "RETRYABLE_FAILED"))
                 )
             metadata["registry_refresh_status"] = status
-            metadata["registry_refresh_attempted"] = handle in batch and not deferred_for_flood
+            metadata["registry_refresh_attempted"] = (
+                handle in batch and (not deferred_for_flood or flood_during_attempt)
+            )
             if blocked_until is not None:
                 metadata["native_resume_after"] = blocked_until.isoformat()
-            if handle in per_handle_error:
+            if flood_during_attempt and handle in batch:
+                metadata["registry_refresh_error_type"] = "TELEGRAM_FLOOD_WAIT"
+            elif handle in per_handle_error:
                 metadata["registry_refresh_error_type"] = per_handle_error[handle]
 
             raw_kind = str(row.get("kind") or "CHANNEL").upper()
