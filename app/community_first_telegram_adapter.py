@@ -229,6 +229,7 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
 
         blocked_until = research_flood_wait_until(self._store, now=checked_at)
         deferred_for_flood = blocked_until is not None
+        flood_during_attempt = False
         has_inspector = any(
             handles_for_method and callable(method)
             for handles_for_method, method in plan
@@ -252,6 +253,7 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                         self._store, exc.seconds, now=checked_at
                     )
                     deferred_for_flood = True
+                    flood_during_attempt = True
                     inspection_error = "TELEGRAM_FLOOD_WAIT"
                     break
                 except Exception as exc:
@@ -286,9 +288,7 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                     "blocked_until": None,
                 },
             )
-        elif batch and has_inspector and blocked_until is not None and not research_flood_wait_until(
-            self._store, now=checked_at - timedelta(seconds=1)
-        ):
+        elif batch and has_inspector and flood_during_attempt:
             # Optional state recording if FloodWait was raised during this
             # attempt; preserve cursor position for the retry.
             self._store.put(
