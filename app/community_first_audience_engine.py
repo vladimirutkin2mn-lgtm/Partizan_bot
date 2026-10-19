@@ -19,6 +19,7 @@ from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.search import OpenAIWebSearchProvider, SearchProvider
 from app.telegram_discovery_stage_queue import TelegramDiscoveryStageQueue
 from app.telegram_discovery_strategy import ExpandedAudienceIntelligenceEngine
+from app.telegram_legacy_registry_bootstrap import stage_legacy_telegram_communities
 from app.telegram_native_flood_wait import research_flood_wait_until
 from app.telegram_paid_discovery_budget import (
     TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE as TELEGRAM_PAID_DISCOVERY_CLAIM_NAMESPACE,
@@ -106,6 +107,7 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
         self.last_catalog_status = "NOT_APPLICABLE"
         self.last_paid_fallback_gate = "NOT_APPLICABLE"
         self.last_telegram_stage_queue = None
+        self.last_legacy_reuse: dict | None = None
         queue = (
             TelegramDiscoveryStageQueue(self._store, product.id)
             if telegram_adapter is not None and getattr(product, "id", None) is not None
@@ -115,6 +117,10 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             queue.start()
         catalog_result = {"status": "NOT_APPLICABLE", "staged_count": 0}
         if self._prefer_registered_telegram and telegram_adapter is not None:
+            # Historical paid research predated the canonical Telegram registry.
+            # Stage only public handles, never legacy scores as native fit.
+            legacy_reuse = stage_legacy_telegram_communities(self._store, product.id)
+            self.last_legacy_reuse = legacy_reuse
             registered = await telegram_adapter.refresh_registered(product, icps)
             if queue is not None:
                 self._record_registry_stage(queue, registered)
@@ -129,8 +135,12 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             native_before = self._store.get(
                 TELEGRAM_NATIVE_REPLENISH_NAMESPACE, str(product.id)
             ) or {}
-            new_communities = await telegram_adapter.replenish_native(
-                product, icps, confirmed_count=confirmed_count
+            new_communities = (
+                []
+                if legacy_reuse["staged_research_only"] > 0
+                else await telegram_adapter.replenish_native(
+                    product, icps, confirmed_count=confirmed_count
+                )
             )
             if queue is not None:
                 self._record_native_stage(
@@ -155,6 +165,11 @@ class CommunityFirstAudienceIntelligenceEngine(ExpandedAudienceIntelligenceEngin
             registry_raw = [
                 self._candidate_to_seed(icp, candidate)
                 for candidate in [*registered, *new_communities]
+                if not candidate.metadata.get("legacy_audience_map_lead")
+                or (
+                    candidate.metadata.get("native_research_status") == "VERIFIED"
+                    and candidate.metadata.get("community_fit_pass") is True
+                )
                 for icp in icps
             ]
             if registered or new_communities or catalog_result["staged_count"]:
