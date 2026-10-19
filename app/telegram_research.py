@@ -132,6 +132,20 @@ class TelegramResearchConnector:
     async def inspect_known(
         self, handles: list[str]
     ) -> list[TelegramKnownCommunityInspection]:
+        """Initial/unknown-audience research keeps its normal short sample."""
+        return await self._inspect_known(
+            handles, recent_message_limit=self._recent_message_limit
+        )
+
+    async def inspect_latest_known(
+        self, handles: list[str]
+    ) -> list[TelegramKnownCommunityInspection]:
+        """Audience already qualified: inspect only the newest message per peer."""
+        return await self._inspect_known(handles, recent_message_limit=1)
+
+    async def _inspect_known(
+        self, handles: list[str], *, recent_message_limit: int
+    ) -> list[TelegramKnownCommunityInspection]:
         normalized: list[str] = []
         seen: set[str] = set()
         for raw in handles:
@@ -152,7 +166,7 @@ class TelegramResearchConnector:
         async with self._lock:
             return await method(
                 normalized,
-                recent_message_limit=self._recent_message_limit,
+                recent_message_limit=recent_message_limit,
             )
 
     async def discover(

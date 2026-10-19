@@ -526,3 +526,20 @@ def test_skipped_telegram_target_can_be_drafted_again(monkeypatch) -> None:
         play,
         SelectedActionTarget("https://t.me/community/147", "context", "native"),
     )
+
+
+def test_telegram_latest_empty_post_does_not_trigger_generic_promotion() -> None:
+    opportunity = _telegram_selector_opportunity(
+        target_url="https://t.me/community/147",
+        recent_context=[
+            {"message_id": 147, "url": "https://t.me/community/147", "text": "   "},
+            {
+                "message_id": 146,
+                "url": "https://t.me/community/146",
+                "text": "Older detailed thread might be useful but cannot replace latest",
+            },
+        ],
+    )
+    play = SimpleNamespace(action_type=DistributionActionType.COMMENT)
+    with pytest.raises(ValueError, match="no readable context"):
+        ActionTargetSelector().select(play, opportunity)

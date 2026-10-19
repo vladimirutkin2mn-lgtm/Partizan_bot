@@ -197,6 +197,20 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         inspection_error = None
         connector = self._research_connector
         inspector = getattr(connector, "inspect_known", None)
+        # Once EVERY peer in this batch has confirmed audience fit, there is
+        # no reason to load extra posts merely to select the newest target.
+        # Unknown audiences retain the existing short evidence sample.
+        confirmed_batch = bool(batch) and all(
+            (by_handle[handle].get("audience_fit") or {}).get("confirmed") is True
+            or self._registry.hydrate_metadata(by_handle[handle]).get(
+                "community_fit_pass"
+            ) is True
+            for handle in batch
+        )
+        latest_inspector = getattr(connector, "inspect_latest_known", None)
+        latest_only = confirmed_batch and callable(latest_inspector)
+        if latest_only:
+            inspector = latest_inspector
         blocked_until = research_flood_wait_until(self._store, now=checked_at)
         deferred_for_flood = blocked_until is not None
         if batch and callable(inspector) and not deferred_for_flood:
@@ -232,6 +246,7 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                         offset if blocked_until is not None else offset + len(batch)
                     ) % len(handles),
                     "last_batch": batch,
+                    "last_batch_latest_only": latest_only,
                     "last_batch_statuses": statuses,
                     "last_batch_error_type": inspection_error,
                     "last_attempt_at": checked_at.isoformat(),
