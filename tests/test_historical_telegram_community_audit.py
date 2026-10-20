@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
@@ -104,13 +105,16 @@ class ReadOnlySpy:
         self.search_calls = 0
 
     async def inspect_known(self, handles):
+        raise AssertionError("Multi-post inspection must not be used by the audit")
+
+    async def inspect_latest_known(self, handles):
         self.inspected.extend(handles)
-        return [
-            TelegramKnownCommunityInspection(
-                handle, "VERIFIED", _snapshot(handle, self.checked)
-            )
-            for handle in handles
-        ]
+        results = []
+        for handle in handles:
+            snapshot = _snapshot(handle, self.checked)
+            snapshot = replace(snapshot, recent_context=snapshot.recent_context[:1])
+            results.append(TelegramKnownCommunityInspection(handle, "VERIFIED", snapshot))
+        return results
 
     async def discover(self, *args, **kwargs):
         self.search_calls += 1
@@ -143,9 +147,10 @@ async def test_historical_records_from_both_namespaces_are_deduped_and_inspected
         now=checked,
     )
     assert result["mode"] == "READ_ONLY_LIVE_INSPECTION"
+    assert result["post_read_policy"] == "LATEST_ONLY_ONE_PER_COMMUNITY"
     assert result["summary"]["actually_inspected"] == 2
-    assert result["summary"]["fresh_posts_observed"] == 4
-    assert result["summary"]["fresh_keyword_matches"] == 2
+    assert result["summary"]["fresh_posts_observed"] == 2
+    assert result["summary"]["fresh_keyword_matches"] == 0
     assert result["summary"]["selected_latest_posts_keyword_matching"] == 0
     assert result["summary"]["publishable_without_separate_checks"] == 0
     assert len(connector.inspected) == 2
@@ -156,7 +161,8 @@ async def test_historical_records_from_both_namespaces_are_deduped_and_inspected
         assert item["inspection"]["selected_target_keyword_match"] is False
         assert item["inspection"]["live_write_access_verified"] is False
         assert item["inspection"]["publication_authorized"] is False
-        assert item["inspection"]["fresh_keyword_match_count"] == 1
+        assert item["inspection"]["fresh_keyword_match_count"] == 0
+        assert item["inspection"]["post_samples_read"] == 1
 
 
 @pytest.mark.asyncio
@@ -207,7 +213,7 @@ async def test_floodwait_during_inspection_halts_remainder_without_retry():
         _known_handle_limit = 3
         calls = 0
 
-        async def inspect_known(self, handles):
+        async def inspect_latest_known(self, handles):
             self.calls += 1
             raise TelegramFloodWaitError(3600)
 
@@ -224,3 +230,21 @@ async def test_floodwait_during_inspection_halts_remainder_without_retry():
     assert result["mode"] == "HALTED_FLOOD_WAIT"
     assert result["blocking_flood_wait_until"] == (now + timedelta(hours=1)).isoformat()
     assert all(x["inspection"]["status"] == "NOT_CHECKED" for x in result["communities"])
+
+
+@pytest.mark.asyncio
+async def test_never_falls_back_to_four_post_connector():
+    class LegacyOnly:
+        async def inspect_known(self, handles):
+            raise AssertionError("Must not read multiple posts")
+
+    product_id = uuid4()
+    store = MemoryRuntimeStateStore()
+    _seed(store, product_id)
+    result = await audit(
+        product_id, store=store, connector=LegacyOnly(),
+        product=SimpleNamespace(name="FemDom"), max_groups=2,
+        now=datetime(2026, 10, 18, tzinfo=UTC),
+    )
+    assert result["mode"] == "RESEARCH_CONNECTOR_UNAVAILABLE"
+    assert result["summary"]["actually_inspected"] == 0

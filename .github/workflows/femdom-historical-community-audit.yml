@@ -94,6 +94,14 @@ jobs:
               raise SystemExit("Live read-only audit did not complete")
           if payload.get("read_only") is not True:
               raise SystemExit("Read-only assertion failed")
+          if payload.get("post_read_policy") != "LATEST_ONLY_ONE_PER_COMMUNITY":
+              raise SystemExit("Latest-only audit policy not verified")
+          for community in payload.get("communities", []):
+              inspection = community.get("inspection", {})
+              if int(inspection.get("post_samples_read") or 0) > 1:
+                  raise SystemExit("More than one Telegram post read for a known peer")
+              if len(inspection.get("fresh_posts") or []) > 1:
+                  raise SystemExit("More than one post returned for a known peer")
           effects = payload.get("effects", {})
           if any(effects.get(key) != 0 for key in (
               "new_paid_search_calls", "new_contact_search_calls",
@@ -102,6 +110,7 @@ jobs:
               raise SystemExit("Unexpected action reported in read-only audit")
           print(json.dumps({
               "mode": payload["mode"],
+              "post_read_policy": payload["post_read_policy"],
               "inventory": payload["inventory"],
               "summary": payload["summary"],
               "blocking_flood_wait_until": payload.get("blocking_flood_wait_until"),

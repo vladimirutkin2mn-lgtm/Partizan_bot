@@ -27,7 +27,7 @@ from app.telegram_research import (
 _PUBLIC_HANDLE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
 _POST_FRESHNESS = timedelta(days=7)
 _MAX_INSPECT = 12
-_MAX_POSTS_PER_GROUP = 8
+_MAX_POSTS_PER_GROUP = 1
 _STOPWORDS = {
     "this", "that", "from", "with", "they", "their", "about", "people",
     "person", "social", "online", "product", "looking", "interested",
@@ -205,7 +205,7 @@ async def audit(
     max_groups: int = 12,
     now: datetime | None = None,
 ) -> dict:
-    """Bounded known-public-peer inspection, no contacts.Search or writes."""
+    """Read only one newest post per saved public peer; no search or writes."""
     if not 0 <= max_groups <= _MAX_INSPECT:
         raise ValueError("Live inspection limit must be 0..12")
     checked = now or datetime.now(UTC)
@@ -232,7 +232,7 @@ async def audit(
         mode = "INVENTORY_ONLY"
     elif blocked_until is not None:
         mode = "DEFERRED_FLOOD_WAIT"
-    elif connector is None or not callable(getattr(connector, "inspect_known", None)):
+    elif connector is None or not callable(getattr(connector, "inspect_latest_known", None)):
         mode = "RESEARCH_CONNECTOR_UNAVAILABLE"
     elif not anchor_terms:
         mode = "MISSING_PRODUCT_ANCHORS"
@@ -242,7 +242,7 @@ async def audit(
         for index in range(0, len(rows), batch_size):
             batch = rows[index : index + batch_size]
             try:
-                found = await connector.inspect_known([item["handle"] for item in batch])
+                found = await connector.inspect_latest_known([item["handle"] for item in batch])
             except TelegramFloodWaitError as exc:
                 mode = "HALTED_FLOOD_WAIT"
                 for remaining in rows[index:]:
@@ -275,6 +275,7 @@ async def audit(
     return {
         "status": "HISTORICAL_COMMUNITY_AUDIT_COMPLETE",
         "read_only": True,
+        "post_read_policy": "LATEST_ONLY_ONE_PER_COMMUNITY",
         "product_id": str(product_id),
         "checked_at": checked.isoformat(),
         "mode": mode,
@@ -308,7 +309,8 @@ async def audit(
         "limitations": [
             "Inspects a bounded sample from the complete saved inventory, not every historical community.",
             "Keyword overlap does not prove semantic relevance or publication access.",
-            "Only the most recent native posts returned by the research transport are sampled.",
+            "One newest native message per known public community is requested.",
+            "A native message alone does not establish audience fit or posting permission.",
             "Unverified historical metadata is never treated as a fresh inspection.",
         ],
     }
