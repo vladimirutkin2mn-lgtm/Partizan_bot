@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -250,14 +251,40 @@ async def recover(
     }
 
 
+def inspect_prerequisites(store: RuntimeStateStore, product_id: UUID, project_id: UUID) -> dict:
+    """Read-only diagnostics; no model, connector, or external requests."""
+    project = store.get(_PROJECTS, str(project_id)) or {}
+    audience = store.get("audience_distribution_map", str(product_id)) or {}
+    icp_record = store.get("icp_generation", str(product_id)) or {}
+    product = store.get("product_profile", str(product_id)) or {}
+    return {
+        "status": "HISTORICAL_RESEARCH_PREFLIGHT",
+        "project_present": bool(project),
+        "project_matches_product": str(project.get("product_id") or "") == str(product_id),
+        "channel_mode": str((project.get("channel_preferences") or {}).get("TELEGRAM") or "MISSING"),
+        "audience_map_present": bool(audience),
+        "audience_opportunity_count": len(audience.get("opportunities") or []),
+        "stored_icp_present": bool(icp_record),
+        "stored_icp_count": len(icp_record.get("icps") or []),
+        "stored_product_present": bool(product),
+        "registry_count": len(TelegramCommunityRegistry(store).list_for_product(product_id)),
+        "read_only": True,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Recover saved Telegram audiences safely")
     parser.add_argument("--product-id", type=UUID, required=True)
     parser.add_argument("--project-id", type=UUID, required=True)
     parser.add_argument("--max-groups", type=int, default=_MAX_COMMUNITIES)
+    parser.add_argument("--preflight-only", action="store_true")
     args = parser.parse_args()
     try:
         store = get_runtime_store()
+        if args.preflight_only:
+            result = inspect_prerequisites(store, args.product_id, args.project_id)
+            print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+            return 0
         result = asyncio.run(recover(
             store=store, project_id=args.project_id, product_id=args.product_id,
             product=product_intake_service.get_product(args.product_id),
@@ -267,8 +294,11 @@ def main() -> int:
         ))
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     except (KeyError, ValueError, TypeError) as exc:
-        print(json.dumps({"status": "HISTORICAL_RESEARCH_RECOVERY_FAILED",
-                          "error_type": type(exc).__name__}))
+        print(json.dumps({
+            "status": "HISTORICAL_RESEARCH_RECOVERY_FAILED",
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:250],
+        }, ensure_ascii=False), file=sys.stderr)
         return 2
     return 0
 

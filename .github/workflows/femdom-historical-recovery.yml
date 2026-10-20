@@ -1,3 +1,4 @@
+# Re-run only when the corresponding production build is deployed; failures log structured stderr.
 name: Recover saved FemDom Telegram communities (research only)
 
 on:
