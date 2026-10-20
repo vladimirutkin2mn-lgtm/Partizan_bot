@@ -1,0 +1,98 @@
+name: Recover saved FemDom Telegram communities (research only)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/femdom-historical-recovery.yml
+
+concurrency:
+  group: one-time-femdom-historical-recovery
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require production read access
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for name in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing production access: ${name}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin production host
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Wait until matching production release is deployed
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_RELEASE: ${{ github.sha }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 60); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_RELEASE}' else 2)\"" \
+              >/dev/null 2>&1; then
+              echo "Matching release ready"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Matching production release not ready; no recovery attempted"
+          exit 1
+      - name: Stage saved audiences and verify known Telegram peers only
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -m app.telegram_historical_recovery \
+              --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0 --max-groups 12" \
+              > femdom-telegram-historical-recovery.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("femdom-telegram-historical-recovery.json").read_text())
+          assert result.get("status") == "HISTORICAL_RESEARCH_RECOVERY_COMPLETE"
+          assert all(value == 0 for value in result["effects"].values())
+          print(json.dumps({
+              key: result[key] for key in (
+                  "mode", "migration", "registry_before", "registry_after",
+                  "native_checked", "native_verified", "audience_fit_confirmed",
+                  "specific_targets_retained"
+              )
+          }, sort_keys=True))
+          PY
+      - name: Save protected per-community trace
+        uses: actions/upload-artifact@v4
+        with:
+          name: femdom-telegram-historical-recovery-report
+          path: femdom-telegram-historical-recovery.json
+          if-no-files-found: error
+          retention-days: 7
