@@ -309,7 +309,8 @@ async def audit(
         "limitations": [
             "Inspects a bounded sample from the complete saved inventory, not every historical community.",
             "Keyword overlap does not prove semantic relevance or publication access.",
-            "Only the single newest native post per known public community is requested. This does not establish audience fit or posting permission.",
+            "One newest native message per known public community is requested.",
+            "A native message alone does not establish audience fit or posting permission.",
             "Unverified historical metadata is never treated as a fresh inspection.",
         ],
     }
