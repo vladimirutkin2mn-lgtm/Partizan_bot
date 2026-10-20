@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -297,7 +298,7 @@ def main() -> int:
             "status": "HISTORICAL_RESEARCH_RECOVERY_FAILED",
             "error_type": type(exc).__name__,
             "error": str(exc)[:250],
-        }, ensure_ascii=False))
+        }, ensure_ascii=False), file=sys.stderr)
         return 2
     return 0
 
