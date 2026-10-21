@@ -74,7 +74,7 @@ jobs:
           ssh -o BatchMode=yes "${DEPLOY_HOST}" \
             "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
               python -m app.telegram_historical_recovery \
-              --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0 --max-groups 12" \
+              --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0 --max-groups 9 --authorized-oneoff" \
               > femdom-telegram-historical-recovery.json
           python - <<'PY'
           import json
