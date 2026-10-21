@@ -1,0 +1,101 @@
+name: Read saved FemDom registry snapshot offline
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/femdom-offline-snapshot-review.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: femdom-oneoff-offline-snapshot-review
+  cancel-in-progress: false
+
+jobs:
+  inspect-saved-snapshots:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check production SSH secrets
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for name in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing required setting: ${name}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin production host
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Require deployed review code SHA
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 60); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              echo "Matching release ready"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Review release not deployed; no data access attempted"
+          exit 1
+      - name: Read existing registry without Telegram connection
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -m app.telegram_registry_snapshot_review \
+              --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+              --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0" \
+              > femdom-offline-native-registry.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("femdom-offline-native-registry.json").read_text())
+          assert data["status"] == "OFFLINE_REGISTRY_SNAPSHOT_COMPLETE"
+          assert data["read_only"] is True
+          assert data["external_telegram_read_calls"] == 0
+          assert data["paid_search_calls"] == 0
+          assert data["telegram_send_calls"] == 0
+          print(json.dumps({
+              k: data[k] for k in (
+                  "registry_count", "audience_confirmed_count",
+                  "recent_context_available_count", "exact_action_target_count",
+              )
+          }, sort_keys=True))
+          PY
+      - name: Save restricted research evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: femdom-saved-native-registry-evidence
+          path: femdom-offline-native-registry.json
+          retention-days: 7
+          if-no-files-found: error
