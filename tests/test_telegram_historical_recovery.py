@@ -232,3 +232,25 @@ async def test_missing_connector_stages_history_but_never_copies_stale_ready_tar
     assert item.metadata["action_target_url"] is None
     assert item.metadata["native_research_status"] == "UNVERIFIED"
     assert item.metadata["actionability"] == "RESEARCH_ONLY"
+
+
+@pytest.mark.asyncio
+async def test_oneoff_respects_disabled_toggle_and_restricts_legacy_handles():
+    from app import telegram_historical_recovery as module
+    store = MemoryRuntimeStateStore()
+    pid, prod = module._APPROVED_PROJECT, module._APPROVED_PRODUCT
+    _legacy(store, pid, prod, sorted(module._APPROVED_HANDLES))
+    project = store.get("customer_acquisition_projects", str(pid))
+    project["channel_preferences"] = {"TELEGRAM": "DISABLED"}
+    store.put("customer_acquisition_projects", str(pid), project)
+    output = await recover(
+        store=store, project_id=pid, product_id=prod,
+        product=SimpleNamespace(id=prod), icps=[], connector=None,
+        max_groups=9, authorized_oneoff=True,
+    )
+    assert output["registry_after"] == 9
+    assert output["native_checked"] == 0
+    assert all(v == 0 for v in output["effects"].values())
+    assert store.get("customer_acquisition_projects", str(pid))[
+        "channel_preferences"
+    ]["TELEGRAM"] == "DISABLED"
