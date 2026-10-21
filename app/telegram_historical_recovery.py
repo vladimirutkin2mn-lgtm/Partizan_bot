@@ -29,6 +29,13 @@ from app.telegram_research import get_telegram_research_connector
 
 _PROJECTS = "customer_acquisition_projects"
 _MAX_COMMUNITIES = 12
+_APPROVED_PRODUCT = UUID("52d7e59e-5ac5-4363-b829-c93e33e48272")
+_APPROVED_PROJECT = UUID("124cdd70-49b0-48b3-aee0-a037dda4bcd0")
+_APPROVED_HANDLES = frozenset((
+    "znakomstvachannel", "poiskfanfikov", "play_hard_community",
+    "findom_gospoja0", "a_sfera", "fem_tut",
+    "moscowellebdsm1", "poiskrabovirabin", "bizarre_afisha",
+))
 _MAX_TARGET_AGE = timedelta(days=14)
 _NATIVE_FIELDS = {
     "action_target_url", "action_target_specific", "action_target_resolution",
@@ -145,6 +152,7 @@ def _recover_opportunity(opportunity, candidate, *, now: datetime):
 async def recover(
     *, store: RuntimeStateStore, project_id: UUID, product_id: UUID,
     product, icps: list, connector, max_groups: int = _MAX_COMMUNITIES,
+    authorized_oneoff: bool = False,
 ) -> dict:
     if not 1 <= max_groups <= _MAX_COMMUNITIES:
         raise ValueError("max_groups must be between 1 and 12")
@@ -153,13 +161,32 @@ async def recover(
         raise ValueError("Project does not exist or has been deleted")
     if str(project.get("product_id") or "") != str(product_id):
         raise ValueError("Project/product mismatch")
-    if (project.get("channel_preferences") or {}).get("TELEGRAM") != "RESEARCH_ONLY":
-        raise ValueError("Telegram must stay RESEARCH_ONLY for this safe recovery")
+    mode = (project.get("channel_preferences") or {}).get("TELEGRAM")
+    if authorized_oneoff:
+        if project_id != _APPROVED_PROJECT or product_id != _APPROVED_PRODUCT:
+            raise ValueError("One-off authorization applies only to the FemDom project")
+        if max_groups != 9:
+            raise ValueError("One-off authorization requires exactly nine peers")
+    elif mode != "RESEARCH_ONLY":
+        raise ValueError("Telegram must stay RESEARCH_ONLY without explicit authorization")
 
     service = InMemoryAudienceIntelligenceService(store)
     saved = service.get(product_id)
+    if authorized_oneoff:
+        handles = {_handle(item) for item in saved.opportunities
+                   if item.platform == DistributionPlatform.TELEGRAM}
+        handles.discard(None)
+        if handles != _APPROVED_HANDLES:
+            raise ValueError("Historic audience differs from nine approved FemDom peers")
     registry = TelegramCommunityRegistry(store)
     before = registry.list_for_product(product_id)
+    if authorized_oneoff:
+        registered = {
+            _public_handle(registry.hydrate_metadata(item).get("handle") or item.get("url"))
+            for item in before
+        }
+        if registered - _APPROVED_HANDLES:
+            raise ValueError("Registry contains peers outside approved scope")
     migration = stage_legacy_telegram_communities(store, product_id)
     after = registry.list_for_product(product_id)
 
@@ -230,6 +257,8 @@ async def recover(
     return {
         "status": "HISTORICAL_RESEARCH_RECOVERY_COMPLETE",
         "mode": mode,
+        "oneoff_authorized": authorized_oneoff,
+        "channel_preference_unchanged": True,
         "product_id": str(product_id),
         "project_id": str(project_id),
         "migration": migration,
@@ -278,6 +307,7 @@ def main() -> int:
     parser.add_argument("--project-id", type=UUID, required=True)
     parser.add_argument("--max-groups", type=int, default=_MAX_COMMUNITIES)
     parser.add_argument("--preflight-only", action="store_true")
+    parser.add_argument("--authorized-oneoff", action="store_true")
     args = parser.parse_args()
     try:
         store = get_runtime_store()
@@ -290,7 +320,7 @@ def main() -> int:
             product=product_intake_service.get_product(args.product_id),
             icps=icp_service.get(args.product_id).icps[:1],
             connector=get_telegram_research_connector(),
-            max_groups=args.max_groups,
+            max_groups=args.max_groups, authorized_oneoff=args.authorized_oneoff,
         ))
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     except (KeyError, ValueError, TypeError) as exc:
