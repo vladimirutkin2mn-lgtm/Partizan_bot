@@ -180,9 +180,9 @@ async def test_direct_fit_accepts_model_citation_wrapped_in_native_quotes():
 @pytest.mark.asyncio
 async def test_femdom_v2_calibration_uses_its_own_nine_slot_budget_only_for_allowlist():
     from app.telegram_audience_semantic_fit import (
-        AUDIENCE_FIT_BUDGET_NAMESPACE,
         _FEMDOM_CALIBRATION_PRODUCT,
         _FEMDOM_V2_CALIBRATION_NAMESPACE,
+        AUDIENCE_FIT_BUDGET_NAMESPACE,
     )
 
     store = MemoryRuntimeStateStore()
