@@ -31,6 +31,7 @@ from app.telegram_discovery_strategy import _PROMOTIONAL_PATTERNS, ExpandedTeleg
 from app.telegram_native_flood_wait import record_research_flood_wait, research_flood_wait_until
 from app.telegram_participation_target import select_telegram_participation_target
 from app.telegram_research import TelegramFloodWaitError, TelegramSurfaceKind
+from app.telegram_saved_target_bridge import sync_verified_telegram_opportunity
 
 COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET = 3
 TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE = _TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE
@@ -437,6 +438,12 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
             )
             if snapshot is not None:
                 self._remember_community(candidate)
+                # Registry research alone cannot supply a preview target.
+                # Synchronize the fresh native evidence to its unique saved
+                # opportunity; actionability remains a separate safety gate.
+                sync_verified_telegram_opportunity(
+                    self._store, self._product_id, candidate, now=checked_at
+                )
             candidates.append(candidate)
         return candidates
 
