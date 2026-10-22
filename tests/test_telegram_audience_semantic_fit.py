@@ -175,3 +175,53 @@ async def test_direct_fit_accepts_model_citation_wrapped_in_native_quotes():
     )
     assert outcome["verdict"] == "DIRECT"
     assert outcome["direct_fit"] is True
+
+
+@pytest.mark.asyncio
+async def test_femdom_v2_calibration_uses_its_own_nine_slot_budget_only_for_allowlist():
+    from app.telegram_audience_semantic_fit import (
+        AUDIENCE_FIT_BUDGET_NAMESPACE,
+        _FEMDOM_CALIBRATION_PRODUCT,
+        _FEMDOM_V2_CALIBRATION_NAMESPACE,
+    )
+
+    store = MemoryRuntimeStateStore()
+    calls = []
+
+    async def fake(_system, prompt):
+        calls.append(prompt)
+        return AudienceFitJudgment(
+            verdict="ADJACENT", confidence=0.9,
+            rationale="Related BDSM category", evidence=["Клуб БДСМ"],
+        )
+
+    product = _product()
+    product.id = _FEMDOM_CALIBRATION_PRODUCT
+    fit = TelegramAudienceSemanticFit(
+        store, enabled=True, judge=fake,
+        femdom_v2_calibration_once=True, daily_max=9,
+    )
+    other = await fit.evaluate(
+        product=product, icp=_icp(), handle="unauthorized_group",
+        title="Other", metadata=_metadata(),
+    )
+    assert other["status"] == "CALIBRATION_SCOPE_BLOCKED"
+    for h in (
+        "a_sfera", "bizarre_afisha", "fem_tut", "findom_gospoja0",
+        "moscowellebdsm1", "play_hard_community", "poiskfanfikov",
+        "poiskrabovirabin", "znakomstvachannel",
+    ):
+        outcome = await fit.evaluate(
+            product=product, icp=_icp(), handle=h,
+            title=h, metadata=_metadata(),
+        )
+        assert outcome["status"] == "EVALUATED"
+    assert len(calls) == 9
+    assert len(store.list_namespace(_FEMDOM_V2_CALIBRATION_NAMESPACE)) == 9
+    assert store.list_namespace(AUDIENCE_FIT_BUDGET_NAMESPACE) == []
+    blocked = await fit.evaluate(
+        product=product, icp=_icp(), handle="a_sfera",
+        title="Changed title", metadata=_metadata(),
+    )
+    assert blocked["status"] == "DAILY_CALL_CAP"
+    assert len(calls) == 9
