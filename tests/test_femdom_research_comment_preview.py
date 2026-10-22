@@ -9,9 +9,9 @@ import pytest
 from app.distribution_schemas import AudienceDistributionMapView, DistributionOpportunityView
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.femdom_research_comment_preview import (
-    _Draft,
     _PRODUCT,
     _PROJECT,
+    _Draft,
     _Variant,
     prepare_review,
 )
@@ -78,12 +78,18 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
             variants=[
                 _Variant(
                     approach="CONTEXTUAL",
-                    text="Хорошо, что в программе отдельно уделили внимание уважительному общению и границам.",
+                    text=(
+                        "Хорошо, что в программе отдельно уделили внимание "
+                        "уважительному общению и границам."
+                    ),
                     why_relevant="The latest post is about respectful community boundaries.",
                 ),
                 _Variant(
                     approach="TRANSPARENT_INVITATION",
-                    text="Развиваем сообщество FemDom для взрослых, нам близок такой подход к уважительному общению.",
+                    text=(
+                        "Развиваем сообщество FemDom для взрослых, нам близок "
+                        "такой подход к уважительному общению."
+                    ),
                     why_relevant="The latest post discusses boundaries.",
                 ),
             ],
