@@ -64,48 +64,54 @@ jobs:
           done
           echo "::error::Deployed release did not match, no draft attempted"
           exit 1
-      - name: Draft only for latest saved @a_sfera post, no send or approval
+      - name: Draft latest two saved posts strictly for human research review
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         shell: bash
         run: |
-          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
-            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
-              python -m app.femdom_research_comment_preview \
-              --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
-              --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0 \
-              --handle a_sfera" > femdom-asfera-research-only-drafts.json
+          for peer in a_sfera play_hard_community; do
+            ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+                python -m app.femdom_research_comment_preview \
+                --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+                --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0 \
+                --handle ${peer}" > "femdom-${peer}-research-only-drafts.json"
+          done
           python - <<'PY'
           import json
           from pathlib import Path
-          result = json.loads(
-              Path("femdom-asfera-research-only-drafts.json").read_text()
-          )
-          assert result["status"] in (
-              "AWAITING_HUMAN_CONTEXT_AND_POLICY_REVIEW",
-              "API_NOT_CONFIGURED",
-          )
-          if result["status"] == "AWAITING_HUMAN_CONTEXT_AND_POLICY_REVIEW":
-              assert result["action_sendable"] is False
-              assert result["published"] is False
-              assert result["publisher_permission_verified"] is False
-              assert result["community_commercial_rules_verified"] is False
-              assert result["target_url"].startswith("https://t.me/a_sfera/")
-          print(json.dumps({
-              "status": result["status"],
-              "handle": result.get("handle"),
-              "target_url": result.get("target_url"),
-              "variant_count": len(result.get("variants") or []),
-              "published": result.get("published", False),
-              "input_tokens": result.get("input_tokens", 0),
-              "output_tokens": result.get("output_tokens", 0),
-          }, ensure_ascii=False))
+          for peer in ("a_sfera", "play_hard_community"):
+              result = json.loads(
+                  Path(f"femdom-{peer}-research-only-drafts.json").read_text()
+              )
+              assert result["status"] in (
+                  "AWAITING_HUMAN_CONTEXT_AND_POLICY_REVIEW",
+                  "RESEARCH_PREVIEW_BLOCKED",
+                  "API_NOT_CONFIGURED",
+              )
+              assert result.get("published", False) is False
+              if result["status"] != "API_NOT_CONFIGURED":
+                  assert result["action_sendable"] is False
+                  assert result["publisher_permission_verified"] is False
+                  assert result["community_commercial_rules_verified"] is False
+              if result["status"] == "AWAITING_HUMAN_CONTEXT_AND_POLICY_REVIEW":
+                  assert result["target_url"].startswith(f"https://t.me/{peer}/")
+              print(json.dumps({
+                  "status": result["status"],
+                  "handle": peer,
+                  "target_url": result.get("target_url"),
+                  "variant_count": len(result.get("variants") or []),
+                  "topicality": result.get("topicality"),
+                  "published": result.get("published", False),
+                  "input_tokens": result.get("input_tokens", 0),
+                  "output_tokens": result.get("output_tokens", 0),
+              }, ensure_ascii=False))
           PY
       - name: Store private unapproved drafts for operator review
         uses: actions/upload-artifact@v4
         with:
-          name: femdom-a-sfera-research-drafts-unapproved
-          path: femdom-asfera-research-only-drafts.json
+          name: femdom-two-peer-research-drafts-unapproved
+          path: femdom-*-research-only-drafts.json
           retention-days: 7
           if-no-files-found: error
