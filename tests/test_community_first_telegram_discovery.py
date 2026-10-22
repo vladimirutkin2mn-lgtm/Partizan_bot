@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
@@ -484,3 +485,30 @@ async def test_native_registry_refresh_keeps_confirmed_community_fit() -> None:
     assert refreshed[0].metadata["community_fit_pass"] is True
     assert refreshed[0].metadata["community_fit_reason"] == "REGISTRY_CONFIRMED"
     assert refreshed[0].metadata["registry_refresh_status"] == "VERIFIED"
+
+
+def test_advertising_latest_native_post_category_survives_registry_storage() -> None:
+    store = MemoryRuntimeStateStore()
+    adapter = CommunityFirstTelegramDiscoveryAdapter(
+        use_default_research_connector=False, store=store
+    )
+    snapshot = _snapshot()
+    newest = TelegramRecentContext(
+        message_id=148, text="FemDom встреча, акция! Записаться по ссылке",
+        published_at=datetime.now(UTC),
+        url="https://t.me/play_hard_community/148",
+    )
+    snapshot = replace(snapshot, recent_context=(newest, *snapshot.recent_context))
+    metadata = adapter._native_metadata(_request(), snapshot)
+    assert metadata["action_target_url"].endswith("/148")
+    assert metadata["source_post_category"] == "PROMOTIONAL"
+    assert "PROMOTIONAL_POST" in metadata["conversation_signals"]
+    row = adapter._registry.upsert(
+        product_id=_product().id,
+        canonical_key="telegram:42:community",
+        title=snapshot.title, url=snapshot.url, kind="CHANNEL",
+        metadata=metadata,
+    )
+    hydrated = adapter._registry.hydrate_metadata(row)
+    assert hydrated["source_post_category"] == "PROMOTIONAL"
+    assert hydrated["action_target_url"].endswith("/148")
