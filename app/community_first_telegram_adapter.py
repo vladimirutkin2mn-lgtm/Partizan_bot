@@ -22,10 +22,10 @@ from app.platform_discovery import (
 )
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.search import SearchHit
+from app.telegram_audience_semantic_fit import TelegramAudienceSemanticFit
 from app.telegram_community_registry import (
     TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE as _TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE,
 )
-from app.telegram_audience_semantic_fit import TelegramAudienceSemanticFit
 from app.telegram_community_registry import TelegramCommunityRegistry
 from app.telegram_discovery_strategy import ExpandedTelegramDiscoveryAdapter
 from app.telegram_native_flood_wait import record_research_flood_wait, research_flood_wait_until
