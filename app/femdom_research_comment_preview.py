@@ -192,7 +192,7 @@ async def prepare_review(
                     {"role": "user", "content": payload},
                 ],
                 text_format=_Draft,
-                max_output_tokens=650,
+                max_output_tokens=1100,
             )
             log_openai_usage(
                 response, options={"model": "gpt-6-luna"},
@@ -240,11 +240,22 @@ def main() -> int:
     args = parser.parse_args()
     if args.product_id != _PRODUCT or args.project_id != _PROJECT:
         raise ValueError("Review-only preview must use the saved FemDom project")
-    output = asyncio.run(prepare_review(
-        get_runtime_store(),
-        product=product_intake_service.get_product(_PRODUCT),
-        handle=args.handle,
-    ))
+    try:
+        output = asyncio.run(prepare_review(
+            get_runtime_store(),
+            product=product_intake_service.get_product(_PRODUCT),
+            handle=args.handle,
+        ))
+    except ValueError as exc:
+        output = {
+            "status": "RESEARCH_PREVIEW_BLOCKED",
+            "handle": args.handle,
+            "reason": str(exc)[:220],
+            "action_sendable": False, "published": False,
+            "publisher_permission_verified": False,
+            "community_commercial_rules_verified": False,
+            "variants": [],
+        }
     print(json.dumps(output, ensure_ascii=False, sort_keys=True))
     return 0
 
