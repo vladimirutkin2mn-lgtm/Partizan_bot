@@ -454,23 +454,17 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
             signals.append("QUESTION")
         if any(pattern.search(text) for pattern in _CONVERSATION_REQUEST_PATTERNS):
             signals.append("REQUEST")
-        if not signals:
-            return False, "NO_CONVERSATION_CUE", [], match_terms
-
-        promo_signals: list[str] = []
+        # Promotional posts and event announcements can contain the right audience.
+        # Keep their nature as a learning feature rather than a rejection reason.
+        # This is eligibility for a DRAFT only, not publisher permission.
         if _OUTBOUND_LINK_PATTERN.search(text):
-            promo_signals.append("OUTBOUND_LINK")
+            signals.append("OUTBOUND_LINK")
         if any(pattern.search(text) for pattern in _PROMOTIONAL_PATTERNS):
-            promo_signals.append("PROMOTIONAL_CTA")
-
-        # A question alone does not make an advertisement a useful conversation target.
-        # Two independent conversational signals can still survive one incidental link.
-        if len(promo_signals) >= 2 or (
-            promo_signals and signals == ["QUESTION"]
-        ):
-            return False, "PROMOTIONAL", signals, match_terms
-
-        return True, "READY", signals, match_terms
+            signals.append("PROMOTIONAL_POST")
+        kind = "PROMOTIONAL_CONTEXT" if "PROMOTIONAL_POST" in signals else "TOPICAL_POST"
+        if "QUESTION" in signals or "REQUEST" in signals:
+            kind = "CONVERSATION" if kind != "PROMOTIONAL_CONTEXT" else kind
+        return True, kind, signals, match_terms
 
     @classmethod
     def _target_context_quality(cls, item, now: datetime) -> str:
