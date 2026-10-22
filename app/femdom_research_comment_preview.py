@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import json
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import UUID
@@ -172,6 +173,7 @@ async def prepare_review(
         from openai import OpenAI
 
         client = OpenAI(api_key=get_settings().openai_api_key, timeout=25.0)
+        started = time.perf_counter()
         with capture_openai_usage_rows(
             usage, task="femdom_research_comment_preview", product_id=_PRODUCT
         ):
@@ -185,7 +187,10 @@ async def prepare_review(
                 text_format=_Draft,
                 max_output_tokens=650,
             )
-            log_openai_usage(response, options={"model": "gpt-6-luna"})
+            log_openai_usage(
+                response, options={"model": "gpt-6-luna"},
+                duration_seconds=time.perf_counter() - started,
+            )
             parsed = response.output_parsed
             if parsed is None:
                 raise ValueError("Model returned no structured review draft")
