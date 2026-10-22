@@ -27,7 +27,7 @@ from app.telegram_community_registry import (
     TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE as _TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE,
 )
 from app.telegram_community_registry import TelegramCommunityRegistry
-from app.telegram_discovery_strategy import ExpandedTelegramDiscoveryAdapter
+from app.telegram_discovery_strategy import ExpandedTelegramDiscoveryAdapter, _PROMOTIONAL_PATTERNS
 from app.telegram_native_flood_wait import record_research_flood_wait, research_flood_wait_until
 from app.telegram_participation_target import select_telegram_participation_target
 from app.telegram_research import TelegramFloodWaitError, TelegramSurfaceKind
@@ -682,6 +682,13 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
             blocked_urls=self._known_bad_targets(),
         )
         metadata.update(target.metadata())
+        newest = max(
+            snapshot.recent_context, key=lambda row: row.message_id, default=None
+        )
+        newest_text = str(getattr(newest, "text", "") or "")
+        promotional = any(pattern.search(newest_text) for pattern in _PROMOTIONAL_PATTERNS)
+        metadata["source_post_category"] = "PROMOTIONAL" if promotional else "OTHER"
+        metadata["conversation_signals"] = ["PROMOTIONAL_POST"] if promotional else []
         return metadata
 
     def _community_fit(
