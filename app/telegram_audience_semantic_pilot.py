@@ -27,7 +27,8 @@ _HANDLES = frozenset((
 
 
 async def review_stored_audiences(
-    *, store, product, icp, judge=None, v2_calibration: bool = False
+    *, store, product, icp, judge=None, v2_calibration: bool = False,
+    cache_only: bool = False,
 ) -> dict:
     registry = TelegramCommunityRegistry(store)
     rows = registry.list_for_product(_PRODUCT)
@@ -48,6 +49,7 @@ async def review_stored_audiences(
         verdict = await service.evaluate(
             product=product, icp=icp, handle=handle,
             title=str(row.get("title") or ""), metadata=metadata,
+            cache_only=cache_only,
         )
         results.append({
             "handle": handle,
@@ -68,6 +70,9 @@ async def review_stored_audiences(
         "mode": "NO_TELEGRAM_READS_NO_PUBLISHING",
         "model": service.model,
         "v2_calibration": v2_calibration,
+        "cache_only": cache_only,
+        "cached_judgments": sum(x["model_status"] == "CACHED" for x in results),
+        "missing_cache_count": sum(x["model_status"] == "CACHE_MISS" for x in results),
         "total_peers": len(results),
         "total_new_judgments": sum(x["model_status"] == "EVALUATED" for x in results),
         "direct_proposals": sum(x["verdict"] == "DIRECT" for x in results),
@@ -84,6 +89,7 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--product-id", type=UUID, required=True)
     p.add_argument("--v2-calibration-once", action="store_true")
+    p.add_argument("--cache-only", action="store_true")
     args = p.parse_args()
     if args.product_id != _PRODUCT:
         raise ValueError("Pilot is limited to the saved FemDom product")
@@ -92,6 +98,7 @@ def main() -> int:
         product=product_intake_service.get_product(_PRODUCT),
         icp=icp_service.get(_PRODUCT).icps[0],
         v2_calibration=args.v2_calibration_once,
+        cache_only=args.cache_only,
     ))
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
