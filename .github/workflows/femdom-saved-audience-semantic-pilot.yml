@@ -1,0 +1,100 @@
+name: One-shot saved FemDom semantic audience review
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/femdom-saved-audience-semantic-pilot.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: femdom-audience-semantic-oneoff
+  cancel-in-progress: false
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require production access
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for name in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing access setting: ${name}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin production host
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Require matching deployed SHA
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 60); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              echo "Matching production release deployed"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Pilot not run because matching release was not deployed"
+          exit 1
+      - name: Evaluate only nine stored FemDom audiences
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -m app.telegram_audience_semantic_pilot \
+              --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272" \
+              > femdom-semantic-judgments.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("femdom-semantic-judgments.json").read_text())
+          assert result["status"] == "SAVED_AUDIENCE_SEMANTIC_PILOT_COMPLETE"
+          assert result["total_peers"] == 9
+          assert result["publication_actions"] == 0
+          assert result["telegram_api_calls"] == 0
+          print(json.dumps({
+              k: result[k] for k in (
+                  "model", "total_peers", "total_new_judgments",
+                  "direct_proposals", "adjacent_proposals",
+                  "input_tokens", "output_tokens"
+              )
+          }, sort_keys=True))
+          PY
+      - name: Save private short-lived semantic review
+        uses: actions/upload-artifact@v4
+        with:
+          name: femdom-semantic-audience-pilot
+          path: femdom-semantic-judgments.json
+          retention-days: 7
+          if-no-files-found: error
