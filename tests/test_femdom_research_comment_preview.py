@@ -72,6 +72,8 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
     async def judge(system, prompt):
         calls.append(prompt)
         assert "NON-PUBLISHING" in system
+        assert "NOT by itself an explicit" in system
+        assert "POST TOPICALITY" in system
         return _Draft(
             topicality="RELEVANT",
             reason="The post discusses respectful adult community gatherings.",
