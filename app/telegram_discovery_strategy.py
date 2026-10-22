@@ -461,10 +461,13 @@ class ExpandedTelegramDiscoveryAdapter(TelegramDiscoveryAdapter):
             signals.append("OUTBOUND_LINK")
         if any(pattern.search(text) for pattern in _PROMOTIONAL_PATTERNS):
             signals.append("PROMOTIONAL_POST")
-        kind = "PROMOTIONAL_CONTEXT" if "PROMOTIONAL_POST" in signals else "TOPICAL_POST"
+        if not signals:
+            return False, "NO_CONVERSATION_CUE", [], match_terms
+        if "PROMOTIONAL_POST" in signals:
+            return True, "PROMOTIONAL_CONTEXT", signals, match_terms
         if "QUESTION" in signals or "REQUEST" in signals:
-            kind = "CONVERSATION" if kind != "PROMOTIONAL_CONTEXT" else kind
-        return True, kind, signals, match_terms
+            return True, "CONVERSATION", signals, match_terms
+        return False, "NO_CONVERSATION_CUE", signals, match_terms
 
     @classmethod
     def _target_context_quality(cls, item, now: datetime) -> str:
