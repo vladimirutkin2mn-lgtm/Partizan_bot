@@ -158,3 +158,20 @@ def test_promotional_announcement_can_be_considered_but_no_write_permission():
     assert ExpandedTelegramDiscoveryAdapter._conversation_readiness(
         unrelated, {"femdom"}
     )[0] is False
+
+
+@pytest.mark.asyncio
+async def test_direct_fit_accepts_model_citation_wrapped_in_native_quotes():
+    store = MemoryRuntimeStateStore()
+    async def judge(_system, _input):
+        return AudienceFitJudgment(
+            verdict="DIRECT", confidence=0.95,
+            rationale="Explicit native audience", evidence=["Community: «Клуб БДСМ»"],
+        )
+    model = TelegramAudienceSemanticFit(store, enabled=True, judge=judge)
+    outcome = await model.evaluate(
+        product=_product(), icp=_icp(), handle="a_sfera",
+        title="Атмосфера", metadata=_metadata(),
+    )
+    assert outcome["verdict"] == "DIRECT"
+    assert outcome["direct_fit"] is True
