@@ -201,11 +201,15 @@ class TelegramAudienceSemanticFit:
             # Avoid caching a provider failure or silently approving a community.
             return {"status": "PROVIDER_ERROR"}
 
+        native_evidence = " ".join((title, about, *_native_messages(metadata))).casefold()
         direct = (
             verdict.verdict == "DIRECT"
             and verdict.confidence >= 0.85
-            and any(str(clue).casefold() in prompt.casefold()
-                    for clue in verdict.evidence if str(clue).strip())
+            and any(
+                len(str(clue).strip()) >= 4
+                and str(clue).strip().casefold() in native_evidence
+                for clue in verdict.evidence
+            )
         )
         row = {
             "product_id": str(product_id), "handle": str(handle).casefold(),
