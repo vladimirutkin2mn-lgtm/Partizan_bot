@@ -23,6 +23,14 @@ from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 AUDIENCE_FIT_CACHE_NAMESPACE = "telegram_audience_semantic_fit_v1"
 AUDIENCE_FIT_BUDGET_NAMESPACE = "telegram_audience_semantic_budget_v1"
+# Separate, fixed nine-call budget for the explicitly approved v2 calibration only.
+_FEMDOM_V2_CALIBRATION_NAMESPACE = "telegram_audience_femdom_v2_calibration"
+_FEMDOM_CALIBRATION_PRODUCT = UUID("52d7e59e-5ac5-4363-b829-c93e33e48272")
+_FEMDOM_CALIBRATION_HANDLES = frozenset({
+    "znakomstvachannel", "poiskfanfikov", "play_hard_community",
+    "findom_gospoja0", "a_sfera", "fem_tut", "moscowellebdsm1",
+    "poiskrabovirabin", "bizarre_afisha",
+})
 MODEL_DEFAULT = "gpt-6-luna"
 CACHE_TTL = timedelta(days=60)
 PROMPT_VERSION = "multilingual-fit-v2"
@@ -87,6 +95,7 @@ class TelegramAudienceSemanticFit:
         self, store: RuntimeStateStore | None = None, *,
         judge=None, enabled: bool | None = None,
         model: str | None = None, daily_max: int = MAX_CALLS_PER_PRODUCT_DAY,
+        femdom_v2_calibration_once: bool = False,
     ) -> None:
         self.store = store or get_runtime_store()
         settings = get_settings()
@@ -95,14 +104,22 @@ class TelegramAudienceSemanticFit:
         )
         self.model = model or settings.telegram_audience_semantic_model
         self.judge = judge
-        self.daily_max = min(max(daily_max, 0), MAX_CALLS_PER_PRODUCT_DAY)
+        self.femdom_v2_calibration_once = femdom_v2_calibration_once
+        self.daily_max = min(
+            max(daily_max, 0),
+            9 if femdom_v2_calibration_once else MAX_CALLS_PER_PRODUCT_DAY,
+        )
+        self._budget_namespace = (
+            _FEMDOM_V2_CALIBRATION_NAMESPACE
+            if femdom_v2_calibration_once else AUDIENCE_FIT_BUDGET_NAMESPACE
+        )
 
     def _reserve(self, product_id: UUID, digest: str, now: datetime) -> bool:
         """Atomic reservations across workers. Failed calls still count toward cap."""
         day = now.strftime("%Y-%m-%d")
         for slot in range(self.daily_max):
             key = f"{product_id}:{day}:{slot:02d}"
-            if self.store.put_if_absent(AUDIENCE_FIT_BUDGET_NAMESPACE, key, {
+            if self.store.put_if_absent(self._budget_namespace, key, {
                 "product_id": str(product_id), "date": day, "fingerprint": digest,
                 "reserved_at": now.isoformat(), "model": self.model,
             }):
@@ -120,6 +137,12 @@ class TelegramAudienceSemanticFit:
         product_id = getattr(product, "id", None)
         if not isinstance(product_id, UUID):
             return {"status": "NO_PRODUCT_ID"}
+        if self.femdom_v2_calibration_once and (
+            product_id != _FEMDOM_CALIBRATION_PRODUCT
+            or str(handle).lstrip("@").casefold() not in _FEMDOM_CALIBRATION_HANDLES
+            or PROMPT_VERSION != "multilingual-fit-v2"
+        ):
+            return {"status": "CALIBRATION_SCOPE_BLOCKED"}
         if str(metadata.get("native_research_status") or "") != "VERIFIED":
             return {"status": "UNVERIFIED_NATIVE"}
         about = str(metadata.get("about") or "").strip()
