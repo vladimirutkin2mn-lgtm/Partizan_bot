@@ -191,16 +191,13 @@ def sync_verified_telegram_opportunity(
         "title": str(getattr(candidate, "title", None) or old.title)[:300],
         "url": getattr(candidate, "url", None) or old.url,
     })
-    # Validate both nested and outer types before writing.
-    opportunity_payload = updated.model_dump(mode="json")
-    updated_map = mapping.model_copy(update={
+    # Validate nested content and the complete map before persistence.
+    validated = mapping.model_copy(update={
         "opportunities": [
             updated if item.id == old.id else item for item in mapping.opportunities
         ],
     })
-    map_payload = AudienceDistributionMapView.model_validate(
-        updated_map.model_dump(mode="json")
-    ).model_dump(mode="json")
+    AudienceDistributionMapView.model_validate(validated.model_dump(mode="json"))
     # Use the same service object as the customer preview to invalidate its
     # in-process map/opportunity caches as well as persist to the database.
     from app.audience_intelligence_service import (
