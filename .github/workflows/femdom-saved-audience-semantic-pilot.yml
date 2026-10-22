@@ -106,6 +106,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: femdom-semantic-audience-v2-cache-evidence
-          path: femdom-semantic-judgments.json
+          path: femdom-semantic-v2-judgments.json
           retention-days: 7
           if-no-files-found: error
