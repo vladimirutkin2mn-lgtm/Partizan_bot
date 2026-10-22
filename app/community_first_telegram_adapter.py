@@ -22,6 +22,7 @@ from app.platform_discovery import (
 )
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.search import SearchHit
+from app.telegram_audience_semantic_fit import TelegramAudienceSemanticFit
 from app.telegram_community_registry import (
     TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE as _TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE,
 )
@@ -89,6 +90,7 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         )
         self._store = store or get_runtime_store()
         self._registry = TelegramCommunityRegistry(self._store)
+        self._semantic_fit = TelegramAudienceSemanticFit(store=self._store)
         self._product_id: UUID | None = None
 
     def build_requests(self, product, icp) -> list[PlatformDiscoveryRequest]:
@@ -390,6 +392,29 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                     has_fit, fit_reason, fit_terms = self._community_fit(request, probe)
                     metadata["community_fit_reason"] = fit_reason
                     metadata["community_fit_terms"] = fit_terms[:12]
+                    if not has_fit:
+                        semantic = await self._semantic_fit.evaluate(
+                            product=product, icp=icps[0], handle=handle,
+                            title=title, metadata=metadata,
+                        )
+                        if semantic.get("status") in {"CACHED", "EVALUATED"}:
+                            metadata["semantic_audience_fit"] = {
+                                key: semantic.get(key)
+                                for key in (
+                                    "verdict", "confidence", "rationale", "evidence",
+                                    "model", "checked_at", "prompt_version",
+                                )
+                            }
+                            if semantic.get("direct_fit") is True:
+                                has_fit = True
+                                metadata["community_fit_reason"] = "SEMANTIC_DIRECT_FIT"
+                                metadata["community_fit_terms"] = list(
+                                    semantic.get("evidence") or []
+                                )[:4]
+                            else:
+                                metadata["community_fit_reason"] = (
+                                    "SEMANTIC_" + str(semantic.get("verdict"))
+                                )
 
                 metadata["registry_confirmed"] = bool(has_fit)
                 metadata["community_fit_pass"] = bool(has_fit)

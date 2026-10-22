@@ -139,7 +139,7 @@ def test_fresh_broadcast_without_conversation_cue_is_not_actionable() -> None:
     assert metadata["actionability"] == "RESEARCH_ONLY"
 
 
-def test_promotional_question_is_not_treated_as_conversation_opportunity() -> None:
+def test_promotional_question_is_eligible_for_review_not_publication() -> None:
     adapter = ExpandedTelegramDiscoveryAdapter(use_default_research_connector=False)
     context = _context(
         age=timedelta(hours=1),
@@ -151,9 +151,11 @@ def test_promotional_question_is_not_treated_as_conversation_opportunity() -> No
         _snapshot(context, action_target_url=context.url),
     )
 
-    assert metadata["action_target_url"] is None
-    assert metadata["community_only_reason"] == "DIRECT_TARGET_PROMOTIONAL"
-    assert metadata["actionability"] == "RESEARCH_ONLY"
+    assert metadata["action_target_url"] == context.url
+    assert metadata["action_target_specific"] is True
+    assert "PROMOTIONAL_POST" in metadata["conversation_signals"]
+    assert metadata["actionability"] == "NEEDS_PREFLIGHT"
+    assert metadata["surface_capabilities"]["publisher_permission_verified"] is False
 
 
 def test_direct_broadcast_can_recover_nearby_real_conversation() -> None:

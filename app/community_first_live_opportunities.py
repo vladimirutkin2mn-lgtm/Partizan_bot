@@ -117,6 +117,14 @@ def sync_community_first_live_opportunities(
                 "target_age_days": metadata.get("target_age_days"),
                 "action_target_mode": mode,
                 "action_target_specific": target_specific,
+                "source_post_category": (
+                    "PROMOTIONAL"
+                    if "PROMOTIONAL_POST" in list(metadata.get("conversation_signals") or [])
+                    else "OTHER"
+                ),
+                "source_conversation_signals": list(
+                    metadata.get("conversation_signals") or []
+                )[:6],
             },
         )
         synced += _upsert(project_ids, request)
