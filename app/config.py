@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     telegram_catalog_discovery_enabled: bool = False
     telegram_paid_discovery_enabled: bool = False
+    # Opt-in semantic fit: separate daily budget, never publisher authorization.
+    telegram_audience_semantic_enabled: bool = False
+    telegram_audience_semantic_model: str = "gpt-6-luna"
     # No invented provider price. Paid discovery is blocked unless an
     # operator separately configures BOTH USD ceilings.
     telegram_paid_discovery_monthly_budget_usd: Decimal | None = None
