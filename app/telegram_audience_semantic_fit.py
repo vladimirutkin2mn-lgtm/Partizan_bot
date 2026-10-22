@@ -204,7 +204,8 @@ class TelegramAudienceSemanticFit:
         direct = (
             verdict.verdict == "DIRECT"
             and verdict.confidence >= 0.85
-            and bool(verdict.evidence)
+            and any(str(clue).casefold() in prompt.casefold()
+                    for clue in verdict.evidence if str(clue).strip())
         )
         row = {
             "product_id": str(product_id), "handle": str(handle).casefold(),
