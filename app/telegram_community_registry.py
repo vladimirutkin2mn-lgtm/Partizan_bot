@@ -26,6 +26,8 @@ _DYNAMIC_METADATA_KEYS = {
     "member_count",
     "native_research_status",
     "recent_context",
+    "source_post_category",
+    "conversation_signals",
     "reply_surface",
     "source_checked_at",
     "source_type",
