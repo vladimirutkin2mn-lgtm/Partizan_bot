@@ -82,7 +82,7 @@ async def test_direct_needs_a_literal_evidence_snippet_and_minimum_confidence():
     async def verified(_system, _prompt):
         return AudienceFitJudgment(
             verdict="DIRECT", confidence=0.9,
-            rationale="Explicit audience described", evidence=["FemDom community"],
+            rationale="Native audience evidence cited", evidence=["Клуб БДСМ"],
         )
     second = TelegramAudienceSemanticFit(MemoryRuntimeStateStore(), enabled=True,
                                          judge=verified)
