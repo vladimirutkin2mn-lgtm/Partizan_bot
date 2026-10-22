@@ -26,7 +26,9 @@ _HANDLES = frozenset((
 ))
 
 
-async def review_stored_audiences(*, store, product, icp, judge=None) -> dict:
+async def review_stored_audiences(
+    *, store, product, icp, judge=None, v2_calibration: bool = False
+) -> dict:
     registry = TelegramCommunityRegistry(store)
     rows = registry.list_for_product(_PRODUCT)
     observed = {
@@ -36,7 +38,8 @@ async def review_stored_audiences(*, store, product, icp, judge=None) -> dict:
     if set(observed) != _HANDLES:
         raise ValueError("Saved FemDom inventory does not match the approved nine peers")
     service = TelegramAudienceSemanticFit(
-        store=store, enabled=True, judge=judge, daily_max=9
+        store=store, enabled=True, judge=judge, daily_max=9,
+        femdom_v2_calibration_once=v2_calibration,
     )
     results = []
     for handle in sorted(_HANDLES):
@@ -64,6 +67,7 @@ async def review_stored_audiences(*, store, product, icp, judge=None) -> dict:
         "status": "SAVED_AUDIENCE_SEMANTIC_PILOT_COMPLETE",
         "mode": "NO_TELEGRAM_READS_NO_PUBLISHING",
         "model": service.model,
+        "v2_calibration": v2_calibration,
         "total_peers": len(results),
         "total_new_judgments": sum(x["model_status"] == "EVALUATED" for x in results),
         "direct_proposals": sum(x["verdict"] == "DIRECT" for x in results),
@@ -79,6 +83,7 @@ async def review_stored_audiences(*, store, product, icp, judge=None) -> dict:
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--product-id", type=UUID, required=True)
+    p.add_argument("--v2-calibration-once", action="store_true")
     args = p.parse_args()
     if args.product_id != _PRODUCT:
         raise ValueError("Pilot is limited to the saved FemDom product")
@@ -86,6 +91,7 @@ def main() -> int:
         store=get_runtime_store(),
         product=product_intake_service.get_product(_PRODUCT),
         icp=icp_service.get(_PRODUCT).icps[0],
+        v2_calibration=args.v2_calibration_once,
     ))
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0

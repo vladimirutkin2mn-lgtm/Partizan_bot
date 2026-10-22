@@ -73,8 +73,9 @@ jobs:
           ssh -o BatchMode=yes "${DEPLOY_HOST}" \
             "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
               python -m app.telegram_audience_semantic_pilot \
-              --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272" \
-              > femdom-semantic-judgments.json
+              --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+              --v2-calibration-once" \
+              > femdom-semantic-v2-judgments.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -83,6 +84,8 @@ jobs:
           assert result["total_peers"] == 9
           assert result["publication_actions"] == 0
           assert result["telegram_api_calls"] == 0
+          assert result["v2_calibration"] is True
+          assert result["total_new_judgments"] == 9
           print(json.dumps({
               k: result[k] for k in (
                   "model", "total_peers", "total_new_judgments",
@@ -94,7 +97,7 @@ jobs:
       - name: Save private short-lived semantic review
         uses: actions/upload-artifact@v4
         with:
-          name: femdom-semantic-audience-pilot
+          name: femdom-semantic-audience-v2-calibration
           path: femdom-semantic-judgments.json
           retention-days: 7
           if-no-files-found: error
