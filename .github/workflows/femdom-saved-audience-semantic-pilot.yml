@@ -74,21 +74,25 @@ jobs:
             "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
               python -m app.telegram_audience_semantic_pilot \
               --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
-              --v2-calibration-once" \
+              --v2-calibration-once --cache-only" \
               > femdom-semantic-v2-judgments.json
           python - <<'PY'
           import json
           from pathlib import Path
-          result = json.loads(Path("femdom-semantic-judgments.json").read_text())
+          result = json.loads(Path("femdom-semantic-v2-judgments.json").read_text())
           assert result["status"] == "SAVED_AUDIENCE_SEMANTIC_PILOT_COMPLETE"
           assert result["total_peers"] == 9
           assert result["publication_actions"] == 0
           assert result["telegram_api_calls"] == 0
           assert result["v2_calibration"] is True
-          assert result["total_new_judgments"] == 9
+          assert result["cache_only"] is True
+          assert result["cached_judgments"] == 9
+          assert result["missing_cache_count"] == 0
+          assert result["total_new_judgments"] == 0
           print(json.dumps({
               k: result[k] for k in (
                   "model", "total_peers", "total_new_judgments",
+              "cached_judgments", "missing_cache_count",
                   "direct_proposals", "adjacent_proposals",
                   "input_tokens", "output_tokens"
               )

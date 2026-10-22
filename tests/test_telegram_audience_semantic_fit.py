@@ -225,3 +225,42 @@ async def test_femdom_v2_calibration_uses_its_own_nine_slot_budget_only_for_allo
     )
     assert blocked["status"] == "DAILY_CALL_CAP"
     assert len(calls) == 9
+
+
+@pytest.mark.asyncio
+async def test_cache_only_rerun_never_spends_tokens_even_for_missing_outcome():
+    from app.telegram_audience_semantic_fit import _FEMDOM_CALIBRATION_PRODUCT
+
+    store = MemoryRuntimeStateStore()
+    calls = []
+
+    async def fake(_system, _prompt):
+        calls.append(1)
+        return AudienceFitJudgment(
+            verdict="UNRELATED", confidence=1,
+            rationale="No topical match", evidence=["Клуб БДСМ"],
+        )
+
+    product = _product()
+    product.id = _FEMDOM_CALIBRATION_PRODUCT
+    model = TelegramAudienceSemanticFit(
+        store, enabled=True, judge=fake,
+        femdom_v2_calibration_once=True, daily_max=9,
+    )
+    empty = await model.evaluate(
+        product=product, icp=_icp(), handle="a_sfera",
+        title="Клуб", metadata=_metadata(), cache_only=True,
+    )
+    assert empty["status"] == "CACHE_MISS"
+    assert calls == []
+    saved = await model.evaluate(
+        product=product, icp=_icp(), handle="a_sfera",
+        title="Клуб", metadata=_metadata(),
+    )
+    assert saved["status"] == "EVALUATED"
+    recovered = await model.evaluate(
+        product=product, icp=_icp(), handle="a_sfera",
+        title="Клуб", metadata=_metadata(), cache_only=True,
+    )
+    assert recovered["status"] == "CACHED"
+    assert len(calls) == 1
