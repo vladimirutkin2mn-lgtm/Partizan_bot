@@ -27,7 +27,7 @@ from app.telegram_community_registry import (
     TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE as _TELEGRAM_COMMUNITY_REGISTRY_NAMESPACE,
 )
 from app.telegram_community_registry import TelegramCommunityRegistry
-from app.telegram_discovery_strategy import ExpandedTelegramDiscoveryAdapter, _PROMOTIONAL_PATTERNS
+from app.telegram_discovery_strategy import _PROMOTIONAL_PATTERNS, ExpandedTelegramDiscoveryAdapter
 from app.telegram_native_flood_wait import record_research_flood_wait, research_flood_wait_until
 from app.telegram_participation_target import select_telegram_participation_target
 from app.telegram_research import TelegramFloodWaitError, TelegramSurfaceKind
