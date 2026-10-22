@@ -12,6 +12,8 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlsplit
 from uuid import UUID
 
+from pydantic import ValidationError
+
 from app.distribution_schemas import AudienceDistributionMapView
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.runtime_store import RuntimeStateStore
@@ -132,7 +134,13 @@ def sync_verified_telegram_opportunity(
     raw = store.get(_MAP_NS, str(product_id))
     if not isinstance(raw, dict):
         return {"status": "NO_SAVED_AUDIENCE_MAP"}
-    mapping = AudienceDistributionMapView.model_validate(raw)
+    try:
+        mapping = AudienceDistributionMapView.model_validate(raw)
+    except ValidationError:
+        # Some legacy discovery tests/products stage minimal research maps
+        # before the full audience map schema is generated. Never mutate or
+        # derail discovery when such a historical payload is encountered.
+        return {"status": "LEGACY_AUDIENCE_MAP_NOT_MATERIALIZED"}
     matches = [
         opportunity
         for opportunity in mapping.opportunities
