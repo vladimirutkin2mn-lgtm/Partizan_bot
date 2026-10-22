@@ -129,7 +129,7 @@ class TelegramAudienceSemanticFit:
     async def evaluate(
         self, *, product, icp, handle: str,
         title: str, metadata: dict, force: bool = False,
-        now: datetime | None = None,
+        now: datetime | None = None, cache_only: bool = False,
     ) -> dict:
         now = now or datetime.now(UTC)
         if now.tzinfo is None:
@@ -154,6 +154,9 @@ class TelegramAudienceSemanticFit:
             previous = _cached(old, digest, now)
             if previous is not None:
                 return {**previous, "status": "CACHED", "cache_hit": True}
+        if cache_only:
+            # Never spend tokens in a report-retrieval-only workflow.
+            return {"status": "CACHE_MISS"}
         if not self.enabled:
             return {"status": "DISABLED"}
         if not title and not about:
