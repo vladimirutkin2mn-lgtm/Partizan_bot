@@ -201,8 +201,19 @@ def sync_verified_telegram_opportunity(
     map_payload = AudienceDistributionMapView.model_validate(
         updated_map.model_dump(mode="json")
     ).model_dump(mode="json")
-    store.put(_OPPORTUNITY_NS, str(old.id), opportunity_payload)
-    store.put(_MAP_NS, str(product_id), map_payload)
+    # Use the same service object as the customer preview to invalidate its
+    # in-process map/opportunity caches as well as persist to the database.
+    from app.audience_intelligence_service import (
+        InMemoryAudienceIntelligenceService,
+        audience_intelligence_service,
+    )
+
+    service = (
+        audience_intelligence_service
+        if audience_intelligence_service._store is store
+        else InMemoryAudienceIntelligenceService(store)
+    )
+    service.update_opportunity(updated)
     return {
         "status": "SAVED_TARGET_SYNCED",
         "handle": handle,
