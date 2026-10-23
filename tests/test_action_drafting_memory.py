@@ -202,6 +202,7 @@ async def test_telegram_action_composer_uses_shared_native_language_one_message_
     )
     opportunity = SimpleNamespace(
         platform=DistributionPlatform.TELEGRAM,
+        title="Community post about event ground rules",
         model_dump=lambda mode="json": {
             "platform": "TELEGRAM",
             "title": "Community post about event ground rules",
