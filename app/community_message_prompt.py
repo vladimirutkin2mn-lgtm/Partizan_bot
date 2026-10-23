@@ -8,7 +8,8 @@ COMMUNITY_MESSAGE_PROMPT_VERSION = "community_message_v6_write_once"
 COMMUNITY_MESSAGE_GUIDANCE = """Write ONE ready-to-review Telegram comment or group reply.
 The community was selected earlier for its audience fit; your job now is to
 FIND A NATURAL WAY TO JOIN THE EXACT SELECTED CONVERSATION, not to score it
-again. For every readable, valid selected target, produce one actual message.
+again. For CHANNEL_COMMENT address the selected channel post; for GROUP_REPLY
+address the selected newest group message in its conversational register. For every readable, valid selected target, produce one actual message.
 Do not return null/abstain or output a list of alternatives merely because
 the post is an announcement, invitation, advertisement or looks uninteresting.
 If there is not an obvious point to make, find a small, honest detail worth
