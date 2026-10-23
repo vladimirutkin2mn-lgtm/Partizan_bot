@@ -3,6 +3,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from app.community_message_autoresearch import (
+    CommunityMessagePairedReview,
+    CommunityMessagePromptAutoResearch,
+    CommunityMessagePromptComparison,
+)
 from app.growth_autoresearch_evaluator import (
     GrowthAutoResearchEvaluator,
     growth_autoresearch_evaluator,
@@ -48,6 +53,20 @@ class GrowthAutoResearchService:
     @property
     def store(self) -> RuntimeStateStore:
         return self._store
+
+    def evaluate_telegram_message_prompts(
+        self,
+        *,
+        baseline_version: str,
+        challenger_version: str,
+        reviews: list[CommunityMessagePairedReview],
+    ) -> CommunityMessagePromptComparison:
+        """Offline prompt-version research; never changes the live champion."""
+        return CommunityMessagePromptAutoResearch(self._store).evaluate(
+            baseline_version=baseline_version,
+            challenger_version=challenger_version,
+            reviews=reviews,
+        )
 
     def configure_policy(
         self,
