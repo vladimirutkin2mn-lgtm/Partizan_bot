@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -265,6 +266,10 @@ class ActionTargetSelector:
     ) -> str:
         title = str(candidate.get("title") or "").strip()
         snippet = str(candidate.get("snippet") or "").strip()
+        # Telegram text must be the selected native message, without community
+        # title or other older-post context that the model could misattribute.
+        if candidate.get("source") == "telegram_native.latest_message":
+            return snippet
         parts = [part for part in (title, snippet) if part]
         if parts:
             return "\n".join(parts)
@@ -368,6 +373,56 @@ class DistributionActionComposer:
             }
             else ""
         )
+        if community_prompt:
+            # The generic opportunity payload can include dozens of older
+            # Telegram messages and full discovery history. Keep only product
+            # facts, community identity and the exact selected native target.
+            product_data = product.model_dump(mode="json")
+            user_context = json.dumps(
+                {
+                    "product": {
+                        key: str(product_data.get(key) or "")[:limit]
+                        for key, limit in (
+                            ("name", 90),
+                            ("description", 240),
+                            ("problem_or_desire", 160),
+                            ("value_proposition", 180),
+                        )
+                    },
+                    "community_title": opportunity.title,
+                    "platform": opportunity.platform.value,
+                    "action_type": play.action_type.value,
+                    "tactic": play.tactic_id,
+                    "selected_native_target": {
+                        "url": target.url,
+                        "text": target.context_text[:2400],
+                        "source": target.source,
+                    },
+                    "project_marketing_memory": (memory.rendered or "")[:700],
+                    "applied_community_policy": (
+                        policy.model_dump(mode="json") if policy else None
+                    ),
+                    "tactic_allows_product_link": template.has_direct_product_link,
+                    "tactic_mentions_product": template.has_product_mention,
+                    "conversion_brief": self._variant_prompt(variant) if variant else None,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        else:
+            user_context = (
+                f"Product: {product.model_dump(mode='json')}\\n"
+                f"Project marketing memory: {memory.rendered or None}\\n"
+                f"Distribution play: {play.model_dump(mode='json')}\\n"
+                f"Opportunity: {opportunity.model_dump(mode='json')}\\n"
+                f"Selected target: {target}\\n"
+                f"Applied CommunityPolicy: "
+                f"{policy.model_dump(mode='json') if policy else None}\\n"
+                f"Tactic allows direct product link: {template.has_direct_product_link}\\n"
+                f"Tactic includes product mention: {template.has_product_mention}\\n"
+                f"Conversion brief: "
+                f"{self._variant_prompt(variant) if variant else None}\\n"
+            )
         with openai_usage_context("action_variant_draft" if variant else "action_auto_prepare", product.id):
             return await self._provider.parse(
                 messages=[
@@ -380,19 +435,7 @@ class DistributionActionComposer:
                     ),
                     LLMMessage(
                         role="user",
-                        content=(
-                            f"Product: {product.model_dump(mode='json')}\n"
-                            f"Project marketing memory: {memory.rendered or None}\n"
-                            f"Distribution play: {play.model_dump(mode='json')}\n"
-                            f"Opportunity: {opportunity.model_dump(mode='json')}\n"
-                            f"Selected target: {target}\n"
-                            f"Applied CommunityPolicy: "
-                            f"{policy.model_dump(mode='json') if policy else None}\n"
-                            f"Tactic allows direct product link: {template.has_direct_product_link}\n"
-                            f"Tactic includes product mention: {template.has_product_mention}\n"
-                            f"Conversion brief: "
-                            f"{self._variant_prompt(variant) if variant else None}\n"
-                        ),
+                        content=user_context,
                     ),
                 ],
                 response_model=DistributionContentDraft,
