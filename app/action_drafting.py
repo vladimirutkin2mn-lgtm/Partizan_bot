@@ -39,6 +39,7 @@ from app.project_marketing_memory import (
 )
 from app.reddit_research import action_target_is_fresh
 from app.schemas import ProductProfileView
+from app.telegram_message_precheck import precheck_telegram_target
 
 
 class DistributionAutoPrepareRequest(BaseModel):
@@ -88,6 +89,12 @@ class ActionTargetSelector:
                 )
             candidate = candidates[0]
             context = self._target_context(candidate, opportunity)
+            if opportunity.platform == DistributionPlatform.TELEGRAM:
+                precheck = precheck_telegram_target(context)
+                if not precheck.eligible:
+                    raise ValueError(
+                        f"Telegram ActionTarget precheck blocked: {precheck.reason}"
+                    )
             if len(context.strip()) < 10:
                 raise ValueError(
                     "ActionTarget has insufficient local context; enrich the opportunity before drafting"
