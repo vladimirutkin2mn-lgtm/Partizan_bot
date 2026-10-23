@@ -282,23 +282,30 @@ async def test_preview_rejects_native_snapshot_newer_than_saved_target():
 
 
 @pytest.mark.asyncio
-async def test_bare_telegram_cta_is_blocked_before_llm_in_research_preview():
+async def test_short_telegram_cta_still_gets_one_research_draft():
     store, product, now = _setup()
     audience = store.get("audience_distribution_map", str(_PRODUCT))
     audience["opportunities"][0]["metadata"]["research_latest_post_excerpt"] = (
         "⬇️ЗАПОЛНИТЬ АНКЕТУ МОЖНО ТУТ⬇️"
     )
     store.put("audience_distribution_map", str(_PRODUCT), audience)
+    calls = []
 
-    async def judge(_system, _prompt):
-        raise AssertionError("This would waste LLM tokens on a bare CTA")
+    async def judge(system, prompt):
+        calls.append(prompt)
+        assert "FIND A NATURAL WAY" in system
+        return _Draft(
+            topicality="RELEVANT",
+            reason="The selected target invites prospective participants to use a form.",
+            language="Russian",
+            comment="После анкеты можно сразу общаться или сначала идёт модерация?",
+        )
 
     result = await prepare_review(
         store, product=product, handle="a_sfera", judge=judge, now=now
     )
-    assert result["status"] == "RESEARCH_PREVIEW_BLOCKED"
-    assert result["comment"] is None
-    assert result["input_tokens"] == 0
-    assert result["output_tokens"] == 0
+    assert result["status"] == "AWAITING_HUMAN_CONTEXT_AND_POLICY_REVIEW"
+    assert result["comment"].startswith("После анкеты")
+    assert len(calls) == 1
     assert result["action_sendable"] is False
     assert result["published"] is False
