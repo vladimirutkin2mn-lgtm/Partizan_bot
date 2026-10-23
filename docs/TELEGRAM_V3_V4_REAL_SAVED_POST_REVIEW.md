@@ -17,7 +17,7 @@
 | Outgoing tokens | 1,509 | 1,424 |
 | Total tokens | 7,355 | 7,408 |
 
-Total cost-sensitive token consumption increased by **0.72%** in v4; input tokens grew **2.36%** and output tokens decreased **5.63%**. These are usage counts, not a dollar price estimate. Six additional stored candidate peers could not be chosen: the approved inventory was nine, of which three had insufficient readable newest text.
+Total cost-sensitive token consumption increased by **0.72%** in v4; input tokens grew **2.36%** and output tokens decreased **5.63%**. These are usage counts, not a dollar price estimate. Three of the nine approved stored peers were excluded because their newest saved message had insufficient readable text.
 
 **Publication actions: 0. Telegram API calls: 0.** A private, three-day GitHub Actions artifact holds the actual same-target draft pairs: workflow run [40007696878](https://github.com/vladimirutkin2mn-lgtm/Partizan_bot/actions/runs/40007696878), artifact `telegram-v3-v4-saved-post-review-PR545`. The artifact includes saved source text and should not be pasted into public issue comments.
 
