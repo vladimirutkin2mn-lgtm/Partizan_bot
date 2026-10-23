@@ -28,6 +28,7 @@ from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.openai_usage import capture_openai_usage_rows, log_openai_usage
 from app.product_intake import product_intake_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.telegram_message_precheck import precheck_telegram_target
 
 _REVIEW_NAMESPACE = "femdom_telegram_comment_research_preview_v1"
 _PROJECT_NAMESPACE = "customer_acquisition_projects"
@@ -154,6 +155,16 @@ async def prepare_review(
     checked_at = now or datetime.now(UTC)
     checked_at = checked_at.replace(tzinfo=UTC) if checked_at.tzinfo is None else checked_at.astimezone(UTC)
     candidate, project = _read_candidate(store, handle, now=checked_at)
+    precheck = precheck_telegram_target(candidate["post_excerpt"])
+    if not precheck.eligible:
+        return {
+            "status": "RESEARCH_PREVIEW_BLOCKED", "handle": handle,
+            "reason": precheck.reason, "comment": None,
+            "published": False, "action_sendable": False,
+            "publisher_permission_verified": False,
+            "community_commercial_rules_verified": False,
+            "input_tokens": 0, "output_tokens": 0,
+        }
 
     fingerprint = hashlib.sha256(json.dumps({
         "product": str(_PRODUCT), "handle": handle,
