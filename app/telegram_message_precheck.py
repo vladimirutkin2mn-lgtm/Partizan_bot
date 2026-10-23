@@ -1,8 +1,8 @@
-"""Conservative, zero-LLM Telegram target gates.
+"""Cheap readability check for a selected Telegram message.
 
-This rejects only obviously low-context, administrative or unsolicited
-solicitation messages. Subject-matter relevance cannot be established with
-these rules; uncertain messages still require the normal quality checks.
+Audience fit and permission to reply were resolved upstream. The content
+generator should not disqualify a whole opportunity merely because the
+latest post is short, promotional or an announcement.
 """
 
 from __future__ import annotations
@@ -10,23 +10,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-_LINKS = re.compile(r"(?i)(?:https?://|t\.me/|@)[^\s]+")
-_WORDS = re.compile(r"[^\W_]+", re.UNICODE)
-_ADMIN = re.compile(
-    r"(?iu)^\s*(?:правила|закрепл[её]нное сообщение|реквизиты|"
-    r"как вступить|правила участия)\b"
-)
-_BARE_CTA = re.compile(
-    r"(?iu)\b(?:заполн(?:ите|ить)\s+анкету|"
-    r"переходите\s+по\s+ссылке|подписывайтесь|"
-    r"жми(?:те)?\s+сюда)\b"
-)
-_AD_MARKERS = (
-    "канал и личка в шапке профиля",
-    "пишите в личку",
-    "писать в лс",
-    "по вопросам рекламы",
-)
+_LINKS = re.compile(r"(?i)(?:https?://|t\\.me/|@)[^\\s]+")
+_WORDS = re.compile(r"[^\\W_]+", re.UNICODE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,27 +21,8 @@ class TelegramTargetPrecheck:
 
 
 def precheck_telegram_target(text: str) -> TelegramTargetPrecheck:
-    """Reject easy non-conversations before any LLM call.
-
-    No keyword blacklist for the promoted product or adult communities: a
-    short question or an actual conversation may genuinely be useful. Avoid
-    deciding nuanced topicality with brittle substring matching.
-    """
-    stripped = _LINKS.sub(" ", str(text or "")).strip()
-    words = _WORDS.findall(stripped)
-    if not words:
+    """Reject missing/unreadable content, never infer marketing fit from length."""
+    readable = _LINKS.sub(" ", str(text or "")).strip()
+    if not _WORDS.search(readable):
         return TelegramTargetPrecheck(False, "EMPTY_OR_LINK_ONLY")
-    # Do not reject brief but meaningful announcements/questions by length alone.
-    if len(words) <= 3 and "?" not in stripped:
-        return TelegramTargetPrecheck(False, "NO_SUBSTANTIVE_CONVERSATION")
-    if (len(words) <= 8 and "?" not in stripped
-            and re.search(r"(?iu)\b(?:заходи|вступай|присоединяйся)\b", stripped)):
-        return TelegramTargetPrecheck(False, "SHORT_INVITATION_WITHOUT_TOPIC")
-    if _BARE_CTA.search(stripped) and len(words) <= 12 and "?" not in stripped:
-        return TelegramTargetPrecheck(False, "BARE_CALL_TO_ACTION")
-    if _ADMIN.search(stripped) and "?" not in stripped:
-        return TelegramTargetPrecheck(False, "ADMINISTRATIVE_ANNOUNCEMENT")
-    lowered = stripped.casefold()
-    if any(marker in lowered for marker in _AD_MARKERS) and "?" not in stripped:
-        return TelegramTargetPrecheck(False, "UNSOLICITED_PROMOTIONAL_MESSAGE")
-    return TelegramTargetPrecheck(True, "ELIGIBLE_FOR_CONTEXTUAL_REVIEW")
+    return TelegramTargetPrecheck(True, "READABLE_TARGET_FOR_REVIEW")
