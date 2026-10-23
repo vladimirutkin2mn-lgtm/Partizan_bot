@@ -89,16 +89,16 @@ class ActionTargetSelector:
                 )
             candidate = candidates[0]
             context = self._target_context(candidate, opportunity)
+            if len(context.strip()) < 10:
+                raise ValueError(
+                    "ActionTarget has insufficient local context; enrich the opportunity before drafting"
+                )
             if opportunity.platform == DistributionPlatform.TELEGRAM:
                 precheck = precheck_telegram_target(context)
                 if not precheck.eligible:
                     raise ValueError(
                         f"Telegram ActionTarget precheck blocked: {precheck.reason}"
                     )
-            if len(context.strip()) < 10:
-                raise ValueError(
-                    "ActionTarget has insufficient local context; enrich the opportunity before drafting"
-                )
             return SelectedActionTarget(
                 url=str(candidate["url"]),
                 context_text=context,
