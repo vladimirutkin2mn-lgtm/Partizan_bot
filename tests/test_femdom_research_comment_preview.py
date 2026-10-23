@@ -76,7 +76,7 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
         assert "language" in system
         assert "GROUP_REPLY" in system
         assert "CHANNEL_COMMENT" in system
-        assert "execution layer" in system
+        assert "never publish" in system.lower()
         assert "Separate topicality" in system
         return _Draft(
             topicality="RELEVANT",
@@ -102,7 +102,7 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
     assert first["project_telegram_preference"] == "OFF"
     assert first["comment"].startswith("Вы отдельно упомянули")
     assert first["comment_language"] == "Russian"
-    assert first["prompt_version"] == "community_message_v5_conversation_first"
+    assert first["prompt_version"] == "community_message_v6_write_once"
     assert "variants" not in first
     assert first["surface"] == "CHANNEL_COMMENT"
     second = await prepare_review(
@@ -114,20 +114,41 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
 
 
 @pytest.mark.asyncio
-async def test_unrelated_post_returns_no_variants_without_sendability():
+async def test_vetted_post_requires_a_nonempty_reply_even_if_relevance_is_uncertain():
     store, product, now = _setup()
     async def judge(_system, _prompt):
         return _Draft(
-            topicality="UNRELATED",
-            reason="The post is unrelated to the adult community interests.",
+            topicality="UNCERTAIN",
+            reason="The gathering format is somewhat ambiguous.",
             language="Russian",
-            comment=None,
+            comment="А встреча будет с обсуждением в кругу или свободное общение?",
         )
     out = await prepare_review(
         store, product=product, handle="a_sfera", judge=judge, now=now
     )
-    assert out["comment"] is None
+    assert out["comment"].startswith("А встреча")
+    assert out["topicality"] == "UNCERTAIN"
     assert out["action_sendable"] is False
+    assert out["published"] is False
+
+
+@pytest.mark.asyncio
+async def test_model_abstention_is_not_stored_as_successful_review_draft():
+    store, product, now = _setup()
+
+    async def judge(_system, _prompt):
+        return _Draft(
+            topicality="UNRELATED",
+            reason="The post did not offer an obvious marketing angle.",
+            language="Russian",
+            comment=None,
+        )
+
+    with pytest.raises(ValueError, match="validation error"):
+        await prepare_review(
+            store, product=product, handle="a_sfera", judge=judge, now=now
+        )
+    assert store.list_namespace("femdom_telegram_comment_research_preview_v1") == []
 
 
 @pytest.mark.asyncio
@@ -162,7 +183,7 @@ async def test_group_reply_generates_one_native_language_message_without_send():
     store, product, now = _setup(kind="GROUP")
     async def judge(system, prompt):
         assert "GROUP_REPLY" in prompt
-        assert "GROUP_REPLY responds" in system
+        assert "GROUP_REPLY" in system
         return _Draft(
             topicality="RELEVANT",
             reason="The latest group message discusses an event and its ground rules.",
