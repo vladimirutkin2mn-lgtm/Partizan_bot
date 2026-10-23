@@ -1,11 +1,7 @@
 name: One-shot saved Telegram v5 quality review (no publish)
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [main]
-    paths:
-      - .github/workflows/telegram-message-v5-review-once.yml
+  workflow_dispatch:
 
 
 permissions:
@@ -17,8 +13,8 @@ concurrency:
 
 jobs:
   review:
-    # One controlled PR research run, then remove the pull_request trigger.
-    if: github.event.pull_request.number == 545
+    # Manual-only: routine PR commits must never trigger another paid review.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 9
