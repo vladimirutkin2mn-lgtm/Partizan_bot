@@ -203,3 +203,59 @@ async def test_no_extra_variant_even_when_model_judge_provides_single_reply():
     assert len(calls) == 1
     assert first["comment"] == second["comment"]
     assert "variants" not in first
+
+
+@pytest.mark.asyncio
+async def test_preview_preserves_late_native_post_details_without_cutting_json():
+    store, product, now = _setup()
+    audience = store.get("audience_distribution_map", str(_PRODUCT))
+    opportunity = audience["opportunities"][0]
+    native_text = (
+        "Обсуждение встречи. " + "Подробности контекста. " * 24
+        + " Организаторы предлагают открытый формат вопросов от участников."
+    )
+    opportunity["metadata"]["recent_context"] = [{
+        "message_id": 2117,
+        "url": "https://t.me/a_sfera/2117",
+        "text": native_text,
+    }]
+    store.put("audience_distribution_map", str(_PRODUCT), audience)
+
+    async def judge(_system, prompt):
+        payload = json.loads(prompt)
+        assert "открытый формат вопросов" in payload["selected_target"]["text"]
+        assert len(payload["selected_target"]["text"]) > 400
+        assert len(payload["selected_target"]["text"]) <= 900
+        return _Draft(
+            topicality="RELEVANT",
+            reason="The newest post explicitly offers an open question format.",
+            language="Russian",
+            comment="Открытый формат вопросов звучит полезно. Их можно задать заранее?",
+        )
+
+    result = await prepare_review(
+        store, product=product, handle="a_sfera", judge=judge, now=now
+    )
+    assert result["target_context_source"] == "verified_native_latest_message"
+    assert result["target_context_chars"] > 400
+    assert result["published"] is False
+
+
+@pytest.mark.asyncio
+async def test_preview_rejects_native_snapshot_newer_than_saved_target():
+    store, product, now = _setup()
+    audience = store.get("audience_distribution_map", str(_PRODUCT))
+    audience["opportunities"][0]["metadata"]["recent_context"] = [{
+        "message_id": 2118,
+        "url": "https://t.me/a_sfera/2118",
+        "text": "Уже появилось новое сообщение с другими условиями встречи.",
+    }]
+    store.put("audience_distribution_map", str(_PRODUCT), audience)
+
+    async def judge(_system, _prompt):
+        raise AssertionError("A stale post must not reach the model")
+
+    with pytest.raises(ValueError, match="differs from the saved target"):
+        await prepare_review(
+            store, product=product, handle="a_sfera", judge=judge, now=now
+        )
