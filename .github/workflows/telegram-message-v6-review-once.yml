@@ -1,11 +1,7 @@
 name: One-shot positive Telegram v6 drafts (no publish)
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [main]
-    paths:
-      - .github/workflows/telegram-message-v6-review-once.yml
+  workflow_dispatch:
 
 
 permissions:
@@ -17,8 +13,8 @@ concurrency:
 
 jobs:
   review:
-    # One time pilot of 3 saved peers; later change to manual-only to avoid paid reruns.
-    if: github.event.pull_request.number == 545
+    # Manual-only after one completed pilot: never run paid production research on PR push.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 9
