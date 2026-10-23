@@ -11,7 +11,7 @@ import hashlib
 import json
 from statistics import mean
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
