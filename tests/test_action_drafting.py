@@ -419,7 +419,7 @@ def test_telegram_drafting_uses_verified_latest_with_unknown_date() -> None:
     opportunity = _telegram_selector_opportunity(
         target_url="https://t.me/community/147",
         recent_context=[
-            {"message_id": 147, "url": "https://t.me/community/147", "text": "Caption"}
+            {"message_id": 147, "url": "https://t.me/community/147", "text": "Caption: встречаемся в субботу, обсудим расписание."}
         ],
     )
     play = SimpleNamespace(action_type=DistributionActionType.COMMENT)
