@@ -50,7 +50,7 @@ def precheck_telegram_target(text: str) -> TelegramTargetPrecheck:
     if len(words) <= 3 and "?" not in stripped:
         return TelegramTargetPrecheck(False, "NO_SUBSTANTIVE_CONVERSATION")
     if (len(words) <= 8 and "?" not in stripped
-            and re.search(r"(?iu)\\b(?:заходи|вступай|присоединяйся)\\b", stripped)):
+            and re.search(r"(?iu)\b(?:заходи|вступай|присоединяйся)\b", stripped)):
         return TelegramTargetPrecheck(False, "SHORT_INVITATION_WITHOUT_TOPIC")
     if _BARE_CTA.search(stripped) and len(words) <= 12 and "?" not in stripped:
         return TelegramTargetPrecheck(False, "BARE_CALL_TO_ACTION")
