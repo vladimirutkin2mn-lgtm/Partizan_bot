@@ -258,3 +258,26 @@ async def test_preview_rejects_native_snapshot_newer_than_saved_target():
         await prepare_review(
             store, product=product, handle="a_sfera", judge=judge, now=now
         )
+
+
+@pytest.mark.asyncio
+async def test_bare_telegram_cta_is_blocked_before_llm_in_research_preview():
+    store, product, now = _setup()
+    audience = store.get("audience_distribution_map", str(_PRODUCT))
+    audience["opportunities"][0]["metadata"]["research_latest_post_excerpt"] = (
+        "⬇️ЗАПОЛНИТЬ АНКЕТУ МОЖНО ТУТ⬇️"
+    )
+    store.put("audience_distribution_map", str(_PRODUCT), audience)
+
+    async def judge(_system, _prompt):
+        raise AssertionError("This would waste LLM tokens on a bare CTA")
+
+    result = await prepare_review(
+        store, product=product, handle="a_sfera", judge=judge, now=now
+    )
+    assert result["status"] == "RESEARCH_PREVIEW_BLOCKED"
+    assert result["comment"] is None
+    assert result["input_tokens"] == 0
+    assert result["output_tokens"] == 0
+    assert result["action_sendable"] is False
+    assert result["published"] is False
