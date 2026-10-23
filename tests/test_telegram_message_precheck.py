@@ -1,4 +1,4 @@
-"""Zero-token screening of obviously unsuitable latest Telegram messages."""
+"""Only unreadable latest messages should be skipped before drafting."""
 
 import pytest
 
@@ -6,49 +6,45 @@ from app.telegram_message_precheck import precheck_telegram_target
 
 
 @pytest.mark.parametrize(
-    ("text", "reason"),
+    "text",
     [
-        ("⬇️ЗАПОЛНИТЬ АНКЕТУ МОЖНО ТУТ⬇️", "BARE_CALL_TO_ACTION"),
-        (
-            "Тут ебут жестко, если смелый заходи\nt.me/example",
-            "SHORT_INVITATION_WITHOUT_TOPIC",
-        ),
-        (
-            "Правила 🌟\n\nВыход из чата означает удаление анкеты. "
-            "Повторное вступление стоит 1000 рублей.",
-            "ADMINISTRATIVE_ANNOUNCEMENT",
-        ),
-        (
-            "Я расскажу о нашем предложении. Канал и личка в шапке профиля",
-            "UNSOLICITED_PROMOTIONAL_MESSAGE",
-        ),
-        ("https://t.me/somewhere", "EMPTY_OR_LINK_ONLY"),
-        ("Подписывайтесь на канал!", "NO_SUBSTANTIVE_CONVERSATION"),
+        "",
+        "  ",
+        "https://t.me/somewhere",
+        "📣🔗",
+        "@telegramchannel",
     ],
 )
-def test_obvious_nonconversations_blocked_without_model(text, reason):
-    assert precheck_telegram_target(text).eligible is False
-    assert precheck_telegram_target(text).reason == reason
+def test_no_readable_message_blocks_before_llm(text):
+    result = precheck_telegram_target(text)
+    assert result.eligible is False
+    assert result.reason == "EMPTY_OR_LINK_ONLY"
 
 
 @pytest.mark.parametrize(
     "text",
     [
+        "⬇️ЗАПОЛНИТЬ АНКЕТУ МОЖНО ТУТ⬇️",
+        "Подписывайтесь на канал!",
+        "Тут новая встреча, заходи! t.me/example",
+        "Правила 🌟\n\nВыход из чата означает удаление анкеты.",
+        "Я расскажу о нашем предложении. Канал и личка в шапке профиля",
         "Caption: встречаемся в субботу, обсудим расписание.",
         "Встреча в субботу. Кто хотел бы выступить с вопросами?",
-        "На мастер-классе всё для рисования выдадим на месте. С собой нужна удобная одежда.",
+        "На мастер-классе всё для рисования выдадим на месте.",
         "Как лучше начать разговор с новым участником?",
     ],
 )
-def test_meaningful_short_posts_are_not_blocked(text):
-    assert precheck_telegram_target(text).eligible is True
+def test_readable_messages_reach_generator_regardless_of_style(text):
+    result = precheck_telegram_target(text)
+    assert result.eligible is True
+    assert result.reason == "READABLE_TARGET_FOR_REVIEW"
 
 
-def test_precheck_does_not_decide_relevance_from_community_topic():
-    # This is nonempty but off-topic; semantic screening is a separate step.
+def test_relevance_requires_upstream_product_aware_evidence():
+    # This message could be off-topic for the product; this cheap check is
+    # not allowed to repeat semantic judgment from scratch.
     result = precheck_telegram_target(
-        "Новая барахолка: книги, бумага, косметика, краски и материалы "
-        "для творчества. Приглашаем продавцов в пятничную подборку."
+        "Новая барахолка: книги, косметика, краски и материалы для творчества."
     )
     assert result.eligible is True
-    assert result.reason == "ELIGIBLE_FOR_CONTEXTUAL_REVIEW"
