@@ -411,17 +411,17 @@ class DistributionActionComposer:
             )
         else:
             user_context = (
-                f"Product: {product.model_dump(mode='json')}\\n"
-                f"Project marketing memory: {memory.rendered or None}\\n"
-                f"Distribution play: {play.model_dump(mode='json')}\\n"
-                f"Opportunity: {opportunity.model_dump(mode='json')}\\n"
-                f"Selected target: {target}\\n"
+                f"Product: {product.model_dump(mode='json')}\n"
+                f"Project marketing memory: {memory.rendered or None}\n"
+                f"Distribution play: {play.model_dump(mode='json')}\n"
+                f"Opportunity: {opportunity.model_dump(mode='json')}\n"
+                f"Selected target: {target}\n"
                 f"Applied CommunityPolicy: "
-                f"{policy.model_dump(mode='json') if policy else None}\\n"
-                f"Tactic allows direct product link: {template.has_direct_product_link}\\n"
-                f"Tactic includes product mention: {template.has_product_mention}\\n"
+                f"{policy.model_dump(mode='json') if policy else None}\n"
+                f"Tactic allows direct product link: {template.has_direct_product_link}\n"
+                f"Tactic includes product mention: {template.has_product_mention}\n"
                 f"Conversion brief: "
-                f"{self._variant_prompt(variant) if variant else None}\\n"
+                f"{self._variant_prompt(variant) if variant else None}\n"
             )
         with openai_usage_context("action_variant_draft" if variant else "action_auto_prepare", product.id):
             return await self._provider.parse(
