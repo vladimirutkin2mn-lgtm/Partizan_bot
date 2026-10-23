@@ -8,7 +8,7 @@ from app.telegram_message_precheck import precheck_telegram_target
 @pytest.mark.parametrize(
     ("text", "reason"),
     [
-        ("⬇️ЗАПОЛНИТЬ АНКЕТУ МОЖНО ТУТ⬇️", "NO_SUBSTANTIVE_CONVERSATION"),
+        ("⬇️ЗАПОЛНИТЬ АНКЕТУ МОЖНО ТУТ⬇️", "BARE_CALL_TO_ACTION"),
         ("Тут ебут жестко, если смелый заходи\nt.me/example", "SHORT_INVITATION_WITHOUT_TOPIC"),
         ("Правила 🌟\n\nВыход из чата означает удаление анкеты. Повторное вступление стоит 1000 рублей.", "ADMINISTRATIVE_ANNOUNCEMENT"),
         ("Я расскажу о нашем предложении. Канал и личка в шапке профиля", "UNSOLICITED_PROMOTIONAL_MESSAGE"),
