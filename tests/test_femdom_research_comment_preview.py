@@ -4,6 +4,8 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
+import json
+
 import pytest
 
 from app.distribution_schemas import AudienceDistributionMapView, DistributionOpportunityView
@@ -71,20 +73,19 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
 
     async def judge(system, prompt):
         calls.append(prompt)
-        assert "ONE locally natural" in system
+        assert "Return a single structured" in system
         assert "language" in system
         assert "GROUP_REPLY" in system
         assert "CHANNEL_COMMENT" in system
-        assert "publishing service" in system
-        assert "do not claim permission" in system
+        assert "checked separately by the publisher" in system
+        assert "Separate topicality" in system
         return _Draft(
             topicality="RELEVANT",
             reason="The post discusses respectful adult community gatherings.",
             language="Russian",
             comment=(
-                "У пижамного формата, кажется, есть плюс для новичков: "
-                "меньше ощущения, что сразу нужно соответствовать. "
-                "А как у вас обычно объясняют правила и границы?"
+                "Вы отдельно упомянули границы участников. "
+                "А формат обсуждения можно узнать заранее?"
             ),
             why_relevant="Responds to a real detail about community boundaries.",
         )
@@ -100,9 +101,9 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
     assert first["publisher_permission_verified"] is False
     assert first["community_commercial_rules_verified"] is False
     assert first["project_telegram_preference"] == "OFF"
-    assert first["comment"].startswith("У пижамного формата")
+    assert first["comment"].startswith("Вы отдельно упомянули")
     assert first["comment_language"] == "Russian"
-    assert first["prompt_version"] == "community_message_v3_single_local_language"
+    assert first["prompt_version"] == "community_message_v4_grounded_target"
     assert "variants" not in first
     assert first["surface"] == "CHANNEL_COMMENT"
     second = await prepare_review(
@@ -190,7 +191,7 @@ async def test_no_extra_variant_even_when_model_judge_provides_single_reply():
             "topicality": "RELEVANT",
             "reason": "Grounded in a specific community event detail.",
             "language": "Russian",
-            "comment": "А новичкам перед встречей отдельно рассказывают про правила и границы?",
+            "comment": "Вы обсуждаете формат встречи. Он уже определён или участники смогут его обсудить?",
             "why_relevant": "The event mentions participant boundaries.",
         }
     first = await prepare_review(
