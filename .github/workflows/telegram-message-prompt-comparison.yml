@@ -1,12 +1,7 @@
 name: Compare saved Telegram messages v3 versus v4 (no publish)
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [main]
-    paths:
-      - .github/workflows/telegram-message-prompt-comparison.yml
-      - tools/review_saved_telegram_prompts.py
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -17,9 +12,9 @@ concurrency:
 
 jobs:
   review:
-    # A bounded one-time investigation of the saved project, never a reusable
-    # publisher. Running later PRs cannot spend extra LLM budget.
-    if: github.event.pull_request.number == 545
+    # Re-run only on deliberate manual dispatch; a routine PR push must never
+    # consume another twelve LLM calls after the completed one-shot review.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 12
