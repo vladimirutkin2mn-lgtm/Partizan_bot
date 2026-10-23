@@ -8,17 +8,24 @@ for private manual review, not proof of measured conversions.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
-from datetime import UTC, datetime
-import base64
 import sys
+from typing import TYPE_CHECKING
 
 from app.config import get_settings
 from app.femdom_research_comment_preview import _Draft
 from app.product_intake import product_intake_service
 from app.telegram_community_registry import TelegramCommunityRegistry
 from app.telegram_legacy_registry_bootstrap import _public_handle
+
+if TYPE_CHECKING:
+    from app.community_message_prompt import (
+        COMMUNITY_MESSAGE_GUIDANCE,
+        COMMUNITY_MESSAGE_PROMPT_VERSION,
+    )
+    from app.telegram_message_precheck import precheck_telegram_target
 
 _PRODUCT = "52d7e59e-5ac5-4363-b829-c93e33e48272"
 _HANDLES = frozenset((
@@ -105,8 +112,9 @@ _PREVIOUS_UNRELATED = {
 
 
 def run() -> dict:
-    from app.runtime_store import get_runtime_store
     from openai import OpenAI
+
+    from app.runtime_store import get_runtime_store
 
     cases, skipped = _post_cases(get_runtime_store())
     report = {
