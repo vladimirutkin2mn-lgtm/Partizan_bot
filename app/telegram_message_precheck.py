@@ -10,8 +10,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-_LINKS = re.compile(r"(?i)(?:https?://|t\\.me/|@)[^\\s]+")
-_WORDS = re.compile(r"[^\\W_]+", re.UNICODE)
+_LINKS = re.compile(r"(?i)(?:https?://|t\.me/|@)[^\s]+")
+_WORDS = re.compile(r"[^\W_]+", re.UNICODE)
 
 
 @dataclass(frozen=True, slots=True)
