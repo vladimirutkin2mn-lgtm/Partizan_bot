@@ -46,9 +46,12 @@ def precheck_telegram_target(text: str) -> TelegramTargetPrecheck:
     words = _WORDS.findall(stripped)
     if not words:
         return TelegramTargetPrecheck(False, "EMPTY_OR_LINK_ONLY")
-    # Four-word click prompts and six-word invitations are not a discussion.
-    if len(words) <= 6 and "?" not in stripped:
+    # Do not reject brief but meaningful announcements/questions by length alone.
+    if len(words) <= 3 and "?" not in stripped:
         return TelegramTargetPrecheck(False, "NO_SUBSTANTIVE_CONVERSATION")
+    if (len(words) <= 8 and "?" not in stripped
+            and re.search(r"(?iu)\\b(?:заходи|вступай|присоединяйся)\\b", stripped)):
+        return TelegramTargetPrecheck(False, "SHORT_INVITATION_WITHOUT_TOPIC")
     if _BARE_CTA.search(stripped) and len(words) <= 12 and "?" not in stripped:
         return TelegramTargetPrecheck(False, "BARE_CALL_TO_ACTION")
     if _ADMIN.search(stripped) and "?" not in stripped:
