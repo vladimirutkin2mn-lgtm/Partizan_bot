@@ -9,9 +9,19 @@ from app.telegram_message_precheck import precheck_telegram_target
     ("text", "reason"),
     [
         ("⬇️ЗАПОЛНИТЬ АНКЕТУ МОЖНО ТУТ⬇️", "BARE_CALL_TO_ACTION"),
-        ("Тут ебут жестко, если смелый заходи\nt.me/example", "SHORT_INVITATION_WITHOUT_TOPIC"),
-        (\n            "Правила 🌟\n\nВыход из чата означает удаление анкеты. "\n            "Повторное вступление стоит 1000 рублей.",\n            "ADMINISTRATIVE_ANNOUNCEMENT",\n        ),
-        ("Я расскажу о нашем предложении. Канал и личка в шапке профиля", "UNSOLICITED_PROMOTIONAL_MESSAGE"),
+        (
+            "Тут ебут жестко, если смелый заходи\nt.me/example",
+            "SHORT_INVITATION_WITHOUT_TOPIC",
+        ),
+        (
+            "Правила 🌟\n\nВыход из чата означает удаление анкеты. "
+            "Повторное вступление стоит 1000 рублей.",
+            "ADMINISTRATIVE_ANNOUNCEMENT",
+        ),
+        (
+            "Я расскажу о нашем предложении. Канал и личка в шапке профиля",
+            "UNSOLICITED_PROMOTIONAL_MESSAGE",
+        ),
         ("https://t.me/somewhere", "EMPTY_OR_LINK_ONLY"),
         ("Подписывайтесь на канал!", "NO_SUBSTANTIVE_CONVERSATION"),
     ],
