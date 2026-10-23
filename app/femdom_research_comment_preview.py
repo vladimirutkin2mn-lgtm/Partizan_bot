@@ -249,7 +249,9 @@ async def prepare_review(
                 raise ValueError("Model returned no structured review draft")
     else:
         parsed = await judge(system, payload)
-    result = _ReplyDraft.model_validate(parsed)
+    result = _ReplyDraft.model_validate(
+        parsed.model_dump() if isinstance(parsed, BaseModel) else parsed
+    )
     comment = result.comment.strip()
     if not comment:
         raise ValueError("A readable vetted Telegram target requires one review draft")
