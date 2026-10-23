@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -224,3 +225,52 @@ async def test_telegram_action_composer_uses_shared_native_language_one_message_
     assert "GROUP_REPLY" in system
     assert "CHANNEL_COMMENT" in system
     assert "assisted/autonomous mode" in system
+
+
+@pytest.mark.asyncio
+async def test_telegram_composer_does_not_feed_old_community_posts_to_llm():
+    provider = RecordingProvider()
+    memory = ProjectMarketingMemoryService(MemoryRuntimeStateStore())
+    composer = DistributionActionComposer(provider=provider, memory_service=memory)
+    product_id = uuid4()
+    product = SimpleNamespace(
+        id=product_id,
+        model_dump=lambda mode="json": {
+            "name": "Example product",
+            "description": "Helps organize community events",
+            "input_brief": "Huge old unrelated project brief",
+        },
+    )
+    play = SimpleNamespace(
+        tactic_id="telegram_channel_comment",
+        action_type=DistributionActionType.COMMENT,
+    )
+    opportunity = SimpleNamespace(
+        platform=DistributionPlatform.TELEGRAM,
+        title="An events community",
+        model_dump=lambda mode="json": {
+            "title": "An events community",
+            "recent_context": [
+                {"text": "Do not reuse older unrelated message about discounts"},
+            ],
+        },
+    )
+    await composer.compose(
+        product=product,
+        play=play,
+        opportunity=opportunity,
+        target=SelectedActionTarget(
+            url="https://t.me/community/145",
+            context_text="Сегодня обсуждаем расписание открытой встречи.",
+            source="telegram_native.latest_message",
+        ),
+        policy=None,
+    )
+    data = json.loads(provider.messages[1].content)
+    assert data["selected_native_target"]["text"] == (
+        "Сегодня обсуждаем расписание открытой встречи."
+    )
+    assert data["community_title"] == "An events community"
+    assert "old unrelated message" not in provider.messages[1].content
+    assert "Huge old unrelated project brief" not in provider.messages[1].content
+    assert len(provider.messages) == 2
