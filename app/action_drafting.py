@@ -4,6 +4,10 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, Field, HttpUrl
 
 from app.audience_intelligence_service import audience_intelligence_service
+from app.community_message_prompt import (
+    COMMUNITY_MESSAGE_GUIDANCE,
+    COMMUNITY_MESSAGE_PROMPT_VERSION,
+)
 from app.conversion_scenarios import (
     DraftVariantBrief,
     conversion_scenario_planner,
@@ -306,7 +310,9 @@ Non-negotiable rules:
    Set ai_disclosure_included=true only when that disclosure is actually present.
 9. For STANDALONE_POST, provide a concise title that is suitable for the target community.
 10. Do not claim a platform rule permits something unless the applied CommunityPolicy explicitly says so.
-11. Keep the draft compatible with an approval-gated assisted/manual execution flow.
+11. Drafting is independent of publishing. An authorized execution service handles
+    assisted/manual review or explicitly opted-in autonomous posting with separate
+    permission, moderation, deduplication and platform safety gates.
 12. If the product or target is adult-oriented, keep comments/replies non-explicit and professional.
     Do not echo graphic sexual language from the source context.
 Return only the requested structured schema.
@@ -353,12 +359,24 @@ class DistributionActionComposer:
             platform=opportunity.platform.value,
             action_type=play.action_type.value,
         )
+        community_prompt = (
+            f"Prompt version: {COMMUNITY_MESSAGE_PROMPT_VERSION}\n"
+            + COMMUNITY_MESSAGE_GUIDANCE
+            if opportunity.platform == DistributionPlatform.TELEGRAM
+            and play.action_type in {
+                DistributionActionType.COMMENT, DistributionActionType.REPLY
+            }
+            else ""
+        )
         with openai_usage_context("action_variant_draft" if variant else "action_auto_prepare", product.id):
             return await self._provider.parse(
                 messages=[
                     LLMMessage(
                         role="system",
-                        content=f"{ACTION_DRAFT_SYSTEM_PROMPT}\n\n{marketing_guidance}",
+                        content=(
+                            f"{ACTION_DRAFT_SYSTEM_PROMPT}\n\n{marketing_guidance}"
+                            f"\n\n{community_prompt}"
+                        ),
                     ),
                     LLMMessage(
                         role="user",
@@ -598,6 +616,15 @@ class DistributionActionDraftingService:
             policy=policy,
             template=template,
         )
+        # One Telegram comment/reply draft and one LLM call per target,
+        # even if the generic conversion planner suggests alternatives.
+        if (
+            play.platform == DistributionPlatform.TELEGRAM
+            and play.action_type in {
+                DistributionActionType.COMMENT, DistributionActionType.REPLY
+            }
+        ):
+            briefs = briefs[:1]
         prepared: list[PreparedDraftVariant] = []
         for brief in briefs:
             draft = await self._composer.compose(

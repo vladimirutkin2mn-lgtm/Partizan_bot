@@ -97,11 +97,17 @@ jobs:
                   assert result["community_commercial_rules_verified"] is False
               if result["status"] == "AWAITING_HUMAN_CONTEXT_AND_POLICY_REVIEW":
                   assert result["target_url"].startswith(f"https://t.me/{peer}/")
+                  assert "variants" not in result
+                  assert result["prompt_version"] == (
+                      "community_message_v3_single_local_language"
+                  )
               print(json.dumps({
                   "status": result["status"],
                   "handle": peer,
                   "target_url": result.get("target_url"),
-                  "variant_count": len(result.get("variants") or []),
+                  "comment_generated": bool(result.get("comment")),
+                  "comment_language": result.get("comment_language"),
+                  "prompt_version": result.get("prompt_version"),
                   "topicality": result.get("topicality"),
                   "published": result.get("published", False),
                   "input_tokens": result.get("input_tokens", 0),

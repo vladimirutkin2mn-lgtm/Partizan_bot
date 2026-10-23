@@ -181,3 +181,46 @@ async def test_action_drafting_fails_closed_on_ambiguous_project_memory() -> Non
     assert "Project marketing memory: None" in user_prompt
     assert "Project A preference must not leak." not in user_prompt
     assert "Project B preference must not leak." not in user_prompt
+
+
+@pytest.mark.asyncio
+async def test_telegram_action_composer_uses_shared_native_language_one_message_prompt():
+    from app.community_message_prompt import COMMUNITY_MESSAGE_PROMPT_VERSION
+
+    memory = ProjectMarketingMemoryService(MemoryRuntimeStateStore())
+    provider = RecordingProvider()
+    product_id = uuid4()
+    composer = DistributionActionComposer(provider=provider, memory_service=memory)
+    play = SimpleNamespace(
+        tactic_id="telegram_channel_comment",
+        action_type=DistributionActionType.COMMENT,
+        model_dump=lambda mode="json": {
+            "tactic_id": "telegram_channel_comment",
+            "action_type": "COMMENT",
+        },
+    )
+    opportunity = SimpleNamespace(
+        platform=DistributionPlatform.TELEGRAM,
+        model_dump=lambda mode="json": {
+            "platform": "TELEGRAM",
+            "title": "Community post about event ground rules",
+        },
+    )
+    await composer.compose(
+        product=_product(product_id),
+        play=play,
+        opportunity=opportunity,
+        target=SelectedActionTarget(
+            url="https://t.me/community/145",
+            context_text="Russian discussion about rules at a community event.",
+            source="native_latest",
+        ),
+        policy=None,
+    )
+    system = provider.messages[0].content
+    assert COMMUNITY_MESSAGE_PROMPT_VERSION in system
+    assert "Generate one message, not variants" in system
+    assert "Match the community's actual language" in system
+    assert "GROUP_REPLY" in system
+    assert "CHANNEL_COMMENT" in system
+    assert "explicitly opted-in autonomous posting" in system

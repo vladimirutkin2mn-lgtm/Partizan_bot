@@ -12,13 +12,12 @@ from app.femdom_research_comment_preview import (
     _PRODUCT,
     _PROJECT,
     _Draft,
-    _Variant,
     prepare_review,
 )
 from app.runtime_store import MemoryRuntimeStateStore
 
 
-def _setup(*, now=None, comment="AVAILABLE", age_minutes=3):
+def _setup(*, now=None, comment="AVAILABLE", age_minutes=3, kind="CHANNEL"):
     now = now or datetime.now(UTC)
     store = MemoryRuntimeStateStore()
     store.put("customer_acquisition_projects", str(_PROJECT), {
@@ -30,7 +29,7 @@ def _setup(*, now=None, comment="AVAILABLE", age_minutes=3):
     opportunity = DistributionOpportunityView(
         id=uuid4(), icp_id=uuid4(),
         platform=DistributionPlatform.TELEGRAM,
-        kind=OpportunityKind.CHANNEL,
+        kind=OpportunityKind(kind),
         canonical_key="telegram:1642699396:community",
         title="Атмосфера", url="https://t.me/a_sfera",
         metadata={
@@ -38,7 +37,8 @@ def _setup(*, now=None, comment="AVAILABLE", age_minutes=3):
             "native_research_status": "VERIFIED",
             "research_audience_status": "REVIEW_REQUIRED",
             "surface_capabilities": {
-                "comment": comment, "publisher_permission_verified": False,
+                "comment": comment, "reply": comment,
+                "publisher_permission_verified": False,
             },
             "research_last_native_checked_at": now.isoformat(),
             "research_latest_post_url": "https://t.me/a_sfera/2117",
@@ -71,30 +71,22 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
 
     async def judge(system, prompt):
         calls.append(prompt)
-        assert "NON-PUBLISHING" in system
-        assert "NOT by itself an explicit" in system
-        assert "POST TOPICALITY" in system
+        assert "ONE locally natural" in system
+        assert "language" in system
+        assert "GROUP_REPLY" in system
+        assert "CHANNEL_COMMENT" in system
+        assert "publishing service" in system
+        assert "do not claim permission" in system
         return _Draft(
             topicality="RELEVANT",
             reason="The post discusses respectful adult community gatherings.",
-            variants=[
-                _Variant(
-                    approach="CONTEXTUAL",
-                    text=(
-                        "Хорошо, что в программе отдельно уделили внимание "
-                        "уважительному общению и границам."
-                    ),
-                    why_relevant="The latest post is about respectful community boundaries.",
-                ),
-                _Variant(
-                    approach="TRANSPARENT_INVITATION",
-                    text=(
-                        "Развиваем сообщество FemDom для взрослых, нам близок "
-                        "такой подход к уважительному общению."
-                    ),
-                    why_relevant="The latest post discusses boundaries.",
-                ),
-            ],
+            language="Russian",
+            comment=(
+                "У пижамного формата, кажется, есть плюс для новичков: "
+                "меньше ощущения, что сразу нужно соответствовать. "
+                "А как у вас обычно объясняют правила и границы?"
+            ),
+            why_relevant="Responds to a real detail about community boundaries.",
         )
 
     first = await prepare_review(
@@ -108,7 +100,11 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
     assert first["publisher_permission_verified"] is False
     assert first["community_commercial_rules_verified"] is False
     assert first["project_telegram_preference"] == "OFF"
-    assert len(first["variants"]) == 2
+    assert first["comment"].startswith("У пижамного формата")
+    assert first["comment_language"] == "Russian"
+    assert first["prompt_version"] == "community_message_v3_single_local_language"
+    assert "variants" not in first
+    assert first["surface"] == "CHANNEL_COMMENT"
     second = await prepare_review(
         store, product=product, handle="a_sfera", judge=judge, now=now
     )
@@ -124,12 +120,13 @@ async def test_unrelated_post_returns_no_variants_without_sendability():
         return _Draft(
             topicality="UNRELATED",
             reason="The post is unrelated to the adult community interests.",
-            variants=[],
+            language="Russian",
+            comment=None,
         )
     out = await prepare_review(
         store, product=product, handle="a_sfera", judge=judge, now=now
     )
-    assert out["variants"] == []
+    assert out["comment"] is None
     assert out["action_sendable"] is False
 
 
@@ -158,3 +155,50 @@ async def test_review_scope_rejects_unknown_peers_even_if_product_matches():
         await prepare_review(
             store, product=product, handle="unknown_peer", now=now,
         )
+
+
+@pytest.mark.asyncio
+async def test_group_reply_generates_one_native_language_message_without_send():
+    store, product, now = _setup(kind="GROUP")
+    async def judge(system, prompt):
+        assert "GROUP_REPLY" in prompt
+        assert "channel post or a group message" in system
+        return _Draft(
+            topicality="RELEVANT",
+            reason="The latest group message discusses an event and its ground rules.",
+            language="Russian",
+            comment="Уточните, пожалуйста, будут ли правила участия объяснять до начала встречи?",
+            why_relevant="Grounded in the group's latest native message.",
+        )
+    output = await prepare_review(
+        store, product=product, handle="a_sfera", judge=judge, now=now
+    )
+    assert output["surface"] == "GROUP_REPLY"
+    assert output["comment_language"] == "Russian"
+    assert output["comment"].startswith("Уточните")
+    assert output["published"] is False
+    assert output["action_sendable"] is False
+
+
+@pytest.mark.asyncio
+async def test_no_extra_variant_even_when_model_judge_provides_single_reply():
+    store, product, now = _setup()
+    calls = []
+    async def judge(_system, _prompt):
+        calls.append("model")
+        return {
+            "topicality": "RELEVANT",
+            "reason": "Grounded in a specific community event detail.",
+            "language": "Russian",
+            "comment": "А новичкам перед встречей отдельно рассказывают про правила и границы?",
+            "why_relevant": "The event mentions participant boundaries.",
+        }
+    first = await prepare_review(
+        store, product=product, handle="a_sfera", judge=judge, now=now
+    )
+    second = await prepare_review(
+        store, product=product, handle="a_sfera", judge=judge, now=now
+    )
+    assert len(calls) == 1
+    assert first["comment"] == second["comment"]
+    assert "variants" not in first
