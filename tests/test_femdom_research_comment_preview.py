@@ -163,7 +163,7 @@ async def test_group_reply_generates_one_native_language_message_without_send():
     store, product, now = _setup(kind="GROUP")
     async def judge(system, prompt):
         assert "GROUP_REPLY" in prompt
-        assert "channel post or a group message" in system
+        assert "reply to a group message" in system
         return _Draft(
             topicality="RELEVANT",
             reason="The latest group message discusses an event and its ground rules.",
