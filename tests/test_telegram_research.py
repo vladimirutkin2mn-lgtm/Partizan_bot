@@ -9,14 +9,14 @@ from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.platform_discovery import TelegramDiscoveryAdapter
 from app.search import DiscoveryQuery, SearchHit, SearchProvider, SourceClass
 from app.telegram_research import (
+    SAVED_TELEGRAM_POST_MAX_CHARS,
     SurfaceAvailability,
     TelegramCommunitySnapshot,
     TelegramRecentContext,
-    TelethonTelegramResearchTransport,
-    SAVED_TELEGRAM_POST_MAX_CHARS,
     TelegramResearchConnector,
     TelegramResearchUnavailableError,
     TelegramSurfaceKind,
+    TelethonTelegramResearchTransport,
 )
 
 
