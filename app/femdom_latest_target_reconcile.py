@@ -87,7 +87,13 @@ async def run(*, store: RuntimeStateStore, connector, product, icp) -> dict:
             continue
 
         metadata = adapter._native_metadata(requests[0], snapshot)
-        direct_registry = (original.get("audience_fit") or {}).get("confirmed") is True
+        original_fit = original.get("audience_fit") or {}
+        original_metadata = registry.hydrate_metadata(original)
+        direct_registry = original_fit.get("confirmed") is True
+        manual_confirmation = (
+            direct_registry
+            and str(original_fit.get("reason") or "") == "USER_MANUALLY_CONFIRMED"
+        )
         verdict = await semantic.evaluate(
             product=product, icp=icp, handle=handle,
             title=snapshot.title, metadata=metadata, cache_only=True,
@@ -100,11 +106,14 @@ async def run(*, store: RuntimeStateStore, connector, product, icp) -> dict:
             "community_fit_pass": confirmed,
             "registry_confirmed": confirmed,
             "community_fit_reason": (
-                "REGISTRY_CONFIRMED" if direct_registry
-                else "CACHED_SEMANTIC_DIRECT_FIT" if direct_llm
-                else "PENDING_AUDIENCE_REVIEW"
+                str(original_fit.get("reason") or "REGISTRY_CONFIRMED")
+                if direct_registry else "CACHED_SEMANTIC_DIRECT_FIT"
+                if direct_llm else "PENDING_AUDIENCE_REVIEW"
             ),
-            "community_fit_terms": list(verdict.get("evidence") or [])[:4],
+            "community_fit_terms": (
+                list(original_fit.get("terms") or [])
+                if direct_registry else list(verdict.get("evidence") or [])[:4]
+            ),
         })
         kind = (
             OpportunityKind.CHANNEL
@@ -125,6 +134,14 @@ async def run(*, store: RuntimeStateStore, connector, product, icp) -> dict:
             "status": result["status"],
             "audience": "DIRECT" if confirmed else "PENDING_REVIEW",
             "cached_semantic": verdict.get("verdict") or verdict.get("status"),
+            "cached_semantic_direct_fit": verdict.get("direct_fit") is True,
+            "prior_fit_reason": original_fit.get("reason"),
+            "manual_confirmation": manual_confirmation,
+            "manual_model_disagreement": bool(
+                manual_confirmation
+                and verdict.get("status") == "CACHED"
+                and verdict.get("verdict") != "DIRECT"
+            ),
             "research_latest_post_url": result.get("research_latest_post_url"),
             "action_target_url": result.get("action_target_url"),
             "publisher_permission_verified": False,
