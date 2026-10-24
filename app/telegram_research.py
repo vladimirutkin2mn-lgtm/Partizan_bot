@@ -52,6 +52,8 @@ class TelegramRecentContext:
     source_text_chars: int | None = None
     text_truncated: bool = False
     linked_post_urls: tuple[str, ...] = ()
+    media_present: bool = False
+    media_kind: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -418,6 +420,11 @@ class TelethonTelegramResearchTransport:
                     text_truncated=len(text) > SAVED_TELEGRAM_POST_MAX_CHARS,
                     linked_post_urls=referenced_public_posts(
                         message, own_handle=username,
+                    ),
+                    media_present=getattr(message, "media", None) is not None,
+                    media_kind=(
+                        type(message.media).__name__[:80]
+                        if getattr(message, "media", None) is not None else None
                     ),
                 )
             )
