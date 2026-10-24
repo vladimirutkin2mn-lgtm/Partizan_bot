@@ -1,11 +1,7 @@
 name: Read-only FemDom 20 saved peers + 8 draft cap
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [main]
-    paths:
-      - .github/workflows/femdom-saved-peers-20-oneoff.yml
+  workflow_dispatch:
 
 
 permissions:
@@ -17,8 +13,8 @@ concurrency:
 
 jobs:
   review:
-    # Single PR research pilot; switch back to manual-only after success.
-    if: github.event.pull_request.number == 545
+    # Manual-only after completed bounded pilot. Never spend on PR pushes.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 20
