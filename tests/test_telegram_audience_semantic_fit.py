@@ -264,3 +264,32 @@ async def test_cache_only_rerun_never_spends_tokens_even_for_missing_outcome():
     )
     assert recovered["status"] == "CACHED"
     assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_long_native_post_preserves_late_audience_evidence_with_valid_bounded_json():
+    import json
+
+    store = MemoryRuntimeStateStore()
+    p, icp, meta = _product(), _icp(), _metadata()
+    meta["recent_context"][0]["text"] = (
+        "Объявление о встрече. " + "Общие сведения. " * 100
+        + " В конце указано: женское доминирование и специальные правила участников."
+    )
+    seen = []
+    async def fake(system, payload):
+        data = json.loads(payload)
+        seen.append(data)
+        assert "публикация" not in system.casefold() or "participants" in system
+        assert "женское доминирование" in data["telegram_community"]["example_messages"][0]
+        return AudienceFitJudgment(
+            verdict="DIRECT", confidence=0.9,
+            rationale="Community evidence confirms audience overlap",
+            evidence=["женское доминирование"],
+        )
+    result = await TelegramAudienceSemanticFit(
+        store, enabled=True, judge=fake
+    ).evaluate(product=p, icp=icp, handle="a_sfera", title="Атмосфера", metadata=meta)
+    assert result["status"] == "EVALUATED"
+    assert result["direct_fit"] is True
+    assert len(seen) == 1

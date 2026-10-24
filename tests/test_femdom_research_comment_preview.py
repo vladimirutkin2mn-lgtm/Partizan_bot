@@ -309,3 +309,72 @@ async def test_short_telegram_cta_still_gets_one_research_draft():
     assert len(calls) == 1
     assert result["action_sendable"] is False
     assert result["published"] is False
+
+
+@pytest.mark.asyncio
+async def test_verified_group_root_prepares_one_independent_draft_without_message_id():
+    store, product, now = _setup(kind="GROUP")
+    audience = store.get("audience_distribution_map", str(_PRODUCT))
+    metadata = audience["opportunities"][0]["metadata"]
+    metadata.update({
+        "action_target_mode": "STANDALONE_POST",
+        "action_target_url": "https://t.me/a_sfera",
+        "action_target_specific": False,
+        "actionability": "NEEDS_PREFLIGHT",
+        "about": "Группа для обсуждения тематических встреч и общения взрослых участников.",
+    })
+    metadata["surface_capabilities"]["standalone_post"] = "AVAILABLE"
+    # A group post is not a reply to /2117, even if a recent message exists.
+    store.put("audience_distribution_map", str(_PRODUCT), audience)
+    calls = []
+    async def judge(_system, prompt):
+        calls.append(json.loads(prompt))
+        return {
+            "topicality": "RELEVANT",
+            "reason": "The description confirms this is a social group.",
+            "language": "Russian",
+            "comment": "А здесь обычно знакомятся через обсуждения или встречи?",
+        }
+    result = await prepare_review(
+        store, product=product, handle="a_sfera", judge=judge, now=now
+    )
+    assert result["target_url"] == "https://t.me/a_sfera"
+    assert result["post_id"] == 0
+    assert result["surface"] == "STANDALONE_POST"
+    assert result["target_context_source"] == "verified_native_group_description"
+    assert calls[0]["selected_target"]["url"] == "https://t.me/a_sfera"
+    assert "2117" not in json.dumps(calls[0]["selected_target"])
+    assert result["published"] is False
+    assert result["action_sendable"] is False
+    assert store.list_namespace("distribution_action") == []
+
+
+@pytest.mark.asyncio
+async def test_group_root_requires_fresh_native_capability_and_never_calls_llm_on_stale_data():
+    for blocked in ("UNAVAILABLE", "MISSING_ROOT", "STALE"):
+        store, product, now = _setup(kind="GROUP")
+        audience = store.get("audience_distribution_map", str(_PRODUCT))
+        metadata = audience["opportunities"][0]["metadata"]
+        metadata.update({
+            "action_target_mode": "STANDALONE_POST",
+            "action_target_url": "https://t.me/a_sfera",
+            "action_target_specific": False,
+            "actionability": "NEEDS_PREFLIGHT",
+            "about": "Группа для тематического общения взрослых участников и обсуждений.",
+        })
+        metadata["surface_capabilities"]["standalone_post"] = "AVAILABLE"
+        if blocked == "UNAVAILABLE":
+            metadata["surface_capabilities"]["standalone_post"] = "UNAVAILABLE"
+        elif blocked == "MISSING_ROOT":
+            metadata["action_target_url"] = None
+        else:
+            metadata["research_last_native_checked_at"] = (
+                now - timedelta(hours=25)
+            ).isoformat()
+        store.put("audience_distribution_map", str(_PRODUCT), audience)
+        async def judge(_system, _payload):
+            raise AssertionError("The model should not run on unverified group access")
+        with pytest.raises(ValueError, match="Fresh verified group-root"):
+            await prepare_review(
+                store, product=product, handle="a_sfera", judge=judge, now=now
+            )
