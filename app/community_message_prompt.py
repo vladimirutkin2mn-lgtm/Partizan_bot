@@ -27,7 +27,8 @@ or a light challenge often beats a polite question. In a clearly
 adult, playful D/s community, PRIORITIZE a coy, teasing angle on
 power dynamics, anticipation, waiting, playful self-control, or a
 lightly imagined reaction by participants. Not only the event menu.
-This should feel like an in-group wink, not a detached event review. You may imagine a funny HYPOTHETICAL scene ("представляю,
+This should feel like an in-group wink, not a detached event review.
+You may imagine a funny HYPOTHETICAL scene ("представляю,
 как...") if readers plainly recognize it as playful fantasy, not an
 assertion about actual guests or participation rules. Never invent
 real event rules, other people's private desires or personal experience.
