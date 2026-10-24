@@ -93,8 +93,9 @@ def seed_missing_reviewed_opportunity(
         return {"status": "DUPLICATE_SAVED_OPPORTUNITIES", "matches": len(existing)}
     if existing:
         return {"status": "ALREADY_PRESENT", "matches": 1}
-    if icp_id not in {opp.icp_id for opp in mapping.opportunities}:
-        return {"status": "ICP_NOT_IN_SAVED_MAP"}
+    # icp_id comes from the current product's authoritative ICP service in the
+    # bounded caller. A historical map may reference an *older* ICP version,
+    # so membership in that legacy map is not a valid correctness test.
     stable_id = uuid5(NAMESPACE_URL, f"partizan:{product_id}:telegram:{entity_id}:operator-review")
     if store.get(_OPP_NS, str(stable_id)) is not None:
         return {"status": "OPPORTUNITY_ID_COLLISION"}
