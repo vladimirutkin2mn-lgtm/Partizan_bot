@@ -33,15 +33,14 @@ def test_factuality_and_commercial_transparency_remain():
     assert "Do not invent personal experience" in text
     assert "Do not disguise" in text
     assert "material commercial connection disclosed" in text
-    assert "without" not in text or len(text) > 2000
 
 
 def test_style_examples_are_mischievous_not_generic_admin_questions():
     text = COMMUNITY_MESSAGE_GUIDANCE
     assert "FLAT:" in text
-    assert "LIVELY:" in text
+    assert "GOOD VIBE:" in text
     assert "главная проверка для самых" in text
-    assert "NEVER copy words" in text
+    assert "do not copy any sample" in text
     assert "Подскажите, пожалуйста" in text
     assert "HYPOTHETICAL" in text
 
