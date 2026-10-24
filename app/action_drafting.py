@@ -39,6 +39,7 @@ from app.project_marketing_memory import (
 )
 from app.reddit_research import action_target_is_fresh
 from app.schemas import ProductProfileView
+from app.telegram_target_excerpt import compact_telegram_target
 from app.telegram_message_precheck import precheck_telegram_target
 
 
@@ -386,6 +387,7 @@ class DistributionActionComposer:
             # facts, community identity and the exact selected native target.
             product_data = product.model_dump(mode="json")
             community_metadata = getattr(opportunity, "metadata", {}) or {}
+            compacted = compact_telegram_target(target.context_text)
             user_context = json.dumps(
                 {
                     "product": {
@@ -407,8 +409,14 @@ class DistributionActionComposer:
                     "tactic": play.tactic_id,
                     "selected_native_target": {
                         "url": target.url,
-                        "text": target.context_text[:2400],
+                        "text": compacted.text,
                         "source": target.source,
+                        "excerpt": {
+                            "source_chars": compacted.source_chars,
+                            "included_chars": compacted.included_chars,
+                            "compacted": compacted.compacted,
+                            "strategy": compacted.strategy,
+                        },
                     },
                     "project_marketing_memory": (memory.rendered or "")[:700],
                     "applied_community_policy": (
