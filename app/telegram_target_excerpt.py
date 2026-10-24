@@ -11,7 +11,6 @@ import re
 from dataclasses import dataclass
 
 MAX_TARGET_CHARS = 1400
-_FULL_POST_THRESHOLD = 1500
 _MARK = "\n[...some parts of this SAME post omitted...]\n"
 _DETAIL = re.compile(
     r"(?iu)(?:\b\d+[\d\s]*[₽$€%]?\b|"
@@ -71,7 +70,8 @@ def compact_telegram_target(
     text = str(text or "").strip()
     if max_chars < 600:
         raise ValueError("Telegram target budget must be at least 600 chars")
-    if len(text) <= max(max_chars, _FULL_POST_THRESHOLD):
+    source_chars = len(text)
+    if source_chars <= max_chars:
         return TelegramTargetExcerpt(
             text, len(text), len(text), False, "FULL_SAVED_TEXT"
         )
@@ -90,6 +90,8 @@ def compact_telegram_target(
     for idx, unit in enumerate(_units(middle)):
         occurrences = _DETAIL.findall(unit)
         score = min(len(occurrences), 5) * 3 + bool(re.search(r"\d", unit))
+        if re.search(r"(?iu)(?:взнос|стоимост|цен[аы]|оплат|fee|price|\d+\s*[₽$€])", unit):
+            score += 8
         if score:
             ranked.append((-score, idx, unit))
     ranked.sort()
@@ -113,5 +115,5 @@ def compact_telegram_target(
     # The actual output always fits. Never pass an incomplete JSON fragment.
     result = result[:max_chars]
     return TelegramTargetExcerpt(
-        result, len(text), len(result), True, "OPENING_SALIENT_DETAILS_END"
+        result, source_chars, len(result), True, "OPENING_SALIENT_DETAILS_END"
     )
