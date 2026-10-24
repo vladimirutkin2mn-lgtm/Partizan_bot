@@ -99,7 +99,7 @@ jobs:
                   assert result["target_url"].startswith(f"https://t.me/{peer}/")
                   assert "variants" not in result
                   assert result["prompt_version"] == (
-                      "community_message_v10_coquettish_role_voice"
+                      "community_message_v11_adaptive_playful"
                   )
               print(json.dumps({
                   "status": result["status"],
