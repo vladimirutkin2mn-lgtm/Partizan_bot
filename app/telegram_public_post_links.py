@@ -9,7 +9,7 @@ import re
 from urllib.parse import urlsplit
 
 _LINK = re.compile(
-    r"(?i)(?<![\w.-])(?:https?://)?(?:t\.me|telegram\.me)"
+    r"(?i)(?<![\w.-])(?<!://)(?:https?://)?(?:t\.me|telegram\.me)"
     r"/[A-Za-z][A-Za-z0-9_]{4,31}/[0-9]+(?:\?[^\s)\]>]*)?"
 )
 _HANDLE = re.compile(r"[a-z][a-z0-9_]{4,31}")
