@@ -342,8 +342,9 @@ async def test_mixed_batch_reads_one_latest_per_confirmed_peer():
     refreshed = {c.metadata["handle"]: c for c in candidates}
     for handle in ("founders0", "founders2"):
         assert refreshed[handle].metadata["registry_refresh_status"] == "VERIFIED"
-        assert refreshed[handle].metadata["action_target_url"] == f"https://t.me/{handle}/501"
-        assert refreshed[handle].metadata["action_target_specific"] is True
+        assert refreshed[handle].metadata["action_target_url"] == f"https://t.me/{handle}"
+        assert refreshed[handle].metadata["action_target_specific"] is False
+        assert refreshed[handle].metadata["action_target_mode"] == "STANDALONE_POST"
         assert refreshed[handle].metadata["actionability"] == "NEEDS_PREFLIGHT"
     assert refreshed["founders1"].metadata["registry_refresh_status"] == "VERIFIED"
     cursor = store.get("telegram_registered_native_refresh_cursor", str(product.id))

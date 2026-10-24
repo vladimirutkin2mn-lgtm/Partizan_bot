@@ -109,6 +109,31 @@ class ActionTargetSelector:
         if play.action_type == DistributionActionType.STANDALONE_POST:
             if opportunity.url is None:
                 raise ValueError("Standalone post requires a concrete community Opportunity URL")
+            if opportunity.platform == DistributionPlatform.TELEGRAM:
+                metadata = opportunity.metadata or {}
+                if (
+                    metadata.get("native_research_status") != "VERIFIED"
+                    or metadata.get("community_fit_pass") is not True
+                    or metadata.get("action_target_mode") != "STANDALONE_POST"
+                    or (metadata.get("surface_capabilities") or {}).get(
+                        "standalone_post"
+                    ) != "AVAILABLE"
+                ):
+                    raise ValueError(
+                        "Telegram group standalone draft needs verified audience and group surface"
+                    )
+                target_url = str(metadata.get("action_target_url") or "")
+                community_url = str(opportunity.url).rstrip("/")
+                if target_url.rstrip("/") != community_url:
+                    raise ValueError("Telegram standalone target must be the exact group URL")
+                context = "Telegram group: " + str(opportunity.title or "")
+                about = str(metadata.get("about") or "").strip()
+                if about:
+                    context += "\nGroup description: " + about[:1000]
+                return SelectedActionTarget(
+                    url=target_url, context_text=context,
+                    source="telegram_native.group_description",
+                )
             return SelectedActionTarget(
                 url=str(opportunity.url),
                 context_text=self._opportunity_context(opportunity),
@@ -377,7 +402,9 @@ class DistributionActionComposer:
             + COMMUNITY_MESSAGE_GUIDANCE
             if opportunity.platform == DistributionPlatform.TELEGRAM
             and play.action_type in {
-                DistributionActionType.COMMENT, DistributionActionType.REPLY
+                DistributionActionType.COMMENT,
+                DistributionActionType.REPLY,
+                DistributionActionType.STANDALONE_POST,
             }
             else ""
         )
@@ -407,6 +434,7 @@ class DistributionActionComposer:
                     "platform": opportunity.platform.value,
                     "action_type": play.action_type.value,
                     "tactic": play.tactic_id,
+                    "target_mode": str(community_metadata.get("action_target_mode") or ""),
                     "selected_native_target": {
                         "url": target.url,
                         "text": compacted.text,

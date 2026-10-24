@@ -79,6 +79,18 @@ def _actionable_latest(
         if mode != "CHANNEL_COMMENT" or caps.get("comment") != "AVAILABLE":
             return False
     elif kind == OpportunityKind.GROUP:
+        if mode == "STANDALONE_POST":
+            # For active group chats, a message is addressed to the group,
+            # not to whichever member happened to write the last message.
+            checked = _utc(metadata.get("source_checked_at"))
+            url = str(metadata.get("action_target_url") or "").rstrip("/")
+            return bool(
+                caps.get("standalone_post") == "AVAILABLE"
+                and url == f"https://t.me/{handle}"
+                and metadata.get("action_target_specific") is False
+                and checked is not None
+                and timedelta(0) <= now - checked <= _MAX_NATIVE_CHECK_AGE
+            )
         if mode != "GROUP_REPLY" or caps.get("reply") != "AVAILABLE":
             return False
     else:
@@ -182,7 +194,9 @@ def sync_verified_telegram_opportunity(
     can_act = _actionable_latest(observed, handle, candidate_kind, timestamp)
     if can_act:
         new["action_target_url"] = str(observed["action_target_url"])
-        new["action_target_specific"] = True
+        new["action_target_specific"] = (
+            str(observed.get("action_target_mode") or "") != "STANDALONE_POST"
+        )
         new["actionability"] = "NEEDS_PREFLIGHT"
         new["community_only_reason"] = None
     else:

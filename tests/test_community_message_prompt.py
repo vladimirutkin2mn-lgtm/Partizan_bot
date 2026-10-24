@@ -8,10 +8,12 @@ from app.community_message_prompt import (
 
 def test_one_grounded_review_only_reply_for_group_or_channel():
     text = COMMUNITY_MESSAGE_GUIDANCE
-    assert COMMUNITY_MESSAGE_PROMPT_VERSION == "community_message_v11_adaptive_playful"
+    assert COMMUNITY_MESSAGE_PROMPT_VERSION == "community_message_v12_group_conversation"
     assert "Write ONE comment" in text
     assert "CHANNEL_COMMENT" in text
     assert "GROUP_REPLY" in text
+    assert "STANDALONE_POST" in text
+    assert "start a group conversation" in text
     assert "language of the" in text
     assert "Never publish" in text
 

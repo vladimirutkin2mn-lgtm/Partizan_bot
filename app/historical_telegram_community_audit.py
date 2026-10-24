@@ -176,6 +176,14 @@ def _check_context(snapshot, *, anchors: set[str], now: datetime) -> dict:
             }
         )
     selected = select_telegram_participation_target(snapshot)
+    latest = max(
+        snapshot.recent_context,
+        key=lambda message: message.message_id,
+        default=None,
+    )
+    related_public_posts = list(
+        getattr(latest, "linked_post_urls", ()) or ()
+    ) if latest is not None else []
     target = next((item for item in fresh if item["url"] == selected.target_url), None)
     return {
         "status": "INSPECTED",
@@ -187,6 +195,7 @@ def _check_context(snapshot, *, anchors: set[str], now: datetime) -> dict:
         "fresh_posts": fresh,
         "selected_target_url": selected.target_url,
         "selected_target_mode": selected.mode.value if selected.mode else None,
+        "linked_public_post_leads": related_public_posts,
         "selected_target_is_fresh": target is not None,
         "selected_target_keyword_match": bool(target and target["keyword_match"]),
         "selected_target_actionability": selected.actionability,

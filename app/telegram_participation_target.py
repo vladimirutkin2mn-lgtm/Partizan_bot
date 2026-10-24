@@ -62,8 +62,14 @@ def select_telegram_participation_target(
     snapshot: TelegramCommunitySnapshot,
     *,
     blocked_urls: set[str] | None = None,
+    prefer_contextual_reply: bool = False,
 ) -> TelegramParticipationTarget:
-    """Choose the actual newest native message; never rescue an older message."""
+    """Default to native group conversation; only explicit replies need a message ID.
+
+    Channels still target the exact latest post. Groups can be joined and
+    addressed directly without fabricating a reply to the most recent chat
+    message. Opt in to replies only when conversation context warrants one.
+    """
     blocked = {_normalize_url(value) for value in (blocked_urls or set()) if value}
     # Telegram message IDs are monotonic within one peer. A post without a
     # publication date (e.g. a media post) is still the newest if its ID is highest.
@@ -110,6 +116,17 @@ def select_telegram_participation_target(
         )
 
     if snapshot.kind == TelegramSurfaceKind.GROUP:
+        if (
+            snapshot.standalone_post_surface == SurfaceAvailability.AVAILABLE
+            and not prefer_contextual_reply
+        ):
+            return TelegramParticipationTarget(
+                mode=TelegramParticipationMode.STANDALONE_POST,
+                target_url=snapshot.url,
+                target_specific=False,
+                resolution="COMMUNITY_STANDALONE_POST",
+                actionability="NEEDS_PREFLIGHT",
+            )
         if snapshot.reply_surface == SurfaceAvailability.AVAILABLE and latest_usable:
             return TelegramParticipationTarget(
                 mode=TelegramParticipationMode.GROUP_REPLY,

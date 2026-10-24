@@ -112,7 +112,7 @@ def test_channel_does_not_fall_back_if_latest_post_has_no_url() -> None:
     assert target.reason == "LATEST_POST_URL_UNKNOWN"
 
 
-def test_group_prefers_reply_when_recent_message_exists() -> None:
+def test_group_prefers_standalone_message_even_with_recent_messages() -> None:
     snapshot = _snapshot(
         kind=TelegramSurfaceKind.GROUP,
         reply=SurfaceAvailability.AVAILABLE,
@@ -122,6 +122,22 @@ def test_group_prefers_reply_when_recent_message_exists() -> None:
 
     target = select_telegram_participation_target(snapshot)
 
+    assert target.mode == TelegramParticipationMode.STANDALONE_POST
+    assert target.target_url == "https://t.me/community"
+    assert target.target_specific is False
+    assert target.actionability == "NEEDS_PREFLIGHT"
+
+
+def test_group_can_explicitly_select_contextual_reply_when_requested() -> None:
+    snapshot = _snapshot(
+        kind=TelegramSurfaceKind.GROUP,
+        reply=SurfaceAvailability.AVAILABLE,
+        standalone=SurfaceAvailability.AVAILABLE,
+        recent_context=(_context(25),),
+    )
+    target = select_telegram_participation_target(
+        snapshot, prefer_contextual_reply=True,
+    )
     assert target.mode == TelegramParticipationMode.GROUP_REPLY
     assert target.target_url == "https://t.me/community/25"
     assert target.target_specific is True
@@ -294,3 +310,30 @@ def test_live_sync_preserves_standalone_post_action_kind(monkeypatch) -> None:
     assert rows[0]["kind"] == "STANDALONE_POST"
     assert rows[0]["url"] == "https://t.me/community"
     assert rows[0]["metadata"]["action_target_mode"] == "STANDALONE_POST"
+
+
+@pytest.mark.asyncio
+async def test_visible_group_surface_stays_join_required_until_account_joins():
+    class UserNotParticipantError(Exception):
+        pass
+
+    class NotJoined(FakeGroupClient):
+        async def __call__(self, request):
+            del request
+            raise UserNotParticipantError("Not yet a participant")
+
+    client = NotJoined()
+    service = TelegramOpportunityPreflightService(
+        session_provider=lambda project_id: "session",
+        client_factory=lambda session: client,
+        restriction_checker=lambda project_id, handle: None,
+    )
+    result = await service.check_target(
+        uuid4(),
+        "https://t.me/community",
+        TelegramParticipationMode.STANDALONE_POST.value,
+    )
+    assert result.status == "JOIN_REQUIRED"
+    assert result.reason == "USER_NOT_PARTICIPANT"
+    assert result.action_target_mode == "STANDALONE_POST"
+    assert client.connected is False

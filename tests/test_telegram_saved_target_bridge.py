@@ -164,3 +164,37 @@ def test_latest_message_mismatch_cannot_promote_older_post():
     result = sync_verified_telegram_opportunity(store, pid, candidate, now=now)
     assert result["action_target_url"] is None
     assert result["research_latest_post_url"] == "https://t.me/a_sfera/2116"
+
+
+
+def test_verified_group_can_target_community_without_reply_to_last_message():
+    now = datetime.now(UTC)
+    store = MemoryRuntimeStateStore()
+    pid, old = _seed(store, handle="a_sfera")
+    candidate = _candidate(now)
+    candidate.kind = OpportunityKind.GROUP
+    candidate.metadata.update({
+        "action_target_mode": "STANDALONE_POST",
+        "action_target_specific": False,
+        "action_target_url": "https://t.me/a_sfera",
+        "surface_capabilities": {
+            "comment": "UNKNOWN", "reply": "AVAILABLE",
+            "standalone_post": "AVAILABLE",
+            "publisher_permission_verified": False,
+        },
+    })
+    result = sync_verified_telegram_opportunity(store, pid, candidate, now=now)
+    assert result["status"] == "SAVED_TARGET_SYNCED"
+    assert result["action_target_url"] == "https://t.me/a_sfera"
+    assert result["publisher_permission_verified"] is False
+    saved = _saved(store, pid)
+    assert saved.id == old[0].id
+    assert saved.kind == OpportunityKind.GROUP
+    assert saved.metadata["action_target_mode"] == "STANDALONE_POST"
+    assert saved.metadata["action_target_specific"] is False
+    assert saved.metadata["actionability"] == "NEEDS_PREFLIGHT"
+
+    candidate.metadata["surface_capabilities"]["standalone_post"] = "UNAVAILABLE"
+    blocked = sync_verified_telegram_opportunity(store, pid, candidate, now=now)
+    assert blocked["action_target_url"] is None
+    assert blocked["actionability"] == "RESEARCH_ONLY"
