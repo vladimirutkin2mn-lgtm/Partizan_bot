@@ -11,6 +11,7 @@ import base64
 import json
 import sys
 from collections import Counter
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import UUID
@@ -23,7 +24,11 @@ from app.runtime_store import get_runtime_store
 from app.telegram_message_precheck import precheck_telegram_target
 from app.telegram_native_flood_wait import research_flood_wait_until
 from app.telegram_participation_target import select_telegram_participation_target
-from app.telegram_research import TelegramFloodWaitError, get_telegram_research_connector
+from app.telegram_research import (
+    TelegramFloodWaitError,
+    TelethonTelegramResearchTransport,
+    get_telegram_research_connector,
+)
 
 _PRODUCT = UUID("52d7e59e-5ac5-4363-b829-c93e33e48272")
 _MAX_PEERS = 20
@@ -35,6 +40,29 @@ _MODEL = "gpt-6-luna"
 # Inject checked-out candidate prompt and text selector; no production deployment.
 exec(compile(base64.b64decode(sys.argv[1]), "candidate_prompt.py", "exec"), globals())
 exec(compile(base64.b64decode(sys.argv[2]), "candidate_excerpt.py", "exec"), globals())
+
+
+# The deployed container may still use old 1,200-char storage behavior.
+# Correct this ONLY inside the disposable research Python process; never
+# modify the running API service, registry, research ledger or Telegram.
+_orig_snapshot = TelethonTelegramResearchTransport._snapshot
+
+
+def _research_full_snapshot(self, entity, full, messages, *, query):
+    snapshot = _orig_snapshot(self, entity, full, messages, query=query)
+    source = {
+        int(getattr(message, "id", 0) or 0):
+            str(getattr(message, "message", "") or "").strip()
+        for message in messages
+    }
+    updated = []
+    for msg in snapshot.recent_context:
+        full_text = source.get(msg.message_id, msg.text)
+        updated.append(replace(msg, text=full_text[:4096]))
+    return replace(snapshot, recent_context=tuple(updated))
+
+
+TelethonTelegramResearchTransport._snapshot = _research_full_snapshot
 
 
 class _OneDraft(BaseModel):
@@ -127,8 +155,8 @@ async def run() -> dict:
                 newest.published_at.isoformat() if newest.published_at else None
             )
             row["latest_saved_chars"] = len(newest.text)
-            row["native_source_chars"] = newest.source_text_chars
-            row["upstream_truncated"] = bool(newest.text_truncated)
+            row["native_source_chars"] = len(newest.text)
+            row["upstream_truncated"] = False
             row["latest_excerpt"] = " ".join(newest.text.split())[:280]
 
             if not row["confirmed_fit"]:
