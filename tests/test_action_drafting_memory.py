@@ -249,6 +249,10 @@ async def test_telegram_composer_does_not_feed_old_community_posts_to_llm():
     opportunity = SimpleNamespace(
         platform=DistributionPlatform.TELEGRAM,
         title="An events community",
+        metadata={
+            "about": "An informal local event discussion with regulars",
+            "community_fit_reason": "Target audience attends small workshops",
+        },
         model_dump=lambda mode="json": {
             "title": "An events community",
             "recent_context": [
@@ -272,6 +276,12 @@ async def test_telegram_composer_does_not_feed_old_community_posts_to_llm():
         "Сегодня обсуждаем расписание открытой встречи."
     )
     assert data["community_title"] == "An events community"
+    assert data["community_about"] == (
+        "An informal local event discussion with regulars"
+    )
+    assert data["audience_fit_hint"] == (
+        "Target audience attends small workshops"
+    )
     assert "old unrelated message" not in provider.messages[1].content
     assert "Huge old unrelated project brief" not in provider.messages[1].content
     assert len(provider.messages) == 2
