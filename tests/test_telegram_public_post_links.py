@@ -7,9 +7,6 @@ from app.platform_discovery import TelegramDiscoveryAdapter
 from app.telegram_public_post_links import referenced_public_posts
 from app.telegram_research import (
     SurfaceAvailability,
-    TelegramCommunitySnapshot,
-    TelegramRecentContext,
-    TelegramSurfaceKind,
     TelethonTelegramResearchTransport,
 )
 
