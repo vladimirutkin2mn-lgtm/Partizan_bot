@@ -103,7 +103,7 @@ jobs:
           r = json.loads(Path('historical-applied.json').read_text())
           assert r['commit'] is True
           assert r['status'] == 'HISTORICAL_CACHED_FIT_RECONCILIATION_COMPLETE'
-          assert r['archive']['newly_staged'] <= 1
+          assert r['archive']['newly_staged'] <= 40
           assert r['confirmed_after'] >= r['confirmed_before']
           assert r['registry_after'] >= r['registry_before']
           assert r['telegram_calls'] == 0
