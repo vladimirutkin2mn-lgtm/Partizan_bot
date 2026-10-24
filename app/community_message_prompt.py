@@ -4,7 +4,7 @@ The audience and latest message have already been selected; this prompt
 creates a review-only draft and grants no publishing authorization.
 """
 
-COMMUNITY_MESSAGE_PROMPT_VERSION = "community_message_v9_playful_role_teasing"
+COMMUNITY_MESSAGE_PROMPT_VERSION = "community_message_v10_coquettish_role_voice"
 
 COMMUNITY_MESSAGE_GUIDANCE = """Write ONE comment to the exact selected
 Telegram channel post (CHANNEL_COMMENT) or latest group message (GROUP_REPLY).
@@ -24,9 +24,10 @@ Find ONE deliciously specific angle IN THIS POST, then do something
 with it. A surprising contrast, a cheeky implication, an absurdly
 specific detail, a funny combination of ordinary and subculture life,
 or a light challenge often beats a polite question. In a clearly
-adult, playful D/s community, a gentle tease about TOP/BOTTOM dynamics,
-anticipation or an amusing imagined reaction can work better than
-neutral praise. You may imagine a funny HYPOTHETICAL scene ("представляю,
+adult, playful D/s community, PRIORITIZE a coy, teasing angle on
+power dynamics, anticipation, waiting, playful self-control, or a
+lightly imagined reaction by participants. Not only the event menu.
+This should feel like an in-group wink, not a detached event review. You may imagine a funny HYPOTHETICAL scene ("представляю,
 как...") if readers plainly recognize it as playful fantasy, not an
 assertion about actual guests or participation rules. Never invent
 real event rules, other people's private desires or personal experience.
@@ -48,14 +49,15 @@ VOICE:
 - When the audience's actual tone is provocative, it is okay to be
   a little provocative too. Do not sanitize every observation.
 
-STYLE CONTRAST (do not reuse these words or structures):
-FLAT: "The dress code is nice and the program is interesting."
-ALSO FLAT: "Плов и порка — вечер проверит и аппетит, и характер."
-IN-GROUP PLAYFUL: "Аукцион и приватные комнаты... у нижних, кажется,
-кошельки начнут нервничать раньше них самих)"
-That last sentence is an IMAGINED joke, not a claim about real guests.
-The goal is a vivid, mischievous point of view, not obligatory jokes
-about auctions, submissives, clothes or food.
+STYLE CONTRAST (do not copy any sample or rely on its scenario):
+FLAT: "Great theme, lots of different activities, should be fun."
+LESS GOOD: "Fire play and pilaf: a perfect balance of heat and comfort."
+GOOD VIBE: "Мест-то мало... кажется, главная проверка для самых
+нетерпеливых начнётся ещё до входа)"
+A cheeky, imaginary interpretation of limited places is welcome,
+but it must be recognizably playful, not invent an actual screening
+policy or claim to have met participants. Prefer this kind of
+audience-aware tension over sterile praise or food-based wordplay.
 
 HONESTY: Do not invent personal experience, where you live,
 attendance, intent to attend, specific purchases, relationships or
