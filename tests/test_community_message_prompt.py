@@ -8,7 +8,7 @@ from app.community_message_prompt import (
 
 def test_one_grounded_review_only_reply_for_group_or_channel():
     text = COMMUNITY_MESSAGE_GUIDANCE
-    assert COMMUNITY_MESSAGE_PROMPT_VERSION == "community_message_v10_coquettish_role_voice"
+    assert COMMUNITY_MESSAGE_PROMPT_VERSION == "community_message_v11_adaptive_playful"
     assert "Write ONE comment" in text
     assert "CHANNEL_COMMENT" in text
     assert "GROUP_REPLY" in text
@@ -38,12 +38,13 @@ def test_factuality_and_commercial_transparency_remain():
 def test_style_examples_are_mischievous_not_generic_admin_questions():
     text = COMMUNITY_MESSAGE_GUIDANCE
     assert "FLAT:" in text
-    assert "GOOD VIBE:" in text
-    assert "главная проверка для самых" in text
-    assert "do not copy any sample" in text
+    assert "PLAYFUL CONTRAST:" in text
+    assert "PLAYFUL TEASE:" in text
+    assert "Мест-то мало" in text
+    assert "NOT templates" in text
     assert "Подскажите, пожалуйста" in text
     assert "HYPOTHETICAL" in text
 
 
 def test_prompt_remains_compact_for_single_call():
-    assert len(COMMUNITY_MESSAGE_GUIDANCE) < 3800
+    assert len(COMMUNITY_MESSAGE_GUIDANCE) < 4100
