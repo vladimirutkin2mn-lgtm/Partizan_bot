@@ -15,8 +15,8 @@ from uuid import UUID
 from app.community_first_telegram_adapter import CommunityFirstTelegramDiscoveryAdapter
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
 from app.distribution_types import DistributionPlatform, OpportunityKind
-from app.icp_service import icp_service
 from app.femdom_review_map_repair import seed_missing_reviewed_opportunity
+from app.icp_service import icp_service
 from app.platform_discovery import PlatformCandidate
 from app.product_intake import product_intake_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
