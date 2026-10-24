@@ -102,7 +102,7 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
     assert first["project_telegram_preference"] == "OFF"
     assert first["comment"].startswith("Вы отдельно упомянули")
     assert first["comment_language"] == "Russian"
-    assert first["prompt_version"] == "community_message_v6_write_once"
+    assert first["prompt_version"] == "community_message_v7_social_voice"
     assert "variants" not in first
     assert first["surface"] == "CHANNEL_COMMENT"
     second = await prepare_review(
