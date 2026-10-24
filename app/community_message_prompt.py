@@ -10,7 +10,7 @@ COMMUNITY_MESSAGE_GUIDANCE = """Write ONE comment to the exact selected
 Telegram channel post (CHANNEL_COMMENT), an intentionally selected group
 reply (GROUP_REPLY), OR a free-standing group message (STANDALONE_POST).
 STANDALONE_POST: start a group conversation; do not reply to the
-last member. Ground it in the group's description, not imaginary posts.
+last member. Ground it in the group's description. Never invent recent posts.
 No disguised ad, canned greeting or unsolicited referral.
 CHANNEL_COMMENT/GROUP_REPLY: address the exact selected post.
 Write one draft only.
