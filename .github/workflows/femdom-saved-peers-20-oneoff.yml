@@ -59,8 +59,9 @@ jobs:
           # No repository mutation or deploy; Telegram join/send unavailable.
           PROMPT_B64=$(base64 -w0 app/community_message_prompt.py)
           EXCERPT_B64=$(base64 -w0 app/telegram_target_excerpt.py)
+          PRECHECK_B64=$(base64 -w0 app/telegram_message_precheck.py)
           ssh -o BatchMode=yes "${DEPLOY_HOST}" \
-            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python - '${PROMPT_B64}' '${EXCERPT_B64}'" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python - '${PROMPT_B64}' '${EXCERPT_B64}' '${PRECHECK_B64}'" \
             < tools/femdom_saved_peers_20_read_only.py > saved-femdom-20-peer-review.json
           python - <<'PY'
           import json
