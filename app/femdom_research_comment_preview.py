@@ -28,8 +28,8 @@ from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.openai_usage import capture_openai_usage_rows, log_openai_usage
 from app.product_intake import product_intake_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
-from app.telegram_target_excerpt import compact_telegram_target
 from app.telegram_message_precheck import precheck_telegram_target
+from app.telegram_target_excerpt import compact_telegram_target
 
 _REVIEW_NAMESPACE = "femdom_telegram_comment_research_preview_v1"
 _PROJECT_NAMESPACE = "customer_acquisition_projects"
