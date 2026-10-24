@@ -9,7 +9,7 @@ import pytest
 from app.audience_intelligence_service import InMemoryAudienceIntelligenceService
 from app.distribution_schemas import AudienceDistributionMapView, DistributionOpportunityView
 from app.distribution_types import DistributionPlatform, OpportunityKind
-from app.femdom_latest_target_reconcile import _PRODUCT, _PROJECT, run
+from app.femdom_latest_target_reconcile import _HANDLES, _PRODUCT, _PROJECT, run
 from app.runtime_store import MemoryRuntimeStateStore
 from app.telegram_community_registry import TelegramCommunityRegistry
 from app.telegram_research import (
@@ -33,7 +33,7 @@ class LatestOnlyConnector:
                 handle=handle,
                 status="VERIFIED",
                 snapshot=TelegramCommunitySnapshot(
-                    entity_id=12000 + index,
+                    entity_id=12000 + _HANDLES.index(handle),
                     username=handle, title=f"BDSM communities {handle}",
                     kind=TelegramSurfaceKind.CHANNEL,
                     url=f"https://t.me/{handle}",
@@ -41,10 +41,10 @@ class LatestOnlyConnector:
                     comment_surface=SurfaceAvailability.AVAILABLE,
                     source_checked_at=now,
                     recent_context=(TelegramRecentContext(
-                        message_id=200+index,
+                        message_id=200+_HANDLES.index(handle),
                         text="Рекламный пост: БДСМ встреча",
                         published_at=now-timedelta(minutes=10),
-                        url=f"https://t.me/{handle}/{200+index}",
+                        url=f"https://t.me/{handle}/{200+_HANDLES.index(handle)}",
                     ),),
                 ),
             )
@@ -61,7 +61,7 @@ class LatestOnlyConnector:
 @pytest.mark.asyncio
 async def test_oneoff_preserves_exact_research_urls_but_not_unconfirmed_action_targets():
     store = MemoryRuntimeStateStore()
-    handles = ("a_sfera", "play_hard_community")
+    handles = _HANDLES
     project = {
         "id": str(_PROJECT), "product_id": str(_PRODUCT),
         "channel_preferences": {"TELEGRAM": "OFF"},
@@ -79,7 +79,7 @@ async def test_oneoff_preserves_exact_research_urls_but_not_unconfirmed_action_t
     ]
     store.put("audience_distribution_map", str(_PRODUCT), AudienceDistributionMapView(
         product_id=_PRODUCT, top_icp_count=1,
-        opportunity_count=2, opportunities=existing,
+        opportunity_count=len(existing), opportunities=existing,
     ).model_dump(mode="json"))
     registry = TelegramCommunityRegistry(store)
     for handle in handles:
@@ -102,13 +102,15 @@ async def test_oneoff_preserves_exact_research_urls_but_not_unconfirmed_action_t
     connector = LatestOnlyConnector()
     output = await run(store=store, connector=connector, product=product, icp=icp)
     assert output["status"] == "FEMDOM_LATEST_ONLY_RECONCILIATION_COMPLETE"
-    assert connector.calls == [list(handles)]
+    assert connector.calls == [
+        list(handles[0:3]), list(handles[3:6]), list(handles[6:8])
+    ]
     assert output["llm_new_calls"] == 0
     assert output["telegram_messages_sent"] == 0
     assert output["channel_toggle_changes"] == 0
     checked = [item for item in output["communities"] if item["handle"] in handles]
     missing = [item for item in output["communities"] if item["handle"] not in handles]
-    assert len(missing) == 6
+    assert len(missing) == 0
     assert all(item["status"] == "MISSING_REGISTRY" for item in missing)
     assert all(item["post_read_count"] == 1 for item in checked)
     assert all(item["action_target_url"] is None for item in output["communities"])
