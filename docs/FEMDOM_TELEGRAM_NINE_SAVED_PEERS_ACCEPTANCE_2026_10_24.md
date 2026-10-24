@@ -42,3 +42,14 @@ Not validated: 10–15 reviewable drafts or 3–5 publishable candidates (the cu
 4. Only then run a capped one-draft-per-latest-post v11 cohort and show the user texts with exact post links, before any explicit publish approval.
 
 **Experiment safety:** Workflow `.github/workflows/femdom-saved-peers-20-oneoff.yml` was changed to **manual dispatch only** after this completed run. Historical research report contains only public-target diagnostics and is not posting authorization.
+
+## Cached semantic fit: why three direct audiences are still in the unconfirmed pool
+
+[Cache-only semantic pilot run 40099190034](https://github.com/vladimirutkin2mn-lgtm/Partizan_bot/actions/runs/40099190034) found **8/9 matching cached model judgments**, of which **four** were `DIRECT`, two `ADJACENT` and two `UNRELATED`. There was one cache miss. It made **zero new model calls**.
+
+[Cache-integrity audit run 40099340243](https://github.com/vladimirutkin2mn-lgtm/Partizan_bot/actions/runs/40099340243) verified that **four** cached records have `direct_fit=true`, an up-to-date 60-day TTL, and a fingerprint matching the current product/ICP/community title and description. Only **one of those four**, `fem_tut`, has `audience_fit.confirmed=true` in the canonical registry. The other three are `findom_gospoja0`, `moscowellebdsm1`, and `poiskrabovirabin`. The mismatch is not merely a loose model verdict: all three have previously validated direct-fit evidence and are awaiting reconciliation with the canonical registry. The safe remediation is to reuse this cache during a fresh one-message-only registry refresh, not to grant reply authorization without the current surface/age checks.
+
+`a_sfera` has a valid cached **ADJACENT** verdict (0.95 confidence), rather than DIRECT. That is a **product policy decision**, not a missing cache or broken LLM response. It may be worth a user-review-only style test, but broad BDSM adjacency must not be silently promoted to publisher-ready.
+
+Both cache workflows were returned to **manual-only** after completion. No new LLM charges, Telegram reads or registry writes were performed by the cache probes.
+
