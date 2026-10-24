@@ -1,0 +1,95 @@
+name: Read-only FemDom 20 saved peers + 8 draft cap
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+    paths:
+      - .github/workflows/femdom-saved-peers-20-oneoff.yml
+
+
+permissions:
+  contents: read
+
+concurrency:
+  group: femdom-saved-peers-20-reviewed-oneoff-pr545
+  cancel-in-progress: false
+
+jobs:
+  review:
+    # Single PR research pilot; switch back to manual-only after success.
+    if: github.event.pull_request.number == 545
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check production research-only connection
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing research connection ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Verify pinned production host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Inspect up to 20 previously found communities and draft only where suitable
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          # Pass reviewed sources to a separate read-only Python process.
+          # No repository mutation or deploy; Telegram join/send unavailable.
+          PROMPT_B64=$(base64 -w0 app/community_message_prompt.py)
+          EXCERPT_B64=$(base64 -w0 app/telegram_target_excerpt.py)
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python - '${PROMPT_B64}' '${EXCERPT_B64}'" \
+            < tools/femdom_saved_peers_20_read_only.py > saved-femdom-20-peer-review.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("saved-femdom-20-peer-review.json").read_text())
+          assert report["status"] in {
+              "READ_ONLY_REPLAY", "FLOOD_WAIT_ACTIVE", "HALTED_FLOOD_WAIT",
+              "RESEARCH_CONNECTOR_UNAVAILABLE",
+          }
+          assert report["selected_communities"] <= 20
+          assert report["model_calls"] <= 8
+          assert report["telegram_join_calls"] == 0
+          assert report["telegram_send_calls"] == 0
+          assert report["telegram_search_calls"] == 0
+          assert report["state_writes"] == 0
+          assert report["posting_authorization"] is False
+          print(json.dumps({
+              "status": report["status"],
+              "inventory": report.get("inventory", {}),
+              "summary": report.get("summary", {}),
+              "model_calls": report["model_calls"],
+              "model_input_tokens": report["model_input_tokens"],
+              "model_output_tokens": report["model_output_tokens"],
+          }, ensure_ascii=False, sort_keys=True))
+          PY
+      - name: Preserve private human-review trace
+        uses: actions/upload-artifact@v4
+        with:
+          name: femdom-20-peer-readonly-PR545
+          path: saved-femdom-20-peer-review.json
+          retention-days: 4
+          if-no-files-found: error
