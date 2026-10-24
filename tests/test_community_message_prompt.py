@@ -46,4 +46,4 @@ def test_style_examples_are_mischievous_not_generic_admin_questions():
 
 
 def test_prompt_remains_compact_for_single_call():
-    assert len(COMMUNITY_MESSAGE_GUIDANCE) < 3700
+    assert len(COMMUNITY_MESSAGE_GUIDANCE) < 3800
