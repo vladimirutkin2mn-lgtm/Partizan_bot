@@ -28,6 +28,7 @@ from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.openai_usage import capture_openai_usage_rows, log_openai_usage
 from app.product_intake import product_intake_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.telegram_target_excerpt import compact_telegram_target
 from app.telegram_message_precheck import precheck_telegram_target
 
 _REVIEW_NAMESPACE = "femdom_telegram_comment_research_preview_v1"
@@ -145,8 +146,12 @@ def _read_candidate(
             source = "verified_native_latest_message"
     if len(excerpt) < 20:
         raise ValueError("Latest post lacks enough readable context for a grounded draft")
+    compacted = compact_telegram_target(excerpt)
     return {
-        "handle": handle, "target_url": target, "post_excerpt": excerpt[:2400],
+        "handle": handle, "target_url": target, "post_excerpt": compacted.text,
+        "post_source_chars": compacted.source_chars,
+        "post_compacted": compacted.compacted,
+        "post_excerpt_strategy": compacted.strategy,
         "context_source": source,
         "surface": surface,
         "post_id": int(match.group(2)),
@@ -215,6 +220,11 @@ async def prepare_review(
             "surface": candidate["surface"],
             "url": candidate["target_url"],
             "text": candidate["post_excerpt"],
+            "excerpt": {
+                "source_chars": candidate["post_source_chars"],
+                "compacted": candidate["post_compacted"],
+                "strategy": candidate["post_excerpt_strategy"],
+            },
         },
     }, ensure_ascii=False, separators=(",", ":"))
     # Do not truncate the completed JSON: selected_target is last and slicing
@@ -269,6 +279,9 @@ async def prepare_review(
         "comment_language": result.language,
         "target_context_source": candidate["context_source"],
         "target_context_chars": len(candidate["post_excerpt"]),
+        "target_saved_source_chars": candidate["post_source_chars"],
+        "target_compacted": candidate["post_compacted"],
+        "target_excerpt_strategy": candidate["post_excerpt_strategy"],
         "why_relevant": result.why_relevant,
         "prompt_version": COMMUNITY_MESSAGE_PROMPT_VERSION,
         "surface": candidate["surface"],
