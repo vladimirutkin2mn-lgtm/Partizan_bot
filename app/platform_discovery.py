@@ -8,6 +8,7 @@ from app.schemas import ICPView, ProductProfileView
 from app.search import DiscoveryQuery, SearchHit, SourceClass
 from app.telegram_research import (
     TelegramCommunitySnapshot,
+    TelegramRecentContext,
     TelegramResearchConnector,
     TelegramSurfaceKind,
     get_telegram_research_connector,
@@ -255,6 +256,15 @@ class TelegramDiscoveryAdapter(PlatformDiscoveryAdapter):
             "linked_discussion_id": snapshot.linked_discussion_id,
             "action_target_url": snapshot.action_target_url,
             "action_target_specific": snapshot.action_target_url is not None,
+            "linked_public_post_leads": list(
+                max(
+                    snapshot.recent_context,
+                    key=lambda message: message.message_id,
+                    default=TelegramRecentContext(
+                        message_id=0, text="", published_at=None, url=None,
+                    ),
+                ).linked_post_urls
+            ),
             "recent_context": [
                 {
                     "message_id": item.message_id,
@@ -268,6 +278,7 @@ class TelegramDiscoveryAdapter(PlatformDiscoveryAdapter):
                     "matched_terms": list(item.matched_terms),
                     "source_text_chars": item.source_text_chars,
                     "text_truncated": item.text_truncated,
+                    "linked_post_urls": list(item.linked_post_urls),
                 }
                 for item in snapshot.recent_context
             ],
