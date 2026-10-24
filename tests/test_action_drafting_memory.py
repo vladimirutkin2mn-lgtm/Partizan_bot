@@ -221,11 +221,11 @@ async def test_telegram_action_composer_uses_shared_native_language_one_message_
     )
     system = provider.messages[0].content
     assert COMMUNITY_MESSAGE_PROMPT_VERSION in system
-    assert "Generate exactly ONE message" in system
-    assert "LANGUAGE and register of the selected" in system
+    assert "Write ONE comment" in system
+    assert "language of the" in system
     assert "GROUP_REPLY" in system
     assert "CHANNEL_COMMENT" in system
-    assert "never publish" in system
+    assert "Never publish" in system
 
 
 @pytest.mark.asyncio
