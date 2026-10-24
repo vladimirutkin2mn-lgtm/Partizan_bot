@@ -64,7 +64,7 @@ jobs:
           done
           echo "::error::Production release not ready: skipping Telegram"
           exit 1
-      - name: Read exactly one newest post for two saved peers and persist research evidence
+      - name: Inspect one newest post per reviewed peer and reconcile research evidence
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
@@ -105,13 +105,13 @@ jobs:
               ],
           }, ensure_ascii=False))
           PY
-      - name: Prepare one unsendable draft per currently validated channel target
+      - name: Prepare at most one unsendable draft for each verified reviewed peer
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         shell: bash
         run: |
-          for peer in a_sfera play_hard_community; do
+          for peer in a_sfera play_hard_community bizarreclubmsk findom_gospoja0 poiskrabovirabin fem_tut moscowellebdsm1 bizarre_afisha; do
             ssh -o BatchMode=yes "${DEPLOY_HOST}" \
               "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
                 python -m app.femdom_research_comment_preview \
@@ -122,7 +122,9 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          for peer in ('a_sfera', 'play_hard_community'):
+          for peer in ('a_sfera', 'play_hard_community', 'bizarreclubmsk',
+                       'findom_gospoja0', 'poiskrabovirabin', 'fem_tut',
+                       'moscowellebdsm1', 'bizarre_afisha'):
               row = json.loads(Path(f'femdom-{peer}-research-draft.json').read_text())
               assert row['status'] in (
                   'AWAITING_HUMAN_CONTEXT_AND_POLICY_REVIEW',
