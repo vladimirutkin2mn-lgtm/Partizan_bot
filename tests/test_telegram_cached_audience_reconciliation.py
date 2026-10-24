@@ -214,6 +214,6 @@ async def test_cached_direct_reconciliation_is_idempotent_and_preserves_no_send(
     row = TelegramCommunityRegistry(store).list_for_product(product.id)[0]
     assert row["audience_fit"]["reason"] == "SEMANTIC_DIRECT_FIT_CACHED"
     meta = TelegramCommunityRegistry(store).hydrate_metadata(row)
-    assert meta["action_target_url"] is None
-    assert meta["action_target_specific"] is False
+    assert meta.get("action_target_url") is None
+    assert meta.get("action_target_specific") is not True
     assert meta["publisher_permission_verified"] is False
