@@ -39,8 +39,8 @@ from app.project_marketing_memory import (
 )
 from app.reddit_research import action_target_is_fresh
 from app.schemas import ProductProfileView
-from app.telegram_target_excerpt import compact_telegram_target
 from app.telegram_message_precheck import precheck_telegram_target
+from app.telegram_target_excerpt import compact_telegram_target
 
 
 class DistributionAutoPrepareRequest(BaseModel):
