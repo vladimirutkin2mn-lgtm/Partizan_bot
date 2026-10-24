@@ -106,9 +106,13 @@ async def test_oneoff_preserves_exact_research_urls_but_not_unconfirmed_action_t
     assert output["llm_new_calls"] == 0
     assert output["telegram_messages_sent"] == 0
     assert output["channel_toggle_changes"] == 0
-    assert all(item["post_read_count"] == 1 for item in output["communities"])
+    checked = [item for item in output["communities"] if item["handle"] in handles]
+    missing = [item for item in output["communities"] if item["handle"] not in handles]
+    assert len(missing) == 6
+    assert all(item["status"] == "MISSING_REGISTRY" for item in missing)
+    assert all(item["post_read_count"] == 1 for item in checked)
     assert all(item["action_target_url"] is None for item in output["communities"])
-    assert all(item["research_latest_post_url"] for item in output["communities"])
+    assert all(item["research_latest_post_url"] for item in checked)
     persisted = InMemoryAudienceIntelligenceService(store).get(_PRODUCT)
     assert {o.id for o in persisted.opportunities} == {o.id for o in existing}
     assert all(o.metadata["research_latest_post_url"] for o in persisted.opportunities)
