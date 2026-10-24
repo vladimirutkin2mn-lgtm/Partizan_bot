@@ -33,7 +33,7 @@ def _setup(*, stale=False, duplicate=False, handle="bizarreclubmsk"):
     ).model_dump(mode="json"))
     registry = TelegramCommunityRegistry(store)
     registry.upsert(
-        product_id=PRODUCT, canonical_key=f"telegram:234567:community",
+        product_id=PRODUCT, canonical_key="telegram:234567:community",
         title="Bizarre community", url=f"https://t.me/{handle}",
         kind="CHANNEL", metadata={
             "handle": handle, "telegram_entity_id": 234567,
