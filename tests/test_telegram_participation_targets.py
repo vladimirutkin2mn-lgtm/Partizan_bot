@@ -112,7 +112,7 @@ def test_channel_does_not_fall_back_if_latest_post_has_no_url() -> None:
     assert target.reason == "LATEST_POST_URL_UNKNOWN"
 
 
-def test_group_prefers_reply_when_recent_message_exists() -> None:
+def test_group_prefers_standalone_message_even_with_recent_messages() -> None:
     snapshot = _snapshot(
         kind=TelegramSurfaceKind.GROUP,
         reply=SurfaceAvailability.AVAILABLE,
@@ -122,6 +122,22 @@ def test_group_prefers_reply_when_recent_message_exists() -> None:
 
     target = select_telegram_participation_target(snapshot)
 
+    assert target.mode == TelegramParticipationMode.STANDALONE_POST
+    assert target.target_url == "https://t.me/community"
+    assert target.target_specific is False
+    assert target.actionability == "NEEDS_PREFLIGHT"
+
+
+def test_group_can_explicitly_select_contextual_reply_when_requested() -> None:
+    snapshot = _snapshot(
+        kind=TelegramSurfaceKind.GROUP,
+        reply=SurfaceAvailability.AVAILABLE,
+        standalone=SurfaceAvailability.AVAILABLE,
+        recent_context=(_context(25),),
+    )
+    target = select_telegram_participation_target(
+        snapshot, prefer_contextual_reply=True,
+    )
     assert target.mode == TelegramParticipationMode.GROUP_REPLY
     assert target.target_url == "https://t.me/community/25"
     assert target.target_specific is True
