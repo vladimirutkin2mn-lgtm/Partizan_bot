@@ -180,6 +180,18 @@ async def run(*, store: RuntimeStateStore, connector, product, icp) -> dict:
             "action_target_url": result.get("action_target_url"),
             "publisher_permission_verified": False,
             "post_read_count": len(snapshot.recent_context),
+            "latest_post_text_chars": (
+                len(snapshot.recent_context[0].text)
+                if snapshot.recent_context else 0
+            ),
+            "latest_post_media_present": (
+                snapshot.recent_context[0].media_present
+                if snapshot.recent_context else False
+            ),
+            "latest_post_media_kind": (
+                snapshot.recent_context[0].media_kind
+                if snapshot.recent_context else None
+            ),
         })
 
     return {
