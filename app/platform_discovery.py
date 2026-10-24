@@ -279,6 +279,8 @@ class TelegramDiscoveryAdapter(PlatformDiscoveryAdapter):
                     "source_text_chars": item.source_text_chars,
                     "text_truncated": item.text_truncated,
                     "linked_post_urls": list(item.linked_post_urls),
+                    "media_present": item.media_present,
+                    "media_kind": item.media_kind,
                 }
                 for item in snapshot.recent_context
             ],
