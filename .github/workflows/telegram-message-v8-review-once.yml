@@ -1,11 +1,7 @@
 name: One-shot v8 playful full-post research (no publish)
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [main]
-    paths:
-      - .github/workflows/telegram-message-v8-review-once.yml
+  workflow_dispatch:
 
 
 permissions:
@@ -17,8 +13,8 @@ concurrency:
 
 jobs:
   review:
-    # Exactly one research run, then revert to manual-only to avoid repeat calls.
-    if: github.event.pull_request.number == 545
+    # Manual-only after completed one-call research run. No repeat LLM spend on PR commits.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 9
