@@ -97,15 +97,21 @@ async def run(*, store: RuntimeStateStore, connector, product, icp) -> dict:
             })
             continue
         if snapshot.username.casefold() != handle:
-            report.append({"handle": handle, "status": "HANDLE_MISMATCH"})
+            report.append({"handle": handle, "status": "HANDLE_MISMATCH",
+                           "publisher_permission_verified": False,
+                           "post_read_count": len(snapshot.recent_context)})
             continue
         if len(snapshot.recent_context) > 1:
-            report.append({"handle": handle, "status": "LATEST_ONLY_POLICY_VIOLATED"})
+            report.append({"handle": handle, "status": "LATEST_ONLY_POLICY_VIOLATED",
+                           "publisher_permission_verified": False,
+                           "post_read_count": len(snapshot.recent_context)})
             continue
         original = by_handle[handle]
         previous_id = int(registry.hydrate_metadata(original).get("telegram_entity_id") or 0)
         if previous_id and previous_id != snapshot.entity_id:
-            report.append({"handle": handle, "status": "ENTITY_ID_MISMATCH"})
+            report.append({"handle": handle, "status": "ENTITY_ID_MISMATCH",
+                           "publisher_permission_verified": False,
+                           "post_read_count": len(snapshot.recent_context)})
             continue
 
         metadata = adapter._native_metadata(requests[0], snapshot)
