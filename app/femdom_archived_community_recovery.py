@@ -13,6 +13,10 @@ from pathlib import Path
 from uuid import UUID
 
 from app.community_first_telegram_adapter import CommunityFirstTelegramDiscoveryAdapter
+from app.customer_live_opportunities import (
+    CUSTOMER_LIVE_OPPORTUNITY_NAMESPACE,
+    CUSTOMER_PROJECT_NAMESPACE,
+)
 from app.icp_service import icp_service
 from app.product_intake import product_intake_service
 from app.runtime_store import RuntimeStateStore, get_runtime_store
@@ -27,6 +31,8 @@ FIXTURE = (
 )
 SOURCE = "ARCHIVED_REVIEWED_OPERATIONAL_OPPORTUNITY"
 MAX_ARCHIVED_POSTS = 20
+MAX_OPERATIONAL_ROWS = 250
+MAX_MISSING_COMMUNITIES = 40
 
 
 def _archived_public_communities(
@@ -59,6 +65,49 @@ def _archived_public_communities(
     return peers
 
 
+def _live_queue_public_communities(
+    store: RuntimeStateStore, product_id: UUID,
+) -> dict[str, dict[str, object]]:
+    """Previously persisted project-specific leads, never current availability.
+
+    The live queue can outlive older audience-map overwrites. Its project_id
+    supplies product provenance; expired posts are never carried forward as
+    targets or draft eligibility.
+    """
+    project_ids = {
+        str(row.get("id") or "")
+        for row in store.list_namespace(CUSTOMER_PROJECT_NAMESPACE)
+        if (
+            str(row.get("product_id") or "") == str(product_id)
+            and not row.get("deleted_at")
+        )
+    }
+    rows = [
+        row
+        for row in store.list_namespace(CUSTOMER_LIVE_OPPORTUNITY_NAMESPACE)
+        if str(row.get("project_id") or "") in project_ids
+        and str(row.get("platform") or "").upper() == "TELEGRAM"
+    ]
+    if len(rows) > MAX_OPERATIONAL_ROWS:
+        raise ValueError("Historical live queue exceeds bounded scan scope")
+    result: dict[str, dict[str, object]] = {}
+    for row in rows:
+        url, community = _telegram_target(row.get("url"))
+        if url is not None and community is not None:
+            handle = community.removeprefix("telegram:")
+        else:
+            handle = _public_handle(row.get("url"))
+        if not handle:
+            continue
+        item = result.setdefault(
+            handle, {"handle": handle, "source_post_urls": []}
+        )
+        urls = item["source_post_urls"]
+        if url and url not in urls and len(urls) < 5:
+            urls.append(url)
+    return result
+
+
 def restore_fixture(
     store: RuntimeStateStore,
     *,
@@ -74,7 +123,12 @@ def restore_fixture(
     if not isinstance(records, list):
         raise ValueError("Expected an array of archived opportunity records")
 
-    peers = _archived_public_communities(records)
+    archive_peers = _archived_public_communities(records)
+    queue_peers = _live_queue_public_communities(store, product_id)
+    peers = dict(archive_peers)
+    for handle, details in queue_peers.items():
+        if handle not in peers:
+            peers[handle] = details
     registry = TelegramCommunityRegistry(store)
     existing = {
         handle
@@ -83,6 +137,9 @@ def restore_fixture(
             registry.hydrate_metadata(entry).get("handle") or entry.get("url")
         ))
     }
+    missing = sorted(set(peers) - existing)
+    if len(missing) > MAX_MISSING_COMMUNITIES:
+        raise ValueError("Too many archived communities for one review-only backfill")
     output = []
     for handle, details in sorted(peers.items()):
         present = handle in existing
@@ -96,7 +153,7 @@ def restore_fixture(
                 kind="CHANNEL",
                 metadata={
                     "handle": handle,
-                    "source_type": SOURCE,
+                    "source_type": SOURCE if handle in archive_peers else "HISTORICAL_LIVE_QUEUE",
                     "native_research_status": "UNVERIFIED",
                     "registry_confirmed": False,
                     "community_fit_pass": False,
@@ -114,12 +171,16 @@ def restore_fixture(
             "handle": handle,
             "status": status,
             "archived_posts": len(details["source_post_urls"]),
+            "archived_fixture": handle in archive_peers,
+            "prior_live_queue": handle in queue_peers,
             "audience_confirmed_from_archive": False,
             "post_publishable_from_archive": False,
         })
     return {
         "mode": "COMMIT_RESEARCH_ONLY" if commit else "PREVIEW_ONLY",
-        "unique_archive_handles": len(peers),
+        "unique_archive_handles": len(archive_peers),
+        "unique_live_queue_handles": len(queue_peers),
+        "unique_combined_handles": len(peers),
         "newly_staged": sum(row["status"] == "STAGED" for row in output),
         "already_registered": sum(row["status"] == "EXISTING" for row in output),
         "would_stage": sum(row["status"] == "PREVIEW_ONLY" for row in output),
