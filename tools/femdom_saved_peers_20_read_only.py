@@ -13,11 +13,13 @@ import sys
 from collections import Counter
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from uuid import UUID
 
+from openai import OpenAI
 from pydantic import BaseModel, Field
 
+from app.config import get_settings
 from app.historical_telegram_community_audit import historical_communities
 from app.product_intake import product_intake_service
 from app.runtime_store import get_runtime_store
@@ -62,6 +64,15 @@ def _research_full_snapshot(self, entity, full, messages, *, query):
 
 
 TelethonTelegramResearchTransport._snapshot = _research_full_snapshot
+
+
+if TYPE_CHECKING:
+    from app.community_message_prompt import (
+        COMMUNITY_MESSAGE_GUIDANCE,
+        COMMUNITY_MESSAGE_PROMPT_VERSION,
+    )
+    from app.telegram_message_precheck import precheck_telegram_target
+    from app.telegram_target_excerpt import compact_telegram_target
 
 
 class _OneDraft(BaseModel):
@@ -176,8 +187,10 @@ async def run() -> dict:
 
             target = select_telegram_participation_target(snapshot)
             row["candidate_mode"] = target.mode.value if target.mode else None
-            if not target.target_specific or not target.target_url or not (
-                row["candidate_mode"] in {"CHANNEL_COMMENT", "GROUP_REPLY"}
+            if (
+                not target.target_specific
+                or not target.target_url
+                or row["candidate_mode"] not in {"CHANNEL_COMMENT", "GROUP_REPLY"}
             ):
                 row["reason"] = target.reason or "NO_REPLY_SURFACE"
                 continue
@@ -202,8 +215,6 @@ async def run() -> dict:
     # if the model emits a reply under a relevant, confirmed audience.
     product = product_intake_service.get_product(_PRODUCT)
     try:
-        from app.config import get_settings
-        from openai import OpenAI
         key = get_settings().openai_api_key
         client = OpenAI(api_key=key, timeout=35, max_retries=0) if key else None
     except Exception:
