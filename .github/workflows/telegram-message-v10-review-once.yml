@@ -1,11 +1,7 @@
 name: One-shot v10 cheeky Telegram review (no publish)
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [main]
-    paths:
-      - .github/workflows/telegram-message-v10-review-once.yml
+  workflow_dispatch:
 
 
 permissions:
@@ -17,8 +13,8 @@ concurrency:
 
 jobs:
   review:
-    # One cost-capped PR replay, then switch to manual-only.
-    if: github.event.pull_request.number == 545
+    # Manual-only after the bounded research. Never incur costs on PR pushes.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 9
