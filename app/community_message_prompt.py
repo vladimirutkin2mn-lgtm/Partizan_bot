@@ -14,7 +14,7 @@ distinctive, relevant hook in the VERIFIED group description. Give members
 a real reason to respond: a playful observation or natural conversation
 starter. No generic lectures on trust, boundaries, consent or verification;
 no awkward restatement of the group's name or imaginary chat events.
-No disguised ad, canned greeting, link, or invented personal experience.
+Never invent recent posts, events or participants. No disguised ad or links.
 CHANNEL_COMMENT/GROUP_REPLY: address the exact selected post.
 Write one draft only.
 
