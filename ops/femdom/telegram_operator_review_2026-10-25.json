@@ -1,0 +1,66 @@
+{
+  "product_id": "52d7e59e-5ac5-4363-b829-c93e33e48272",
+  "reviewed_on": "2026-10-25",
+  "provenance": "User manually opened Telegram posts and supplied individual corrections. Visual observation is not publisher account write authorization.",
+  "entries": [
+    {
+      "handle": "findom_gospoja0",
+      "post": "https://t.me/findom_gospoja0/512782",
+      "audience": "DIRECT",
+      "surface": "GROUP_STANDALONE",
+      "join_needed": "YES_FOR_CONNECTED_ACCOUNT",
+      "note": "Group supports writing independent messages; linked account had not joined. Screen post/content for non-consensual coercion and avoid publication."
+    },
+    {
+      "handle": "fem_tut",
+      "post": "https://t.me/fem_tut/75",
+      "audience": "DIRECT",
+      "surface": "NO_WRITE_AT_THIS_POST",
+      "note": "Right audience but user observed no place to write."
+    },
+    {
+      "handle": "moscowellebdsm1",
+      "post": "https://t.me/moscowellebdsm1/29",
+      "audience": "DIRECT",
+      "surface": "NO_WRITE_AT_THIS_POST",
+      "note": "Right audience but no available write surface."
+    },
+    {
+      "handle": "poiskrabovirabin",
+      "post": "https://t.me/poiskrabovirabin/2750657",
+      "audience": "DIRECT",
+      "surface": "GROUP_STANDALONE",
+      "join_needed": "YES_FOR_CONNECTED_ACCOUNT",
+      "note": "Group free-standing message, not forced reply; account needs joining."
+    },
+    {
+      "handle": "bizarre_afisha",
+      "post": "https://t.me/Bizarre_afisha/910",
+      "audience": "DIRECT",
+      "surface": "NO_WRITE_AT_THIS_POST",
+      "related_post": "https://t.me/bizarreclubmsk/7552",
+      "note": "This post links to organizer's other channel with comments; referenced post is not necessarily newest."
+    },
+    {
+      "handle": "play_hard_community",
+      "post": "https://t.me/play_hard_community/406",
+      "audience": "DIRECT",
+      "surface": "USER_OBSERVED_WRITE_SURFACE",
+      "note": "User manually confirmed audience and visible ability to write; account-specific preflight still required."
+    },
+    {
+      "handle": "a_sfera",
+      "post": "https://t.me/a_sfera/2117",
+      "audience": "DIRECT",
+      "surface": "USER_OBSERVED_WRITE_SURFACE",
+      "note": "Audience and visible writing surface manually confirmed; account-specific preflight still required."
+    },
+    {
+      "handle": "bizarreclubmsk",
+      "post": "https://t.me/bizarreclubmsk/8627",
+      "audience": "DIRECT",
+      "surface": "USER_OBSERVED_WRITE_SURFACE",
+      "note": "Audience and visible comment surface confirmed; do not silently target old linked 7552 instead of newest verified post."
+    }
+  ]
+}
