@@ -146,7 +146,7 @@ def _read_candidate(
     if len(excerpt) < 20:
         raise ValueError("Latest post lacks enough readable context for a grounded draft")
     return {
-        "handle": handle, "target_url": target, "post_excerpt": excerpt[:900],
+        "handle": handle, "target_url": target, "post_excerpt": excerpt[:2400],
         "context_source": source,
         "surface": surface,
         "post_id": int(match.group(2)),
