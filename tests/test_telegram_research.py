@@ -12,6 +12,8 @@ from app.telegram_research import (
     SurfaceAvailability,
     TelegramCommunitySnapshot,
     TelegramRecentContext,
+    TelethonTelegramResearchTransport,
+    SAVED_TELEGRAM_POST_MAX_CHARS,
     TelegramResearchConnector,
     TelegramResearchUnavailableError,
     TelegramSurfaceKind,
@@ -271,3 +273,40 @@ def test_snapshot_freshness_is_source_timestamp_not_an_invented_activity_signal(
 
     assert snapshot.source_checked_at > snapshot.last_activity_at
     assert snapshot.recent_context[0].published_at == activity
+
+
+def test_telegram_native_snapshot_preserves_full_text_and_truncation_signal() -> None:
+    """A 1200-character clipping bug used to drop prices/late event rules."""
+    msg_text = (
+        "Halloween, program details. " + "Read the venue announcement. " * 75
+        + "Взнос 4311 рублей. До встречи!"
+    )
+    transport = TelethonTelegramResearchTransport(
+        api_id=1, api_hash="mock-hash", session_string="mock-session"
+    )
+    entity = SimpleNamespace(
+        id=101, username="testasfera", megagroup=False,
+        broadcast=True, title="A Sfera",
+    )
+    full = SimpleNamespace(
+        full_chat=SimpleNamespace(linked_chat_id=123, about="", participants_count=55)
+    )
+    message = SimpleNamespace(
+        id=2117, message=msg_text, date=datetime(2026, 10, 24, tzinfo=UTC)
+    )
+    snapshot = transport._snapshot(entity, full, [message], query="")
+    latest = snapshot.recent_context[0]
+    assert latest.text == msg_text
+    assert latest.source_text_chars == len(msg_text)
+    assert latest.text_truncated is False
+    assert "Взнос 4311" in latest.text
+
+    long_text = "x" * (SAVED_TELEGRAM_POST_MAX_CHARS + 37)
+    oversized = transport._snapshot(
+        entity, full,
+        [SimpleNamespace(id=2118, message=long_text, date=message.date)],
+        query="",
+    ).recent_context[0]
+    assert len(oversized.text) == SAVED_TELEGRAM_POST_MAX_CHARS
+    assert oversized.source_text_chars == len(long_text)
+    assert oversized.text_truncated is True
