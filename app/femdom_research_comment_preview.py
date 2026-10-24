@@ -287,16 +287,22 @@ async def prepare_review(
         with capture_openai_usage_rows(
             usage, task="femdom_research_comment_preview", product_id=_PRODUCT
         ):
-            response = await asyncio.to_thread(
-                client.responses.parse,
-                model="gpt-6-luna",
-                input=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": payload},
-                ],
-                text_format=_ReplyDraft,
-                max_output_tokens=650,
-            )
+            try:
+                response = await asyncio.to_thread(
+                    client.responses.parse,
+                    model="gpt-6-luna",
+                    input=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": payload},
+                    ],
+                    text_format=_ReplyDraft,
+                    # This is a total response/reasoning budget, not a request
+                    # for additional variants. Avoid paying for a truncated
+                    # structured response and NEVER retry automatically.
+                    max_output_tokens=1000,
+                )
+            except ValueError as exc:
+                raise ValueError("MODEL_OUTPUT_INVALID_OR_TRUNCATED") from exc
             log_openai_usage(
                 response, options={"model": "gpt-6-luna"},
                 duration_seconds=time.perf_counter() - started,
