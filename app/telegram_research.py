@@ -8,6 +8,7 @@ from enum import StrEnum
 from typing import Protocol
 
 from app.config import Settings, get_settings
+from app.telegram_public_post_links import referenced_public_posts
 
 ACTION_TARGET_FRESHNESS_SECONDS = 14 * 24 * 60 * 60
 # Preserve full Telegram message body, up to the native plain-text limit.
@@ -50,6 +51,7 @@ class TelegramRecentContext:
     matched_terms: tuple[str, ...] = ()
     source_text_chars: int | None = None
     text_truncated: bool = False
+    linked_post_urls: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -414,6 +416,9 @@ class TelethonTelegramResearchTransport:
                     matched_terms=matched,
                     source_text_chars=len(text),
                     text_truncated=len(text) > SAVED_TELEGRAM_POST_MAX_CHARS,
+                    linked_post_urls=referenced_public_posts(
+                        message, own_handle=username,
+                    ),
                 )
             )
 
