@@ -362,6 +362,44 @@
     const recommended = inferredPlatform(workspaceSnapshot.preview_opportunity);
     const selected = channelSnapshot.find((channel) => channel.selected) || null;
     const selectedPlatform = selected && selected.platform;
+    // Presentation metadata describes the current step; native buttons still own every action.
+    let next = {
+      nextStage: 'channel', nextOwner: 'you', nextTitle: 'Choose your first channel.',
+      nextCopy: 'Review where Partizan found potential customers and choose where to start.',
+      nextCta: 'Choose channel →', nextFocus: '[data-channel-choice]',
+    };
+    if (selected) {
+      next = {
+        nextStage: 'research', nextOwner: 'you', nextTitle: `Find your first move on ${selected.label}.`,
+        nextCopy: 'Review the evidence for this channel before preparing a draft.',
+        nextCta: 'Review research →', nextFocus: '#channel-choice-research',
+      };
+      if (startingMove?.platform === selected.platform && startingMove.state === 'READY') {
+        next = {
+          nextStage: 'draft', nextOwner: 'you', nextTitle: `Prepare your ${selected.label} draft.`,
+          nextCopy: 'Partizan found a useful opportunity. Review it and prepare a draft to check.',
+          nextCta: 'Review opportunity →', nextFocus: '#channel-choice-draft',
+        };
+      }
+      if (startingMoveDraft?.platform === selected.platform && startingMoveDraft.review_status === 'DRAFT') {
+        next = {
+          nextStage: 'draft', nextOwner: 'you', nextTitle: `Check your ${selected.label} draft.`,
+          nextCopy: 'Read the text, make any changes and accept it for the next step. Accepting a draft does not publish it.',
+          nextCta: 'Review draft →', nextFocus: '#starting-move-draft-content',
+        };
+      }
+      if (startingMoveDraft?.platform === selected.platform && startingMoveDraft.review_status === 'ACCEPTED') {
+        const ready = startingMoveSetup?.state === 'READY_FOR_HANDOFF';
+        next = {
+          nextStage: ready ? 'prepare' : 'setup', nextOwner: 'you',
+          nextTitle: ready ? 'Your draft is ready for preparation.' : `Review your ${selected.label} setup.`,
+          nextCopy: ready ? 'Your draft is accepted. Partizan can now prepare the exact action for your confirmation.'
+            : (startingMoveSetup?.next_step || 'Check what this action needs before it can be prepared.'),
+          nextCta: ready ? 'Review next step →' : 'Review setup →', nextFocus: '#starting-move-setup-controls',
+        };
+      }
+    }
+    Object.assign(card.dataset, next, { nextProject: projectId });
 
     const choices = channelSnapshot.map((channel) => {
       const disabled = channel.mode === 'OFF';
@@ -549,6 +587,7 @@
       return;
     }
     loading = true;
+    const requestedProjectId = projectId;
     try {
       [workspaceSnapshot, channelSnapshot, startingMove, startingMoveDraft, startingMoveSetup] = await Promise.all([
         requestJson(`/customer/workspace/${encodeURIComponent(projectId)}`),
@@ -557,10 +596,10 @@
         requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move/draft`),
         requestJson(`/customer/workspace/${encodeURIComponent(projectId)}/starting-move/setup`),
       ]);
-      renderChoice();
+      if (requestedProjectId === projectId) renderChoice();
     } catch (_) {
       const card = ensureChoiceCard();
-      if (card) card.classList.add('hidden');
+      if (card && requestedProjectId === projectId) card.classList.add('hidden');
     } finally {
       loading = false;
       if (refreshQueued) {

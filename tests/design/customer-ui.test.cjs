@@ -17,6 +17,11 @@ with TestClient(app) as client:
     print(json.dumps({path: page.text for path, page in pages.items()}))
 `], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
 const flush = () => new Promise(resolve => setTimeout(resolve, 35));
+const waitFor = async (condition) => {
+  const deadline = Date.now() + 2000;
+  while (!condition() && Date.now() < deadline) await flush();
+  assert.ok(condition(), 'workspace state did not settle');
+};
 const project = { project_id: 'project-1', name: 'A real test project', market: 'United States', goal: 'Get first users', budget_usd: 50, research_state: 'NOT_STARTED', launch_unlocked: false, brief: 'Test product', project_type: 'WEBSITE_PRODUCT', status: 'ACTIVE' };
 const account = { email: 'owner@example.test', projects: [project] };
 const balance = { available_usd: 53.8, acquisition_spend_usd: 42, funded_usd: 100, used_usd: 46.2, remaining_acquisition_capacity_usd: 48.9, management_fee_usd: 4.2, execution_fee_usd: 0, management_fee_pct: 10, settlement_ready: false };
@@ -218,7 +223,7 @@ test('review opens the exact prepared action without confirming or publishing it
     if (call.url.endsWith('/starting-move/execution-request/confirmation')) return { ...prepared, customer_publish_confirmed: true };
   } }); t.after(ui.close);
   const { d } = ui;
-  assert.equal(d.getElementById('design-review').textContent, 'Review exact action →');
+  assert.equal(d.getElementById('design-review').textContent, 'Review final action →');
   d.getElementById('design-review').click();
   assert.equal(d.getElementById('design-next-dialog').open, true);
   assert.match(d.getElementById('design-next-content').textContent, /Exact prepared copy with a real call to action/);
@@ -228,5 +233,153 @@ test('review opens the exact prepared action without confirming or publishing it
   assert.equal(mutations(ui).length, 1);
   assert.match(mutations(ui)[0].url, /\/execution-request\/confirmation$/);
   assert.equal(ui.calls.some(call => /\/(publish|execute|approve)$/.test(call.url)), false);
+  assert.deepEqual(ui.errors, []);
+});
+
+const opportunity = { platform: 'TELEGRAM', surface: 'COMMUNITY', title: 'A relevant conversation', rationale: 'People here need the product.', url: 'https://t.me/example_test/123', recommended_action: 'Offer a useful answer.', signal_to_watch: 'Replies', provenance: [] };
+const firstMoveFixture = { ...fixture, preview_opportunity: opportunity, autopilot: { ...fixture.autopilot, paid_customers: 0, growth_balance: { ...balance, acquisition_spend_usd: 0 } } };
+const selectedChannels = [{ ...channels[0], label: 'Telegram', selected: true }, channels[1]];
+const draft = { platform: 'TELEGRAM', review_status: 'DRAFT', title: 'Useful answer', content_text: 'Helpful text for the selected conversation.', source_url: opportunity.url, rationale: opportunity.rationale, signal_to_watch: 'Replies', execution_requirement: 'Publication requires a separate confirmation.' };
+const prepared = { action_id: 'prepared-1', action_status: 'PREPARED', customer_publish_confirmed: false, operator_approval_required: true, draft_title: draft.title, content_text: draft.content_text, context_text: 'Relevant conversation', target_url: opportunity.url, source_url: opportunity.url, source_title: opportunity.title };
+
+function firstMoveOptions(state = {}) {
+  return { fixture: firstMoveFixture, respond(call) {
+    if (call.url.endsWith('/channels')) return state.channels || selectedChannels;
+    if (call.url.endsWith('/starting-move')) return { ...opportunity, state: 'READY' };
+    if (call.url.endsWith('/starting-move/draft')) return state.draft === undefined ? draft : state.draft;
+    if (call.url.endsWith('/starting-move/setup')) return state.setup || null;
+    if (call.url.endsWith('/starting-move/execution-request')) return state.execution || null;
+    if (call.url.endsWith('/starting-move/execution-request/prepared-action')) return state.prepared || prepared;
+  } };
+}
+
+test('Home names draft review and opens only the current step without accepting anything', async t => {
+  const ui = await open('/workspace', firstMoveOptions()); t.after(ui.close);
+  const { d } = ui;
+  assert.equal(d.getElementById('design-next-stage').textContent, 'Draft');
+  assert.equal(d.getElementById('design-next-owner').textContent, 'Your turn');
+  assert.equal(d.getElementById('design-review').textContent, 'Review draft →');
+  d.getElementById('design-review').click();
+  assert.equal(d.activeElement.id, 'starting-move-draft-content');
+  assert.equal(d.getElementById('activation-card').hasAttribute('data-review-hidden'), true);
+  assert.equal(d.getElementById('channel-choice-card').hasAttribute('data-review-hidden'), false);
+  assert.equal(mutations(ui).length, 0);
+  assert.deepEqual(ui.errors, []);
+});
+
+test('Home distinguishes channel choice and account setup from draft review', async t => {
+  for (const state of [
+    { channels: selectedChannels.map(item => ({ ...item, selected: false })), stage: 'Choose channel', cta: 'Choose channel →' },
+    { draft: { ...draft, review_status: 'ACCEPTED' }, setup: { platform: 'TELEGRAM', state: 'NEEDS_SETUP', channel_label: 'Telegram', next_step: 'Connect Telegram to use your account.', steps: [] }, stage: 'Account setup', cta: 'Review setup →' },
+  ]) {
+    const ui = await open('/workspace', firstMoveOptions(state));
+    try {
+      assert.equal(ui.d.getElementById('design-next-stage').textContent, state.stage);
+      assert.equal(ui.d.getElementById('design-review').textContent, state.cta);
+      ui.d.getElementById('design-review').click();
+      assert.equal(mutations(ui).length, 0);
+      assert.deepEqual(ui.errors, []);
+    } finally { ui.close(); }
+  }
+});
+
+test('preparation and confirmation states explain whose turn it is without claiming publication', async t => {
+  const ready = { platform: 'TELEGRAM', channel_label: 'Telegram', state: 'READY_FOR_HANDOFF', steps: [] };
+  for (const state of [
+    { execution: { status: 'REQUESTED' }, owner: 'Partizan’s turn', stage: 'Preparation' },
+    { execution: { status: 'ACTION_PREPARED' }, owner: 'Your turn', stage: 'Final review' },
+    { execution: { status: 'PUBLISH_CONFIRMED' }, prepared: { ...prepared, customer_publish_confirmed: true }, owner: 'Partizan’s turn', stage: 'Final review' },
+    { execution: { status: 'OPERATOR_APPROVED' }, prepared: { ...prepared, action_status: 'APPROVED', customer_publish_confirmed: true }, owner: 'Current status', stage: 'Final review' },
+    { execution: { status: 'OPERATOR_APPROVED' }, prepared: { ...prepared, action_status: 'EXECUTED', customer_publish_confirmed: true }, owner: 'Completed', stage: 'Results' },
+  ]) {
+    const ui = await open('/workspace', firstMoveOptions({ ...state, draft: { ...draft, review_status: 'ACCEPTED' }, setup: ready }));
+    try {
+      const { d } = ui;
+      assert.equal(d.getElementById('design-next-owner').textContent, state.owner);
+      assert.equal(d.getElementById('design-next-stage').textContent, state.stage);
+      d.getElementById('design-review').click();
+      assert.equal(d.getElementById('execution-request-card').hasAttribute('data-review-hidden'), false);
+      assert.equal(d.getElementById('channel-choice-card').hasAttribute('data-review-hidden'), true);
+      assert.equal(d.getElementById('design-earlier-steps').hidden, false);
+      d.getElementById('design-earlier-steps').click();
+      assert.equal(d.getElementById('channel-choice-card').hasAttribute('data-review-hidden'), false);
+      if (state.execution.status === 'PUBLISH_CONFIRMED') assert.match(d.getElementById('design-next-copy').textContent, /nothing has been published/);
+      if (state.execution.status === 'OPERATOR_APPROVED' && state.stage !== 'Results') assert.match(d.getElementById('design-next-copy').textContent, /has not happened yet/);
+      assert.equal(mutations(ui).length, 0);
+      assert.deepEqual(ui.errors, []);
+    } finally { ui.close(); }
+  }
+});
+
+const clientChannels = channels.slice(0, 2).map(item => ({ ...item, connected: true, publisher_mode: 'CLIENT_OWNED', publisher_modes: [{ mode: 'CLIENT_OWNED', available: true }], capabilities: [{ capability: 'PUBLISH', ready: true }] }));
+const communityActions = clientChannels.map((item, index) => ({ action_id: `community-${index}`, platform: item.platform, action_status: 'APPROVED', experiment_status: 'RUNNING', publisher_mode: 'CLIENT_OWNED', opportunity_title: `${item.platform} opportunity`, target_url: opportunity.url, content_text: 'Exact approved copy.', replies: 0, removals: 0 }));
+
+test('approved community actions are reachable from Home and publish only after native confirmation', async t => {
+  let actions = communityActions;
+  const ui = await open('/workspace', { respond(call) {
+    if (call.url.endsWith('/channels')) return clientChannels;
+    if (call.url.endsWith('/community-actions')) return actions;
+    if (call.url.endsWith('/connection')) return { status: 'ACTIVE' };
+    if (call.url.endsWith('/publish')) { actions = [communityActions[1]]; return { outcome: 'EXECUTED' }; }
+  } }); t.after(ui.close);
+  const { d, w } = ui;
+  assert.equal(d.querySelector('[data-tab-panel=overview]').classList.contains('hidden'), false);
+  assert.equal(d.getElementById('design-next-title').textContent, communityActions[0].opportunity_title);
+  assert.equal(d.getElementById('design-next-owner').textContent, 'Your turn');
+  assert.equal(d.getElementById('design-pending-actions').hidden, false);
+  assert.match(d.getElementById('design-pending-list').textContent, /REDDIT opportunity/);
+  d.getElementById('design-review').click();
+  assert.equal(d.getElementById('community-action-modal').classList.contains('hidden'), false);
+  assert.equal(d.activeElement.id, 'community-action-title');
+  assert.match(d.getElementById('community-action-review').textContent, /Exact approved copy/);
+  assert.equal(d.getElementById('community-action-publish').disabled, true);
+  assert.equal(mutations(ui).length, 0, 'Home opens review only');
+  const check = d.getElementById('community-action-confirm'); check.checked = true; check.dispatchEvent(new w.Event('change'));
+  d.getElementById('community-action-publish').click(); await flush(); await flush();
+  const publish = mutations(ui).filter(call => call.url.endsWith('/publish'));
+  assert.equal(publish.length, 1);
+  assert.equal(publish[0].body.confirm_publish, true);
+  assert.equal(publish[0].body.expected_content_text, 'Exact approved copy.');
+  assert.equal(d.getElementById('design-next-title').textContent, communityActions[1].opportunity_title);
+  assert.equal(d.getElementById('design-pending-actions').hidden, true);
+  assert.deepEqual(ui.errors, []);
+});
+
+test('pending actions with a manual mode open setup without granting permissions', async t => {
+  const ui = await open('/workspace', { respond(call) {
+    if (call.url.endsWith('/community-actions')) return [communityActions[0]];
+  } }); t.after(ui.close);
+  const { d } = ui;
+  assert.equal(d.getElementById('design-next-stage').textContent, 'Account setup');
+  assert.equal(d.getElementById('design-review').textContent, 'Review channel setup →');
+  d.getElementById('design-review').click(); await flush();
+  assert.equal(d.querySelector('[data-tab-panel=channels]').classList.contains('hidden'), false);
+  assert.equal(d.getElementById('design-channel-details').open, true);
+  assert.equal(mutations(ui).length, 0);
+  assert.deepEqual(ui.errors, []);
+});
+
+test('refresh removes stale pending controls and another project cannot reuse them', async t => {
+  let actions = communityActions;
+  const ui = await open('/workspace', { respond(call) {
+    if (call.url.endsWith('/channels')) return clientChannels;
+    if (call.url.endsWith('/community-actions')) return actions;
+  } }); t.after(ui.close);
+  const { d, w } = ui;
+  const staleButton = d.querySelector('#design-pending-list button');
+  actions = [];
+  w.dispatchEvent(new w.CustomEvent('partizan:community-action-updated', { detail: { projectId: 'project-1' } }));
+  await waitFor(() => d.getElementById('design-pending-actions').hidden);
+  assert.equal(d.getElementById('design-pending-actions').hidden, true);
+  staleButton.click();
+  assert.equal(d.getElementById('community-action-modal'), null);
+  actions = communityActions;
+  w.dispatchEvent(new w.CustomEvent('partizan:community-action-updated', { detail: { projectId: 'project-1' } }));
+  await waitFor(() => !d.getElementById('design-pending-actions').hidden);
+  w.history.replaceState({}, '', '/workspace?project=project-2');
+  w.dispatchEvent(new w.CustomEvent('partizan:community-actions-rendered'));
+  d.getElementById('design-review').click();
+  assert.equal(d.getElementById('community-action-modal'), null);
+  assert.equal(mutations(ui).length, 0);
   assert.deepEqual(ui.errors, []);
 });
