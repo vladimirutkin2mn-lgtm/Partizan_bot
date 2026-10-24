@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
-from uuid import UUID, NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from app.distribution_schemas import AudienceDistributionMapView, DistributionOpportunityView
 from app.distribution_types import DistributionPlatform, OpportunityKind
