@@ -150,6 +150,73 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
             result.append(request)
         return result[:COMMUNITY_FIRST_TELEGRAM_QUERY_BUDGET]
 
+    async def _reconcile_cached_direct_audiences(self, product, icp) -> int:
+        """Persist prior validated DIRECT verdicts; never buy them again.
+
+        Semantic pilots store verified judgments in a separate cache. A cache
+        hit by itself does not update the canonical registry, so previously
+        approved communities can be treated as unconfirmed on the next run.
+        Cache-only evaluation checks product/ICP/title/about fingerprint, TTL,
+        native verification and the grounded direct_fit verdict. It makes no
+        model or Telegram calls. Publisher rights remain a separate gate.
+        """
+        if not isinstance(self._product_id, UUID):
+            return 0
+        reconciled = 0
+        for row in self._registry.list_for_product(self._product_id):
+            if (row.get("audience_fit") or {}).get("confirmed") is True:
+                continue
+            metadata = self._registry.hydrate_metadata(row)
+            if str(metadata.get("native_research_status") or "") != "VERIFIED":
+                continue
+            if str(metadata.get("access_state") or "").upper() == "JOIN_REQUIRED":
+                continue
+            handle = str(metadata.get("handle") or "").strip().lstrip("@").casefold()
+            if not handle:
+                continue
+            cached = await self._semantic_fit.evaluate(
+                product=product,
+                icp=icp,
+                handle=handle,
+                title=str(row.get("title") or ""),
+                metadata=metadata,
+                cache_only=True,
+            )
+            if cached.get("status") != "CACHED" or cached.get("direct_fit") is not True:
+                continue
+
+            updated = {
+                **metadata,
+                "registry_confirmed": True,
+                "community_fit_pass": True,
+                "community_fit_reason": "SEMANTIC_DIRECT_FIT_CACHED",
+                "community_fit_terms": list(cached.get("evidence") or [])[:4],
+                "semantic_audience_fit": {
+                    key: cached.get(key)
+                    for key in (
+                        "verdict", "confidence", "rationale", "evidence",
+                        "model", "checked_at", "prompt_version",
+                    )
+                },
+                # A cached AUDIENCE judgment must never be misread as
+                # permission to reply to a stale or unverified target.
+                "publisher_permission_verified": False,
+                "actionability": "RESEARCH_ONLY",
+                "action_target_url": None,
+                "action_target_specific": False,
+                "community_only_reason": "CACHED_FIT_AWAITING_FRESH_TARGET",
+            }
+            self._registry.upsert(
+                product_id=self._product_id,
+                canonical_key=str(row.get("canonical_key") or ""),
+                title=str(row.get("title") or handle),
+                url=str(row.get("url") or f"https://t.me/{handle}"),
+                kind=str(row.get("kind") or "CHANNEL"),
+                metadata=updated,
+            )
+            reconciled += 1
+        return reconciled
+
     async def refresh_registered(
         self, product, icps, *, now: datetime | None = None
     ) -> list[PlatformCandidate]:
@@ -157,6 +224,10 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
         self._product_id = getattr(product, "id", None)
         if self._product_id is None or not icps:
             return []
+        # Semantic pilot results can be valid without being present in the
+        # canonical audience flags. Reconcile validated cache hits first so
+        # those peers take the one-latest-message refresh path, not 4 posts.
+        await self._reconcile_cached_direct_audiences(product, icps[0])
         checked_at = now or datetime.now(UTC)
         checked_at = (
             checked_at.replace(tzinfo=UTC)
