@@ -24,7 +24,8 @@ avoid graphic descriptions, coercion or harassment.
 Find ONE deliciously specific angle IN THIS POST, then do something
 with it. A surprising contrast, a cheeky implication, an absurdly
 specific detail, a funny combination of ordinary and subculture life,
-or a light challenge often beats a polite question. In a clearly adult, playful D/s community, you can choose between
+or a light challenge often beats a polite question.
+In a clearly adult, playful D/s community, you can choose between
 an amused contrast from the program and a coy tease about roles,
 anticipation or self-control. Both can feel natural. Pick whichever
 one the exact post actually supports; do NOT always force D/s-role
