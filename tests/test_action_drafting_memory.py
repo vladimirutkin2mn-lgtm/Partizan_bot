@@ -285,3 +285,33 @@ async def test_telegram_composer_does_not_feed_old_community_posts_to_llm():
     assert "old unrelated message" not in provider.messages[1].content
     assert "Huge old unrelated project brief" not in provider.messages[1].content
     assert len(provider.messages) == 2
+
+    # Long latest post: select useful sections without a second LLM request
+    # and without dragging old discovery context into the prompt.
+    long_post = (
+        "Анонс встречи с конкурсами и мастерскими. "
+        + "Общие подробности для участников. " * 60
+        + "Взнос для участия 4311 рублей. "
+        + "Продолжение программы и деталей. " * 55
+        + "Последний день записи в пятницу, осталось мало мест."
+    )
+    await composer.compose(
+        product=product,
+        play=play,
+        opportunity=opportunity,
+        target=SelectedActionTarget(
+            url="https://t.me/community/146",
+            context_text=long_post,
+            source="telegram_native.latest_message",
+        ),
+        policy=None,
+    )
+    compact_data = json.loads(provider.messages[1].content)
+    selected = compact_data["selected_native_target"]
+    assert len(selected["text"]) <= 1400
+    assert "Взнос для участия 4311 рублей" in selected["text"]
+    assert "Последний день записи" in selected["text"]
+    assert selected["excerpt"]["source_chars"] == len(long_post)
+    assert selected["excerpt"]["compacted"] is True
+    assert selected["excerpt"]["strategy"] == "OPENING_SALIENT_DETAILS_END"
+    assert "old unrelated message" not in provider.messages[1].content
