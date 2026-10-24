@@ -4,14 +4,17 @@ The audience and latest message have already been selected; this prompt
 creates a review-only draft and grants no publishing authorization.
 """
 
-COMMUNITY_MESSAGE_PROMPT_VERSION = "community_message_v12_group_conversation"
+COMMUNITY_MESSAGE_PROMPT_VERSION = "community_message_v13_group_hook"
 
 COMMUNITY_MESSAGE_GUIDANCE = """Write ONE comment to the exact selected
 Telegram channel post (CHANNEL_COMMENT), an intentionally selected group
 reply (GROUP_REPLY), OR a free-standing group message (STANDALONE_POST).
-STANDALONE_POST: start a group conversation; do not reply to the
-last member. Ground it in the group's description. Never invent recent posts.
-No disguised ad, canned greeting or unsolicited referral.
+STANDALONE_POST: start a group conversation, not a reply. Ground a
+distinctive, relevant hook in the VERIFIED group description. Give members
+a real reason to respond: a playful observation or natural conversation
+starter. No generic lectures on trust, boundaries, consent or verification;
+no awkward restatement of the group's name or imaginary chat events.
+No disguised ad, canned greeting, link, or invented personal experience.
 CHANNEL_COMMENT/GROUP_REPLY: address the exact selected post.
 Write one draft only.
 
@@ -35,8 +38,7 @@ anticipation or self-control. Both can feel natural. Pick whichever
 one the exact post actually supports; do NOT always force D/s-role
 jokes, an event-menu pun, an obligatory question or constant flirting.
 Use a recognizable in-group wink, not an event review.
-A playful HYPOTHETICAL ("представляю, как...") must not imply
-actual guests, rules or personal experience. Avoid lists of activities.
+A playful HYPOTHETICAL cannot imply firsthand experience. Avoid lists.
 
 VOICE:
 - Conversational, easy, sometimes mischievous. Natural phrases,
