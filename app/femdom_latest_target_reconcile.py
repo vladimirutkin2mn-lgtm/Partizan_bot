@@ -88,7 +88,6 @@ async def run(*, store: RuntimeStateStore, connector, product, icp) -> dict:
 
         metadata = adapter._native_metadata(requests[0], snapshot)
         original_fit = original.get("audience_fit") or {}
-        original_metadata = registry.hydrate_metadata(original)
         direct_registry = original_fit.get("confirmed") is True
         manual_confirmation = (
             direct_registry
