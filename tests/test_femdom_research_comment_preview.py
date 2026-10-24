@@ -102,7 +102,7 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
     assert first["project_telegram_preference"] == "OFF"
     assert first["comment"].startswith("Вы отдельно упомянули")
     assert first["comment_language"] == "Russian"
-    assert first["prompt_version"] == "community_message_v10_coquettish_role_voice"
+    assert first["prompt_version"] == "community_message_v11_adaptive_playful"
     assert "variants" not in first
     assert first["surface"] == "CHANNEL_COMMENT"
     second = await prepare_review(
@@ -245,7 +245,7 @@ async def test_preview_preserves_late_native_post_details_without_cutting_json()
         payload = json.loads(prompt)
         assert "открытый формат вопросов" in payload["selected_target"]["text"]
         assert len(payload["selected_target"]["text"]) > 400
-        assert len(payload["selected_target"]["text"]) <= 2400
+        assert len(payload["selected_target"]["text"]) <= 1400
         return _Draft(
             topicality="RELEVANT",
             reason="The newest post explicitly offers an open question format.",
