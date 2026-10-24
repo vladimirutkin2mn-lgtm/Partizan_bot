@@ -1,4 +1,4 @@
-name: One-off FemDom latest-target and draft-only review
+name: One-off FemDom v13 group drafts and missing map repair
 
 on:
   push:
@@ -101,6 +101,10 @@ jobs:
                       "audience": item.get("audience"),
                       "research_latest_post_url": item.get("research_latest_post_url"),
                       "action_target_url": item.get("action_target_url"),
+                      "map_repair_status": item.get("map_repair_status"),
+                      "map_existing_matches": item.get("map_existing_matches"),
+                      "latest_post_text_chars": item.get("latest_post_text_chars"),
+                      "latest_post_media_present": item.get("latest_post_media_present"),
                   } for item in report.get("communities", [])
               ],
           }, ensure_ascii=False))

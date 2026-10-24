@@ -157,6 +157,8 @@ def _read_candidate(
         raise ValueError("Research latest post is outside the allowed age")
     excerpt = str(metadata.get("research_latest_post_excerpt") or "").strip()
     source = "research_latest_post_excerpt"
+    latest_media_present = False
+    latest_media_kind = None
     # When the verified native snapshot is present, prefer its actual message
     # body. Never silently substitute an older group post for the selected URL.
     recent = metadata.get("recent_context")
@@ -179,9 +181,16 @@ def _read_candidate(
             if native_url and native_url.rstrip("/") != target.rstrip("/"):
                 raise ValueError("Native latest message URL differs from the saved target")
             excerpt = str(latest_row.get("text") or "").strip()
+            latest_media_present = latest_row.get("media_present") is True
+            latest_media_kind = str(latest_row.get("media_kind") or "")[:80] or None
             source = "verified_native_latest_message"
     if len(excerpt) < 20:
-        raise ValueError("Latest post lacks enough readable context for a grounded draft")
+        # Do not pretend the description of a channel is the content of its
+        # newest photo/video. The user must examine that exact media post.
+        raise ValueError(
+            "MEDIA_ONLY_NEEDS_VISUAL_REVIEW" if latest_media_present
+            else "SHORT_POST_NEEDS_CONTEXT_REVIEW"
+        )
     compacted = compact_telegram_target(excerpt)
     return {
         "handle": handle, "target_url": target, "post_excerpt": compacted.text,
@@ -190,6 +199,8 @@ def _read_candidate(
         "post_excerpt_strategy": compacted.strategy,
         "context_source": source,
         "surface": surface,
+        "post_media_present": latest_media_present,
+        "post_media_kind": latest_media_kind,
         "post_id": int(match.group(2)),
         "community_title": opp.title, "community_about": str(metadata.get("about") or "")[:400],
         "audience_status": metadata["research_audience_status"],
@@ -204,7 +215,7 @@ async def prepare_review(
 ) -> dict:
     handle = handle.lstrip("@").casefold()
     if handle not in _ALLOWED or str(getattr(product, "id", "")) != str(_PRODUCT):
-        raise ValueError("This bounded review is only for two saved FemDom peers")
+        raise ValueError("This bounded review is only for manually reviewed FemDom peers")
     checked_at = now or datetime.now(UTC)
     checked_at = checked_at.replace(tzinfo=UTC) if checked_at.tzinfo is None else checked_at.astimezone(UTC)
     candidate, project = _read_candidate(store, handle, now=checked_at)

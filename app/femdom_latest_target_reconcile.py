@@ -15,6 +15,7 @@ from uuid import UUID
 from app.community_first_telegram_adapter import CommunityFirstTelegramDiscoveryAdapter
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
 from app.distribution_types import DistributionPlatform, OpportunityKind
+from app.femdom_review_map_repair import seed_missing_reviewed_opportunity
 from app.icp_service import icp_service
 from app.platform_discovery import PlatformCandidate
 from app.product_intake import product_intake_service
@@ -153,12 +154,18 @@ async def run(*, store: RuntimeStateStore, connector, product, icp) -> dict:
             title=snapshot.title, url=snapshot.url, metadata=metadata, hits=[],
         )
         adapter._remember_community(candidate)
+        repair = seed_missing_reviewed_opportunity(
+            store, product_id=_PRODUCT, icp_id=icp.id,
+            candidate=candidate, now=datetime.now(UTC),
+        )
         result = sync_verified_telegram_opportunity(
             store, _PRODUCT, candidate, now=datetime.now(UTC)
         )
         report.append({
             "handle": handle,
             "status": result["status"],
+            "map_repair_status": repair["status"],
+            "map_existing_matches": repair.get("matches"),
             "audience": "DIRECT" if confirmed else "PENDING_REVIEW",
             "cached_semantic": verdict.get("verdict") or verdict.get("status"),
             "cached_semantic_direct_fit": verdict.get("direct_fit") is True,
@@ -173,6 +180,18 @@ async def run(*, store: RuntimeStateStore, connector, product, icp) -> dict:
             "action_target_url": result.get("action_target_url"),
             "publisher_permission_verified": False,
             "post_read_count": len(snapshot.recent_context),
+            "latest_post_text_chars": (
+                len(snapshot.recent_context[0].text)
+                if snapshot.recent_context else 0
+            ),
+            "latest_post_media_present": (
+                snapshot.recent_context[0].media_present
+                if snapshot.recent_context else False
+            ),
+            "latest_post_media_kind": (
+                snapshot.recent_context[0].media_kind
+                if snapshot.recent_context else None
+            ),
         })
 
     return {

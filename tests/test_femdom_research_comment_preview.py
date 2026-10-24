@@ -102,7 +102,7 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
     assert first["project_telegram_preference"] == "OFF"
     assert first["comment"].startswith("Вы отдельно упомянули")
     assert first["comment_language"] == "Russian"
-    assert first["prompt_version"] == "community_message_v12_group_conversation"
+    assert first["prompt_version"] == "community_message_v13_group_hook"
     assert "variants" not in first
     assert first["surface"] == "CHANNEL_COMMENT"
     second = await prepare_review(
@@ -378,3 +378,42 @@ async def test_group_root_requires_fresh_native_capability_and_never_calls_llm_o
             await prepare_review(
                 store, product=product, handle="a_sfera", judge=judge, now=now
             )
+
+
+@pytest.mark.asyncio
+async def test_textless_media_latest_post_is_manual_review_not_hallucinated_draft():
+    store, product, now = _setup()
+    mapping = store.get("audience_distribution_map", str(_PRODUCT))
+    metadata = mapping["opportunities"][0]["metadata"]
+    metadata["research_latest_post_excerpt"] = ""
+    metadata["recent_context"] = [{
+        "message_id": 2117, "url": "https://t.me/a_sfera/2117",
+        "text": "", "media_present": True, "media_kind": "MessageMediaPhoto",
+    }]
+    store.put("audience_distribution_map", str(_PRODUCT), mapping)
+    async def forbidden(_system, _prompt):
+        raise AssertionError("Do not spend LLM tokens guessing unseen images")
+    with pytest.raises(ValueError, match="MEDIA_ONLY_NEEDS_VISUAL_REVIEW"):
+        await prepare_review(
+            store, product=product, handle="a_sfera", judge=forbidden, now=now
+        )
+    assert store.list_namespace("femdom_telegram_comment_research_preview_v1") == []
+
+
+@pytest.mark.asyncio
+async def test_short_readable_post_is_distinguished_from_missing_media_context():
+    store, product, now = _setup()
+    mapping = store.get("audience_distribution_map", str(_PRODUCT))
+    metadata = mapping["opportunities"][0]["metadata"]
+    metadata["research_latest_post_excerpt"] = "Тут"
+    metadata["recent_context"] = [{
+        "message_id": 2117, "url": "https://t.me/a_sfera/2117",
+        "text": "Тут", "media_present": False,
+    }]
+    store.put("audience_distribution_map", str(_PRODUCT), mapping)
+    async def forbidden(_system, _prompt):
+        raise AssertionError("No ungrounded message")
+    with pytest.raises(ValueError, match="SHORT_POST_NEEDS_CONTEXT_REVIEW"):
+        await prepare_review(
+            store, product=product, handle="a_sfera", judge=forbidden, now=now
+        )
