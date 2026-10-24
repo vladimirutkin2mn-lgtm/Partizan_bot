@@ -310,3 +310,30 @@ def test_live_sync_preserves_standalone_post_action_kind(monkeypatch) -> None:
     assert rows[0]["kind"] == "STANDALONE_POST"
     assert rows[0]["url"] == "https://t.me/community"
     assert rows[0]["metadata"]["action_target_mode"] == "STANDALONE_POST"
+
+
+@pytest.mark.asyncio
+async def test_visible_group_surface_stays_join_required_until_account_joins():
+    class UserNotParticipantError(Exception):
+        pass
+
+    class NotJoined(FakeGroupClient):
+        async def __call__(self, request):
+            del request
+            raise UserNotParticipantError("Not yet a participant")
+
+    client = NotJoined()
+    service = TelegramOpportunityPreflightService(
+        session_provider=lambda project_id: "session",
+        client_factory=lambda session: client,
+        restriction_checker=lambda project_id, handle: None,
+    )
+    result = await service.check_target(
+        uuid4(),
+        "https://t.me/community",
+        TelegramParticipationMode.STANDALONE_POST.value,
+    )
+    assert result.status == "JOIN_REQUIRED"
+    assert result.reason == "USER_NOT_PARTICIPANT"
+    assert result.action_target_mode == "STANDALONE_POST"
+    assert client.connected is False
