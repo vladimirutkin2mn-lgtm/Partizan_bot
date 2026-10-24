@@ -1,0 +1,83 @@
+name: Cache-only FemDom audience judgments audit
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+    paths:
+      - .github/workflows/femdom-semantic-cache-audit-oneoff.yml
+
+
+permissions:
+  contents: read
+
+concurrency:
+  group: femdom-semantic-cache-only-oneoff-pr545
+  cancel-in-progress: false
+
+jobs:
+  review:
+    # One-time cache read; no LLM, publishing or Telegram calls.
+    if: github.event.pull_request.number == 545
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check production research-only connection
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing research connection ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Verify pinned production host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Read cached audience judgments without contacting the model
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python -m app.telegram_audience_semantic_pilot --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 --cache-only" \
+            > femdom-semantic-cache.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("femdom-semantic-cache.json").read_text())
+          assert data["cache_only"] is True
+          assert data["telegram_api_calls"] == 0
+          assert data["publication_actions"] == 0
+          assert data["total_new_judgments"] == 0
+          print(json.dumps({
+              "total_peers": data["total_peers"],
+              "cached": data["cached_judgments"],
+              "cache_misses": data["missing_cache_count"],
+              "direct": data["direct_proposals"],
+              "adjacent": data["adjacent_proposals"],
+          }, sort_keys=True))
+          PY
+      - name: Store read-only semantic cache evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: femdom-semantic-cache-only-PR545
+          path: femdom-semantic-cache.json
+          retention-days: 3
+          if-no-files-found: error
