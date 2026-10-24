@@ -182,7 +182,12 @@ class CommunityFirstTelegramDiscoveryAdapter(ExpandedTelegramDiscoveryAdapter):
                 metadata=metadata,
                 cache_only=True,
             )
-            if cached.get("status") != "CACHED" or cached.get("direct_fit") is not True:
+            if (
+                cached.get("status") != "CACHED"
+                or cached.get("verdict") != "DIRECT"
+                or cached.get("direct_fit") is not True
+                or float(cached.get("confidence") or 0) < 0.85
+            ):
                 continue
 
             updated = {
