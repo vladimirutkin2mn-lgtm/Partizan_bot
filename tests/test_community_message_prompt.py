@@ -1,4 +1,4 @@
-"""Contract tests for short, conversational Telegram drafting guidance."""
+"""Contract tests for a playful but factual Telegram community reply."""
 
 from app.community_message_prompt import (
     COMMUNITY_MESSAGE_GUIDANCE,
@@ -6,38 +6,45 @@ from app.community_message_prompt import (
 )
 
 
-def test_social_voice_prompt_keeps_one_native_language_draft_and_no_send():
+def test_one_grounded_review_only_reply_for_group_or_channel():
     text = COMMUNITY_MESSAGE_GUIDANCE
-    assert COMMUNITY_MESSAGE_PROMPT_VERSION == "community_message_v7_social_voice"
-    assert "Generate exactly ONE message" in text
-    assert "LANGUAGE and register" in text
+    assert COMMUNITY_MESSAGE_PROMPT_VERSION == "community_message_v8_playful_context"
+    assert "Write ONE comment" in text
     assert "CHANNEL_COMMENT" in text
     assert "GROUP_REPLY" in text
-    assert "never publish" in text
+    assert "language of the" in text
+    assert "Never publish" in text
 
 
-def test_prompt_encourages_social_voice_without_fabricated_experiences():
+def test_prompt_matches_playful_subculture_without_forcing_all_groups():
     text = COMMUNITY_MESSAGE_GUIDANCE
-    assert "Light slang" in text
-    assert "Vary rhythm naturally" in text
-    assert "важно отметить" in text
-    assert "в заключение" in text
-    assert "длинных" not in text  # editorial rules are in English
-    assert "No bullet/numbered lists" in text
-    assert "long em dashes" in text
-    assert "at most one" in text
-    assert "NEVER fabricate personal" in text
-    assert "commercial affiliation disclosed" in text
+    assert "a little flirtation" in text
+    assert "шибари" in text
+    assert "нижние" in text
+    assert "unrelated groups" in text
+    assert "Find ONE deliciously specific angle" in text
+    assert "surprising contrast" in text
+    assert "a little provocative" in text
 
 
-def test_examples_contrast_generic_praise_and_specific_reply():
+def test_factuality_and_commercial_transparency_remain():
     text = COMMUNITY_MESSAGE_GUIDANCE
-    assert "ROBOTIC:" in text
-    assert "NATURAL:" in text
-    assert "NOT a reusable formula" in text
-    assert "not an obligatory pitch" in text
+    assert "Do not invent event rules" in text
+    assert "Do not invent personal experience" in text
+    assert "Do not disguise" in text
+    assert "material commercial connection disclosed" in text
+    assert "without" not in text or len(text) > 2000
 
 
-def test_prompt_not_needlessly_long_for_one_output():
-    # Savings matter for the product's normal one-call generation path.
-    assert len(COMMUNITY_MESSAGE_GUIDANCE) < 3600
+def test_style_examples_are_mischievous_not_generic_admin_questions():
+    text = COMMUNITY_MESSAGE_GUIDANCE
+    assert "FLAT:" in text
+    assert "LIVELY:" in text
+    assert "Шибари, аукцион, а потом плов" in text
+    assert "NEVER copy words" in text
+    assert "Подскажите, пожалуйста" in text
+    assert "one" in text.lower()
+
+
+def test_prompt_remains_compact_for_single_call():
+    assert len(COMMUNITY_MESSAGE_GUIDANCE) < 3700
