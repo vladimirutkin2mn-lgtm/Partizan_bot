@@ -1,0 +1,164 @@
+# Re-run only when the corresponding production build is deployed; failures log structured stderr.
+name: One-off FemDom cached fit and archived peer recovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/femdom-archive-cache-migration-oneoff.yml
+
+concurrency:
+  group: one-time-femdom-archived-fixture-cache-sync-20261024
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require production read access
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for name in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing production access: ${name}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin production host
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Wait until matching production release is deployed
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_RELEASE: ${{ github.sha }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 60); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_RELEASE}' else 2)\"" \
+              >/dev/null 2>&1; then
+              echo "Matching release ready"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Matching production release not ready; no recovery attempted"
+          exit 1
+      - name: Preview fixture-only recovery without writes
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python -m app.femdom_archived_community_recovery --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272" \
+            > historical-preview.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path('historical-preview.json').read_text())
+          assert r['commit'] is False
+          assert r['archive']['unique_archive_handles'] == 2
+          assert r['archive']['llm_calls'] == 0
+          assert r['telegram_send_calls'] == 0
+          print(json.dumps({
+              'registry_before': r['registry_before'],
+              'confirmed_before': r['confirmed_before'],
+              'would_stage': r['archive']['would_stage']
+          }, sort_keys=True))
+          PY
+      - name: Sync validated cached audiences and stage archived identifiers only
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python -m app.femdom_archived_community_recovery --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 --commit" \
+            > historical-applied.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path('historical-applied.json').read_text())
+          assert r['commit'] is True
+          assert r['status'] == 'HISTORICAL_CACHED_FIT_RECONCILIATION_COMPLETE'
+          assert r['archive']['newly_staged'] <= 40
+          assert r['confirmed_after'] >= r['confirmed_before']
+          assert r['registry_after'] >= r['registry_before']
+          assert r['telegram_calls'] == 0
+          assert r['new_search_calls'] == 0
+          assert r['llm_calls'] == 0
+          assert r['publication_actions'] == 0
+          assert r['telegram_send_calls'] == 0
+          print(json.dumps({
+              'registry_before': r['registry_before'],
+              'confirmed_before': r['confirmed_before'],
+              'cached_direct_promoted': r['cached_direct_promoted'],
+              'confirmed_after': r['confirmed_after'],
+              'registry_after': r['registry_after'],
+              'newly_staged': r['archive']['newly_staged']
+          }, sort_keys=True))
+          PY
+      - name: Read one latest post per peer and generate no more than 8 drafts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          PROMPT_B64=$(base64 -w0 app/community_message_prompt.py)
+          EXCERPT_B64=$(base64 -w0 app/telegram_target_excerpt.py)
+          PRECHECK_B64=$(base64 -w0 app/telegram_message_precheck.py)
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python - '${PROMPT_B64}' '${EXCERPT_B64}' '${PRECHECK_B64}'" \
+            < tools/femdom_saved_peers_20_read_only.py > historical-latest-drafts.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path('historical-latest-drafts.json').read_text())
+          assert r['selected_communities'] <= 20
+          assert r['model_calls'] <= 8
+          assert r['telegram_join_calls'] == 0
+          assert r['telegram_send_calls'] == 0
+          assert r['telegram_search_calls'] == 0
+          assert r['state_writes'] == 0
+          assert r['posting_authorization'] is False
+          print(json.dumps({
+              'status': r['status'],
+              'inventory': r.get('inventory'),
+              'summary': r.get('summary'),
+              'model_calls': r['model_calls'],
+              'input_tokens': r['model_input_tokens'],
+              'output_tokens': r['model_output_tokens'],
+          }, ensure_ascii=False, sort_keys=True))
+          PY
+      - name: Store protected recovery and research-only trace
+        uses: actions/upload-artifact@v4
+        with:
+          name: femdom-archived-cache-sync-latest-10
+          path: |
+            historical-preview.json
+            historical-applied.json
+            historical-latest-drafts.json
+          retention-days: 5
+          if-no-files-found: error
