@@ -419,7 +419,11 @@ def test_telegram_drafting_uses_verified_latest_with_unknown_date() -> None:
     opportunity = _telegram_selector_opportunity(
         target_url="https://t.me/community/147",
         recent_context=[
-            {"message_id": 147, "url": "https://t.me/community/147", "text": "Caption"}
+            {
+                "message_id": 147,
+                "url": "https://t.me/community/147",
+                "text": "Caption: встречаемся в субботу, обсудим расписание.",
+            }
         ],
     )
     play = SimpleNamespace(action_type=DistributionActionType.COMMENT)
@@ -542,4 +546,17 @@ def test_telegram_latest_empty_post_does_not_trigger_generic_promotion() -> None
     )
     play = SimpleNamespace(action_type=DistributionActionType.COMMENT)
     with pytest.raises(ValueError, match="no readable context"):
+        ActionTargetSelector().select(play, opportunity)
+
+
+
+def test_telegram_native_one_word_caption_cannot_use_community_title_as_context() -> None:
+    opportunity = _telegram_selector_opportunity(
+        target_url="https://t.me/community/147",
+        recent_context=[
+            {"message_id": 147, "url": "https://t.me/community/147", "text": "Caption"},
+        ],
+    )
+    play = SimpleNamespace(action_type=DistributionActionType.COMMENT)
+    with pytest.raises(ValueError, match="insufficient local context"):
         ActionTargetSelector().select(play, opportunity)

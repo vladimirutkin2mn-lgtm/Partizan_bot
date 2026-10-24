@@ -1,0 +1,88 @@
+name: Compare saved Telegram messages v3 versus v4 (no publish)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-saved-prompt-compare-pr545
+  cancel-in-progress: false
+
+jobs:
+  review:
+    # Re-run only on deliberate manual dispatch; a routine PR push must never
+    # consume another twelve LLM calls after the completed one-shot review.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check production research-only connection
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing research connection ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Verify pinned production host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Compare one draft per version across at most six SAVED latest posts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          # Execute the checked-out audit script via stdin in the production API
+          # container without deploying or modifying production app code.
+          # No Telegram transport is constructed; OpenAI calls are capped at 12.
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python -" \
+            < tools/review_saved_telegram_prompts.py > telegram-v3-v4-private-review.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("telegram-v3-v4-private-review.json").read_text())
+          assert report["telegram_api_calls"] == 0
+          assert report["publication_actions"] == 0
+          assert report["max_llm_calls"] == 12
+          assert report["selected_cases"] <= 6
+          assert report["status"] in {
+              "REVIEW_ONLY", "NO_ELIGIBLE_SAVED_POSTS",
+              "OPENAI_API_NOT_CONFIGURED", "INCOMPLETE_MODEL_ERROR",
+          }
+          print(json.dumps({
+              k: report.get(k) for k in (
+                  "status", "selected_cases", "paired_results",
+                  "input_tokens", "output_tokens",
+                  "telegram_api_calls", "publication_actions",
+              )
+          }, sort_keys=True))
+          if report["status"] != "REVIEW_ONLY":
+              print("::warning::Real saved-post benchmark incomplete; inspect artifact")
+          PY
+      - name: Save private draft pairs for human quality grading
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-v3-v4-saved-post-review-PR545
+          path: telegram-v3-v4-private-review.json
+          retention-days: 3
+          if-no-files-found: error

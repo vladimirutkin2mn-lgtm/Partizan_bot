@@ -10,6 +10,8 @@ from typing import Protocol
 from app.config import Settings, get_settings
 
 ACTION_TARGET_FRESHNESS_SECONDS = 14 * 24 * 60 * 60
+# Preserve full Telegram message body, up to the native plain-text limit.
+SAVED_TELEGRAM_POST_MAX_CHARS = 4096
 
 
 class TelegramResearchError(RuntimeError):
@@ -46,6 +48,8 @@ class TelegramRecentContext:
     published_at: datetime | None
     url: str | None
     matched_terms: tuple[str, ...] = ()
+    source_text_chars: int | None = None
+    text_truncated: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -404,10 +408,12 @@ class TelethonTelegramResearchTransport:
             recent.append(
                 TelegramRecentContext(
                     message_id=message_id,
-                    text=text[:1200],
+                    text=text[:SAVED_TELEGRAM_POST_MAX_CHARS],
                     published_at=published_at,
                     url=message_url,
                     matched_terms=matched,
+                    source_text_chars=len(text),
+                    text_truncated=len(text) > SAVED_TELEGRAM_POST_MAX_CHARS,
                 )
             )
 

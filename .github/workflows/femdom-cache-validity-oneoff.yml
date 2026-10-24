@@ -1,0 +1,82 @@
+name: FemDom cached direct-fit flags research only
+
+on:
+  workflow_dispatch:
+
+
+permissions:
+  contents: read
+
+concurrency:
+  group: femdom-cache-validity-oneoff-pr545
+  cancel-in-progress: false
+
+jobs:
+  review:
+    # Manual-only after completed single read-only research run.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check production research-only connection
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing research connection ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Verify pinned production host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Read semantic cache validity flags without network or writes
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python -" \
+            < tools/femdom_semantic_cache_validation_read_only.py > femdom-semantic-cache-validity.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d = json.loads(Path("femdom-semantic-cache-validity.json").read_text())
+          assert d["status"] == "CACHE_ONLY_DIRECT_FIT_INSPECTION"
+          assert d["new_llm_calls"] == 0
+          assert d["telegram_calls"] == 0
+          assert d["state_writes"] == 0
+          print(json.dumps({
+              "rows": len(d["rows"]),
+              "current_cached_direct_fit": sum(
+                  x["cached_direct_fit"] is True and x["cache_recent"]
+                  and x["cache_fingerprint_current"] for x in d["rows"]
+              ),
+              "registry_confirmed": sum(
+                  x["registry_confirmed"] for x in d["rows"]
+              ),
+          }, sort_keys=True))
+          PY
+      - name: Save restricted semantic cache validity report
+        uses: actions/upload-artifact@v4
+        with:
+          name: femdom-semantic-cache-validity-PR545
+          path: femdom-semantic-cache-validity.json
+          retention-days: 3
+          if-no-files-found: error

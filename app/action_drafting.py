@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
@@ -38,6 +39,8 @@ from app.project_marketing_memory import (
 )
 from app.reddit_research import action_target_is_fresh
 from app.schemas import ProductProfileView
+from app.telegram_message_precheck import precheck_telegram_target
+from app.telegram_target_excerpt import compact_telegram_target
 
 
 class DistributionAutoPrepareRequest(BaseModel):
@@ -91,6 +94,12 @@ class ActionTargetSelector:
                 raise ValueError(
                     "ActionTarget has insufficient local context; enrich the opportunity before drafting"
                 )
+            if opportunity.platform == DistributionPlatform.TELEGRAM:
+                precheck = precheck_telegram_target(context)
+                if not precheck.eligible:
+                    raise ValueError(
+                        f"Telegram ActionTarget precheck blocked: {precheck.reason}"
+                    )
             return SelectedActionTarget(
                 url=str(candidate["url"]),
                 context_text=context,
@@ -265,6 +274,10 @@ class ActionTargetSelector:
     ) -> str:
         title = str(candidate.get("title") or "").strip()
         snippet = str(candidate.get("snippet") or "").strip()
+        # Telegram text must be the selected native message, without community
+        # title or other older-post context that the model could misattribute.
+        if candidate.get("source") == "telegram_native.latest_message":
+            return snippet
         parts = [part for part in (title, snippet) if part]
         if parts:
             return "\n".join(parts)
@@ -368,6 +381,68 @@ class DistributionActionComposer:
             }
             else ""
         )
+        if community_prompt:
+            # The generic opportunity payload can include dozens of older
+            # Telegram messages and full discovery history. Keep only product
+            # facts, community identity and the exact selected native target.
+            product_data = product.model_dump(mode="json")
+            community_metadata = getattr(opportunity, "metadata", {}) or {}
+            compacted = compact_telegram_target(target.context_text)
+            user_context = json.dumps(
+                {
+                    "product": {
+                        key: str(product_data.get(key) or "")[:limit]
+                        for key, limit in (
+                            ("name", 90),
+                            ("description", 240),
+                            ("problem_or_desire", 160),
+                            ("value_proposition", 180),
+                        )
+                    },
+                    "community_title": opportunity.title,
+                    "community_about": str(community_metadata.get("about") or "")[:220],
+                    "audience_fit_hint": str(
+                        community_metadata.get("community_fit_reason") or ""
+                    )[:140],
+                    "platform": opportunity.platform.value,
+                    "action_type": play.action_type.value,
+                    "tactic": play.tactic_id,
+                    "selected_native_target": {
+                        "url": target.url,
+                        "text": compacted.text,
+                        "source": target.source,
+                        "excerpt": {
+                            "source_chars": compacted.source_chars,
+                            "included_chars": compacted.included_chars,
+                            "compacted": compacted.compacted,
+                            "strategy": compacted.strategy,
+                        },
+                    },
+                    "project_marketing_memory": (memory.rendered or "")[:700],
+                    "applied_community_policy": (
+                        policy.model_dump(mode="json") if policy else None
+                    ),
+                    "tactic_allows_product_link": template.has_direct_product_link,
+                    "tactic_mentions_product": template.has_product_mention,
+                    "conversion_brief": self._variant_prompt(variant) if variant else None,
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        else:
+            user_context = (
+                f"Product: {product.model_dump(mode='json')}\n"
+                f"Project marketing memory: {memory.rendered or None}\n"
+                f"Distribution play: {play.model_dump(mode='json')}\n"
+                f"Opportunity: {opportunity.model_dump(mode='json')}\n"
+                f"Selected target: {target}\n"
+                f"Applied CommunityPolicy: "
+                f"{policy.model_dump(mode='json') if policy else None}\n"
+                f"Tactic allows direct product link: {template.has_direct_product_link}\n"
+                f"Tactic includes product mention: {template.has_product_mention}\n"
+                f"Conversion brief: "
+                f"{self._variant_prompt(variant) if variant else None}\n"
+            )
         with openai_usage_context("action_variant_draft" if variant else "action_auto_prepare", product.id):
             return await self._provider.parse(
                 messages=[
@@ -380,19 +455,7 @@ class DistributionActionComposer:
                     ),
                     LLMMessage(
                         role="user",
-                        content=(
-                            f"Product: {product.model_dump(mode='json')}\n"
-                            f"Project marketing memory: {memory.rendered or None}\n"
-                            f"Distribution play: {play.model_dump(mode='json')}\n"
-                            f"Opportunity: {opportunity.model_dump(mode='json')}\n"
-                            f"Selected target: {target}\n"
-                            f"Applied CommunityPolicy: "
-                            f"{policy.model_dump(mode='json') if policy else None}\n"
-                            f"Tactic allows direct product link: {template.has_direct_product_link}\n"
-                            f"Tactic includes product mention: {template.has_product_mention}\n"
-                            f"Conversion brief: "
-                            f"{self._variant_prompt(variant) if variant else None}\n"
-                        ),
+                        content=user_context,
                     ),
                 ],
                 response_model=DistributionContentDraft,

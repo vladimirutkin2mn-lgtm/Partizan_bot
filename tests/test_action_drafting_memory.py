@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -201,6 +202,7 @@ async def test_telegram_action_composer_uses_shared_native_language_one_message_
     )
     opportunity = SimpleNamespace(
         platform=DistributionPlatform.TELEGRAM,
+        title="Community post about event ground rules",
         model_dump=lambda mode="json": {
             "platform": "TELEGRAM",
             "title": "Community post about event ground rules",
@@ -219,8 +221,97 @@ async def test_telegram_action_composer_uses_shared_native_language_one_message_
     )
     system = provider.messages[0].content
     assert COMMUNITY_MESSAGE_PROMPT_VERSION in system
-    assert "Generate one message, not variants" in system
-    assert "Match the community's actual language" in system
+    assert "Write ONE comment" in system
+    assert "language of the" in system
     assert "GROUP_REPLY" in system
     assert "CHANNEL_COMMENT" in system
-    assert "explicitly opted-in autonomous posting" in system
+    assert "Never publish" in system
+
+
+@pytest.mark.asyncio
+async def test_telegram_composer_does_not_feed_old_community_posts_to_llm():
+    provider = RecordingProvider()
+    memory = ProjectMarketingMemoryService(MemoryRuntimeStateStore())
+    composer = DistributionActionComposer(provider=provider, memory_service=memory)
+    product_id = uuid4()
+    product = SimpleNamespace(
+        id=product_id,
+        model_dump=lambda mode="json": {
+            "name": "Example product",
+            "description": "Helps organize community events",
+            "input_brief": "Huge old unrelated project brief",
+        },
+    )
+    play = SimpleNamespace(
+        tactic_id="telegram_channel_comment",
+        action_type=DistributionActionType.COMMENT,
+    )
+    opportunity = SimpleNamespace(
+        platform=DistributionPlatform.TELEGRAM,
+        title="An events community",
+        metadata={
+            "about": "An informal local event discussion with regulars",
+            "community_fit_reason": "Target audience attends small workshops",
+        },
+        model_dump=lambda mode="json": {
+            "title": "An events community",
+            "recent_context": [
+                {"text": "Do not reuse older unrelated message about discounts"},
+            ],
+        },
+    )
+    await composer.compose(
+        product=product,
+        play=play,
+        opportunity=opportunity,
+        target=SelectedActionTarget(
+            url="https://t.me/community/145",
+            context_text="Сегодня обсуждаем расписание открытой встречи.",
+            source="telegram_native.latest_message",
+        ),
+        policy=None,
+    )
+    data = json.loads(provider.messages[1].content)
+    assert data["selected_native_target"]["text"] == (
+        "Сегодня обсуждаем расписание открытой встречи."
+    )
+    assert data["community_title"] == "An events community"
+    assert data["community_about"] == (
+        "An informal local event discussion with regulars"
+    )
+    assert data["audience_fit_hint"] == (
+        "Target audience attends small workshops"
+    )
+    assert "old unrelated message" not in provider.messages[1].content
+    assert "Huge old unrelated project brief" not in provider.messages[1].content
+    assert len(provider.messages) == 2
+
+    # Long latest post: select useful sections without a second LLM request
+    # and without dragging old discovery context into the prompt.
+    long_post = (
+        "Анонс встречи с конкурсами и мастерскими. "
+        + "Общие подробности для участников. " * 60
+        + "Взнос для участия 4311 рублей. "
+        + "Продолжение программы и деталей. " * 55
+        + "Последний день записи в пятницу, осталось мало мест."
+    )
+    await composer.compose(
+        product=product,
+        play=play,
+        opportunity=opportunity,
+        target=SelectedActionTarget(
+            url="https://t.me/community/146",
+            context_text=long_post,
+            source="telegram_native.latest_message",
+        ),
+        policy=None,
+    )
+    compact_data = json.loads(provider.messages[1].content)
+    selected = compact_data["selected_native_target"]
+    assert len(selected["text"]) <= 1400
+    assert "Взнос для участия 4311 рублей" in selected["text"]
+    assert "Последний день записи" in selected["text"]
+    assert selected["excerpt"]["source_chars"] == len(long_post)
+    assert selected["excerpt"]["compacted"] is True
+    assert selected["excerpt"]["strategy"] == "OPENING_SALIENT_DETAILS_END"
+    assert "old unrelated message" not in provider.messages[1].content

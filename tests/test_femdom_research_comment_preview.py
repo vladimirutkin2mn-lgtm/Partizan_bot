@@ -1,5 +1,6 @@
 """Research previews for adjacent Telegram audiences are never sendable actions."""
 
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
@@ -71,20 +72,19 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
 
     async def judge(system, prompt):
         calls.append(prompt)
-        assert "ONE locally natural" in system
+        assert "Return a single structured" in system
         assert "language" in system
         assert "GROUP_REPLY" in system
         assert "CHANNEL_COMMENT" in system
-        assert "publishing service" in system
-        assert "do not claim permission" in system
+        assert "never publish" in system.lower()
+        assert "Separate topicality" in system
         return _Draft(
             topicality="RELEVANT",
             reason="The post discusses respectful adult community gatherings.",
             language="Russian",
             comment=(
-                "У пижамного формата, кажется, есть плюс для новичков: "
-                "меньше ощущения, что сразу нужно соответствовать. "
-                "А как у вас обычно объясняют правила и границы?"
+                "Вы отдельно упомянули границы участников. "
+                "А формат обсуждения можно узнать заранее?"
             ),
             why_relevant="Responds to a real detail about community boundaries.",
         )
@@ -100,9 +100,9 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
     assert first["publisher_permission_verified"] is False
     assert first["community_commercial_rules_verified"] is False
     assert first["project_telegram_preference"] == "OFF"
-    assert first["comment"].startswith("У пижамного формата")
+    assert first["comment"].startswith("Вы отдельно упомянули")
     assert first["comment_language"] == "Russian"
-    assert first["prompt_version"] == "community_message_v3_single_local_language"
+    assert first["prompt_version"] == "community_message_v11_adaptive_playful"
     assert "variants" not in first
     assert first["surface"] == "CHANNEL_COMMENT"
     second = await prepare_review(
@@ -114,20 +114,41 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
 
 
 @pytest.mark.asyncio
-async def test_unrelated_post_returns_no_variants_without_sendability():
+async def test_vetted_post_requires_a_nonempty_reply_even_if_relevance_is_uncertain():
     store, product, now = _setup()
     async def judge(_system, _prompt):
         return _Draft(
-            topicality="UNRELATED",
-            reason="The post is unrelated to the adult community interests.",
+            topicality="UNCERTAIN",
+            reason="The gathering format is somewhat ambiguous.",
             language="Russian",
-            comment=None,
+            comment="А встреча будет с обсуждением в кругу или свободное общение?",
         )
     out = await prepare_review(
         store, product=product, handle="a_sfera", judge=judge, now=now
     )
-    assert out["comment"] is None
+    assert out["comment"].startswith("А встреча")
+    assert out["topicality"] == "UNCERTAIN"
     assert out["action_sendable"] is False
+    assert out["published"] is False
+
+
+@pytest.mark.asyncio
+async def test_model_abstention_is_not_stored_as_successful_review_draft():
+    store, product, now = _setup()
+
+    async def judge(_system, _prompt):
+        return _Draft(
+            topicality="UNRELATED",
+            reason="The post did not offer an obvious marketing angle.",
+            language="Russian",
+            comment=None,
+        )
+
+    with pytest.raises(ValueError, match="validation error"):
+        await prepare_review(
+            store, product=product, handle="a_sfera", judge=judge, now=now
+        )
+    assert store.list_namespace("femdom_telegram_comment_research_preview_v1") == []
 
 
 @pytest.mark.asyncio
@@ -162,7 +183,7 @@ async def test_group_reply_generates_one_native_language_message_without_send():
     store, product, now = _setup(kind="GROUP")
     async def judge(system, prompt):
         assert "GROUP_REPLY" in prompt
-        assert "channel post or a group message" in system
+        assert "GROUP_REPLY" in system
         return _Draft(
             topicality="RELEVANT",
             reason="The latest group message discusses an event and its ground rules.",
@@ -190,7 +211,7 @@ async def test_no_extra_variant_even_when_model_judge_provides_single_reply():
             "topicality": "RELEVANT",
             "reason": "Grounded in a specific community event detail.",
             "language": "Russian",
-            "comment": "А новичкам перед встречей отдельно рассказывают про правила и границы?",
+            "comment": "Вы обсуждаете формат встречи. Он уже определён или участники смогут его обсудить?",
             "why_relevant": "The event mentions participant boundaries.",
         }
     first = await prepare_review(
@@ -202,3 +223,89 @@ async def test_no_extra_variant_even_when_model_judge_provides_single_reply():
     assert len(calls) == 1
     assert first["comment"] == second["comment"]
     assert "variants" not in first
+
+
+@pytest.mark.asyncio
+async def test_preview_preserves_late_native_post_details_without_cutting_json():
+    store, product, now = _setup()
+    audience = store.get("audience_distribution_map", str(_PRODUCT))
+    opportunity = audience["opportunities"][0]
+    native_text = (
+        "Обсуждение встречи. " + "Подробности контекста. " * 24
+        + " Организаторы предлагают открытый формат вопросов от участников."
+    )
+    opportunity["metadata"]["recent_context"] = [{
+        "message_id": 2117,
+        "url": "https://t.me/a_sfera/2117",
+        "text": native_text,
+    }]
+    store.put("audience_distribution_map", str(_PRODUCT), audience)
+
+    async def judge(_system, prompt):
+        payload = json.loads(prompt)
+        assert "открытый формат вопросов" in payload["selected_target"]["text"]
+        assert len(payload["selected_target"]["text"]) > 400
+        assert len(payload["selected_target"]["text"]) <= 1400
+        return _Draft(
+            topicality="RELEVANT",
+            reason="The newest post explicitly offers an open question format.",
+            language="Russian",
+            comment="Открытый формат вопросов звучит полезно. Их можно задать заранее?",
+        )
+
+    result = await prepare_review(
+        store, product=product, handle="a_sfera", judge=judge, now=now
+    )
+    assert result["target_context_source"] == "verified_native_latest_message"
+    assert result["target_context_chars"] > 400
+    assert result["published"] is False
+
+
+@pytest.mark.asyncio
+async def test_preview_rejects_native_snapshot_newer_than_saved_target():
+    store, product, now = _setup()
+    audience = store.get("audience_distribution_map", str(_PRODUCT))
+    audience["opportunities"][0]["metadata"]["recent_context"] = [{
+        "message_id": 2118,
+        "url": "https://t.me/a_sfera/2118",
+        "text": "Уже появилось новое сообщение с другими условиями встречи.",
+    }]
+    store.put("audience_distribution_map", str(_PRODUCT), audience)
+
+    async def judge(_system, _prompt):
+        raise AssertionError("A stale post must not reach the model")
+
+    with pytest.raises(ValueError, match="differs from the saved target"):
+        await prepare_review(
+            store, product=product, handle="a_sfera", judge=judge, now=now
+        )
+
+
+@pytest.mark.asyncio
+async def test_short_telegram_cta_still_gets_one_research_draft():
+    store, product, now = _setup()
+    audience = store.get("audience_distribution_map", str(_PRODUCT))
+    audience["opportunities"][0]["metadata"]["research_latest_post_excerpt"] = (
+        "⬇️ЗАПОЛНИТЬ АНКЕТУ МОЖНО ТУТ⬇️"
+    )
+    store.put("audience_distribution_map", str(_PRODUCT), audience)
+    calls = []
+
+    async def judge(system, prompt):
+        calls.append(prompt)
+        assert "a little flirtation" in system
+        return _Draft(
+            topicality="RELEVANT",
+            reason="The selected target invites prospective participants to use a form.",
+            language="Russian",
+            comment="После анкеты можно сразу общаться или сначала идёт модерация?",
+        )
+
+    result = await prepare_review(
+        store, product=product, handle="a_sfera", judge=judge, now=now
+    )
+    assert result["status"] == "AWAITING_HUMAN_CONTEXT_AND_POLICY_REVIEW"
+    assert result["comment"].startswith("После анкеты")
+    assert len(calls) == 1
+    assert result["action_sendable"] is False
+    assert result["published"] is False
