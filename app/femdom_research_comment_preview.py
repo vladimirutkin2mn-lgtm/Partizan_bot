@@ -35,7 +35,11 @@ _REVIEW_NAMESPACE = "femdom_telegram_comment_research_preview_v1"
 _PROJECT_NAMESPACE = "customer_acquisition_projects"
 _PRODUCT = UUID("52d7e59e-5ac5-4363-b829-c93e33e48272")
 _PROJECT = UUID("124cdd70-49b0-48b3-aee0-a037dda4bcd0")
-_ALLOWED = frozenset(("a_sfera", "play_hard_community"))
+_ALLOWED = frozenset((
+    "a_sfera", "play_hard_community", "bizarreclubmsk",
+    "findom_gospoja0", "poiskrabovirabin", "fem_tut",
+    "moscowellebdsm1", "bizarre_afisha",
+))
 _POST = re.compile(r"^https://t\.me/([a-zA-Z][a-zA-Z0-9_]{4,31})/(\d+)$")
 
 
