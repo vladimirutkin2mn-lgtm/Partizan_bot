@@ -21,8 +21,6 @@ from pydantic import BaseModel, Field
 from app.historical_telegram_community_audit import historical_communities
 from app.product_intake import product_intake_service
 from app.runtime_store import get_runtime_store
-from app.telegram_message_precheck import precheck_telegram_target
-from app.telegram_native_flood_wait import research_flood_wait_until
 from app.telegram_participation_target import select_telegram_participation_target
 from app.telegram_research import (
     TelegramFloodWaitError,
@@ -40,6 +38,7 @@ _MODEL = "gpt-6-luna"
 # Inject checked-out candidate prompt and text selector; no production deployment.
 exec(compile(base64.b64decode(sys.argv[1]), "candidate_prompt.py", "exec"), globals())
 exec(compile(base64.b64decode(sys.argv[2]), "candidate_excerpt.py", "exec"), globals())
+exec(compile(base64.b64decode(sys.argv[3]), "candidate_precheck.py", "exec"), globals())
 
 
 # The deployed container may still use old 1,200-char storage behavior.
@@ -103,7 +102,19 @@ async def run() -> dict:
         "model_input_tokens": 0,
         "model_output_tokens": 0,
     }
-    blocked = research_flood_wait_until(store, now=now)
+    # Inspect the flood-wait ledger without deleting expired entries.
+    future_blocks = []
+    for item in store.list_namespace("telegram_research_flood_wait"):
+        try:
+            until = datetime.fromisoformat(
+                str(item.get("blocked_until") or "").replace("Z", "+00:00")
+            )
+            until = aware(until)
+            if until > now:
+                future_blocks.append(until)
+        except ValueError:
+            continue
+    blocked = max(future_blocks, default=None)
     if blocked:
         report["status"] = "FLOOD_WAIT_ACTIVE"
         report["blocked_until"] = blocked.isoformat()
