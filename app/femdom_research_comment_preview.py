@@ -104,6 +104,38 @@ def _read_candidate(
     ):
         raise ValueError("Saved audience requires research gate")
     caps = metadata.get("surface_capabilities") or {}
+    # An independent group message has NO post ID. Require a fresh native
+    # group-root target, not a fabricated reply to its newest member.
+    if opp.kind == OpportunityKind.GROUP and metadata.get("action_target_mode") == "STANDALONE_POST":
+        checked = _aware(metadata.get("research_last_native_checked_at"))
+        root = f"https://t.me/{handle}"
+        if (
+            not isinstance(caps, dict)
+            or caps.get("standalone_post") != "AVAILABLE"
+            or metadata.get("actionability") != "NEEDS_PREFLIGHT"
+            or metadata.get("action_target_url") != root
+            or metadata.get("action_target_specific") is not False
+            or checked is None
+            or not timedelta(0) <= now - checked <= timedelta(hours=24)
+        ):
+            raise ValueError("Fresh verified group-root posting surface is required")
+        group_context = str(metadata.get("about") or "").strip()
+        if len(group_context) < 20:
+            raise ValueError("Group description lacks enough context for an independent draft")
+        compacted = compact_telegram_target(group_context)
+        return {
+            "handle": handle, "target_url": root, "post_excerpt": compacted.text,
+            "post_source_chars": compacted.source_chars,
+            "post_compacted": compacted.compacted,
+            "post_excerpt_strategy": compacted.strategy,
+            "context_source": "verified_native_group_description",
+            "surface": "STANDALONE_POST", "post_id": 0,
+            "community_title": opp.title,
+            "community_about": group_context[:400],
+            "audience_status": metadata["research_audience_status"],
+            "checked_at": checked.isoformat(),
+            "publisher_permission_verified": False,
+        }, project
     capability = "comment" if surface == "CHANNEL_COMMENT" else "reply"
     if not isinstance(caps, dict) or caps.get(capability) != "AVAILABLE":
         raise ValueError("No verified reply surface for the saved latest message")
