@@ -385,6 +385,7 @@ class DistributionActionComposer:
             # Telegram messages and full discovery history. Keep only product
             # facts, community identity and the exact selected native target.
             product_data = product.model_dump(mode="json")
+            community_metadata = getattr(opportunity, "metadata", {}) or {}
             user_context = json.dumps(
                 {
                     "product": {
@@ -397,6 +398,10 @@ class DistributionActionComposer:
                         )
                     },
                     "community_title": opportunity.title,
+                    "community_about": str(community_metadata.get("about") or "")[:220],
+                    "audience_fit_hint": str(
+                        community_metadata.get("community_fit_reason") or ""
+                    )[:140],
                     "platform": opportunity.platform.value,
                     "action_type": play.action_type.value,
                     "tactic": play.tactic_id,
