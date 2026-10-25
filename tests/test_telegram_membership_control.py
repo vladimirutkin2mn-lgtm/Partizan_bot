@@ -178,7 +178,7 @@ async def test_native_chat_changed_after_approval_never_joins():
     client.linked_id = CHAT_ID + 55
     client.group.id = CHAT_ID + 55
     result = await service.execute(PROJECT, ident)
-    assert result["status"] == "INDETERMINATE"
+    assert result["status"] == "BLOCKED"
     assert result["reason"] == "LINKED_DISCUSSION_CHANGED"
     assert "join" not in client.calls
 
