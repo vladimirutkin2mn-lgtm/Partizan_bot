@@ -192,6 +192,14 @@ async def run(*, store: RuntimeStateStore, connector, product, icp) -> dict:
                 snapshot.recent_context[0].media_kind
                 if snapshot.recent_context else None
             ),
+            "latest_album_caption_source_id": (
+                snapshot.recent_context[0].album_caption_source_id
+                if snapshot.recent_context else None
+            ),
+            "latest_album_members_inspected": (
+                snapshot.recent_context[0].album_members_inspected
+                if snapshot.recent_context else 0
+            ),
         })
 
     return {

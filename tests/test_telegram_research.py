@@ -310,3 +310,127 @@ def test_telegram_native_snapshot_preserves_full_text_and_truncation_signal() ->
     assert len(oversized.text) == SAVED_TELEGRAM_POST_MAX_CHARS
     assert oversized.source_text_chars == len(long_text)
     assert oversized.text_truncated is True
+
+
+@pytest.mark.asyncio
+async def test_last_photo_of_latest_album_reads_only_its_own_caption():
+    """A Play.Hard-style multi-photo publication has one logical post."""
+    checked = datetime(2026, 10, 22, 14, 0, tzinfo=UTC)
+    media = SimpleNamespace(kind="photo")
+    newest = SimpleNamespace(
+        id=406, grouped_id=99188, message="", media=media, date=checked
+    )
+    second = SimpleNamespace(
+        id=405, grouped_id=99188, message="", media=media, date=checked
+    )
+    caption = SimpleNamespace(
+        id=404, grouped_id=99188,
+        message=(
+            "BDSM-connect+ снова превзошёл все ожидания! "
+            "Прошедший Connect+ собрал под 40 человек. "
+            "Участники обсуждали и знакомились."
+        ),
+        media=media, date=checked,
+    )
+    unrelated = SimpleNamespace(
+        id=403, grouped_id=None,
+        message="Older unrelated post: not part of this album.",
+        date=checked - timedelta(days=1), media=None,
+    )
+
+    class RecordingClient:
+        def __init__(self):
+            self.calls = []
+
+        async def get_messages(self, peer, **kwargs):
+            self.calls.append((peer, kwargs))
+            return [second, caption, unrelated]
+
+    transport = TelethonTelegramResearchTransport(
+        api_id=1, api_hash="fake", session_string="fake"
+    )
+    client = RecordingClient()
+    siblings = await transport._latest_album_companions(
+        client, "peer", [newest], latest_only=True
+    )
+    assert [item.id for item in siblings] == [405, 404]
+    assert client.calls == [
+        ("peer", {"limit": 9, "offset_id": 406})
+    ]
+    entity = SimpleNamespace(
+        id=1003, username="play_hard_community", title="Play.Hard",
+        broadcast=True, megagroup=False,
+    )
+    full = SimpleNamespace(
+        full_chat=SimpleNamespace(
+            about="Adult event community", linked_chat_id=888,
+            participants_count=3014,
+        )
+    )
+    snapshot = transport._snapshot(
+        entity, full, [newest], query="Connect",
+        album_companions=siblings,
+    )
+    assert len(snapshot.recent_context) == 1
+    last = snapshot.recent_context[0]
+    assert last.message_id == 406
+    assert last.url == "https://t.me/play_hard_community/406"
+    assert "собрал под 40 человек" in last.text
+    assert "Older unrelated" not in last.text
+    assert last.source_text_chars == len(caption.message)
+    assert last.media_present is True
+    assert last.album_group_id == 99188
+    assert last.album_caption_source_id == 404
+    assert last.album_members_inspected == 3
+    assert snapshot.action_target_url == "https://t.me/play_hard_community/406"
+
+
+@pytest.mark.asyncio
+async def test_no_extra_reads_for_normal_latest_post_or_unqualified_sample():
+    transport = TelethonTelegramResearchTransport(
+        api_id=1, api_hash="fake", session_string="fake"
+    )
+
+    class NoReadClient:
+        async def get_messages(self, *_args, **_kwargs):
+            raise AssertionError("Only the latest album merits the extra read")
+
+    no_read = NoReadClient()
+    for newest, latest_only in [
+        (SimpleNamespace(id=500, grouped_id=None), True),
+        (SimpleNamespace(id=501, grouped_id=44), False),
+    ]:
+        assert await transport._latest_album_companions(
+            no_read, "peer", [newest], latest_only=latest_only,
+        ) == []
+
+
+def test_album_caption_cannot_be_inferred_from_different_group_or_old_post():
+    transport = TelethonTelegramResearchTransport(
+        api_id=1, api_hash="fake", session_string="fake"
+    )
+    now = datetime(2026, 10, 22, tzinfo=UTC)
+    newest = SimpleNamespace(
+        id=406, grouped_id=888, message="", media=object(), date=now
+    )
+    unrelated = SimpleNamespace(
+        id=405, grouped_id=999, message="Wrong album caption",
+        date=now, media=object(),
+    )
+    stale_same_group = SimpleNamespace(
+        id=404, grouped_id=888, message="Caption from last year",
+        date=now - timedelta(days=400), media=object(),
+    )
+    entity = SimpleNamespace(
+        id=101, username="play_hard_community", megagroup=False,
+        broadcast=True, title="Play.Hard",
+    )
+    full = SimpleNamespace(full_chat=SimpleNamespace(linked_chat_id=12))
+    snapshot = transport._snapshot(
+        entity, full, [newest], query="",
+        album_companions=[unrelated, stale_same_group],
+    )
+    latest = snapshot.recent_context[0]
+    assert latest.text == ""
+    assert latest.album_caption_source_id is None
+    assert latest.album_members_inspected == 1

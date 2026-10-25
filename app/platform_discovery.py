@@ -281,6 +281,9 @@ class TelegramDiscoveryAdapter(PlatformDiscoveryAdapter):
                     "linked_post_urls": list(item.linked_post_urls),
                     "media_present": item.media_present,
                     "media_kind": item.media_kind,
+                    "album_group_id": item.album_group_id,
+                    "album_caption_source_id": item.album_caption_source_id,
+                    "album_members_inspected": item.album_members_inspected,
                 }
                 for item in snapshot.recent_context
             ],
