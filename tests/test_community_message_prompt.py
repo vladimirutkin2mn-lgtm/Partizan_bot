@@ -14,7 +14,7 @@ def test_v14_is_one_grounded_local_language_draft_for_all_surfaces():
         assert mode in prompt
     assert "language of the selected post or group" in prompt
     assert "Output ONE" in prompt
-    assert "No variants, retries or publication" in prompt
+    assert "Never publish or claim sending" in prompt
 
 
 def test_primary_quality_is_meaningful_conversation_not_forced_wit():
