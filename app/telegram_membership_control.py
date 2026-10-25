@@ -12,13 +12,14 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
+from telethon.tl.functions.channels import JoinChannelRequest
 
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
 from app.distribution_schemas import AudienceDistributionMapView
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.telegram_client_publishing import CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE
-from app.telegram_comment_access import ensure_comment_access, preflight_comment_access
+from app.telegram_comment_access import preflight_comment_access
 from app.telegram_community_registry import TelegramCommunityRegistry
 from app.telegram_community_restrictions import telegram_community_restriction_memory
 from app.telegram_opportunity_preflight import telegram_opportunity_preflight_service
@@ -50,7 +51,7 @@ class TelegramMembershipService:
         self.store = store or get_runtime_store()
         self.client_factory = client_factory or self._connected_client
         self.access_checker = access_checker or preflight_comment_access
-        self.joiner = joiner or ensure_comment_access
+        self.joiner = joiner or self._join_exact_entity
         self.restriction_checker = (
             restriction_checker or telegram_community_restriction_memory.get
         )
@@ -109,6 +110,11 @@ class TelegramMembershipService:
         if error is not None or client is None:
             raise TelegramMembershipError("CUSTOMER_SESSION_UNAVAILABLE")
         return client
+
+    @staticmethod
+    async def _join_exact_entity(client, linked_entity):
+        # The entity was checked against the owner's approved linked chat ID.
+        return await client(JoinChannelRequest(linked_entity))
 
     @staticmethod
     def _now() -> datetime:
@@ -242,16 +248,29 @@ class TelegramMembershipService:
             elif access.status != "JOIN_REQUIRED":
                 status, reason = "BLOCKED", access.status
             else:
-                # This is the only place that can join. No message send methods.
-                outcome = await self.joiner(client, channel, allow_join=True)
-                if outcome.linked_chat_id != record["linked_chat_id"]:
-                    status, reason = "INDETERMINATE", "LINKED_DISCUSSION_CHANGED"
-                elif outcome.joined:
-                    joined, write_access = True, outcome.status
-                    status = ("JOINED_AND_READY" if outcome.status == "READY"
-                              else "JOINED_BUT_RESTRICTED")
+                linked = access._linked_entity
+                if (linked is None or int(getattr(linked, "id", 0) or 0)
+                        != record["linked_chat_id"]):
+                    raise TelegramMembershipError("LINKED_ENTITY_ID_MISMATCH")
+                # The only mutating Telegram call uses the EXACT previewed
+                # entity. A second fresh preflight must not replace the target.
+                try:
+                    await self.joiner(client, linked)
+                except Exception as exc:
+                    checked = await self.access_checker(client, channel)
+                    if (checked.linked_chat_id == record["linked_chat_id"]
+                            and checked.status == "READY"):
+                        joined, write_access, status = True, "READY", "JOINED_AND_READY"
+                    else:
+                        status, reason = "INDETERMINATE", type(exc).__name__
                 else:
-                    status, reason = "BLOCKED", outcome.status
+                    checked = await self.access_checker(client, channel)
+                    if checked.linked_chat_id != record["linked_chat_id"]:
+                        status, reason = "INDETERMINATE", "LINKED_DISCUSSION_CHANGED"
+                    else:
+                        joined, write_access = True, checked.status
+                        status = ("JOINED_AND_READY" if checked.status == "READY"
+                                  else "JOINED_BUT_RESTRICTED")
         except Exception as exc:
             status, reason = "INDETERMINATE", type(exc).__name__
         finally:
