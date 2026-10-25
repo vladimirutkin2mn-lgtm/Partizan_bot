@@ -11,7 +11,7 @@ from app.femdom_autonomous_telegram_readonly_audit import (
     audit,
     evaluate_autonomous_join_gates,
 )
-from app.femdom_research_comment_preview import _PROJECT, _PRODUCT
+from app.femdom_research_comment_preview import _PRODUCT, _PROJECT
 from app.runtime_store import MemoryRuntimeStateStore
 from app.telegram_client_governance import CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE
 
