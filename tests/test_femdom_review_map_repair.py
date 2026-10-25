@@ -110,3 +110,20 @@ def test_stale_native_evidence_or_unknown_community_cannot_seed():
     assert seed_missing_reviewed_opportunity(
         store, product_id=PRODUCT, icp_id=icp, candidate=candidate, now=now
     )["status"] == "NOT_MANUALLY_REVIEWED"
+
+
+def test_current_product_icp_can_differ_from_legacy_map_icp():
+    # Previously this legitimate re-indexing case blocked bizarreclubmsk
+    # in production, even though the connected product's ICP is authoritative.
+    store, _old_icp, candidate, now = _setup()
+    current_product_icp = uuid4()
+    report = seed_missing_reviewed_opportunity(
+        store, product_id=PRODUCT, icp_id=current_product_icp,
+        candidate=candidate, now=now,
+    )
+    assert report["status"] == "SEEDED_RESEARCH_ONLY"
+    mapping = store.get("audience_distribution_map", str(PRODUCT))
+    newest = mapping["opportunities"][-1]
+    assert newest["icp_id"] == str(current_product_icp)
+    assert newest["metadata"]["publisher_permission_verified"] is False
+    assert newest["metadata"]["actionability"] == "RESEARCH_ONLY"
