@@ -31,6 +31,10 @@ from app.growth_balance_rail_routes import router as growth_balance_rail_router
 from app.icp_service import icp_service
 from app.logging import configure_logging
 from app.managed_distribution_routes import customer_router as customer_managed_distribution_router
+from app.telegram_membership_routes import (
+    customer_router as customer_telegram_membership_router,
+    operator_router as operator_telegram_membership_router,
+)
 from app.operator_auth import require_control_plane_operator
 from app.product_intake import product_intake_service
 from app.schemas import (
@@ -76,6 +80,8 @@ app.include_router(growth_autoresearch_router)
 app.include_router(distribution_router)
 app.include_router(distribution_play_router)
 app.include_router(customer_execution_request_routes.operator_router)
+app.include_router(customer_telegram_membership_router)
+app.include_router(operator_telegram_membership_router)
 
 
 @app.get("/health", tags=["system"])
