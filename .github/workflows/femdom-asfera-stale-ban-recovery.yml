@@ -1,0 +1,107 @@
+name: One-off a_sfera stale ban recovery after live native check (no sends)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/femdom-asfera-stale-ban-recovery.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: asfera-single-old-restriction-recovery-20261025
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require locked-down production credentials
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing production requirement: ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin known production host
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Require exact new release before changing old cache
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          for attempt in $(seq 1 60); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              echo "Verified matching production release"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Production release mismatch; no restriction was changed"
+          exit 1
+      - name: Fresh Telegram rights and discussion verification before exact cache removal
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+            python -m app.femdom_asfera_stale_restriction_reconcile \
+              --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+              --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0" \
+            > asfera-stale-ban-recovery.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("asfera-stale-ban-recovery.json").read_text())
+          assert report["status"] in (
+              "STALE_RESTRICTION_CLEARED_CURRENT_NATIVE_READY",
+              "ALREADY_CLEARED_CURRENT_NATIVE_ROUTE_READY",
+          )
+          for field in ("telegram_sends", "telegram_joins",
+                        "profile_mutations", "approval_mutations"):
+              assert report[field] == 0, field
+          assert report["publication_authorized"] is False
+          assert report["send_allowed"] is False
+          assert report["no_commercial_policy_override"] is True
+          print(json.dumps({
+              "target": report["target"],
+              "status": report["status"],
+              "restriction_removed": report["restriction_removed"],
+              "post_clear_preflight": report.get("post_clear_preflight"),
+              "send_allowed": False,
+              "telegram_sends": 0,
+          }, ensure_ascii=False))
+          PY
+      - name: Save bounded recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asfera-old-restriction-recovery-audit
+          path: asfera-stale-ban-recovery.json
+          retention-days: 7
+          if-no-files-found: warn
