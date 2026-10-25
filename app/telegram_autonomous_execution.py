@@ -11,6 +11,7 @@ from app.distribution_analytics_schemas import (
 )
 from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_execution_service import distribution_execution_service
+from app.distribution_types import DistributionActionStatus
 from app.execution_adapters import (
     AdapterExecutionOutcome,
     DistributionAdapterExecutionView,
@@ -18,6 +19,10 @@ from app.execution_adapters import (
 )
 from app.growth_balance import GrowthBalanceService
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.telegram_autonomous_membership_recovery import (
+    TelegramAutonomousJoinBlocked,
+    telegram_autonomous_membership_recovery,
+)
 from app.telegram_client_governance import (
     CustomerTelegramClientPublishError,
     customer_telegram_governance_service,
@@ -72,6 +77,31 @@ class CustomerTelegramAutonomousExecutionService:
                 "Growth Balance does not have enough available funds for the "
                 f"${execution_fee:.3f} Telegram execution fee"
             )
+
+        # Discovery remains read-only. An authorized, already APPROVED
+        # execution can autonomously resolve JOIN_REQUIRED when the owner
+        # separately opted into community joins. Manual preview never joins.
+        if plan.action.status == DistributionActionStatus.APPROVED:
+            authorization = (
+                customer_telegram_governance_service.automation_status_internal(
+                    project_id
+                )
+            )
+            if authorization.status.value != "ENABLED":
+                raise CustomerTelegramClientPublishError(
+                    "Telegram automation is not enabled"
+                )
+            try:
+                await telegram_autonomous_membership_recovery.ensure_ready(
+                    project_id=project_id,
+                    product_id=product_id,
+                    action=plan.action,
+                    allow_community_joins=authorization.allow_community_joins,
+                )
+            except TelegramAutonomousJoinBlocked as exc:
+                raise CustomerTelegramClientPublishError(
+                    f"Telegram autonomous publisher preflight blocked: {exc}"
+                ) from exc
 
         receipt = await customer_telegram_governance_service.automated_publish_internal(
             project_id,

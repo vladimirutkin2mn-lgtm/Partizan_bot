@@ -227,7 +227,31 @@ def test_automation_requires_explicit_confirmation_and_live_readiness(monkeypatc
     )
     assert authorized.status == TelegramAutomationStatus.ENABLED
     assert authorized.max_publishes_per_day == 2
+    assert authorized.allow_community_joins is False
     assert authorized.readiness_ok is True
+
+    with_join_scope = service.authorize_automation(
+        project_id,
+        "customer-token",
+        TelegramAutomationAuthorizationRequest(
+            confirm_client_owned_execution=True,
+            allow_community_joins=True,
+            max_publishes_per_day=2,
+        ),
+    )
+    assert with_join_scope.allow_community_joins is True
+    assert service.automation_status_internal(project_id).allow_community_joins is True
+
+    # A new authorization without this scope revokes auto-join permission.
+    rescoped = service.authorize_automation(
+        project_id,
+        "customer-token",
+        TelegramAutomationAuthorizationRequest(
+            confirm_client_owned_execution=True,
+            max_publishes_per_day=2,
+        ),
+    )
+    assert rescoped.allow_community_joins is False
 
 
 @pytest.mark.asyncio

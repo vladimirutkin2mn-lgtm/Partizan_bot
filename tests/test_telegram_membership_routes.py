@@ -109,8 +109,7 @@ async def test_owner_can_execute_only_authenticated_preapproved_intent(monkeypat
 def test_channels_workspace_requires_join_preview_and_exact_owner_confirmation():
     from pathlib import Path
     script = Path("app/web/workspace.channels.v1.js").read_text()
-    assert 'data-telegram-join-preview' in script
-    assert 'data-telegram-join-confirm' in script
-    assert 'expected_channel_id: current.channel_id' in script
-    assert 'expected_linked_chat_id: current.linked_chat_id' in script
-    assert 'No automatic retry will occur.' in script
+    assert 'data-telegram-join-preview' not in script
+    assert 'data-telegram-join-confirm' not in script
+    assert 'name="allow_community_joins"' in script
+    assert "form.get('allow_community_joins') === 'on'" in script

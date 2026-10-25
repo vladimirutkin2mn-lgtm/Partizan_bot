@@ -81,6 +81,8 @@ class TelegramPublishObservationView(BaseModel):
 
 class TelegramAutomationAuthorizationRequest(BaseModel):
     confirm_client_owned_execution: bool
+    # Separately authorized scope; older grants must never imply joining.
+    allow_community_joins: bool = False
     max_publishes_per_day: int = Field(default=1, ge=1, le=_MAX_AUTOMATION_PUBLISHES_PER_DAY)
 
 
@@ -88,6 +90,7 @@ class TelegramAutomationView(BaseModel):
     project_id: UUID
     status: TelegramAutomationStatus
     max_publishes_per_day: int = 1
+    allow_community_joins: bool = False
     authorized_at: datetime | None = None
     paused_at: datetime | None = None
     revoked_at: datetime | None = None
@@ -289,6 +292,7 @@ class CustomerTelegramGovernanceService:
             "project_id": str(project_id),
             "status": TelegramAutomationStatus.ENABLED.value,
             "max_publishes_per_day": payload.max_publishes_per_day,
+            "allow_community_joins": payload.allow_community_joins,
             "authorized_at": now.isoformat(),
             "paused_at": None,
             "revoked_at": None,
@@ -561,6 +565,7 @@ class CustomerTelegramGovernanceService:
             project_id=project_id,
             status=TelegramAutomationStatus(str(record["status"])),
             max_publishes_per_day=int(record.get("max_publishes_per_day") or 1),
+            allow_community_joins=record.get("allow_community_joins") is True,
             authorized_at=self._optional_datetime(record.get("authorized_at")),
             paused_at=self._optional_datetime(record.get("paused_at")),
             revoked_at=self._optional_datetime(record.get("revoked_at")),
