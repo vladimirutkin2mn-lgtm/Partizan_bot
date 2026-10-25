@@ -171,3 +171,126 @@ async def test_distribution_preflight_updates_only_the_capability_for_each_actio
     assert post_metadata["publisher_participation_preflight"]["action_target_mode"] == (
         "STANDALONE_POST"
     )
+
+
+@pytest.mark.asyncio
+async def test_join_required_reaches_planner_only_when_owner_enabled_auto_join():
+    from app.distribution_play_planner import DistributionPlayPlanner
+    from app.distribution_types import DistributionActionType
+
+    store = MemoryRuntimeStateStore()
+    project, product = uuid4(), uuid4()
+    store.put("customer_acquisition_projects", str(project), {
+        "id": str(project), "product_id": str(product),
+        "channel_preferences": {"TELEGRAM": "AUTO"},
+        "channel_publisher_modes": {"TELEGRAM": "CLIENT_OWNED"},
+    })
+    store.put("customer_telegram_automation_authorization", str(project), {
+        "project_id": str(project), "status": "ENABLED",
+        "allow_community_joins": True,
+    })
+    now = datetime.now(UTC)
+    action_url = "https://t.me/community/406"
+    metadata = {
+        "handle": "community", "telegram_entity_id": 1234,
+        "native_research_status": "VERIFIED",
+        "community_fit_pass": True,
+        "research_audience_status": "DIRECT_CONFIRMED",
+        "action_target_mode": "CHANNEL_COMMENT",
+        "action_target_url": action_url,
+        "action_target_specific": True,
+        "source_checked_at": now.isoformat(),
+        "surface_capabilities": {"comment": "AVAILABLE", "publisher_permission_verified": False},
+        "community_commercial_rules": {
+            "status": "VERIFIED_ALLOWED", "allows_participation": True,
+            "allows_promotion": True, "source_url": "https://t.me/community",
+        },
+    }
+    opp = DistributionOpportunityView(
+        id=uuid4(), icp_id=uuid4(), title="Community",
+        platform=DistributionPlatform.TELEGRAM,
+        kind=OpportunityKind.CHANNEL,
+        canonical_key="telegram:1234:community",
+        url="https://t.me/community", metadata=metadata,
+    )
+    preflight = TelegramOpportunityPreflightResult(
+        status="JOIN_REQUIRED", handle="community",
+        post_id=406, linked_chat_id=777,
+        action_target_mode="CHANNEL_COMMENT",
+    )
+    service = AutonomousOpportunityRefreshService(
+        store=store, audience_service=SimpleNamespace(),
+        telegram_preflight_service=ModeAwarePreflight(),
+    )
+    distribution = AudienceDistributionMapView(
+        product_id=product, top_icp_count=1, opportunity_count=1,
+        opportunities=[opp],
+    )
+    key = service._preflight_key(action_url, "CHANNEL_COMMENT")
+    result = await service._apply_comment_preflight_to_distribution(
+        project, distribution, {key: preflight},
+    )
+    updated = result.opportunities[0]
+    assert updated.metadata["publisher_participation_preflight"]["status"] == "JOIN_REQUIRED"
+    assert updated.metadata["surface_capabilities"]["comment"] == "UNAVAILABLE"
+    assert updated.metadata["autonomous_join_recoverable"] is True
+    planner = DistributionPlayPlanner()
+    identity = SimpleNamespace(profile_config={"publisher_mode": "CLIENT_OWNED"})
+    assert planner._telegram_native_execution_reasons(
+        updated, DistributionActionType.COMMENT, identity=identity
+    ) == []
+
+    # The same opportunity remains unsendable when automation is disabled.
+    auth = store.get("customer_telegram_automation_authorization", str(project))
+    auth["allow_community_joins"] = False
+    store.put("customer_telegram_automation_authorization", str(project), auth)
+    denied = await service._apply_comment_preflight_to_distribution(
+        project, distribution, {key: preflight},
+    )
+    assert denied.opportunities[0].metadata["autonomous_join_recoverable"] is False
+    assert planner._telegram_native_execution_reasons(
+        denied.opportunities[0], DistributionActionType.COMMENT, identity=identity
+    ) != []
+
+
+@pytest.mark.asyncio
+async def test_unknown_rules_block_joinrequired_planning_even_under_automation():
+    from app.distribution_play_planner import DistributionPlayPlanner
+    from app.distribution_types import DistributionActionType
+
+    store = MemoryRuntimeStateStore()
+    project = uuid4()
+    store.put("customer_acquisition_projects", str(project), {
+        "id": str(project), "channel_preferences": {"TELEGRAM": "AUTO"},
+        "channel_publisher_modes": {"TELEGRAM": "CLIENT_OWNED"},
+    })
+    store.put("customer_telegram_automation_authorization", str(project), {
+        "status": "ENABLED", "allow_community_joins": True,
+    })
+    service = AutonomousOpportunityRefreshService(store=store)
+    metadata = {
+        "native_research_status": "VERIFIED", "community_fit_pass": True,
+        "research_audience_status": "DIRECT_CONFIRMED",
+        "action_target_mode": "STANDALONE_POST",
+        "action_target_url": "https://t.me/group",
+        "community_commercial_rules": {"status": "UNVERIFIED"},
+    }
+    assert service._join_recovery_candidacy(
+        project, metadata, mode="STANDALONE_POST",
+        native_surface="AVAILABLE", status="JOIN_REQUIRED",
+    ) is False
+    # A malicious raw marker without the associated provider JOIN_REQUIRED
+    # status must not satisfy the execution planner.
+    opp = DistributionOpportunityView(
+        id=uuid4(), icp_id=uuid4(), title="Group",
+        platform=DistributionPlatform.TELEGRAM, kind=OpportunityKind.GROUP,
+        canonical_key="telegram:1234:community", url="https://t.me/group",
+        metadata={**metadata, "autonomous_join_recoverable": True,
+                  "publisher_participation_preflight": {"status": "NO_WRITE_ACCESS"},
+                  "surface_capabilities": {"standalone_post": "UNAVAILABLE"}},
+    )
+    reasons = DistributionPlayPlanner()._telegram_native_execution_reasons(
+        opp, DistributionActionType.STANDALONE_POST,
+        identity=SimpleNamespace(profile_config={"publisher_mode": "CLIENT_OWNED"}),
+    )
+    assert reasons
