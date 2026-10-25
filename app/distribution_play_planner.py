@@ -287,10 +287,18 @@ class DistributionPlayPlanner:
         capabilities = capabilities if isinstance(capabilities, dict) else {}
         action_target = str(metadata.get("action_target_url") or "").strip()
         action_target_specific = bool(metadata.get("action_target_specific"))
+        # This is NOT verified write access. Approved autonomous execution must
+        # still perform one authorized join and recheck access before publish.
+        pending_authorized_join = (
+            metadata.get("autonomous_join_recoverable") is True
+            and (metadata.get("publisher_participation_preflight") or {}).get("status")
+            == "JOIN_REQUIRED"
+        )
 
         if action_type == DistributionActionType.COMMENT:
             reasons = []
-            if str(capabilities.get("comment") or "").upper() != "AVAILABLE":
+            if (str(capabilities.get("comment") or "").upper() != "AVAILABLE"
+                    and not pending_authorized_join):
                 reasons.append("Telegram comment surface is not verified AVAILABLE")
             if not action_target_specific or not action_target:
                 reasons.append("Telegram comment requires a specific native message target")
@@ -298,7 +306,8 @@ class DistributionPlayPlanner:
 
         if action_type == DistributionActionType.REPLY:
             reasons = []
-            if str(capabilities.get("reply") or "").upper() != "AVAILABLE":
+            if (str(capabilities.get("reply") or "").upper() != "AVAILABLE"
+                    and not pending_authorized_join):
                 reasons.append("Telegram reply surface is not verified AVAILABLE")
             if not action_target_specific or not action_target:
                 reasons.append("Telegram reply requires a specific native message target")
@@ -306,9 +315,11 @@ class DistributionPlayPlanner:
 
         if action_type == DistributionActionType.STANDALONE_POST:
             reasons = []
-            if str(capabilities.get("standalone_post") or "").upper() != "AVAILABLE":
+            if (str(capabilities.get("standalone_post") or "").upper() != "AVAILABLE"
+                    and not pending_authorized_join):
                 reasons.append("Telegram standalone-post surface is not verified AVAILABLE")
-            if capabilities.get("publisher_permission_verified") is not True:
+            if (capabilities.get("publisher_permission_verified") is not True
+                    and not pending_authorized_join):
                 reasons.append(
                     "Telegram standalone posting requires verified publisher permission"
                 )
