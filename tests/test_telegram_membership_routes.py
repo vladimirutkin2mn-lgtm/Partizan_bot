@@ -72,7 +72,8 @@ async def test_operator_only_execution_remains_separate(monkeypatch):
         assert any(
             dependency.call is require_operator
             for route in app.routes
-            if getattr(route, "path", "") == path
+            if getattr(route, "path", "") ==
+            "/v1/telegram/membership/{project_id}/linked-group-joins/{intent_id}/execute"
             for dependency in getattr(route, "dependant", None).dependencies
         )
         app.dependency_overrides[require_operator] = lambda: None
