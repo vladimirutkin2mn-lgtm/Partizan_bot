@@ -1,0 +1,122 @@
+name: One-off FemDom autonomous Telegram production audit (no send)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/femdom-autonomous-telegram-readonly-audit.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: femdom-autonomous-readonly-audit-20261025
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check production access
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing production access requirement: ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin known host
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Verify matching production release
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 60); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              echo "Matching production release ready"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Production release not ready: skipping Telegram"
+          exit 1
+      - name: Inspect connected Telegram publisher and autonomous execution gates
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -m app.femdom_autonomous_telegram_readonly_audit \
+              --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+              --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0" \
+              > femdom-autonomous-readonly-audit.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("femdom-autonomous-readonly-audit.json").read_text())
+          assert data["status"] == "AUTONOMOUS_TELEGRAM_READONLY_AUDIT_COMPLETE"
+          assert len(data["communities"]) == 5
+          for key in (
+              "messages_sent", "community_joins_performed", "new_approvals",
+              "profile_changes", "llm_calls", "paid_discovery_calls",
+          ):
+              assert data[key] == 0, key
+          for row in data["communities"]:
+              for key in ("send_allowed", "published", "joined", "profile_mutated",
+                          "approval_recorded"):
+                  assert row[key] is False, (row["handle"], key)
+              print(json.dumps({
+                  "handle": row["handle"],
+                  "target": row.get("target_url"),
+                  "mode": row.get("mode"),
+                  "publisher": row.get("account_preflight_status"),
+                  "draft_exists": row.get("draft_exists", False),
+                  "rule_status": (row.get("membership") or {}).get("community_rule_status"),
+                  "join_gates_missing": (row.get("membership") or {}).get("unmet_gates"),
+                  "autonomous_join_ready": (row.get("membership") or {}).get(
+                      "would_qualify_for_auto_join_now", False
+                  ),
+                  "album_discussion_anchor": row.get("album_discussion_anchor"),
+                  "sent": False,
+              }, ensure_ascii=False))
+          print(json.dumps({
+              "profile_status": data.get("profile_status"),
+              "tracking_link_verified": data["profile_tracking_verified"],
+              "automation_enabled": data["automation_enabled"],
+              "community_joins_authorized": data["automation_community_joins_allowed"],
+              "any_auto_join_eligible": data["any_auto_join_eligible"],
+          }, ensure_ascii=False))
+          PY
+      - name: Retain private no-send launch evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: femdom-autonomous-telegram-readonly-audit
+          path: femdom-autonomous-readonly-audit.json
+          retention-days: 7
+          if-no-files-found: error
