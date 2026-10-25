@@ -29,7 +29,8 @@ _NATIVE_KEYS = {
     "surface_capabilities", "linked_discussion_id", "surface_kind",
     "source_post_category", "conversation_signals",
     "community_fit_reason", "community_fit_pass", "community_fit_terms",
-    "registry_confirmed", "semantic_audience_fit", "action_target_mode",
+    "registry_confirmed", "semantic_audience_fit", "community_commercial_rules",
+    "action_target_mode",
     "action_target_resolution", "action_target_quality", "target_age_days",
     "target_published_at",
 }
