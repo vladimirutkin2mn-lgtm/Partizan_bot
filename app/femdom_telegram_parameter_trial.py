@@ -58,12 +58,37 @@ class _ReadOnlyNoCache:
         # Intentionally discard. Production review/cache remains unchanged.
 
 
+def _resolve_sampling_profile(override: dict | None) -> dict:
+    """Allow ONLY requested diagnostic variants with pinned model and endpoint."""
+    if override is None:
+        return dict(_PROFILE)
+    allowed = {"temperature", "presence_penalty", "frequency_penalty",
+               "reasoning_effort"}
+    if set(override) - allowed:
+        raise ValueError("Invalid sampling profile override")
+    for key, value in override.items():
+        if key == "reasoning_effort":
+            if value != "none":
+                raise ValueError("Unsupported diagnostic reasoning effort")
+        elif not isinstance(value, (float, int)) or isinstance(value, bool):
+            raise ValueError("Invalid diagnostic numeric sampling value")
+        elif not -2 <= value <= 2:
+            raise ValueError("Sampling value outside API bound")
+    return {
+        "endpoint": "chat.completions.parse",
+        "model": _MODEL,
+        "max_completion_tokens": _PROFILE["max_completion_tokens"],
+        **override,
+    }
+
+
 async def run(*, store, product, api_client, project_id=_PROJECT,
-              product_id=_PRODUCT, now=None) -> dict:
+              product_id=_PRODUCT, now=None, sampling_override=None) -> dict:
     if project_id != _PROJECT or product_id != _PRODUCT:
         raise ValueError("Sampling trial project/product scope mismatch")
 
     # Import of this module itself does not open a Telegram session.
+    profile = _resolve_sampling_profile(sampling_override)
     scratch = _ReadOnlyNoCache(store)
     api_calls = 0
     request_sha = None
@@ -79,19 +104,21 @@ async def run(*, store, product, api_client, project_id=_PROJECT,
             (system + "\n" + payload).encode("utf-8")
         ).hexdigest()
         api_calls += 1
-        response = await asyncio.to_thread(
-            api_client.chat.completions.parse,
-            model=_MODEL,
-            messages=[
+        request = {
+            "model": _MODEL,
+            "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": payload},
             ],
-            response_format=_ReplyDraft,
-            temperature=_PROFILE["temperature"],
-            presence_penalty=_PROFILE["presence_penalty"],
-            frequency_penalty=_PROFILE["frequency_penalty"],
-            reasoning_effort=_PROFILE["reasoning_effort"],
-            max_completion_tokens=_PROFILE["max_completion_tokens"],
+            "response_format": _ReplyDraft,
+            "max_completion_tokens": profile["max_completion_tokens"],
+        }
+        for key in ("temperature", "presence_penalty", "frequency_penalty",
+                    "reasoning_effort"):
+            if key in profile:
+                request[key] = profile[key]
+        response = await asyncio.to_thread(
+            api_client.chat.completions.parse, **request,
         )
         usage_obj = getattr(response, "usage", None)
         usage["input_tokens"] = int(
@@ -124,9 +151,9 @@ async def run(*, store, product, api_client, project_id=_PROJECT,
         "target": _TARGET,
         "prompt_version": COMMUNITY_MESSAGE_PROMPT_VERSION,
         "request_sha256": request_sha,
-        "sampling_profile": dict(_PROFILE),
+        "sampling_profile": dict(profile),
         "sampling_fingerprint": hashlib.sha256(
-            json.dumps(_PROFILE, sort_keys=True).encode("utf-8")
+            json.dumps(profile, sort_keys=True).encode("utf-8")
         ).hexdigest(),
         "comment": review["comment"],
         "why_relevant": review.get("why_relevant"),

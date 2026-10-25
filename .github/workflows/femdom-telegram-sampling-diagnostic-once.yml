@@ -1,0 +1,111 @@
+name: Diagnose GPT-6 chat sampling one by one (no publishing)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/femdom-telegram-sampling-diagnostic-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: femdom-asfera-sampling-isolation-20261026
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require production transport
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing production prerequisite: ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin trusted production host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Verify exact production release
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          for attempt in $(seq 1 60); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              echo "Matching production release"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Production release mismatch; no model calls"
+          exit 1
+      - name: Check requested settings once then isolate on failure (max six calls)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -m app.femdom_telegram_sampling_diagnostic \
+              --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+              --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0" \
+            > asfera-sampling-diagnostic.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          row = json.loads(Path("asfera-sampling-diagnostic.json").read_text())
+          assert row["status"] in (
+              "FULL_PROFILE_SUPPORTED_ONE_DRAFT",
+              "STOPPED_AUTH_RATE_LIMIT_OR_NETWORK_FAILURE",
+              "BASELINE_CHAT_FAILED_PARAMETERS_NOT_ISOLATED",
+              "INDIVIDUAL_PARAMETERS_TESTED",
+          ), row["status"]
+          assert row["target"] == "https://t.me/a_sfera/2117"
+          assert row["prompt_version"] == "community_message_v15_1_profile_curiosity_trial"
+          assert 1 <= row["attempt_count"] <= 6
+          assert row["attempt_count"] == len(row["results"])
+          assert row["sdk_retries"] == 0
+          for key in ("telegram_sends", "telegram_joins", "review_cache_writes", "profile_edits"):
+              assert row[key] == 0, key
+          assert row["production_publisher_unchanged"] is True
+          assert row["publication_authorized"] is False
+          print(json.dumps({
+              "status": row["status"],
+              "attempt_count": row["attempt_count"],
+              "results": row["results"],
+              "telegram_sends": 0,
+              "publisher_changed": False,
+          }, ensure_ascii=False))
+          PY
+      - name: Preserve private evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asfera-gpt6-sampling-isolation
+          path: asfera-sampling-diagnostic.json
+          retention-days: 7
+          if-no-files-found: warn
