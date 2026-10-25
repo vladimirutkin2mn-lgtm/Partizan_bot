@@ -1,0 +1,109 @@
+name: Review one v15-1 FemDom a_sfera message (no sending)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/femdom-asfera-v15-1-comment-preview.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: femdom-asfera-v15-1-one-draft-20261025
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require production transport
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing production prerequisite: ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin trusted production host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Verify exact production release
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          for attempt in $(seq 1 60); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              echo "Matching production release"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Production release mismatch; no model calls"
+          exit 1
+      - name: Prepare just one review-only v15-1 comment for pinned a_sfera post
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -m app.femdom_research_comment_preview \
+              --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+              --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0 \
+              --handle a_sfera" > asfera-v15-1-single-draft.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          row = json.loads(Path("asfera-v15-1-single-draft.json").read_text())
+          assert row["status"] == "AWAITING_HUMAN_CONTEXT_AND_POLICY_REVIEW"
+          assert row["target_url"] == "https://t.me/a_sfera/2117"
+          assert row["surface"] == "CHANNEL_COMMENT"
+          assert row["prompt_version"] == "community_message_v15_1_profile_curiosity_trial"
+          assert row["published"] is False
+          assert row["action_sendable"] is False
+          assert row["publisher_permission_verified"] is False
+          assert row["cache_hit"] is False
+          assert row["comment"].strip()
+          print(json.dumps({
+              "target": row["target_url"],
+              "prompt_version": row["prompt_version"],
+              "comment": row["comment"],
+              "why_relevant": row.get("why_relevant"),
+              "input_tokens": row["input_tokens"],
+              "output_tokens": row["output_tokens"],
+              "cache_hit": row["cache_hit"],
+              "published": False,
+              "sendable": False,
+          }, ensure_ascii=False))
+          PY
+      - name: Preserve private review only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asfera-v15-1-single-review-draft
+          path: asfera-v15-1-single-draft.json
+          retention-days: 7
+          if-no-files-found: warn
