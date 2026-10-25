@@ -1,6 +1,4 @@
 """Diagnostic retries are bounded, isolated and never publish anything."""
-from types import SimpleNamespace
-
 import pytest
 
 from app import femdom_telegram_sampling_diagnostic as diag
