@@ -31,10 +31,6 @@ from app.growth_balance_rail_routes import router as growth_balance_rail_router
 from app.icp_service import icp_service
 from app.logging import configure_logging
 from app.managed_distribution_routes import customer_router as customer_managed_distribution_router
-from app.telegram_membership_routes import (
-    customer_router as customer_telegram_membership_router,
-    operator_router as operator_telegram_membership_router,
-)
 from app.operator_auth import require_control_plane_operator
 from app.product_intake import product_intake_service
 from app.schemas import (
@@ -43,6 +39,12 @@ from app.schemas import (
     ProductCreateRequest,
     ProductIntakeResponse,
     ProductProfileView,
+)
+from app.telegram_membership_routes import (
+    customer_router as customer_telegram_membership_router,
+)
+from app.telegram_membership_routes import (
+    operator_router as operator_telegram_membership_router,
 )
 from app.web_routes import router as web_router
 
