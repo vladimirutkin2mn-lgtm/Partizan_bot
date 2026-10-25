@@ -11,6 +11,7 @@ from app.distribution_analytics_schemas import (
 )
 from app.distribution_analytics_service import distribution_analytics_service
 from app.distribution_execution_service import distribution_execution_service
+from app.distribution_types import DistributionActionStatus
 from app.execution_adapters import (
     AdapterExecutionOutcome,
     DistributionAdapterExecutionView,
@@ -18,6 +19,10 @@ from app.execution_adapters import (
 )
 from app.growth_balance import GrowthBalanceService
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.telegram_autonomous_membership_recovery import (
+    TelegramAutonomousJoinBlocked,
+    telegram_autonomous_membership_recovery,
+)
 from app.telegram_client_governance import (
     CustomerTelegramClientPublishError,
     customer_telegram_governance_service,
@@ -26,11 +31,7 @@ from app.telegram_client_publishing import (
     TelegramClientPublishOutcome,
     TelegramPublishRequest,
 )
-from app.telegram_autonomous_membership_recovery import (
-    TelegramAutonomousJoinBlocked,
-    telegram_autonomous_membership_recovery,
-)
-from app.distribution_types import DistributionActionStatus
+
 
 
 class CustomerTelegramAutonomousExecutionService:
