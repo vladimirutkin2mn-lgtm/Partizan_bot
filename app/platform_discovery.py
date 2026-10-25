@@ -6,6 +6,7 @@ from urllib.parse import unquote, urlsplit
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.schemas import ICPView, ProductProfileView
 from app.search import DiscoveryQuery, SearchHit, SourceClass
+from app.telegram_community_promotion_rules import public_community_promotion_rules
 from app.telegram_research import (
     TelegramCommunitySnapshot,
     TelegramRecentContext,
@@ -247,6 +248,7 @@ class TelegramDiscoveryAdapter(PlatformDiscoveryAdapter):
             ),
             "member_count": snapshot.member_count,
             "about": snapshot.about,
+            "community_commercial_rules": public_community_promotion_rules(snapshot),
             "surface_capabilities": {
                 "comment": snapshot.comment_surface.value,
                 "reply": snapshot.reply_surface.value,
