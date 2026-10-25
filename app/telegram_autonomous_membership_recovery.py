@@ -77,13 +77,24 @@ class TelegramAutonomousMembershipRecovery:
         if mode != "CHANNEL_COMMENT" and opp.kind != OpportunityKind.GROUP:
             raise TelegramAutonomousJoinBlocked("OPPORTUNITY_KIND_MISMATCH")
         meta = opp.metadata
+        semantic = meta.get("semantic_audience_fit") or {}
+        semantic_direct = (
+            isinstance(semantic, dict)
+            and semantic.get("verdict") == "DIRECT"
+            and float(semantic.get("confidence") or 0) >= 0.8
+            and bool(semantic.get("evidence"))
+        )
+        audience_confirmed = (
+            meta.get("research_audience_status") == "DIRECT_CONFIRMED"
+            or semantic_direct
+        )
         expected_url = str(action.target_url or "").rstrip("/")
         if (
             meta.get("native_research_status") != "VERIFIED"
             or str(meta.get("action_target_mode") or "") != mode
             or str(meta.get("action_target_url") or "").rstrip("/") != expected_url
-            or not meta.get("community_fit_pass")
-            or str(meta.get("research_audience_status") or "") != "DIRECT_CONFIRMED"
+            or meta.get("community_fit_pass") is not True
+            or not audience_confirmed
         ):
             raise TelegramAutonomousJoinBlocked("NATIVE_TARGET_OR_AUDIENCE_NOT_VERIFIED")
         # Membership is a material provider write. Don't infer the rules from
