@@ -13,7 +13,8 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from app.distribution_schemas import AudienceDistributionMapView
-from app.femdom_first_publish_preflight import check_profile, run as existing_readonly_preflight
+from app.femdom_first_publish_preflight import check_profile
+from app.femdom_first_publish_preflight import run as existing_readonly_preflight
 from app.femdom_research_comment_preview import _PRODUCT, _PROJECT
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.telegram_client_governance import CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE
