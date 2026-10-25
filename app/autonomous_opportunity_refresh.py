@@ -517,6 +517,13 @@ class AutonomousOpportunityRefreshService:
                 "checked_at": datetime.now(UTC).isoformat(),
             }
             metadata["publisher_participation_preflight"] = preflight_payload
+            # JOIN_REQUIRED is not writable YET, but an authorized autonomous
+            # executor can resolve it before sending. Keep the real provider
+            # status intact; the planner receives a separate recovery marker.
+            metadata["autonomous_join_recoverable"] = self._join_recovery_candidacy(
+                project_id, metadata, mode=mode,
+                native_surface=native_surface, status=result.status,
+            )
             if mode == TelegramParticipationMode.CHANNEL_COMMENT.value:
                 metadata["publisher_comment_preflight"] = preflight_payload
             capabilities[capability] = (
@@ -533,6 +540,52 @@ class AutonomousOpportunityRefreshService:
         if hasattr(distribution, "model_copy"):
             return distribution.model_copy(update={"opportunities": updated_opportunities})
         return distribution
+
+    def _join_recovery_candidacy(
+        self, project_id: UUID, metadata: dict, *,
+        mode: str, native_surface: str, status: str,
+    ) -> bool:
+        if status != "JOIN_REQUIRED" or native_surface != "AVAILABLE":
+            return False
+        project = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
+        permission = self._store.get(
+            "customer_telegram_automation_authorization", str(project_id)
+        )
+        if (
+            not isinstance(project, dict)
+            or (project.get("channel_preferences") or {}).get("TELEGRAM") != "AUTO"
+            or (project.get("channel_publisher_modes") or {}).get("TELEGRAM")
+            != "CLIENT_OWNED"
+            or not isinstance(permission, dict)
+            or permission.get("status") != "ENABLED"
+            or permission.get("allow_community_joins") is not True
+        ):
+            return False
+
+        fit = metadata.get("semantic_audience_fit") or {}
+        semantic_direct = (
+            isinstance(fit, dict)
+            and fit.get("verdict") == "DIRECT"
+            and isinstance(fit.get("confidence"), (int, float))
+            and fit["confidence"] >= 0.8
+            and bool(fit.get("evidence"))
+        )
+        rules = metadata.get("community_commercial_rules") or {}
+        return bool(
+            metadata.get("native_research_status") == "VERIFIED"
+            and metadata.get("community_fit_pass") is True
+            and (
+                metadata.get("research_audience_status") == "DIRECT_CONFIRMED"
+                or semantic_direct
+            )
+            and str(metadata.get("action_target_mode") or "") == mode
+            and metadata.get("action_target_url")
+            and isinstance(rules, dict)
+            and rules.get("status") == "VERIFIED_ALLOWED"
+            and rules.get("allows_participation") is True
+            and rules.get("allows_promotion") is True
+            and str(rules.get("source_url") or "").startswith("https://t.me/")
+        )
 
     async def _preflight_target(
         self,
