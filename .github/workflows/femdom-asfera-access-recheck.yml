@@ -1,0 +1,105 @@
+name: FemDom a_sfera current Telegram access recheck (no writes)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/femdom-asfera-access-recheck.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: femdom-asfera-readonly-native-recheck-20261025
+  cancel-in-progress: false
+
+jobs:
+  recheck:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify production access configuration
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing production requirement: ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin production host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Require corresponding production release
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          for attempt in $(seq 1 60); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              echo "Verified exact deployed production release"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Release SHA mismatch; zero Telegram calls"
+          exit 1
+      - name: Compare historical ban to current Telegram access without sending
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+             python -m app.femdom_asfera_live_access_recheck \
+               --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+               --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0" \
+            > asfera-readonly-native-recheck.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("asfera-readonly-native-recheck.json").read_text())
+          assert report["status"] == "ASFERA_READONLY_RECHECK_COMPLETE"
+          for k in ("telegram_joins", "telegram_sends", "profile_mutations",
+                    "approval_mutations", "llm_calls", "paid_search_calls"):
+              assert report[k] == 0, k
+          for k in ("restriction_memory_cleared", "publisher_authorization_changed",
+                    "publication_authorized", "send_allowed"):
+              assert report[k] is False, k
+          print(json.dumps({
+              "target": report["target"],
+              "cached": report["cached_preflight"],
+              "fresh_native": report["fresh_native_preflight"],
+              "discussion": report["native_discussion"],
+              "historical_conflict": report["historical_ban_conflicts_with_fresh_read"],
+              "native_route_verified": report["fresh_route_verified"],
+              "no_writes": True,
+          }, ensure_ascii=False))
+          PY
+      - name: Save audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: asfera-readonly-native-recheck
+          path: asfera-readonly-native-recheck.json
+          retention-days: 7
+          if-no-files-found: warn
