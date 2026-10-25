@@ -293,7 +293,7 @@ async def test_short_telegram_cta_still_gets_one_research_draft():
 
     async def judge(system, prompt):
         calls.append(prompt)
-        assert "a little flirtation" in system
+        assert "Humor, playfulness and subculture slang are OPTIONAL" in system
         return _Draft(
             topicality="RELEVANT",
             reason="The selected target invites prospective participants to use a form.",
