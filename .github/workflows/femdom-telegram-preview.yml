@@ -1,4 +1,4 @@
-name: One-off FemDom v13 ICP recovery and complete drafts
+name: One-off FemDom latest logical album caption check
 
 on:
   push:
@@ -105,6 +105,8 @@ jobs:
                       "map_existing_matches": item.get("map_existing_matches"),
                       "latest_post_text_chars": item.get("latest_post_text_chars"),
                       "latest_post_media_present": item.get("latest_post_media_present"),
+                      "latest_album_caption_source_id": item.get("latest_album_caption_source_id"),
+                      "latest_album_members_inspected": item.get("latest_album_members_inspected"),
                   } for item in report.get("communities", [])
               ],
           }, ensure_ascii=False))
