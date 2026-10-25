@@ -33,7 +33,6 @@ from app.telegram_client_publishing import (
 )
 
 
-
 class CustomerTelegramAutonomousExecutionService:
     """Route autonomous Telegram actions only through explicit client-owned authorization."""
 
