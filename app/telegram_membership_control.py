@@ -271,6 +271,8 @@ class TelegramMembershipService:
                         joined, write_access = True, checked.status
                         status = ("JOINED_AND_READY" if checked.status == "READY"
                                   else "JOINED_BUT_RESTRICTED")
+        except TelegramMembershipError as exc:
+            status, reason = "BLOCKED", str(exc)
         except Exception as exc:
             status, reason = "INDETERMINATE", type(exc).__name__
         finally:
