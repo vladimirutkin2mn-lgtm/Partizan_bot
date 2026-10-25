@@ -13,6 +13,9 @@ from app.telegram_public_post_links import referenced_public_posts
 ACTION_TARGET_FRESHNESS_SECONDS = 14 * 24 * 60 * 60
 # Preserve full Telegram message body, up to the native plain-text limit.
 SAVED_TELEGRAM_POST_MAX_CHARS = 4096
+# Telegram albums contain up to ten media messages. Only inspect siblings
+# when the single newest native message declares a grouped_id.
+MAX_LATEST_ALBUM_SIBLINGS = 9
 
 
 class TelegramResearchError(RuntimeError):
@@ -54,6 +57,9 @@ class TelegramRecentContext:
     linked_post_urls: tuple[str, ...] = ()
     media_present: bool = False
     media_kind: str | None = None
+    album_group_id: int | None = None
+    album_caption_source_id: int | None = None
+    album_members_inspected: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -350,12 +356,19 @@ class TelethonTelegramResearchTransport:
                     messages = await client.get_messages(
                         peer, limit=recent_message_limit
                     )
+                    # One visible album may have several Telegram message IDs.
+                    # Never read other posts for ordinary latest-only targets.
+                    companions = await self._latest_album_companions(
+                        client, peer, list(messages or []),
+                        latest_only=recent_message_limit == 1,
+                    )
                     inspections.append(
                         TelegramKnownCommunityInspection(
                             handle,
                             "VERIFIED",
                             self._snapshot(
-                                entity, full, list(messages or []), query=""
+                                entity, full, list(messages or []), query="",
+                                album_companions=companions,
                             ),
                         )
                     )
@@ -378,6 +391,37 @@ class TelethonTelegramResearchTransport:
         finally:
             await client.disconnect()
 
+    @staticmethod
+    async def _latest_album_companions(
+        client: object, peer: object, messages: list[object], *,
+        latest_only: bool,
+    ) -> list[object]:
+        """Inspect the newest *logical* Telegram post, not only its last photo.
+
+        A second bounded native request is made only for a grouped media
+        message. Other historical posts are discarded and never passed to
+        semantic fit, opportunity selection, or drafting.
+        """
+        if not latest_only or len(messages) != 1:
+            return []
+        newest = messages[0]
+        group_id = getattr(newest, "grouped_id", None)
+        newest_id = int(getattr(newest, "id", 0) or 0)
+        if not group_id or newest_id <= 0:
+            return []
+        older = await client.get_messages(
+            peer, limit=MAX_LATEST_ALBUM_SIBLINGS, offset_id=newest_id,
+        )
+        related = []
+        for msg in list(older or []):
+            if getattr(msg, "grouped_id", None) != group_id:
+                # Album elements form a contiguous group in the channel.
+                break
+            ident = int(getattr(msg, "id", 0) or 0)
+            if 0 < ident < newest_id:
+                related.append(msg)
+        return related
+
     def _snapshot(
         self,
         entity: object,
@@ -385,6 +429,7 @@ class TelethonTelegramResearchTransport:
         messages: list[object],
         *,
         query: str,
+        album_companions: list[object] | None = None,
     ) -> TelegramCommunitySnapshot:
         username = self._public_username(entity)
         if not username:
@@ -407,6 +452,34 @@ class TelethonTelegramResearchTransport:
             if not message_id:
                 continue
             published_at = self._aware(getattr(message, "date", None))
+            caption_source = message
+            album_id = getattr(message, "grouped_id", None)
+            album_members = [message]
+            if album_id:
+                # Only the same Telegram album and a matching publication
+                # window may supply caption text. A prior unrelated post
+                # must never be repurposed as this latest post's content.
+                for sibling in [*messages, *(album_companions or [])]:
+                    sibling_id = int(getattr(sibling, "id", 0) or 0)
+                    sibling_date = self._aware(getattr(sibling, "date", None))
+                    if (
+                        sibling_id == message_id or sibling_id <= 0
+                        or getattr(sibling, "grouped_id", None) != album_id
+                        or published_at is None or sibling_date is None
+                        or abs((published_at - sibling_date).total_seconds()) > 180
+                    ):
+                        continue
+                    album_members.append(sibling)
+                if not text:
+                    captioned = [
+                        sibling for sibling in album_members
+                        if str(getattr(sibling, "message", "") or "").strip()
+                    ]
+                    if captioned:
+                        caption_source = min(
+                            captioned, key=lambda item: int(item.id)
+                        )
+                        text = str(caption_source.message).strip()
             message_url = f"{canonical_url}/{message_id}"
             matched = tuple(sorted(terms & self._tokens(text))[:12])
             recent.append(
@@ -419,13 +492,19 @@ class TelethonTelegramResearchTransport:
                     source_text_chars=len(text),
                     text_truncated=len(text) > SAVED_TELEGRAM_POST_MAX_CHARS,
                     linked_post_urls=referenced_public_posts(
-                        message, own_handle=username,
+                        caption_source, own_handle=username,
                     ),
                     media_present=getattr(message, "media", None) is not None,
                     media_kind=(
                         type(message.media).__name__[:80]
                         if getattr(message, "media", None) is not None else None
                     ),
+                    album_group_id=int(album_id) if album_id else None,
+                    album_caption_source_id=(
+                        int(caption_source.id)
+                        if caption_source is not message else None
+                    ),
+                    album_members_inspected=len(album_members),
                 )
             )
 
