@@ -407,7 +407,10 @@ class TelethonTelegramResearchTransport:
         newest = messages[0]
         group_id = getattr(newest, "grouped_id", None)
         newest_id = int(getattr(newest, "id", 0) or 0)
-        if not group_id or newest_id <= 0:
+        if (
+            not group_id or newest_id <= 0
+            or str(getattr(newest, "message", "") or "").strip()
+        ):
             return []
         older = await client.get_messages(
             peer, limit=MAX_LATEST_ALBUM_SIBLINGS, offset_id=newest_id,
