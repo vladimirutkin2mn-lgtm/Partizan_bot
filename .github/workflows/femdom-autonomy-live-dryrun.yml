@@ -1,0 +1,176 @@
+name: FemDom autonomous Telegram end-to-end dry run (zero sends or joins)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/femdom-autonomy-live-dryrun.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: femdom-autonomy-readonly-real-peers-20261025
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require safe production transport
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing production requirement: ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin trusted production host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Ensure exact deployed commit
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          for attempt in $(seq 1 60); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              echo "Verified production release"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Production release mismatch; zero Telegram calls"
+          exit 1
+      - name: Refresh only newest logical posts of eight previously reviewed peers
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+            python -m app.femdom_latest_target_reconcile \
+              --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+              --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0" \
+            > femdom-autonomy-native-research.json
+          python - <<'PY'
+          import json
+          row = json.load(open("femdom-autonomy-native-research.json"))
+          assert row["status"] in (
+              "FEMDOM_LATEST_ONLY_RECONCILIATION_COMPLETE", "DEFERRED_FLOOD_WAIT"
+          )
+          for key in ("telegram_messages_sent", "publisher_approvals", "profile_changes"):
+              assert row.get(key, 0) == 0
+          print(json.dumps({
+              "native_status": row["status"],
+              "communities": [{
+                  "handle": c.get("handle"), "status": c.get("status"),
+                  "latest_post": c.get("research_latest_post_url"),
+                  "native_chars": c.get("latest_post_text_chars"),
+              } for c in row.get("communities", [])],
+          }, ensure_ascii=False))
+          PY
+      - name: Reuse cached or prepare only one review draft per known eligible target
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for peer in a_sfera play_hard_community bizarreclubmsk findom_gospoja0 poiskrabovirabin; do
+            ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+                python -m app.femdom_research_comment_preview \
+                --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+                --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0 \
+                --handle ${peer}" > "draft-${peer}.json"
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for path in sorted(Path().glob("draft-*.json")):
+              row = json.loads(path.read_text())
+              assert row.get("published", False) is False
+              assert row.get("action_sendable", False) is False
+              assert row["status"] in (
+                  "AWAITING_HUMAN_CONTEXT_AND_POLICY_REVIEW",
+                  "RESEARCH_PREVIEW_BLOCKED",
+                  "API_NOT_CONFIGURED",
+              )
+              print(json.dumps({
+                  "peer": path.stem, "draft_status": row["status"],
+                  "draft_available": bool(row.get("comment")), "published": False,
+              }, ensure_ascii=False))
+          PY
+      - name: Evaluate connected publisher rights and autonomous join policy without sending
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -m app.femdom_autonomy_live_dryrun \
+                --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+                --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0" \
+            > femdom-autonomy-live-readiness.json
+          python - <<'PY'
+          import json
+          report = json.load(open("femdom-autonomy-live-readiness.json"))
+          assert report["status"] == "READ_ONLY_FEMDOM_AUTONOMOUS_TELEGRAM_AUDIT_COMPLETE"
+          for field in (
+              "telegram_publishes", "telegram_joins",
+              "profile_mutations", "distribution_actions_created",
+              "approval_mutations", "llm_calls", "paid_search_calls",
+          ):
+              assert report[field] == 0, field
+          assert len(report["rows"]) == 5
+          for peer in report["rows"]:
+              assert peer["joined"] is False
+              assert peer["published"] is False
+              print(json.dumps({
+                  "handle": peer["handle"],
+                  "target": peer.get("native_latest_target"),
+                  "readiness": peer["status"],
+                  "account": peer.get("account_status"),
+                  "account_reason": peer.get("account_reason"),
+                  "community_rules": peer.get("rules_verification"),
+                  "draft": bool(peer.get("draft_text")),
+                  "join_eligible": peer.get("would_autonomous_join_be_eligible"),
+                  "join_blockers": peer.get("join_gate_blockers"),
+                  "profile": peer.get("profile_status"),
+                  "album_anchor": peer.get("album_anchor"),
+              }, ensure_ascii=False))
+          PY
+      - name: Preserve reviewable no-write reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: femdom-autonomous-telegram-live-dryrun
+          path: |
+            femdom-autonomy-native-research.json
+            femdom-autonomy-live-readiness.json
+            draft-*.json
+          retention-days: 7
+          if-no-files-found: warn
