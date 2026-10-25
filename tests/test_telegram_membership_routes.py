@@ -77,3 +77,40 @@ async def test_operator_only_execution_remains_separate(monkeypatch):
         result = await client.post(path)
         assert result.status_code == 200
         assert result.json()["status"] == "JOINED_AND_READY"
+
+
+@pytest.mark.asyncio
+async def test_owner_can_execute_only_authenticated_preapproved_intent(monkeypatch):
+    app = FastAPI()
+    app.include_router(routes.customer_router)
+    monkeypatch.setattr(routes, "telegram_membership_service", StubMembership())
+    def check_owner(*, session_token, project_id):
+        if session_token != "owner":
+            raise CustomerAccountAuthenticationError("No session")
+        assert project_id == PROJECT
+        return ({}, "customer-token")
+    monkeypatch.setattr(routes.customer_account_service, "project_access", check_owner)
+    path = (
+        f"/customer/workspace/{PROJECT}/telegram/"
+        f"linked-group-joins/{INTENT}/execute"
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test",
+    ) as client:
+        denied = await client.post(path)
+        assert denied.status_code == 401
+        allowed = await client.post(
+            path, cookies={CUSTOMER_ACCOUNT_SESSION_COOKIE: "owner"}
+        )
+        assert allowed.status_code == 200
+        assert allowed.json()["status"] == "JOINED_AND_READY"
+
+
+def test_channels_workspace_requires_join_preview_and_exact_owner_confirmation():
+    from pathlib import Path
+    script = Path("app/web/workspace.channels.v1.js").read_text()
+    assert 'data-telegram-join-preview' in script
+    assert 'data-telegram-join-confirm' in script
+    assert 'expected_channel_id: current.channel_id' in script
+    assert 'expected_linked_chat_id: current.linked_chat_id' in script
+    assert 'No automatic retry will occur.' in script

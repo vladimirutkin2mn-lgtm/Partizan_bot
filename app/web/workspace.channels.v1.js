@@ -25,6 +25,7 @@
   let focusedPlatform = null;
   let telegramChallenge = null;
   let telegramAutomation = null;
+  let telegramJoinIntent = null;
   const connectionState = new Map();
 
   const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (char) => ({
@@ -212,6 +213,19 @@
     return `<div class="telegram-automation-panel"><header><div><strong>Telegram automation</strong><small>Explicitly authorize bounded client-owned publishing</small></div><span class="channel-detail-status ${statusClass}">${escapeHtml(statusLabel)}</span></header><form class="telegram-automation-form" data-telegram-automation-enable><label class="telegram-automation-limit"><span>Maximum confirmed publishes per rolling 24 hours</span><input name="max_publishes_per_day" type="number" min="1" max="10" step="1" value="${Math.min(10, Math.max(1, cap))}" required></label><label class="telegram-automation-confirm"><input name="confirm_client_owned_execution" type="checkbox" required> <span>I explicitly authorize Partizan to prepare, approve and publish eligible Telegram distribution actions from this connected account within the selected daily limit. I can pause or revoke this at any time.</span></label><div class="channel-connection-actions"><button class="button button-primary" type="submit"${disabled}>${escapeHtml(buttonLabel)}</button></div></form>${blockersHtml}<p class="channel-safe-note">This authorization does not publish immediately. Target, content, connection health, duplicate guards, daily limits and provider readiness are re-checked at publish time.</p></div>`;
   };
 
+  const telegramLinkedJoinHtml = () => {
+    const intent = telegramJoinIntent;
+    const status = intent?.status || '';
+    const pending = status === 'AWAITING_CUSTOMER_APPROVAL';
+    const result = status && !pending
+      ? `<p class="channel-safe-note">Last group check: ${escapeHtml(status)}${intent?.reason ? ` · ${escapeHtml(intent.reason)}` : ''}. This operation never sends a message.</p>`
+      : '';
+    const approval = pending
+      ? `<div class="telegram-automation-form"><p class="channel-safe-note">Confirm joining the linked discussion for <strong>@${escapeHtml(intent.channel_handle)}</strong>. Telegram channel ID: <code>${escapeHtml(intent.channel_id)}</code>, linked group ID: <code>${escapeHtml(intent.linked_chat_id)}</code>. This authorizes membership only, not publication.</p><label class="telegram-automation-confirm"><input type="checkbox" data-telegram-join-confirm> <span>I approve joining this exact linked group from my connected Telegram account.</span></label><button class="button button-primary" type="button" data-telegram-join-execute>Join approved group</button></div>`
+      : '';
+    return `<div class="telegram-automation-panel"><header><div><strong>Join linked Telegram discussion</strong><small>Check a confirmed community before joining; no posts will be sent</small></div></header><form class="channel-inline-form" data-telegram-join-preview><input name="handle" type="text" maxlength="32" minlength="5" pattern="[a-zA-Z0-9_]{5,32}" placeholder="Community username" required aria-label="Telegram channel username"><button class="button button-secondary" type="submit">Check group</button></form>${approval}${result}</div>`;
+  };
+
   const telegramConnectionHtml = (channel) => {
     const mode = clientOwnedMode(channel);
     if (!mode?.available) {
@@ -220,7 +234,7 @@
     const connection = connectionFor('TELEGRAM');
     if (connection?.status === 'ACTIVE') {
       const label = connection.display_name || (connection.username ? `@${connection.username}` : 'Telegram account');
-      return `<div class="channel-connection-box"><div class="channel-connection-head"><div><strong>${escapeHtml(label)}</strong><small>Connected for client-owned Telegram execution</small></div><span class="channel-detail-status connected">Connected</span></div><div class="channel-connection-actions"><button class="button button-secondary" type="button" data-disconnect-channel="TELEGRAM">Disconnect</button></div><p class="channel-safe-note">Connection grants access only. Manual client-owned publishes still require an approved action and explicit per-item confirmation.</p>${telegramAutomationHtml()}</div>`;
+      return `<div class="channel-connection-box"><div class="channel-connection-head"><div><strong>${escapeHtml(label)}</strong><small>Connected for client-owned Telegram execution</small></div><span class="channel-detail-status connected">Connected</span></div><div class="channel-connection-actions"><button class="button button-secondary" type="button" data-disconnect-channel="TELEGRAM">Disconnect</button></div><p class="channel-safe-note">Connection grants access only. Manual client-owned publishes still require an approved action and explicit per-item confirmation.</p>${telegramLinkedJoinHtml()}${telegramAutomationHtml()}</div>`;
     }
     if (telegramChallenge) {
       const passwordField = telegramChallenge.status === 'PASSWORD_REQUIRED'
@@ -642,14 +656,24 @@
     const startForm = event.target.closest('[data-telegram-start]');
     const confirmForm = event.target.closest('[data-telegram-confirm]');
     const automationForm = event.target.closest('[data-telegram-automation-enable]');
-    if (!startForm && !confirmForm && !automationForm) return;
+    const joinPreviewForm = event.target.closest('[data-telegram-join-preview]');
+    if (!startForm && !confirmForm && !automationForm && !joinPreviewForm) return;
     event.preventDefault();
     const projectId = currentProjectId();
     if (!projectId) return;
     const submit = event.target.querySelector('button[type="submit"]');
     if (submit) submit.disabled = true;
     try {
-      if (automationForm) {
+      if (joinPreviewForm) {
+        const handle = String(new FormData(joinPreviewForm).get('handle') || '').trim().replace(/^@/, '');
+        telegramJoinIntent = await api(
+          `/customer/workspace/${encodeURIComponent(projectId)}/telegram/linked-group-joins/preview`,
+          { method: 'POST', body: JSON.stringify({ handle }) },
+        );
+        showNotice(telegramJoinIntent.status === 'ALREADY_MEMBER'
+          ? 'Already a member; no action needed.'
+          : 'Check the linked group IDs below and explicitly approve the join.');
+      } else if (automationForm) {
         const form = new FormData(automationForm);
         const maximum = Number(form.get('max_publishes_per_day') || 1);
         telegramAutomation = await api(`/customer/workspace/${encodeURIComponent(projectId)}/telegram/automation`, {
@@ -705,6 +729,36 @@
 
     const projectId = currentProjectId();
     if (!projectId) return;
+
+    const executeJoin = event.target.closest('[data-telegram-join-execute]');
+    if (executeJoin) {
+      const current = telegramJoinIntent;
+      const confirmed = tableBody.querySelector('[data-telegram-join-confirm]');
+      if (!current || current.status !== 'AWAITING_CUSTOMER_APPROVAL' || !confirmed?.checked) {
+        showNotice('Review and explicitly confirm the exact linked group first.', true);
+        return;
+      }
+      executeJoin.disabled = true;
+      try {
+        const base = `/customer/workspace/${encodeURIComponent(projectId)}/telegram/linked-group-joins/${encodeURIComponent(current.id)}`;
+        telegramJoinIntent = await api(base + '/approve', {
+          method: 'POST',
+          body: JSON.stringify({
+            confirm_join: true,
+            expected_channel_id: current.channel_id,
+            expected_linked_chat_id: current.linked_chat_id,
+          }),
+        });
+        telegramJoinIntent = await api(base + '/execute', { method: 'POST' });
+        showNotice(`Telegram group: ${telegramJoinIntent.status}. No message sent.`);
+      } catch (error) {
+        // An unknown response must never cause an automatic second join call.
+        telegramJoinIntent = { ...current, status: 'RESULT_UNCERTAIN', reason: error.message };
+        showNotice('The join result is uncertain. No automatic retry will occur.', true);
+      }
+      await refresh();
+      return;
+    }
 
     const pauseAutomation = event.target.closest('[data-telegram-automation-pause]');
     if (pauseAutomation) {
