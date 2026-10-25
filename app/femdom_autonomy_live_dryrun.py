@@ -17,6 +17,7 @@ from app.femdom_first_publish_preflight import _HANDLES, run as review_preflight
 from app.femdom_research_comment_preview import _PRODUCT, _PROJECT
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.telegram_client_governance import CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE
+from app.telegram_opportunity_preflight import telegram_opportunity_preflight_service
 
 _PROJECT_NAMESPACE = "customer_acquisition_projects"
 _MAP_NAMESPACE = "audience_distribution_map"
@@ -94,6 +95,7 @@ def _candidate_status(project: dict, automation: dict, metadata: dict,
 
 async def run(store: RuntimeStateStore, *, project_id: UUID,
               review_runner=review_preflight,
+              account_checker=None,
               now: datetime | None = None) -> dict:
     if project_id != _PROJECT:
         raise ValueError("Audit is explicitly bound to FemDom project")
@@ -125,7 +127,20 @@ async def run(store: RuntimeStateStore, *, project_id: UUID,
         review = await review_runner(store, project_id=project_id, handle=handle, now=current)
         if review.get("published") is not False or review.get("joined") is not False:
             raise RuntimeError("Preflight unexpectedly reported a mutation")
-        account_status = (review.get("account_preflight") or {}).get("status")
+        account = review.get("account_preflight") or {}
+        account_status = account.get("status")
+        if not account_status:
+            # A stale/missing draft is NOT evidence that Telegram cannot write.
+            # Diagnose exact saved target independently, without any send/join.
+            saved_url = str(opp.metadata.get("action_target_url") or "")
+            saved_mode = str(opp.metadata.get("action_target_mode") or "")
+            if saved_url and saved_mode in {
+                "CHANNEL_COMMENT", "GROUP_REPLY", "STANDALONE_POST"
+            }:
+                checker = account_checker or telegram_opportunity_preflight_service.check_target
+                observed = await checker(project_id, saved_url, saved_mode)
+                account = observed.public_dict()
+                account_status = account.get("status")
         gates = _candidate_status(
             project, automation, opp.metadata, account_status=account_status, now=current
         )
@@ -139,7 +154,7 @@ async def run(store: RuntimeStateStore, *, project_id: UUID,
             "draft_prompt": review.get("prompt_version"),
             "profile_status": (review.get("profile_preflight") or {}).get("status"),
             "account_status": account_status or "NOT_CHECKED",
-            "account_reason": (review.get("account_preflight") or {}).get("reason"),
+            "account_reason": account.get("reason"),
             "album_anchor": (
                 (review.get("album_discussion_diagnostic") or {}).get(
                     "discussion_anchor_post_id"
