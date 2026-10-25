@@ -7,7 +7,11 @@ import pytest
 
 from app.distribution_schemas import AudienceDistributionMapView, DistributionOpportunityView
 from app.distribution_types import DistributionPlatform, OpportunityKind
-from app.femdom_first_publish_preflight import (\n    inspect_latest_album_discussion,\n    run,\n    verify_discussion_root,\n)
+from app.femdom_first_publish_preflight import (
+    inspect_latest_album_discussion,
+    run,
+    verify_discussion_root,
+)
 from app.femdom_research_comment_preview import _PRODUCT, _PROJECT, _REVIEW_NAMESPACE
 from app.runtime_store import MemoryRuntimeStateStore
 from app.telegram_opportunity_preflight import TelegramOpportunityPreflightResult
