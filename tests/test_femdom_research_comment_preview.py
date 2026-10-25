@@ -102,7 +102,7 @@ async def test_nonpublishing_preview_for_adjacent_audience_without_channel_toggl
     assert first["project_telegram_preference"] == "OFF"
     assert first["comment"].startswith("Вы отдельно упомянули")
     assert first["comment_language"] == "Russian"
-    assert first["prompt_version"] == "community_message_v13_group_hook"
+    assert first["prompt_version"] == "community_message_v14_meaningful_conversation"
     assert "variants" not in first
     assert first["surface"] == "CHANNEL_COMMENT"
     second = await prepare_review(
@@ -293,7 +293,7 @@ async def test_short_telegram_cta_still_gets_one_research_draft():
 
     async def judge(system, prompt):
         calls.append(prompt)
-        assert "a little flirtation" in system
+        assert "Humor, playfulness and subculture slang are OPTIONAL" in system
         return _Draft(
             topicality="RELEVANT",
             reason="The selected target invites prospective participants to use a form.",
