@@ -6,7 +6,8 @@ from uuid import uuid4
 import pytest
 
 from app.distribution_schemas import (
-    AudienceDistributionMapView, DistributionOpportunityView,
+    AudienceDistributionMapView,
+    DistributionOpportunityView,
 )
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.femdom_research_comment_preview import _PRODUCT, _PROJECT, _REVIEW_NAMESPACE
