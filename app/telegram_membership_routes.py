@@ -99,6 +99,24 @@ def view_customer_telegram_group_join(
         raise _conflict(exc) from exc
 
 
+@customer_router.post(
+    "/customer/workspace/{project_id}/telegram/linked-group-joins/{intent_id}/execute",
+)
+async def execute_customer_approved_telegram_group_join(
+    project_id: UUID,
+    intent_id: UUID,
+    session_token: Annotated[
+        str | None, Cookie(alias=CUSTOMER_ACCOUNT_SESSION_COOKIE)
+    ] = None,
+) -> dict:
+    """Owner may execute only their own exact, previously approved join intent."""
+    _require_owner(session_token, project_id)
+    try:
+        return await telegram_membership_service.execute(project_id, intent_id)
+    except TelegramMembershipError as exc:
+        raise _conflict(exc) from exc
+
+
 @operator_router.post(
     "/telegram/membership/{project_id}/linked-group-joins/{intent_id}/execute",
 )
