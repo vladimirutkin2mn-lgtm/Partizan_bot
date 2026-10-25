@@ -6,8 +6,7 @@ import pytest
 from fastapi import FastAPI
 
 from app import telegram_membership_routes as routes
-from app.customer_account import CUSTOMER_ACCOUNT_SESSION_COOKIE
-from app.customer_account import CustomerAccountAuthenticationError
+from app.customer_account import CUSTOMER_ACCOUNT_SESSION_COOKIE, CustomerAccountAuthenticationError
 from app.operator_auth import require_operator
 
 PROJECT = uuid4()
