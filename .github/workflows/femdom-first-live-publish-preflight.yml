@@ -103,6 +103,8 @@ jobs:
                   "target_url": row.get("target_url"),
                   "account_status": row.get("account_preflight", {}).get("status"),
                   "discussion_status": row.get("discussion_preflight", {}).get("status"),
+                  "album_discussion_status": row.get("album_discussion_diagnostic", {}).get("status"),
+                  "album_discussion_anchor_id": row.get("album_discussion_diagnostic", {}).get("discussion_anchor_post_id"),
                   "profile_status": row.get("profile_preflight", {}).get("status"),
                   "draft_existing": bool(row.get("draft_sha256")),
                   "published": False,
