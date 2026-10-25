@@ -17,7 +17,7 @@ from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
 from app.distribution_schemas import AudienceDistributionMapView
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.runtime_store import RuntimeStateStore, get_runtime_store
-from app.telegram_client_publishing import customer_telegram_client_publish_service
+from app.telegram_client_publishing import CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE
 from app.telegram_comment_access import ensure_comment_access, preflight_comment_access
 from app.telegram_community_registry import TelegramCommunityRegistry
 from app.telegram_community_restrictions import telegram_community_restriction_memory
@@ -61,7 +61,8 @@ class TelegramMembershipService:
             raise TelegramMembershipError("PROJECT_NOT_ACTIVE")
         if (project.get("channel_publisher_modes") or {}).get("TELEGRAM") != "CLIENT_OWNED":
             raise TelegramMembershipError("CLIENT_OWNED_TELEGRAM_REQUIRED")
-        if not customer_telegram_client_publish_service.is_connected(project_id):
+        connection = self.store.get(CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE, str(project_id))
+        if not isinstance(connection, dict) or connection.get("status") != "ACTIVE":
             raise TelegramMembershipError("TELEGRAM_CONNECTION_REQUIRED")
         raw_id = str(project.get("product_id") or "")
         try:
