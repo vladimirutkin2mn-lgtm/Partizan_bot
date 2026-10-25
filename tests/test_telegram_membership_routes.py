@@ -70,12 +70,8 @@ async def test_operator_only_execution_remains_separate(monkeypatch):
         # In production, require_operator enforces the environment's operator key.
         # This verifies the route inherits the dependency rather than bypassing it.
         assert any(
-            dependency.call is require_operator
-            for route in app.routes
-            if getattr(route, "path", "") == (
-                "/v1/telegram/membership/{project_id}/linked-group-joins/{intent_id}/execute"
-            )
-            for dependency in getattr(route, "dependant", None).dependencies
+            dep.dependency is require_operator
+            for dep in routes.operator_router.dependencies
         )
         app.dependency_overrides[require_operator] = lambda: None
         result = await client.post(path)
