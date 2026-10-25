@@ -155,6 +155,7 @@ def main():
     if args.product_id != _PRODUCT or args.project_id != _PROJECT:
         raise ValueError("Out-of-scope sampling experiment")
     from openai import OpenAI
+
     from app.config import get_settings
     key = get_settings().openai_api_key
     if not key:
