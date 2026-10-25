@@ -40,6 +40,12 @@ from app.schemas import (
     ProductIntakeResponse,
     ProductProfileView,
 )
+from app.telegram_membership_routes import (
+    customer_router as customer_telegram_membership_router,
+)
+from app.telegram_membership_routes import (
+    operator_router as operator_telegram_membership_router,
+)
 from app.web_routes import router as web_router
 
 enable_checkout_first_growth_balance_funding()
@@ -76,6 +82,8 @@ app.include_router(growth_autoresearch_router)
 app.include_router(distribution_router)
 app.include_router(distribution_play_router)
 app.include_router(customer_execution_request_routes.operator_router)
+app.include_router(customer_telegram_membership_router)
+app.include_router(operator_telegram_membership_router)
 
 
 @app.get("/health", tags=["system"])
