@@ -1,3 +1,4 @@
+# ruff: noqa: E501  # Preserve owner's exact long-form prompt without reflowing it.
 """User-proposed experiment v15: profile-curiosity through a useful Telegram contribution.
 
 The guidance below is reproduced verbatim from the owner's October 25 prompt.
