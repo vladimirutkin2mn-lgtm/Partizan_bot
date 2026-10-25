@@ -13,20 +13,20 @@ from app.telegram_research import TelegramCommunitySnapshot
 # Negation has precedence. Never infer promotion rights from audience fit,
 # generic "chat", other users' messages or a writable discussion thread.
 _DENY = re.compile(
-    r"(?:без\\s+реклам[ыа]|реклам[аы]\\s+запрещен[аы]|"
-    r"запрещен[аы]\\s+реклам[ауы]|самореклама\\s+запрещена|"
-    r"no\\s+(?:ads|advertis(?:ing|ements)|self[- ]promo)|"
-    r"(?:ads|advertising|promotion)\\s+(?:not\\s+allowed|prohibited))",
+    r"(?:без\s+реклам[ыа]|реклам[аы]\s+запрещен[аы]|"
+    r"запрещен[аы]\s+реклам[ауы]|самореклама\s+запрещена|"
+    r"no\s+(?:ads|advertis(?:ing|ements)|self[- ]promo)|"
+    r"(?:ads|advertising|promotion)\s+(?:not\s+allowed|prohibited))",
     re.IGNORECASE,
 )
 _ALLOW = re.compile(
-    r"(?:самореклама\\s+разрешен[аы]|"
-    r"реклам[ауы]\\s+разрешен[аы]|"
-    r"разрешен[аы]\\s+(?:само)?реклам[аыу]|"
-    r"можно\\s+(?:публиковать\\s+)?(?:само)?реклам[уаыу]|"
-    r"(?:self[- ]promotion|advertising|ads|promotional posts?)\\s+"
-    r"(?:is\\s+)?(?:allowed|permitted|welcome)|"
-    r"(?:allow|permit)\\s+(?:self[- ]promotion|advertising|ads))",
+    r"(?:самореклама\s+разрешен[аы]|"
+    r"реклам[ауы]\s+разрешен[аы]|"
+    r"разрешен[аы]\s+(?:само)?реклам[аыу]|"
+    r"можно\s+(?:публиковать\s+)?(?:само)?реклам[уаыу]|"
+    r"(?:self[- ]promotion|advertising|ads|promotional posts?)\s+"
+    r"(?:is\s+)?(?:allowed|permitted|welcome)|"
+    r"(?:allow|permit)\s+(?:self[- ]promotion|advertising|ads))",
     re.IGNORECASE,
 )
 
