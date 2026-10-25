@@ -7,7 +7,11 @@ import pytest
 
 from app.distribution_schemas import AudienceDistributionMapView, DistributionOpportunityView
 from app.distribution_types import DistributionPlatform, OpportunityKind
-from app.femdom_first_publish_preflight import run, verify_discussion_root
+from app.femdom_first_publish_preflight import (
+    inspect_latest_album_discussion,
+    run,
+    verify_discussion_root,
+)
 from app.femdom_research_comment_preview import _PRODUCT, _PROJECT, _REVIEW_NAMESPACE
 from app.runtime_store import MemoryRuntimeStateStore
 from app.telegram_opportunity_preflight import TelegramOpportunityPreflightResult
@@ -211,3 +215,79 @@ async def test_real_discussion_route_checker_reads_latest_and_discussion_only():
     )
     assert result["status"] == "DISCUSSION_ROOT_VERIFIED"
     assert fake.events == ["connect", "disconnect"]
+
+
+@pytest.mark.asyncio
+async def test_album_diagnostic_can_detect_comment_anchor_on_earlier_photo_without_send():
+    t = datetime.now(UTC)
+    class FakeClient:
+        def __init__(self):
+            self.actions = []
+
+        async def connect(self):
+            self.actions.append("connect")
+
+        async def disconnect(self):
+            self.actions.append("disconnect")
+
+        async def is_user_authorized(self):
+            return True
+
+        async def get_entity(self, name):
+            assert name == "@play_hard_community"
+            return SimpleNamespace(id=99)
+
+        async def get_messages(self, _entity, **kw):
+            if kw == {"ids": 406}:
+                return SimpleNamespace(id=406, grouped_id=999, replies=None, date=t)
+            assert kw == {"limit": 9, "offset_id": 406}
+            return [
+                SimpleNamespace(id=405, grouped_id=999, replies=None),
+                SimpleNamespace(id=404, grouped_id=999, replies=None),
+                SimpleNamespace(id=403, grouped_id=999, replies=None),
+                SimpleNamespace(id=402, grouped_id=999, replies=SimpleNamespace(replies=4)),
+                SimpleNamespace(id=401, grouped_id=1000, replies=SimpleNamespace(replies=4)),
+            ]
+
+        async def __call__(self, request):
+            assert request.msg_id == 402
+            return SimpleNamespace(messages=[SimpleNamespace(id=1)])
+
+    fake = FakeClient()
+
+    class Service:
+        @staticmethod
+        def parse_comment_target(_url):
+            return SimpleNamespace(handle="play_hard_community", post_id=406)
+
+        def _client_for_project(self, *_args):
+            return fake, None
+
+        @staticmethod
+        async def _disconnect_safely(client):
+            await client.disconnect()
+
+    result = await inspect_latest_album_discussion(
+        _PROJECT, "https://t.me/play_hard_community/406", Service()
+    )
+    assert result["status"] == "ALBUM_DISCUSSION_ANCHOR_FOUND"
+    assert result["discussion_anchor_post_id"] == 402
+    assert result["inspected_post_ids"] == [406, 405, 404, 403, 402]
+    assert result["human_reapproval_required"] is True
+    assert fake.actions == ["connect", "disconnect"]
+
+
+@pytest.mark.asyncio
+async def test_profile_is_diagnosed_even_when_join_required():
+    store, handle, _url, now = _case(mode="STANDALONE_POST")
+    async def not_verified(_store, _project):
+        return {"status": "PROFILE_ATTRIBUTION_UNVERIFIED",
+                "tracking_profile_route_verified": False}
+    result = await run(
+        store, project_id=_PROJECT, handle=handle, now=now,
+        preflight=FakePreflight("JOIN_REQUIRED"),
+        profile_checker=not_verified,
+    )
+    assert result["reason"] == "ACCOUNT_PREFLIGHT_NOT_READY"
+    assert result["profile_preflight"]["status"] == "PROFILE_ATTRIBUTION_UNVERIFIED"
+    assert result["joined"] is False

@@ -97,6 +97,78 @@ async def verify_discussion_root(
         await service._disconnect_safely(client)
 
 
+async def inspect_latest_album_discussion(
+    project_id: UUID, target_url: str, service: TelegramOpportunityPreflightService,
+) -> dict:
+    """Find whether Telegram attaches comments to another element of ONE album.
+
+    This diagnoses Play.Hard /406 read-only. It never promotes an older post
+    to sendable or rewrites previously approved content.
+    """
+    target = service.parse_comment_target(target_url)
+    if target is None:
+        return {"status": "INVALID_TARGET_URL"}
+    client, error = service._client_for_project(
+        project_id, target.handle, target.post_id, "CHANNEL_COMMENT"
+    )
+    if error is not None or client is None:
+        return {"status": "ACCOUNT_SESSION_UNAVAILABLE"}
+    try:
+        await client.connect()
+        if not await client.is_user_authorized():
+            return {"status": "SESSION_NOT_AUTHORIZED"}
+        channel = await client.get_entity(f"@{target.handle}")
+        latest = await client.get_messages(channel, ids=target.post_id)
+        group_id = getattr(latest, "grouped_id", None)
+        if not group_id:
+            return {"status": "NOT_A_TELEGRAM_ALBUM"}
+        siblings = await client.get_messages(
+            channel, limit=9, offset_id=target.post_id
+        )
+        recent = []
+        for item in list(siblings or []):
+            if getattr(item, "grouped_id", None) != group_id:
+                break
+            member_id = int(getattr(item, "id", 0) or 0)
+            if 0 < member_id < target.post_id:
+                recent.append(item)
+        checked_ids = [target.post_id] + [
+            int(item.id) for item in recent
+        ]
+        # An album may share a caption but not a comment thread. Never infer
+        # comment permission solely from a group_id or visible caption.
+        for item in [latest, *recent]:
+            if getattr(item, "replies", None) is None:
+                continue
+            try:
+                discussion = await client(
+                    GetDiscussionMessageRequest(
+                        peer=channel, msg_id=int(item.id),
+                    )
+                )
+            except Exception:
+                continue
+            if getattr(discussion, "messages", None):
+                return {
+                    "status": "ALBUM_DISCUSSION_ANCHOR_FOUND",
+                    "album_latest_post_id": target.post_id,
+                    "discussion_anchor_post_id": int(item.id),
+                    "inspected_post_ids": checked_ids,
+                    "human_reapproval_required": True,
+                }
+        return {
+            "status": "NO_ALBUM_DISCUSSION_FOUND",
+            "album_latest_post_id": target.post_id,
+            "inspected_post_ids": checked_ids,
+            "human_reapproval_required": True,
+        }
+    except Exception as exc:
+        return {"status": "ALBUM_DIAGNOSTIC_FAILED",
+                "reason": type(exc).__name__}
+    finally:
+        await service._disconnect_safely(client)
+
+
 async def check_profile(
     store: RuntimeStateStore, project_id: UUID,
 ) -> dict:
@@ -193,10 +265,25 @@ async def run(
     ).hexdigest()
     response["draft_text"] = comment  # only the previously stored review draft
     response["prompt_version"] = draft.get("prompt_version")
+    # Check the attribution path independently of posting access. Even when a
+    # group needs joining, its conversion route should be diagnosed now.
+    profile = await (
+        profile_checker(store, project_id) if profile_checker
+        else check_profile(store, project_id)
+    )
+    response["profile_preflight"] = profile
     checker = preflight or telegram_opportunity_preflight_service
     access = await checker.check_target(project_id, url, mode)
     response["account_preflight"] = access.public_dict()
     if not access.execution_ready:
+        if (
+            handle == "play_hard_community" and mode == "CHANNEL_COMMENT"
+            and access.status == "NO_DISCUSSION"
+            and discussion_checker is None
+        ):
+            response["album_discussion_diagnostic"] = (
+                await inspect_latest_album_discussion(project_id, url, checker)
+            )
         return {**response, "reason": "ACCOUNT_PREFLIGHT_NOT_READY"}
     if mode == "CHANNEL_COMMENT":
         verify = discussion_checker or verify_discussion_root
@@ -205,11 +292,6 @@ async def run(
         if discussion.get("status") != "DISCUSSION_ROOT_VERIFIED":
             return {**response, "reason": "DISCUSSION_ROUTE_NOT_VERIFIED"}
 
-    profile = await (
-        profile_checker(store, project_id) if profile_checker
-        else check_profile(store, project_id)
-    )
-    response["profile_preflight"] = profile
     if not profile.get("tracking_profile_route_verified"):
         return {**response, "reason": "ATTRIBUTION_PROFILE_ROUTE_UNVERIFIED"}
 
