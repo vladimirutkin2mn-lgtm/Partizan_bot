@@ -9,10 +9,18 @@ import pytest
 from telethon.tl.functions.channels import JoinChannelRequest
 
 import app.telegram_autonomous_membership_recovery as module
-from app.distribution_schemas import AudienceDistributionMapView, DistributionActionView, DistributionOpportunityView
+from app.distribution_schemas import (
+    AudienceDistributionMapView,
+    DistributionActionView,
+    DistributionOpportunityView,
+)
 from app.distribution_types import (
-    AttributionLevel, AutomationLevel, DistributionActionStatus,
-    DistributionActionType, DistributionPlatform, OpportunityKind,
+    AttributionLevel,
+    AutomationLevel,
+    DistributionActionStatus,
+    DistributionActionType,
+    DistributionPlatform,
+    OpportunityKind,
 )
 from app.runtime_store import MemoryRuntimeStateStore
 from app.telegram_autonomous_membership_recovery import (
