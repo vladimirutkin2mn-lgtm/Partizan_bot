@@ -218,7 +218,7 @@ async def test_bad_audience_or_duplicate_rejected_before_session():
             row["opportunities"][0]["metadata"]["research_audience_status"] = "REVIEW_REQUIRED"
             store.put("audience_distribution_map", str(PRODUCT), row)
         calls = []
-        def client_factory(_):
+        def client_factory(_, calls=calls):
             calls.append(1)
             raise AssertionError("No account access")
         service = TelegramMembershipService(
