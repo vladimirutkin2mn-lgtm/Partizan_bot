@@ -13,7 +13,8 @@ from uuid import UUID
 
 from app.distribution_schemas import AudienceDistributionMapView
 from app.distribution_types import DistributionPlatform
-from app.femdom_first_publish_preflight import _HANDLES, run as review_preflight
+from app.femdom_first_publish_preflight import _HANDLES
+from app.femdom_first_publish_preflight import run as review_preflight
 from app.femdom_research_comment_preview import _PRODUCT, _PROJECT
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.telegram_client_governance import CUSTOMER_TELEGRAM_AUTOMATION_NAMESPACE
