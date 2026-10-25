@@ -15,10 +15,10 @@ from telethon.tl.functions.channels import (
 from app.distribution_schemas import AudienceDistributionMapView, DistributionOpportunityView
 from app.distribution_types import DistributionPlatform, OpportunityKind
 from app.femdom_bizarreclub_authorized_join_once import (
+    _RESULT_NAMESPACE,
     EXPECTED_LINKED_CHAT_ID,
     HANDLE,
     OPERATION_KEY,
-    _RESULT_NAMESPACE,
     join_once,
 )
 from app.femdom_research_comment_preview import _PRODUCT, _PROJECT
