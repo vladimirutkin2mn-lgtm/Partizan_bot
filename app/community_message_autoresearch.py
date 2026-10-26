@@ -33,6 +33,8 @@ class CommunityMessageGrade(BaseModel):
     naturalness: int = Field(ge=0, le=4)
     usefulness: int = Field(ge=0, le=4)
     conversion_fit: int = Field(ge=0, le=4)
+    author_curiosity: int | None = Field(default=None, ge=0, le=4)
+    voice_consistency: int | None = Field(default=None, ge=0, le=4)
     grounded: bool
     language_matches: bool
     no_deceptive_promotion: bool
@@ -42,6 +44,17 @@ class CommunityMessageGrade(BaseModel):
 
     @property
     def score(self) -> float:
+        # Preserve prior study scoring for historical comparisons. New voice
+        # studies explicitly grade curiosity about the author and voice fit.
+        if self.author_curiosity is not None and self.voice_consistency is not None:
+            return (
+                0.25 * self.target_specificity
+                + 0.25 * self.naturalness
+                + 0.10 * self.usefulness
+                + 0.15 * self.conversion_fit
+                + 0.15 * self.author_curiosity
+                + 0.10 * self.voice_consistency
+            )
         return (
             0.35 * self.target_specificity
             + 0.25 * self.naturalness
@@ -109,6 +122,21 @@ class CommunityMessagePromptAutoResearch:
             raise ValueError("Paired benchmark cases must be unique")
         if not cases:
             raise ValueError("At least one human-reviewed prompt pair is required")
+        # Comparing a curiosity/voice study with an older rubric would
+        # manufacture an apparent lift from different scoring methodologies.
+        graded = [
+            grade for pair in cases for grade in (pair.baseline, pair.challenger)
+        ]
+        has_curiosity = [
+            grade.author_curiosity is not None
+            and grade.voice_consistency is not None
+            for grade in graded
+        ]
+        if any(
+            (grade.author_curiosity is None) != (grade.voice_consistency is None)
+            for grade in graded
+        ) or (any(has_curiosity) and not all(has_curiosity)):
+            raise ValueError("Paired reviews must use the same complete voice rubric")
         cases.sort(key=lambda item: item.case_id)
 
         baseline_score = mean(row.baseline.score for row in cases)
