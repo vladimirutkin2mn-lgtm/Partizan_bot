@@ -388,8 +388,11 @@ async def test_mandatory_policy_disclosure_is_checked_separately_from_creative_p
                 context_text="Обсуждаем новое мероприятие в субботу.",
                 source="telegram_native.latest_message",
             ),
-            policy=SimpleNamespace(disclosure_required=True,
-                                   ai_content_constraints=[]),
+            policy=SimpleNamespace(
+                disclosure_required=True,
+                ai_content_constraints=[],
+                model_dump=lambda mode="json": {"disclosure_required": True},
+            ),
         )
     # No automatic retries that would increase the model bill.
     assert len(provider.messages) == 2
