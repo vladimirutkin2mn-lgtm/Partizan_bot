@@ -6,6 +6,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.community_voice import VoiceVariantId
+
 
 class GrowthResearchOutcome(StrEnum):
     KEEP = "KEEP"
@@ -74,7 +76,7 @@ class GrowthVariantSpec(BaseModel):
     tactic_id: str = Field(min_length=1, max_length=160)
     audience: str | None = Field(default=None, max_length=1000)
     message_angle: str | None = Field(default=None, max_length=2000)
-    voice_variant_id: Literal["adaptive", "assertive", "playful", "warm", "direct", "dry_wit"] | None = None
+    voice_variant_id: VoiceVariantId | None = None
     offer: str | None = Field(default=None, max_length=2000)
     creative_ref: str | None = Field(default=None, max_length=1000)
     cta: str | None = Field(default=None, max_length=1000)
