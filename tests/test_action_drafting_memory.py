@@ -186,7 +186,7 @@ async def test_action_drafting_fails_closed_on_ambiguous_project_memory() -> Non
 
 @pytest.mark.asyncio
 async def test_telegram_action_composer_uses_shared_native_language_one_message_prompt():
-    from app.community_message_prompt import COMMUNITY_MESSAGE_PROMPT_VERSION
+    from app.community_voice import COMMUNITY_CREATIVE_PROMPT_VERSION
 
     memory = ProjectMarketingMemoryService(MemoryRuntimeStateStore())
     provider = RecordingProvider()
@@ -220,12 +220,12 @@ async def test_telegram_action_composer_uses_shared_native_language_one_message_
         policy=None,
     )
     system = provider.messages[0].content
-    assert COMMUNITY_MESSAGE_PROMPT_VERSION in system
-    assert "Write exactly ONE Telegram message" in system
-    assert "Use the target community’s language and register" in system
+    assert COMMUNITY_CREATIVE_PROMPT_VERSION in system
+    assert "Write ONE message in the target community language" in system
+    assert "Infer a distinct communication voice" in system
     assert "GROUP_REPLY" in system
     assert "CHANNEL_COMMENT" in system
-    assert "No alternatives, drafting notes or claims of sending" in system
+    assert "Drafting never grants publication permission" in system
 
 
 @pytest.mark.asyncio
@@ -315,3 +315,84 @@ async def test_telegram_composer_does_not_feed_old_community_posts_to_llm():
     assert selected["excerpt"]["compacted"] is True
     assert selected["excerpt"]["strategy"] == "OPENING_SALIENT_DETAILS_END"
     assert "old unrelated message" not in provider.messages[1].content
+
+@pytest.mark.asyncio
+async def test_telegram_product_voice_is_inferred_from_fuller_positioning_without_second_call():
+    memory = ProjectMarketingMemoryService(MemoryRuntimeStateStore())
+    provider = RecordingProvider()
+    composer = DistributionActionComposer(provider=provider, memory_service=memory)
+    product_id = uuid4()
+    product = SimpleNamespace(
+        id=product_id,
+        model_dump=lambda mode="json": {
+            "name": "Persona-powered product",
+            "description": ("This is a conversational AI with a recognizable character. " * 7),
+            "value_proposition": "A personalized AI companion for adults.",
+            "known_audience": ["Adults interested in conversational experiences"],
+            "product_type": "AI companion",
+            "input_brief": "Huge old unrelated project brief",
+        },
+    )
+    play = SimpleNamespace(
+        tactic_id="telegram_channel_comment",
+        action_type=DistributionActionType.COMMENT,
+    )
+    opportunity = SimpleNamespace(
+        platform=DistributionPlatform.TELEGRAM,
+        title="Conversation club",
+        metadata={"about": "Неформальное общение с юмором"},
+    )
+    await composer.compose(
+        product=product, play=play, opportunity=opportunity,
+        target=SelectedActionTarget(
+            url="https://t.me/community/200",
+            context_text="Мы обсуждаем образы и настроение на завтрашней встрече.",
+            source="telegram_native.latest_message",
+        ),
+        policy=None, voice_variant_id="playful",
+    )
+    assert len(provider.messages) == 2
+    data = json.loads(provider.messages[1].content)
+    assert data["author_voice"]["variant_id"] == "playful"
+    assert data["author_voice"]["profile_version"] == "product_derived_voice_v1"
+    assert data["product"]["product_type"] == "AI companion"
+    assert "personalized AI companion" in data["product"]["value_proposition"]
+    assert len(data["product"]["description"]) > 240
+    assert "Huge old unrelated project brief" not in provider.messages[1].content
+    assert "community-marketing" not in provider.messages[0].content
+    assert "non-explicit and professional" not in provider.messages[0].content
+    assert "AI-content disclosure" not in provider.messages[0].content
+    assert "Do not claim a platform rule permits" not in provider.messages[0].content
+
+
+@pytest.mark.asyncio
+async def test_mandatory_policy_disclosure_is_checked_separately_from_creative_prompt():
+    memory = ProjectMarketingMemoryService(MemoryRuntimeStateStore())
+    provider = RecordingProvider()
+    composer = DistributionActionComposer(provider=provider, memory_service=memory)
+    product = _product(uuid4())
+    play = SimpleNamespace(
+        tactic_id="telegram_channel_comment",
+        action_type=DistributionActionType.COMMENT,
+    )
+    opportunity = SimpleNamespace(
+        platform=DistributionPlatform.TELEGRAM,
+        title="Event club",
+        metadata={},
+    )
+    with pytest.raises(ValueError, match="commercial disclosure missing"):
+        await composer.compose(
+            product=product, play=play, opportunity=opportunity,
+            target=SelectedActionTarget(
+                url="https://t.me/community/200",
+                context_text="Обсуждаем новое мероприятие в субботу.",
+                source="telegram_native.latest_message",
+            ),
+            policy=SimpleNamespace(
+                disclosure_required=True,
+                ai_content_constraints=[],
+                model_dump=lambda mode="json": {"disclosure_required": True},
+            ),
+        )
+    # No automatic retries that would increase the model bill.
+    assert len(provider.messages) == 2

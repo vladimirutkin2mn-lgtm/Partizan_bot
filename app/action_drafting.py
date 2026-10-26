@@ -5,9 +5,11 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, Field, HttpUrl
 
 from app.audience_intelligence_service import audience_intelligence_service
-from app.community_message_prompt import (
-    COMMUNITY_MESSAGE_GUIDANCE,
-    COMMUNITY_MESSAGE_PROMPT_VERSION,
+from app.community_voice import (
+    COMMUNITY_CREATIVE_GUIDANCE,
+    COMMUNITY_CREATIVE_PROMPT_VERSION,
+    VoiceVariantId,
+    build_voice_context,
 )
 from app.conversion_scenarios import (
     DraftVariantBrief,
@@ -323,37 +325,27 @@ class ActionTargetSelector:
         return "\n".join(part for part in parts if part)[:8000]
 
 
-ACTION_DRAFT_SYSTEM_PROMPT = """You are the Distribution Action Drafting component for Partizan.
-Prepare one concise, relevant draft for an already selected marketing experiment.
+ACTION_DRAFT_SYSTEM_PROMPT = """You are Partizan's marketing message writer.
+Prepare ONE concise and relevant message for the selected marketing opportunity.
 
-Non-negotiable rules:
-1. Never impersonate a satisfied customer, independent reviewer, journalist, moderator, or unrelated person.
-2. Never invent personal experience, testimonials, results, popularity, urgency, scarcity, or guarantees.
-3. Use the supplied local target context. Do not write a generic mass-spam message.
-4. Do not write cold direct messages. The allowed action type is supplied explicitly.
-5. Community comments/replies should be useful in their own right.
-   Do not include a product link unless it is explicitly allowed.
-   For a Telegram comment/reply, use ONLY the actual newest native message
-   supplied as the selected target. Respond naturally to what THAT post says;
-   do not blend in older group messages or manufacture a problem or question.
-   Community audience fit is established separately from message context.
-   Mention the product only when it genuinely contributes to that newest post,
-   and otherwise keep the reply useful without promotion. No generic ad copy.
-6. When a Conversion brief is supplied, optimize for that explicit conversion mechanism instead
-   of writing a merely polite or generic contribution. The conversion path must still obey every
-   community and platform constraint.
-7. If an applied community policy requires disclosure, include a clear short disclosure.
-   Set disclosure_included=true only when that disclosure is actually present.
-8. If the policy requires AI-content disclosure, include it.
-   Set ai_disclosure_included=true only when that disclosure is actually present.
-9. For STANDALONE_POST, provide a concise title that is suitable for the target community.
-10. Do not claim a platform rule permits something unless the applied CommunityPolicy explicitly says so.
-11. Drafting is independent of publishing. An authorized execution service handles
-    assisted/manual review or explicitly opted-in autonomous posting with separate
-    permission, moderation, deduplication and platform safety gates.
-12. If the product or target is adult-oriented, keep comments/replies non-explicit and professional.
-    Do not echo graphic sexual language from the source context.
-Return only the requested structured schema.
+The constant objective is to attract interested potential customers to the
+product. A compelling reaction, relevant opinion, or recognizable author voice
+can serve conversion better than generic advice or a polite explanation.
+
+Use the product positioning, intended audience, author's actual identity when
+supplied, platform and specific target to shape the message. Adapt naturally
+to the language and culture of the community. Avoid generic marketing copy
+and unnecessary sentences. Do not force a product mention where it does not
+belong.
+
+Write only for the allowed action type and target; do not switch to another
+post or initiate unsolicited private messages. Do not invent customer
+testimonials, first-hand attendance, product capabilities or other factual
+claims, and do not misrepresent the author's relationship to the product.
+Observe applicable policy constraints and required commercial disclosures.
+Drafting never grants publication permission.
+
+Return only the requested structured output schema.
 """
 
 
@@ -375,6 +367,7 @@ class DistributionActionComposer:
         target: SelectedActionTarget,
         policy: CommunityPolicyView | None,
         variant: DraftVariantBrief | None = None,
+        voice_variant_id: VoiceVariantId = "adaptive",
     ) -> DistributionContentDraft:
         self._validate_ai_policy(policy)
         if self._provider is None:
@@ -391,15 +384,17 @@ class DistributionActionComposer:
             play.action_type.value,
             opportunity.platform.value,
         )
-        marketing_guidance = render_marketing_guidance(marketing_task)
+        # Generic community-marketing skill guidance was crowding out voice
+        # and conversion. Keep it for other action types; use concise,
+        # purpose-built organic writing guidance for Telegram.
         memory = self._memory.prompt_context_for_product(
             product.id,
             platform=opportunity.platform.value,
             action_type=play.action_type.value,
         )
         community_prompt = (
-            f"Prompt version: {COMMUNITY_MESSAGE_PROMPT_VERSION}\n"
-            + COMMUNITY_MESSAGE_GUIDANCE
+            f"Prompt version: {COMMUNITY_CREATIVE_PROMPT_VERSION}\n"
+            + COMMUNITY_CREATIVE_GUIDANCE
             if opportunity.platform == DistributionPlatform.TELEGRAM
             and play.action_type in {
                 DistributionActionType.COMMENT,
@@ -408,24 +403,26 @@ class DistributionActionComposer:
             }
             else ""
         )
+        marketing_guidance = (
+            "" if community_prompt else render_marketing_guidance(marketing_task)
+        )
         if community_prompt:
             # The generic opportunity payload can include dozens of older
             # Telegram messages and full discovery history. Keep only product
             # facts, community identity and the exact selected native target.
             product_data = product.model_dump(mode="json")
             community_metadata = getattr(opportunity, "metadata", {}) or {}
+            voice_input = build_voice_context(
+                product_data,
+                community_title=str(opportunity.title or ""),
+                community_about=str(community_metadata.get("about") or ""),
+                variant_id=voice_variant_id,
+            )
             compacted = compact_telegram_target(target.context_text)
             user_context = json.dumps(
                 {
-                    "product": {
-                        key: str(product_data.get(key) or "")[:limit]
-                        for key, limit in (
-                            ("name", 90),
-                            ("description", 240),
-                            ("problem_or_desire", 160),
-                            ("value_proposition", 180),
-                        )
-                    },
+                    "product": voice_input["product_positioning"],
+                    "author_voice": voice_input["voice"],
                     "community_title": opportunity.title,
                     "community_about": str(community_metadata.get("about") or "")[:220],
                     "audience_fit_hint": str(
@@ -472,7 +469,7 @@ class DistributionActionComposer:
                 f"{self._variant_prompt(variant) if variant else None}\n"
             )
         with openai_usage_context("action_variant_draft" if variant else "action_auto_prepare", product.id):
-            return await self._provider.parse(
+            draft = await self._provider.parse(
                 messages=[
                     LLMMessage(
                         role="system",
@@ -488,6 +485,16 @@ class DistributionActionComposer:
                 ],
                 response_model=DistributionContentDraft,
             )
+        # Creative guidance does not own compliance. Reject drafts that omit
+        # mandated disclosures before an action can be prepared or approved.
+        if policy is not None and policy.disclosure_required and not draft.disclosure_included:
+            raise ValueError("Required commercial disclosure missing from draft")
+        if (
+            "AI_CONTENT_DISCLOSURE_REQUIRED" in self._constraints(policy)
+            and not draft.ai_disclosure_included
+        ):
+            raise ValueError("Required AI-content disclosure missing from draft")
+        return draft
 
     def _mock_draft(
         self,

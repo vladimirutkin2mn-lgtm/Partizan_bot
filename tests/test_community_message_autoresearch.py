@@ -102,3 +102,59 @@ def test_same_prompt_version_is_rejected():
             challenger_version="community_message_v4_grounded_target",
             reviews=_reviews(),
         )
+
+
+def test_voice_study_scores_curiosity_and_character_separately():
+    from app.community_message_autoresearch import CommunityMessagePromptAutoResearch
+
+    def graded(curiosity: int, character: int):
+        return CommunityMessageGrade(
+            target_specificity=4,
+            naturalness=4,
+            usefulness=2,
+            conversion_fit=3,
+            author_curiosity=curiosity,
+            voice_consistency=character,
+            grounded=True,
+            language_matches=True,
+            no_deceptive_promotion=True,
+            safe_content=True,
+            input_tokens=100,
+            output_tokens=30,
+        )
+
+    trials = [
+        CommunityMessagePairedReview(
+            case_id=f"voice-case-{i}",
+            baseline=graded(1, 1),
+            challenger=graded(4, 4),
+        )
+        for i in range(6)
+    ]
+    output = CommunityMessagePromptAutoResearch(
+        MemoryRuntimeStateStore()
+    ).evaluate(
+        baseline_version="community_message_v15_1_profile_curiosity_trial",
+        challenger_version="community_message_v16_product_derived_voice",
+        reviews=trials,
+    )
+    assert output.status == "CANDIDATE_FOR_MANUAL_PROMOTION"
+    assert output.score_lift > 0.5
+
+
+def test_mixing_voice_and_legacy_rubrics_cannot_fake_an_improvement():
+    from app.community_message_autoresearch import CommunityMessagePromptAutoResearch
+
+    one = CommunityMessagePairedReview(
+        case_id="voice-comparison",
+        baseline=_grade(strong=False),
+        challenger=_grade(strong=True).model_copy(
+            update={"author_curiosity": 4, "voice_consistency": 4}
+        ),
+    )
+    with pytest.raises(ValueError, match="same complete voice rubric"):
+        CommunityMessagePromptAutoResearch(MemoryRuntimeStateStore()).evaluate(
+            baseline_version="community_message_v15_1_profile_curiosity_trial",
+            challenger_version="community_message_v16_product_derived_voice",
+            reviews=[one],
+        )
