@@ -41,6 +41,10 @@ from app.project_marketing_memory import (
 )
 from app.reddit_research import action_target_is_fresh
 from app.schemas import ProductProfileView
+from app.telegram_author_context import (
+    ConnectedTelegramAuthorContext,
+    connected_telegram_author_context,
+)
 from app.telegram_message_precheck import precheck_telegram_target
 from app.telegram_target_excerpt import compact_telegram_target
 
@@ -354,9 +358,14 @@ class DistributionActionComposer:
         self,
         provider: LLMProvider | None = None,
         memory_service: ProjectMarketingMemoryService | None = None,
+        author_context: ConnectedTelegramAuthorContext | None = None,
     ) -> None:
         self._provider = provider
         self._memory = memory_service or project_marketing_memory_service
+        self._author_context = (
+            author_context if author_context is not None
+            else connected_telegram_author_context
+        )
 
     async def compose(
         self,
@@ -418,11 +427,13 @@ class DistributionActionComposer:
                 community_about=str(community_metadata.get("about") or ""),
                 variant_id=voice_variant_id,
             )
+            publisher_profile = await self._author_context.for_product(product.id)
             compacted = compact_telegram_target(target.context_text)
             user_context = json.dumps(
                 {
                     "product": voice_input["product_positioning"],
                     "author_voice": voice_input["voice"],
+                    "actual_publisher_profile": publisher_profile,
                     "community_title": opportunity.title,
                     "community_about": str(community_metadata.get("about") or "")[:220],
                     "audience_fit_hint": str(
