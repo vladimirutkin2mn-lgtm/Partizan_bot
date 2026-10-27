@@ -75,15 +75,13 @@ class ConnectedTelegramAuthorContext:
             )
             current_username = str(getattr(profile, "username", "") or "").strip()[:32]
             current_name = str(getattr(profile, "display_name", "") or "").strip()[:120]
-            # Refuse stale/mismatched identity when the live session appears
-            # to be a different account than the one authorised by the user.
-            if username and current_username and username.lower() != current_username.lower():
-                return None
+            # The customer can legitimately rename an account after login.
+            # The session remains scoped to the uniquely selected project.
             username = current_username or username
             display_name = current_name or display_name
             bio = str(getattr(profile, "about", "") or "").strip()[:512]
             status = "live_profile_read"
-        except (Exception):
+        except Exception:
             # An expired/read-failing Telegram session should not change the
             # selected author into another identity or break drafting.
             # Only the saved identity is supplied, without guessed bio.
