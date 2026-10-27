@@ -16,7 +16,7 @@ VOICE_VARIANT_IDS = frozenset(
     ("adaptive", "assertive", "playful", "warm", "direct", "dry_wit")
 )
 VOICE_PROFILE_VERSION = "product_derived_voice_v1"
-COMMUNITY_CREATIVE_PROMPT_VERSION = "community_message_v16_product_derived_voice"
+COMMUNITY_CREATIVE_PROMPT_VERSION = "community_message_v16_1_connected_account_voice"
 
 COMMUNITY_CREATIVE_GUIDANCE = """Write ONE message in the target community language.
 
@@ -27,8 +27,10 @@ add promotional links, profile invitations, generic praise, lectures or a
 second sentence that contributes nothing.
 
 Infer a distinct communication voice from the supplied product positioning,
-the audience, the actual account context (if available), and the community
-register. Keep the author's voice recognizable while adapting vocabulary and
+the audience, the actual_publisher_profile (when available), and the community
+register. Use the Telegram profile's real display name, username and bio to
+keep the message consistent with the author the reader will see. If the
+profile is absent, do not assume a personal identity or invent a profile bio. Keep the author's voice recognizable while adapting vocabulary and
 level of informality to this specific discussion. Do NOT use one category
 stereotype for every message or roleplay personal experiences. The selected
 voice experiment is a stylistic nudge, not permission to invent identity,
