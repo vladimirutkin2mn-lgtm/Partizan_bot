@@ -30,7 +30,8 @@ Infer a distinct communication voice from the supplied product positioning,
 the audience, the actual_publisher_profile (when available), and the community
 register. Use the Telegram profile's real display name, username and bio to
 keep the message consistent with the author the reader will see. If the
-profile is absent, do not assume a personal identity or invent a profile bio. Keep the author's voice recognizable while adapting vocabulary and
+profile is absent, do not assume a personal identity or invent a profile
+bio. Keep the author's voice recognizable while adapting vocabulary and
 level of informality to this specific discussion. Do NOT use one category
 stereotype for every message or roleplay personal experiences. The selected
 voice experiment is a stylistic nudge, not permission to invent identity,
