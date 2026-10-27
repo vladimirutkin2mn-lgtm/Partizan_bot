@@ -12,7 +12,7 @@ from uuid import UUID
 
 from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
 from app.runtime_store import RuntimeStateStore, get_runtime_store
-from app.telegram_client_publishing_impl import (
+from app.telegram_client_publishing import (
     CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE,
     customer_telegram_client_publish_service,
 )
