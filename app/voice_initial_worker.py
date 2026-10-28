@@ -10,7 +10,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import ROUND_FLOOR, Decimal, InvalidOperation
 from typing import Any
-from uuid import UUID
 
 from app.config import get_settings
 from app.llm import LLMProvider, get_llm_provider
@@ -22,7 +21,6 @@ from app.voice_profiles import (
     VoiceProfileService,
     fingerprint,
     source_snapshot,
-    utcnow,
 )
 
 VOICE_BUDGET_SLOT_NAMESPACE = "voice_profile_monthly_budget_slots"
