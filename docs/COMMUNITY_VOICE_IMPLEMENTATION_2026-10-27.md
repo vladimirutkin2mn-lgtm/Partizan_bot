@@ -49,8 +49,9 @@ compliance, publishing approval or truthfulness checks.
 
 The automatic voice derivation currently happens within the one main LLM
 request; there is not yet a persistent inferred, reviewable BrandVoiceProfile.
-Connected Telegram account's verified bio/role is not yet reliably available
-to this composer. Do not invent identity or claim real account awareness.
+The connected Telegram account's existing bio/role is deliberately
+excluded from the creative prompt. It belongs to profile conversion validation,
+not to style inference. Do not invent identity or claim real account awareness.
 
 No factual evidence of quality or CAC improvement yet. The review-only
 v15.1 trial remains the control. A production rollout of this prompt
@@ -60,8 +61,9 @@ wiring and safety contracts, not psychological response or real conversion.
 
 ## Next steps
 
-1. Add a trusted, versioned profile/bio source so product voice does not
-   conflict with the account the reader actually sees.
+1. Keep profile setup and exact CTA verification in the conversion
+   path independently of message drafting. Test changes to profile
+   treatment separately from voice experiments.
 2. Offline paired A/B against saved verified posts, including groups vs.
    channel comments and non-adult products; one model call per candidate
    configuration and post, no Telegram sends.
@@ -73,3 +75,13 @@ wiring and safety contracts, not psychological response or real conversion.
 
 Revert the feature PR. Both old preview prompt and current account publishing
 permissions are unchanged by this implementation.
+
+## Follow-up architectural correction (2026-10-28)
+
+PR #573 introduced a per-draft read of the already connected Telegram profile.
+That made the current bio a creative style input and introduced avoidable
+Telegram I/O per draft. This was removed in the follow-up change: profile
+information is for conversion path verification and profile treatment
+optimization, while communication voice is derived from product and audience.
+The active creative prompt is `community_message_v16_2_product_led_voice`.
+See `docs/TELEGRAM_CONNECTED_ACCOUNT_DRAFT_VOICE_2026-10-27.md`.
