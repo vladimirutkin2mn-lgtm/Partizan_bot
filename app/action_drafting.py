@@ -794,15 +794,20 @@ class DistributionActionDraftingService:
                     "action for this identity; reconcile it instead of drafting again"
                 )
 
-    async def auto_prepare(
+    async def _draft_single(
         self,
         *,
         product: ProductProfileView,
         play: DistributionPlayView,
-        destination_url: HttpUrl | None = None,
         project_id: UUID | None = None,
         voice_version_id: UUID | None = None,
-    ) -> DistributionExecutionPlanView:
+    ) -> tuple[SelectedActionTarget, DistributionContentDraft]:
+        """One canonical single-message request shared by review and preparation.
+
+        The preview path does not create an Action, Trial or publication permission.
+        It uses the same selected native target, scoped voice, prompts, cache and
+        deterministic policy checks as the real preparation path.
+        """
         if play.status != DistributionPlayStatus.READY:
             raise ValueError("Only READY DistributionPlay objects can be auto-prepared")
         opportunity = audience_intelligence_service.find_opportunity(play.opportunity_id)
@@ -819,6 +824,68 @@ class DistributionActionDraftingService:
             target=target,
             policy=policy,
             project_id=selected_project,
+            voice_version_id=voice_version_id,
+        )
+        return target, draft
+
+    async def preview_persisted_voice(
+        self,
+        *,
+        product: ProductProfileView,
+        play: DistributionPlayView,
+        project_id: UUID,
+        voice_version_id: UUID | None = None,
+    ) -> dict:
+        """Review-only v17: no prepared action, approval or Telegram publication.
+
+        Requires the existing v17 feature flag and LLM provider, and intentionally
+        fails closed on invalidated scope or missing author character.
+        """
+        if not get_settings().persisted_voice_writer_enabled:
+            raise RuntimeError("PERSISTED_VOICE_WRITER_NOT_ENABLED")
+        if (
+            play.platform != DistributionPlatform.TELEGRAM
+            or play.action_type not in {
+                DistributionActionType.COMMENT,
+                DistributionActionType.REPLY,
+                DistributionActionType.STANDALONE_POST,
+            }
+        ):
+            raise ValueError("VOICE_PREVIEW_TELEGRAM_ONLY")
+        target, draft = await self._draft_single(
+            product=product, play=play, project_id=project_id,
+            voice_version_id=voice_version_id,
+        )
+        if draft.voice_profile_version_id is None or not draft.voice_profile_content_hash:
+            raise RuntimeError("VOICE_PREVIEW_PROVENANCE_REQUIRED")
+        return {
+            "status": "REVIEW_ONLY_NOT_SENDABLE",
+            "published": False,
+            "action_sendable": False,
+            "action_created": False,
+            "project_id": str(project_id),
+            "product_id": str(product.id),
+            "target_url": target.url,
+            "target_source": target.source,
+            "context_text": draft.context_text,
+            "content_text": draft.content_text,
+            "rationale": draft.rationale,
+            "voice_profile_version_id": str(draft.voice_profile_version_id),
+            "voice_profile_content_hash": draft.voice_profile_content_hash,
+            "prompt_version": PERSISTED_COMMUNITY_PROMPT_VERSION,
+        }
+
+    async def auto_prepare(
+        self,
+        *,
+        product: ProductProfileView,
+        play: DistributionPlayView,
+        destination_url: HttpUrl | None = None,
+        project_id: UUID | None = None,
+        voice_version_id: UUID | None = None,
+    ) -> DistributionExecutionPlanView:
+        target, draft = await self._draft_single(
+            product=product, play=play, project_id=project_id,
             voice_version_id=voice_version_id,
         )
         return distribution_execution_service.prepare(
