@@ -1,85 +1,106 @@
-# Persisted voice foundation — implementation 1/6 (2026-10-29)
+# Persisted voice implementation — phase 1 + guarded parts of phases 2/3 (2026-10-29)
 
-Status: **development PR, not production rollout**. Source of requirements:
-`Partizan_voice_autoresearch_requirements_2026-10-29.md` from the owner's
-ChatGPT Library. Target commit reviewed: `f91e3b1...`.
+**Status:** Draft PR #577, under test, not a live rollout. Based on
+`Partizan_voice_autoresearch_requirements_2026-10-29.md`.
+Reference main commit: `f91e3b1c17d9b31ab0e90de59ad7b555d429c6f1`.
 
-## Implemented in this PR
+## Shipped in this branch (not yet active)
 
-- `app/voice_profiles.py`: source snapshot / fingerprint, strict
-  LLM-generated structured `VoiceProfileDraft`, marked synthetic examples,
-  immutable `VoiceProfileVersion`, durable `VoiceGenerationJob`, assignment
-  and revision-controlled promotion. Scope is exact project/product. Existing
-  projects currently do not have a first-class tenant_id; the project UUID
-  is recorded as an interim isolation scope. No auth route exposes these APIs.
-- `RuntimeStateStore.compare_and_swap`: atomic in-memory and PostgreSQL
-  conditional update to prevent concurrent assignment overwrite and duplicate
-  reserved-job execution; `put_if_absent` provides durable claim/reservation.
-- `VoiceProfileService.reserve_initial` creates an idempotent **unpaid**
-  job. `generate_reserved` uses a real `LLMProvider` interface and
-  explicit `allow_llm_call=True` only. No background scheduler or HTTP
-  endpoint invokes this operation. The caller must separately enforce an
-  explicit research/spend mandate before making a paid call; such a budget
-  execution bridge is **not implemented** in this PR.
-- `app/persisted_voice_writer.py`: versioned v17 writer instructions use a
-  saved, concrete character from the correct project/product scope. It
-  cannot use current Telegram bio/username and it does not generate the
-  character per message. The exact `voice_profile_version_id` and style
-  hash enter the writer input. This is not yet persisted to DistributionAction.
-- `app/action_drafting.py`: opt-in `project_id` and
-  `voice_version_id` support for the existing Telegram compose path,
-  under `PERSISTED_VOICE_WRITER_ENABLED=false` by default. If enabled and
-  a project id or valid voice is missing, the writer fails **before** calling
-  the LLM. The current live prep routes do not pass project IDs; DO NOT enable
-  the flag yet or those prep routes will fail closed.
-- Fake-provider tests exercise no automatic LLM call, bounded scoped
-  generation, durable re-use, invalidation on product change, no cross-project
-  reuse, writer one-call behaviour and atomic promotion revision.
-- No Telegram network, posting, joining, profile mutation, paid LLM execution,
-  migrations or worker jobs are triggered.
+1. **Voice records:** `app/voice_profiles.py` defines strict LLM generated
+   `VoiceProfileDraft` (concrete style + synthetic example labels), immutable
+   `VoiceProfileVersion`, `VoiceAssignment`, `VoiceGenerationJob`, source
+   snapshots and content hashes. Isolation is by project/product. In absence
+   of a separately established tenant ID, project ID is the interim scope.
+2. **Atomic claims:** `RuntimeStateStore.put_if_absent` reserves one initial
+   generation job; new `compare_and_swap` claims jobs and changes active
+   versions atomically (in-memory lock / PostgreSQL conditional UPDATE).
+   Unknown provider outcomes stop rather than retrying hidden paid calls.
+3. **Initial onboarding reservation:** `CustomerFunnelService.confirm_preview`
+   can reserve an initial voice job for a confirmed product and store
+   `voice_initial_job_id`, behind
+   `VOICE_INITIAL_RESERVATION_ENABLED=false`. This reservation is **unpaid**,
+   does not generate a style synchronously, does not ask the customer for
+   their tone, and does not block legacy onboarding when disabled.
+4. **Bounded one-shot worker:** `app/voice_initial_worker.py` will consume
+   at most one eligible saved job per invocation, only with
+   `VOICE_GENERATION_WORKER_ENABLED=true`, a configured paid OpenAI provider,
+   explicit positive `VOICE_GENERATION_MONTHLY_BUDGET_USD`,
+   `VOICE_GENERATION_CALL_RESERVATION_USD`, and
+   `VOICE_GENERATION_MAX_OUTPUT_TOKENS` between 256-4000. It uses atomic
+   product/month reservation slots before the call and captures usage to
+   the durable job; billed cost remains UNKNOWN. This worker is **not wired
+   into cron or deployment**. Both the worker flag and reservations are
+   off by default. USD amounts are operator-estimated envelopes, **not**
+   externally verified or guaranteed provider invoice caps.
+5. **Saved-voice writer:** `app/persisted_voice_writer.py` defines v17
+   prompts for a single topic-specific message using a stored concrete
+   character. `DistributionActionComposer` resolves a chosen scoped
+   version or current assignment only when
+   `PERSISTED_VOICE_WRITER_ENABLED=true`; it never reads a Telegram profile
+   or generates a new character inside a message. Missing/ambiguous scope,
+   missing initial voice, changed product facts or wrong version fail closed
+   before sending to the LLM.
+6. **Real preparation path:** `auto_prepare` and
+   `auto_prepare_variants` pass `project_id` + `voice_version_id`.
+   When omitted, the enabled Telegram writer resolves a unique CONFIRMED
+   product project or fails; it never guesses between two customers. v17
+   adds a PROFILE_CLICK no-link/no-product brief for organic tactics where
+   links and product mentions are not part of the template.
+7. **Provenance and bridge:** `GrowthVariantSpec.voice_profile_version_id`
+   can refer to an actual immutable voice. The existing
+   `GrowthAutoResearchExecutionService` forwards the version through
+   `auto_prepare`. The resulting `DistributionContentDraft` records the
+   executed version+hash; `DistributionExecutionService.prepare` persists
+   them in the prepared action's `content_payload`, via **internal-only**
+   keyword arguments. The public `DistributionExecutionPrepareRequest`
+   cannot spoof these metadata fields.
+8. **Testing:** fake provider/store test coverage for idempotent initial
+   reservation, explicit paid gating, finite quota, provider timeout/no
+   automatic retry, scope isolation, data-change invalidation, writer
+   one-call behavior, the existing on-boarding entry, the actual
+   `auto_prepare` routing and the AutoResearch execution bridge.
+   No live model or Telegram API is invoked by CI tests.
 
-## Known gaps (intentionally not marked done)
+## Not yet complete under the 691-line specification
 
-1. The user has requested **automatic** initial generation after product
-   understanding; this PR does not wire the job into intake or existing
-   worker. Next step needs budget reservation and a dedicated worker
-   without hidden paid calls on merge/deploy.
-2. Current project scope has no explicit tenant identity in persistence.
-   Project IDs and product matching provide initial isolation; add an
-   authenticated multi-tenant boundary before exposing a read API.
-3. No durable worker lease/recovery, request manifest/usage cost registry,
-   or explicit handling of partial remote success beyond
-   `PROVIDER_OUTCOME_UNKNOWN`. Failed unknown jobs must not be silently
-   retried or charged again.
-4. `VoiceProfileVersion` is immutable by service convention and
-   `put_if_absent`; a raw store writer still has `put`. Harden database
-   invariants/permissions in a dedicated persistence migration before
-   multi-tenant production rollout.
-5. The new writer uses the existing `DistributionContentDraft` schema but
-   preview/production do not yet share a common request builder, and
-   `voice_profile_version_id` is not yet recorded in the action, trial,
-   or downstream outcomes.
-6. No AutoResearch challenger, version routing through execution bridge,
-   evidence evaluation, or safe automatic promotion/rollback yet.
-7. No feature flag for separate initial-generation, live canary or
-   promotion; must be added before any automated activation.
-8. No real LLM-generated sample/test on saved Telegram posts yet.
-   Synthetic tests verify **wiring only**.
+- No automatically scheduled paid initial worker, full spend ledger/pricing
+  reconciliation, provider response snapshot manifest, durable lease
+  recovery or authenticated project-level voice inspection route.
+- No shared canonical preview/production request builder across *all*
+  variants, nor guaranteed message-generation cache/idempotency over
+  retries. The legacy v15.1 and v16.2 paths still differ.
+- No true LLM-generated AutoResearch challengers, trial-specific voice
+  candidate version creation, budgeted blind judge, confidence-calibrated
+  evaluation, version assignment to randomized live canary, reliable
+  per-arm downstream attribution or automatic promotion/rollback.
+- Voice version is recorded on the action, but a separate
+  `GenerationRun` ledger and version linkage to *every* outcome event
+  have not yet been implemented.
+- Existing actions are not backfilled with made-up versions.
+- This branch has not shown better actual messaging; synthetic fake
+  providers validate only integration correctness.
+- This PR does **not** authorize enabling publishing, turning on paid
+  research or executing Telegram changes.
 
-## Rollout/rollback
+## Rollout controls and safe state
 
-Never enable `PERSISTED_VOICE_WRITER_ENABLED` in production until project
-routing, init jobs and conversion contracts are completed and verified.
-Default is false; legacy v16.2 remains unchanged. This PR may be reviewed
-and merged only when code/tests pass; merging is **not** permission to
-run generation, write to Telegram, modify profiles, or enable flags.
+All new toggles default to **false**:
 
-## Next PR sequence
+- `VOICE_INITIAL_RESERVATION_ENABLED=false`
+- `VOICE_GENERATION_WORKER_ENABLED=false`
+- `PERSISTED_VOICE_WRITER_ENABLED=false`
 
-- Phase 2: initial generation worker with explicit budget/authorization,
-  verified product source, durable lease/usage/errors and tenant isolation.
-- Phase 3: single canonical writer request builder reused by preview and
-  execution, explicit project scope + verified conversion brief and
-  immutable action provenance.
-- Phase 4-6: versioned research candidates, real execution-bridge routing,
-  downstream attribution, evaluation, controlled canary and rollback.
+No paid test-on-merge/CI/deploy jobs have been added. **Do not flip the writer
+flag independently**: product-specific confirmed project and its validated
+active voice must exist first, and all product/customer flows must pass.
+Rollback: disable writer flag; v16.2 remains the legacy path.
+
+## Follow-up
+
+- Finish full request manifest, provider/usage pricing and durable
+  generation/cache and writer idempotency.
+- Add a shared preview/production writer request builder, deterministic
+  policy/CTA gate and one dry-run on saved cases.
+- Implement dedicated voice challengers through the existing
+  AutoResearch policy + evaluator with actually attributable outcomes;
+  keep canary/promotion separate and opt-in.
