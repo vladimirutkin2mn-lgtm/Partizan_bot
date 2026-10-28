@@ -51,6 +51,7 @@ from app.reddit_research import action_target_is_fresh
 from app.schemas import ProductProfileView
 from app.telegram_message_precheck import precheck_telegram_target
 from app.telegram_target_excerpt import compact_telegram_target
+from app.voice_draft_cache import VoiceDraftCache
 from app.voice_profiles import VoiceProfileService, fingerprint, source_snapshot
 
 
@@ -366,10 +367,12 @@ class DistributionActionComposer:
         provider: LLMProvider | None = None,
         memory_service: ProjectMarketingMemoryService | None = None,
         voice_profiles: VoiceProfileService | None = None,
+        voice_cache: VoiceDraftCache | None = None,
     ) -> None:
         self._provider = provider
         self._memory = memory_service or project_marketing_memory_service
         self._voice_profiles = voice_profiles
+        self._voice_cache = voice_cache
 
     async def compose(
         self,
@@ -388,6 +391,18 @@ class DistributionActionComposer:
         if voice_version_id is not None and not get_settings().persisted_voice_writer_enabled:
             raise RuntimeError("VOICE_TRIAL_NOT_ENABLED")
         if self._provider is None:
+            # A v17 paid/canary request must never silently return a mock
+            # draft without resolving the active, validated voice.
+            if (
+                get_settings().persisted_voice_writer_enabled
+                and opportunity.platform == DistributionPlatform.TELEGRAM
+                and play.action_type in {
+                    DistributionActionType.COMMENT,
+                    DistributionActionType.REPLY,
+                    DistributionActionType.STANDALONE_POST,
+                }
+            ):
+                raise RuntimeError("VOICE_PROVIDER_REQUIRED")
             return self._mock_draft(
                 product=product,
                 play=play,
@@ -535,37 +550,69 @@ class DistributionActionComposer:
             PERSISTED_ACTION_SYSTEM_PROMPT if use_persisted_voice
             else ACTION_DRAFT_SYSTEM_PROMPT
         )
-        with openai_usage_context("action_variant_draft" if variant else "action_auto_prepare", product.id):
-            draft = await self._provider.parse(
-                messages=[
-                    LLMMessage(
-                        role="system",
-                        content=(
-                            f"{main_prompt}\n\n{marketing_guidance}"
-                            f"\n\n{community_prompt}"
-                        ),
-                    ),
-                    LLMMessage(
-                        role="user",
-                        content=user_context,
-                    ),
-                ],
-                response_model=DistributionContentDraft,
-            )
-        # Creative guidance does not own compliance. Reject drafts that omit
-        # mandated disclosures before an action can be prepared or approved.
-        if policy is not None and policy.disclosure_required and not draft.disclosure_included:
-            raise ValueError("Required commercial disclosure missing from draft")
-        if (
-            "AI_CONTENT_DISCLOSURE_REQUIRED" in self._constraints(policy)
-            and not draft.ai_disclosure_included
-        ):
-            raise ValueError("Required AI-content disclosure missing from draft")
+        system_prompt = (
+            f"{main_prompt}\n\n{marketing_guidance}"
+            f"\n\n{community_prompt}"
+        )
+        messages = [
+            LLMMessage(role="system", content=system_prompt),
+            LLMMessage(role="user", content=user_context),
+        ]
+        cache = None
+        reservation = None
         if use_persisted_voice:
-            return draft.model_copy(update={
+            # The cache is shared by preview/prepare callers using this
+            # composer. The persisted request manifest includes the EXACT
+            # prompts, selected target, voice, policy and conversion brief.
+            cache = self._voice_cache or VoiceDraftCache(store=profiles._store)
+            reservation = cache.reserve(
+                project_id=project_id, product_id=product.id,
+                voice_version_id=active_version.id,
+                voice_content_hash=active_version.content_hash,
+                system_prompt=system_prompt, user_context=user_context,
+            )
+            if reservation.cached_draft is not None:
+                cached = DistributionContentDraft.model_validate(
+                    reservation.cached_draft
+                )
+                if (
+                    cached.voice_profile_version_id != active_version.id
+                    or cached.voice_profile_content_hash != active_version.content_hash
+                ):
+                    raise RuntimeError("VOICE_DRAFT_CACHE_PROVENANCE_CONFLICT")
+                return cached
+        try:
+            with openai_usage_context(
+                "action_variant_draft" if variant else "action_auto_prepare", product.id
+            ):
+                draft = await self._provider.parse(
+                    messages=messages, response_model=DistributionContentDraft
+                )
+        except BaseException:
+            # Timeout/cancellation may still be billed. No implicit retry.
+            if reservation is not None:
+                cache.stop(reservation, status="PROVIDER_OUTCOME_UNKNOWN")
+            raise
+        try:
+            # Creative guidance does not own compliance. Reject drafts that
+            # omit mandated disclosures before preparation or approval.
+            if policy is not None and policy.disclosure_required and not draft.disclosure_included:
+                raise ValueError("Required commercial disclosure missing from draft")
+            if (
+                "AI_CONTENT_DISCLOSURE_REQUIRED" in self._constraints(policy)
+                and not draft.ai_disclosure_included
+            ):
+                raise ValueError("Required AI-content disclosure missing from draft")
+        except Exception:
+            if reservation is not None:
+                cache.stop(reservation, status="POLICY_REJECTED")
+            raise
+        if use_persisted_voice:
+            draft = draft.model_copy(update={
                 "voice_profile_version_id": active_version.id,
                 "voice_profile_content_hash": active_version.content_hash,
             })
+            cache.complete(reservation, draft.model_dump(mode="json"))
         return draft
 
     def _mock_draft(
