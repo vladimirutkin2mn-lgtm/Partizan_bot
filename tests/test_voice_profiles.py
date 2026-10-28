@@ -355,3 +355,143 @@ async def test_real_auto_prepare_routes_selected_voice_to_internal_action_proven
     assert captured["kwargs"]["voice_profile_version_id"] == version.id
     assert captured["kwargs"]["voice_profile_content_hash"] == version.content_hash
     assert "voice_profile_version_id" not in captured["request"].model_dump()
+
+
+def _voice_test_target(text="Обсуждают дресс-код на ближайшей тематической встрече."):
+    product_id = None  # Product scope is supplied separately by the test.
+    return (
+        SimpleNamespace(
+            tactic_id="telegram_channel_comment",
+            action_type=DistributionActionType.COMMENT,
+        ),
+        SimpleNamespace(
+            platform=DistributionPlatform.TELEGRAM, title="Community",
+            metadata={"about": "Разговоры об интересных событиях"},
+        ),
+        SelectedActionTarget(
+            url="https://t.me/community/410", source="saved_latest",
+            context_text=text,
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_v17_cached_draft_never_rebills_identical_request_but_reacts_to_new_post(
+    monkeypatch,
+):
+    from app.voice_draft_cache import VOICE_DRAFT_GENERATION_NAMESPACE
+
+    store = MemoryRuntimeStateStore()
+    pid, prod = setup(store)
+    profiles, _, _, version = await initial(store, pid, prod)
+    monkeypatch.setattr(
+        "app.action_drafting.get_settings",
+        lambda: SimpleNamespace(persisted_voice_writer_enabled=True),
+    )
+    writer = WriterLLM()
+    composer = DistributionActionComposer(provider=writer, voice_profiles=profiles)
+    play, opportunity, target = _voice_test_target()
+    product = SimpleNamespace(id=prod, model_dump=lambda mode="json": product_data())
+    kwargs = dict(product=product, play=play, opportunity=opportunity,
+                  policy=None, project_id=pid, voice_version_id=version.id)
+    first = await composer.compose(**kwargs, target=target)
+    second = await composer.compose(**kwargs, target=target)
+    assert first == second
+    assert first.voice_profile_version_id == version.id
+    assert writer.calls == 1
+    assert len(store.list_namespace(VOICE_DRAFT_GENERATION_NAMESPACE)) == 1
+    assert store.list_namespace(VOICE_DRAFT_GENERATION_NAMESPACE)[0]["status"] == "SUCCEEDED"
+
+    changed = _voice_test_target(
+        "Свежий пост: организаторы изменили тематический дресс-код на зелёный."
+    )[2]
+    await composer.compose(**kwargs, target=changed)
+    assert writer.calls == 2
+    assert len(store.list_namespace(VOICE_DRAFT_GENERATION_NAMESPACE)) == 2
+
+
+@pytest.mark.asyncio
+async def test_v17_unknown_provider_outcome_stops_retries_and_double_spend(monkeypatch):
+    from app.voice_draft_cache import VOICE_DRAFT_GENERATION_NAMESPACE
+
+    store = MemoryRuntimeStateStore()
+    pid, prod = setup(store)
+    profiles, _, _, version = await initial(store, pid, prod)
+    monkeypatch.setattr(
+        "app.action_drafting.get_settings",
+        lambda: SimpleNamespace(persisted_voice_writer_enabled=True),
+    )
+
+    class TimeoutWriter(WriterLLM):
+        async def parse(self, messages, response_model):
+            self.calls += 1
+            raise TimeoutError("Provider response lost; may have billed")
+
+    writer = TimeoutWriter()
+    composer = DistributionActionComposer(provider=writer, voice_profiles=profiles)
+    play, opportunity, target = _voice_test_target()
+    kwargs = dict(
+        product=SimpleNamespace(id=prod, model_dump=lambda mode="json": product_data()),
+        play=play, opportunity=opportunity, target=target, policy=None,
+        project_id=pid, voice_version_id=version.id,
+    )
+    with pytest.raises(TimeoutError):
+        await composer.compose(**kwargs)
+    assert store.list_namespace(VOICE_DRAFT_GENERATION_NAMESPACE)[0]["status"] == (
+        "PROVIDER_OUTCOME_UNKNOWN"
+    )
+    with pytest.raises(RuntimeError, match="VOICE_DRAFT_ALREADY_RESERVED_OR_UNRECONCILED"):
+        await composer.compose(**kwargs)
+    assert writer.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_v17_validation_failure_is_persisted_and_not_regenerated(monkeypatch):
+    from app.voice_draft_cache import VOICE_DRAFT_GENERATION_NAMESPACE
+
+    store = MemoryRuntimeStateStore()
+    pid, prod = setup(store)
+    profiles, _, _, version = await initial(store, pid, prod)
+    monkeypatch.setattr(
+        "app.action_drafting.get_settings",
+        lambda: SimpleNamespace(persisted_voice_writer_enabled=True),
+    )
+    writer = WriterLLM()
+    composer = DistributionActionComposer(provider=writer, voice_profiles=profiles)
+    play, opportunity, target = _voice_test_target()
+    policy = SimpleNamespace(
+        disclosure_required=True, ai_content_constraints=[],
+        model_dump=lambda mode="json": {"disclosure_required": True},
+    )
+    kwargs = dict(
+        product=SimpleNamespace(id=prod, model_dump=lambda mode="json": product_data()),
+        play=play, opportunity=opportunity, target=target,
+        policy=policy, project_id=pid, voice_version_id=version.id,
+    )
+    with pytest.raises(ValueError, match="commercial disclosure"):
+        await composer.compose(**kwargs)
+    assert store.list_namespace(VOICE_DRAFT_GENERATION_NAMESPACE)[0]["status"] == (
+        "POLICY_REJECTED"
+    )
+    with pytest.raises(RuntimeError, match="VOICE_DRAFT_ALREADY_RESERVED_OR_UNRECONCILED"):
+        await composer.compose(**kwargs)
+    assert writer.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_v17_never_falls_back_to_mock_draft_without_llm(monkeypatch):
+    store = MemoryRuntimeStateStore()
+    pid, prod = setup(store)
+    profiles, _, _, version = await initial(store, pid, prod)
+    monkeypatch.setattr(
+        "app.action_drafting.get_settings",
+        lambda: SimpleNamespace(persisted_voice_writer_enabled=True),
+    )
+    play, opportunity, target = _voice_test_target()
+    composer = DistributionActionComposer(provider=None, voice_profiles=profiles)
+    with pytest.raises(RuntimeError, match="VOICE_PROVIDER_REQUIRED"):
+        await composer.compose(
+            product=SimpleNamespace(id=prod),
+            play=play, opportunity=opportunity, target=target,
+            policy=None, project_id=pid, voice_version_id=version.id,
+        )
