@@ -553,3 +553,114 @@ async def test_v17_profile_click_promotion_is_rejected_after_one_paid_draft(monk
     with pytest.raises(RuntimeError, match="VOICE_DRAFT_ALREADY_RESERVED_OR_UNRECONCILED"):
         await composer.compose(**kwargs)
     assert writer.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_v17_review_and_real_preparation_share_exact_request_and_cached_draft(
+    monkeypatch,
+):
+    """A non-publishing review is the identical generation used at prepare."""
+    from app.action_drafting import DistributionActionDraftingService
+    from app.distribution_play_schemas import DistributionPlayStatus
+    from app.project_marketing_memory import ProjectMarketingMemoryService
+    from app.voice_draft_cache import VOICE_DRAFT_GENERATION_NAMESPACE
+
+    store = MemoryRuntimeStateStore()
+    project_id, product_id = setup(store)
+    profiles, _, generated, version = await initial(store, project_id, product_id)
+    monkeypatch.setattr(
+        "app.action_drafting.get_settings",
+        lambda: SimpleNamespace(persisted_voice_writer_enabled=True),
+    )
+    writer = WriterLLM()
+    composer = DistributionActionComposer(
+        provider=writer, voice_profiles=profiles,
+        memory_service=ProjectMarketingMemoryService(store),
+    )
+    selected = SelectedActionTarget(
+        url="https://t.me/community/410", source="telegram_native.latest_message",
+        context_text="Обсуждают дресс-код на ближайшей тематической встрече.",
+    )
+    drafting = DistributionActionDraftingService(
+        selector=SimpleNamespace(select=lambda *args: selected),
+        composer=composer,
+    )
+    monkeypatch.setattr(
+        drafting, "_require_unprocessed_telegram_target",
+        lambda *args: None,
+    )
+    opportunity = SimpleNamespace(
+        platform=DistributionPlatform.TELEGRAM, title="Community",
+        metadata={"about": "Разговоры об интересных событиях"},
+    )
+    monkeypatch.setattr(
+        "app.action_drafting.audience_intelligence_service.find_opportunity",
+        lambda *args: opportunity,
+    )
+    prepared = []
+    def capture_prepare(product, play, request, **kwargs):
+        prepared.append((request, kwargs))
+        return SimpleNamespace(action=SimpleNamespace(id=uuid4()))
+
+    monkeypatch.setattr(
+        "app.action_drafting.distribution_execution_service.prepare", capture_prepare
+    )
+    product = SimpleNamespace(id=product_id, model_dump=lambda mode="json": product_data())
+    play = SimpleNamespace(
+        tactic_id="telegram_channel_comment",
+        action_type=DistributionActionType.COMMENT,
+        platform=DistributionPlatform.TELEGRAM,
+        status=DistributionPlayStatus.READY,
+        opportunity_id=uuid4(),
+        community_policy_required=False,
+    )
+    preview = await drafting.preview_persisted_voice(
+        product=product, play=play, project_id=project_id,
+        voice_version_id=version.id,
+    )
+    assert preview["status"] == "REVIEW_ONLY_NOT_SENDABLE"
+    assert preview["action_sendable"] is False
+    assert preview["action_created"] is False
+    assert preview["published"] is False
+    assert preview["target_url"] == selected.url
+    assert preview["voice_profile_version_id"] == str(version.id)
+    assert writer.calls == 1 and generated.calls == 1
+    assert not prepared
+    assert len(store.list_namespace(VOICE_DRAFT_GENERATION_NAMESPACE)) == 1
+    assert store.list_namespace(VOICE_DRAFT_GENERATION_NAMESPACE)[0]["status"] == "SUCCEEDED"
+
+    await drafting.auto_prepare(
+        product=product, play=play, project_id=project_id,
+        voice_version_id=version.id,
+    )
+    assert writer.calls == 1  # Exact same manifest: no second paid call.
+    assert len(prepared) == 1
+    request, kwargs = prepared[0]
+    assert request.content_text == preview["content_text"]
+    assert kwargs["voice_profile_version_id"] == version.id
+    assert kwargs["voice_profile_content_hash"] == version.content_hash
+
+
+@pytest.mark.asyncio
+async def test_v17_review_rejects_disabled_feature_without_provider_call(monkeypatch):
+    from app.action_drafting import DistributionActionDraftingService
+    from app.distribution_play_schemas import DistributionPlayStatus
+
+    monkeypatch.setattr(
+        "app.action_drafting.get_settings",
+        lambda: SimpleNamespace(persisted_voice_writer_enabled=False),
+    )
+    writer = WriterLLM()
+    drafting = DistributionActionDraftingService(
+        composer=DistributionActionComposer(provider=writer),
+    )
+    play = SimpleNamespace(
+        platform=DistributionPlatform.TELEGRAM,
+        action_type=DistributionActionType.COMMENT,
+        status=DistributionPlayStatus.READY,
+    )
+    with pytest.raises(RuntimeError, match="PERSISTED_VOICE_WRITER_NOT_ENABLED"):
+        await drafting.preview_persisted_voice(
+            product=SimpleNamespace(id=uuid4()), play=play, project_id=uuid4(),
+        )
+    assert writer.calls == 0
