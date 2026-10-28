@@ -27,8 +27,6 @@ class DistributionExecutionPrepareRequest(BaseModel):
     conversion_mechanism: str | None = Field(default=None, max_length=64)
     draft_variant: str | None = Field(default=None, max_length=80)
     expected_user_next_step: str | None = Field(default=None, max_length=500)
-    voice_profile_version_id: UUID | None = None
-    voice_profile_content_hash: str | None = Field(default=None, max_length=64)
 
 
 class DistributionActionEditRequest(BaseModel):
