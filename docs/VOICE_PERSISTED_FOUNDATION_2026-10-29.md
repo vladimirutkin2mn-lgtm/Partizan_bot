@@ -113,3 +113,10 @@ Rollback: disable writer flag; v16.2 remains the legacy path.
 - v17 never silently substitutes a mock draft when the LLM provider is missing. Feature OFF retains the legacy path.
 - Added local fake-provider regression cases for replay, distinct target, unknown provider outcome, disclosure rejection, and missing-provider fail closed. No scheduled paid calls or Telegram actions introduced.
 - **Limitations:** this is request-level idempotency within the current composer path, not yet a unified preview/production request builder. A crash after provider success and before cache completion deliberately leaves an unreconciled request. There is not yet a complete generation-run ledger, full billing reconciliation, scheduled worker, true voice AutoResearch challenger evaluation or canary. The feature remains OFF and PR remains draft until CI and full integration checks succeed.
+
+## Follow-up slice: deterministic profile-click validation (2026-10-29)
+
+- v17 now validates generated organic `PROFILE_CLICK` messages **after** the paid model call but **before** caching/preparing an action. Obvious external URLs, direct profile/bio CTAs (Russian and English) and exact nontrivial product-name mentions are rejected.
+- This complements the writing instructions; it is intentionally narrow, not a semantic classifier or a guarantee against all promotional wording. It is **not applied** to other conversion mechanisms that allow in-message promotion. Existing mandatory disclosure checks still run independently.
+- The rejection is stored as `POLICY_REJECTED` in the draft cache, so an already paid result is not silently rewritten or regenerated with more spending. Operators must review any conflict between community disclosures and the organic conversion mechanism.
+- Regression coverage includes links, Russian and English profile invitations, product name, a neutral use of the word «профиль», and the no-rebill integration path. No account actions, paid runs, publisher toggles or deployments were authorized.
