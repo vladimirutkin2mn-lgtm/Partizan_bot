@@ -185,8 +185,16 @@ async def test_action_drafting_fails_closed_on_ambiguous_project_memory() -> Non
 
 
 @pytest.mark.asyncio
-async def test_telegram_action_composer_uses_shared_native_language_one_message_prompt():
+async def test_telegram_action_composer_uses_shared_native_language_one_message_prompt(monkeypatch):
     from app.community_voice import COMMUNITY_CREATIVE_PROMPT_VERSION
+    from app.telegram_client_publishing import customer_telegram_client_publish_service
+
+    async def no_live_profile_read(*args, **kwargs):
+        raise AssertionError("The comment writer must not read the existing Telegram profile")
+
+    monkeypatch.setattr(
+        customer_telegram_client_publish_service, "profile_internal", no_live_profile_read
+    )
 
     memory = ProjectMarketingMemoryService(MemoryRuntimeStateStore())
     provider = RecordingProvider()
@@ -226,6 +234,9 @@ async def test_telegram_action_composer_uses_shared_native_language_one_message_
     assert "GROUP_REPLY" in system
     assert "CHANNEL_COMMENT" in system
     assert "Drafting never grants publication permission" in system
+    assert "actual_publisher_profile" not in provider.messages[1].content
+    assert "existing Telegram display name, bio or avatar" in system
+    assert "community_message_v16_2_product_led_voice" == COMMUNITY_CREATIVE_PROMPT_VERSION
 
 
 @pytest.mark.asyncio
@@ -275,6 +286,7 @@ async def test_telegram_composer_does_not_feed_old_community_posts_to_llm():
     assert data["selected_native_target"]["text"] == (
         "Сегодня обсуждаем расписание открытой встречи."
     )
+    assert "actual_publisher_profile" not in data
     assert data["community_title"] == "An events community"
     assert data["community_about"] == (
         "An informal local event discussion with regulars"
