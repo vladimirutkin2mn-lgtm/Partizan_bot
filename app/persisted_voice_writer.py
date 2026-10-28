@@ -62,17 +62,17 @@ def writer_voice_payload(version: VoiceProfileVersion) -> dict:
 # without an in-message product link or promotion. Reject and retain the
 # paid draft's failure state; NEVER silently strip/edit or regenerate it.
 _PROMOTIONAL_URL = re.compile(
-    r"(?i)(?:https?://|www\\.|t\\.me/|telegram\\.me/)"
+    r"(?i)(?:https?://|www\.|t\.me/|telegram\.me/)"
 )
 _EXPLICIT_PROFILE_CTA = re.compile(
     r"(?iu)(?:"
-    r"\\b(?:check|visit|open|follow|see|view|look at)\\b.{0,35}"
-    r"\\b(?:my|our)\\s+(?:profile|bio)\\b"
-    r"|\\blink\\s+in\\s+(?:my|our|the)\\s+bio\\b"
-    r"|\\b(?:загляни|загляните|перейди|перейдите|переходи|"
-    r"смотри|смотрите|открой|откройте)\\b.{0,40}"
-    r"\\b(?:профил\\w*|био)\\b"
-    r"|\\bссылк\\w*\\s+в\\s+профил\\w*\\b"
+    r"\b(?:check|visit|open|follow|see|view|look at)\b.{0,35}"
+    r"\b(?:my|our)\s+(?:profile|bio)\b"
+    r"|\blink\s+in\s+(?:my|our|the)\s+bio\b"
+    r"|\b(?:загляни|загляните|перейди|перейдите|переходи|"
+    r"смотри|смотрите|открой|откройте)\b.{0,40}"
+    r"\b(?:профил\w*|био)\b"
+    r"|\bссылк\w*\s+в\s+профил\w*\b"
     r")"
 )
 
@@ -89,6 +89,6 @@ def validate_profile_click_draft(content_text: str, *, product_name: str) -> Non
         raise ValueError("VOICE_PROFILE_CLICK_CTA_NOT_ALLOWED")
     normalized_name = product_name.strip()
     if len(normalized_name) >= 8 and re.search(
-        rf"(?i)(?<!\\w){re.escape(normalized_name)}(?!\\w)", content_text
+        rf"(?i)(?<!\w){re.escape(normalized_name)}(?!\w)", content_text
     ):
         raise ValueError("VOICE_PROFILE_CLICK_PRODUCT_MENTION_NOT_ALLOWED")
