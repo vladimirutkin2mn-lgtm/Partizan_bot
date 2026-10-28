@@ -664,3 +664,82 @@ async def test_v17_review_rejects_disabled_feature_without_provider_call(monkeyp
             product=SimpleNamespace(id=uuid4()), play=play, project_id=uuid4(),
         )
     assert writer.calls == 0
+
+
+def test_customer_telegram_cached_preview_rejects_stale_or_disabled_voice():
+    from app.customer_telegram_preview import (
+        PREVIEW_SCHEMA_VERSION,
+        _validate_existing_preview,
+    )
+
+    base = {
+        "schema_version": PREVIEW_SCHEMA_VERSION,
+        "marketing_memory_fingerprint": "memory-unchanged",
+        "voice_profile_version_id": str(uuid4()),
+        "voice_profile_content_hash": "a" * 64,
+        "variants": [{"action_id": str(uuid4())}],
+    }
+    with pytest.raises(ValueError, match="stale voice version"):
+        _validate_existing_preview(
+            base, expected_memory_fingerprint="memory-unchanged",
+            expected_voice_version_id=str(uuid4()),
+            expected_voice_content_hash="a" * 64,
+        )
+    with pytest.raises(ValueError, match="now-disabled voice writer"):
+        _validate_existing_preview(
+            base, expected_memory_fingerprint="memory-unchanged",
+        )
+    with pytest.raises(ValueError, match="stale voice version"):
+        _validate_existing_preview(
+            base, expected_memory_fingerprint="memory-unchanged",
+            expected_voice_version_id=base["voice_profile_version_id"],
+            expected_voice_content_hash="b" * 64,
+        )
+
+
+def test_customer_telegram_preview_renders_exact_action_voice_provenance(monkeypatch):
+    from app.customer_telegram_preview import (
+        PREVIEW_SCHEMA_VERSION,
+        _render_preview,
+    )
+    from app.distribution_types import DistributionActionStatus
+
+    version_id = str(uuid4())
+    content_hash = "f" * 64
+    action_id = uuid4()
+    action = SimpleNamespace(
+        status=DistributionActionStatus.PREPARED,
+        target_url="https://t.me/example/100",
+        content_text="Только один комментарий под выбранным сообщением.",
+        content_payload={
+            "context_text": "Выбранное последнее сообщение сообщества.",
+            "voice_profile_version_id": version_id,
+            "voice_profile_content_hash": content_hash,
+        },
+    )
+    monkeypatch.setattr(
+        "app.customer_telegram_preview.distribution_execution_service.get_action",
+        lambda target: action if target == action_id else None,
+    )
+    record = {
+        "schema_version": PREVIEW_SCHEMA_VERSION,
+        "status": "AWAITING_USER_APPROVAL",
+        "project_id": str(uuid4()), "product_id": str(uuid4()),
+        "opportunity_id": str(uuid4()), "play_id": str(uuid4()),
+        "target_url": action.target_url, "prepared_at": "2026-10-29T00:00:00Z",
+        "voice_profile_version_id": version_id,
+        "voice_profile_content_hash": content_hash,
+        "variants": [{
+            "action_id": str(action_id),
+            "conversion_mechanism": "PROFILE_CLICK",
+            "variant_name": "organic_profile",
+            "objective": "Contribute a relevant thought",
+            "expected_user_next_step": "Read profile",
+            "content_sha256": "placeholder",
+        }],
+    }
+    result = _render_preview(record)
+    assert result["voice_profile_version_id"] == version_id
+    assert result["voice_profile_content_hash"] == content_hash
+    assert result["variants"][0]["voice_profile_version_id"] == version_id
+    assert result["variants"][0]["voice_profile_content_hash"] == content_hash
