@@ -753,8 +753,13 @@ class DistributionActionDraftingService:
                 content_text=draft.content_text,
                 disclosure_included=draft.disclosure_included,
                 ai_disclosure_included=draft.ai_disclosure_included,
-                voice_profile_version_id=draft.voice_profile_version_id,
-                voice_profile_content_hash=draft.voice_profile_content_hash,
+            ),
+            **(
+                {
+                    "voice_profile_version_id": draft.voice_profile_version_id,
+                    "voice_profile_content_hash": draft.voice_profile_content_hash,
+                }
+                if draft.voice_profile_version_id is not None else {}
             ),
         )
 
@@ -818,8 +823,13 @@ class DistributionActionDraftingService:
                     conversion_mechanism=brief.conversion_mechanism.value,
                     draft_variant=brief.variant_name,
                     expected_user_next_step=brief.expected_user_next_step,
-                    voice_profile_version_id=draft.voice_profile_version_id,
-                    voice_profile_content_hash=draft.voice_profile_content_hash,
+                ),
+                **(
+                    {
+                        "voice_profile_version_id": draft.voice_profile_version_id,
+                        "voice_profile_content_hash": draft.voice_profile_content_hash,
+                    }
+                    if draft.voice_profile_version_id is not None else {}
                 ),
             )
             prepared.append(PreparedDraftVariant(brief=brief, plan=plan))
