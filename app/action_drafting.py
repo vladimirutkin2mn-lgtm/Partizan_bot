@@ -1,10 +1,12 @@
 import json
 from dataclasses import dataclass
+from uuid import UUID
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, HttpUrl
 
 from app.audience_intelligence_service import audience_intelligence_service
+from app.config import get_settings
 from app.community_voice import (
     COMMUNITY_CREATIVE_GUIDANCE,
     COMMUNITY_CREATIVE_PROMPT_VERSION,
@@ -35,6 +37,12 @@ from app.distribution_types import (
 from app.llm import LLMMessage, LLMProvider, get_llm_provider
 from app.marketing_intelligence import marketing_task_for_action, render_marketing_guidance
 from app.openai_usage import openai_usage_context
+from app.persisted_voice_writer import (
+    PERSISTED_ACTION_SYSTEM_PROMPT,
+    PERSISTED_COMMUNITY_PROMPT,
+    PERSISTED_COMMUNITY_PROMPT_VERSION,
+    writer_voice_payload,
+)
 from app.project_marketing_memory import (
     ProjectMarketingMemoryService,
     project_marketing_memory_service,
@@ -43,6 +51,7 @@ from app.reddit_research import action_target_is_fresh
 from app.schemas import ProductProfileView
 from app.telegram_message_precheck import precheck_telegram_target
 from app.telegram_target_excerpt import compact_telegram_target
+from app.voice_profiles import VoiceProfileService, fingerprint, source_snapshot
 
 
 class DistributionAutoPrepareRequest(BaseModel):
@@ -354,9 +363,11 @@ class DistributionActionComposer:
         self,
         provider: LLMProvider | None = None,
         memory_service: ProjectMarketingMemoryService | None = None,
+        voice_profiles: VoiceProfileService | None = None,
     ) -> None:
         self._provider = provider
         self._memory = memory_service or project_marketing_memory_service
+        self._voice_profiles = voice_profiles
 
     async def compose(
         self,
@@ -368,6 +379,8 @@ class DistributionActionComposer:
         policy: CommunityPolicyView | None,
         variant: DraftVariantBrief | None = None,
         voice_variant_id: VoiceVariantId = "adaptive",
+        project_id: UUID | None = None,
+        voice_version_id: UUID | None = None,
     ) -> DistributionContentDraft:
         self._validate_ai_policy(policy)
         if self._provider is None:
@@ -403,6 +416,14 @@ class DistributionActionComposer:
             }
             else ""
         )
+        use_persisted_voice = bool(
+            community_prompt and get_settings().persisted_voice_writer_enabled
+        )
+        if use_persisted_voice:
+            community_prompt = (
+                f"Prompt version: {PERSISTED_COMMUNITY_PROMPT_VERSION}\n"
+                + PERSISTED_COMMUNITY_PROMPT
+            )
         marketing_guidance = (
             "" if community_prompt else render_marketing_guidance(marketing_task)
         )
@@ -418,11 +439,32 @@ class DistributionActionComposer:
                 community_about=str(community_metadata.get("about") or ""),
                 variant_id=voice_variant_id,
             )
+            if use_persisted_voice:
+                if project_id is None:
+                    raise RuntimeError("VOICE_SCOPE_REQUIRED")
+                profiles = self._voice_profiles or VoiceProfileService()
+                if voice_version_id is not None:
+                    active_version = profiles.get_version(
+                        project_id=project_id, product_id=product.id,
+                        version_id=voice_version_id,
+                    )
+                    if active_version.source_fingerprint != fingerprint(
+                        source_snapshot(product_data)
+                    ):
+                        raise RuntimeError("VOICE_SOURCE_CHANGED")
+                else:
+                    active_version = profiles.active(
+                        project_id=project_id, product_id=product.id,
+                        product_data=product_data,
+                    )
+                voice_payload = writer_voice_payload(active_version)
+            else:
+                voice_payload = voice_input["voice"]
             compacted = compact_telegram_target(target.context_text)
             user_context = json.dumps(
                 {
                     "product": voice_input["product_positioning"],
-                    "author_voice": voice_input["voice"],
+                    "author_voice": voice_payload,
                     "community_title": opportunity.title,
                     "community_about": str(community_metadata.get("about") or "")[:220],
                     "audience_fit_hint": str(
@@ -474,7 +516,7 @@ class DistributionActionComposer:
                     LLMMessage(
                         role="system",
                         content=(
-                            f"{ACTION_DRAFT_SYSTEM_PROMPT}\n\n{marketing_guidance}"
+                            f"{PERSISTED_ACTION_SYSTEM_PROMPT if use_persisted_voice else ACTION_DRAFT_SYSTEM_PROMPT}\n\n{marketing_guidance}"
                             f"\n\n{community_prompt}"
                         ),
                     ),
