@@ -29,11 +29,14 @@ class LLMProvider(ABC):
 
 
 class OpenAIResponsesProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(
+        self, api_key: str, model: str, *, max_output_tokens: int | None = None
+    ) -> None:
         from openai import OpenAI
 
         self._client = OpenAI(api_key=api_key)
         self._model = model
+        self._max_output_tokens = max_output_tokens
 
     async def parse(
         self,
@@ -41,6 +44,8 @@ class OpenAIResponsesProvider(LLMProvider):
         response_model: type[StructuredModelT],
     ) -> StructuredModelT:
         options = openai_task_options(self._model)
+        if self._max_output_tokens is not None:
+            options["max_output_tokens"] = self._max_output_tokens
         started = time.perf_counter()
         response = await asyncio.to_thread(
             self._client.responses.parse,
@@ -62,7 +67,7 @@ class OpenAIResponsesProvider(LLMProvider):
         return parsed
 
 
-def get_llm_provider() -> LLMProvider | None:
+def get_llm_provider(*, max_output_tokens: int | None = None) -> LLMProvider | None:
     settings = get_settings()
     if settings.llm_provider == "mock":
         return None
@@ -72,5 +77,6 @@ def get_llm_provider() -> LLMProvider | None:
         return OpenAIResponsesProvider(
             api_key=settings.openai_api_key,
             model=settings.llm_model,
+            max_output_tokens=max_output_tokens,
         )
     raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
