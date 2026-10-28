@@ -201,10 +201,16 @@ class GrowthAutoResearchExecutionService:
         else:
             product = product_intake_service.get_product(trial.product_id)
             trial_play = self._play_with_trial_context(play, trial)
+            # The assigned challenger voice must reach the real writer,
+            # not merely exist in the research schema or trial metadata.
+            voice_kwargs = {}
+            if trial.challenger.voice_profile_version_id is not None:
+                voice_kwargs["voice_version_id"] = trial.challenger.voice_profile_version_id
             plan = await self._drafting_service.auto_prepare(
                 product=product,
                 play=trial_play,
                 destination_url=trial.challenger.destination_url,
+                **voice_kwargs,
             )
             existing = self._record(
                 trial=trial,
