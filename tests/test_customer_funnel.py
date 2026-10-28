@@ -1116,3 +1116,48 @@ async def test_repair_stale_research_refuses_unanswered_questions(monkeypatch) -
 
     with pytest.raises(ValueError, match="unanswered research clarifications"):
         await service.repair_stale_research(preview.project_id)
+
+
+def test_confirmed_product_queues_unpaid_voice_job_when_enabled(monkeypatch) -> None:
+    """Owner never fills voice; confirmation reserves only, no paid call."""
+    from app.config import get_settings
+    from app.voice_profiles import VoiceProfileService
+
+    original = get_settings()
+    preview = client.post("/v1/customer-projects/preview", json=_preview_payload()).json()
+    monkeypatch.setattr(
+        "app.customer_funnel.get_settings",
+        lambda: original.model_copy(update={"voice_initial_reservation_enabled": True}),
+    )
+    monkeypatch.setattr(
+        "app.customer_funnel.icp_service.get",
+        lambda _product_id: SimpleNamespace(icps=[SimpleNamespace(title="Freelancers")]),
+    )
+
+    async def empty_free_research(_product, _icp):
+        return "NOT_FOUND", "No verified opportunity yet", None
+
+    monkeypatch.setattr(customer_funnel_service, "_run_free_research", empty_free_research)
+    response = client.post(
+        f"/v1/customer-projects/{preview['project_id']}/confirm-preview",
+        headers={"X-Partizan-Customer-Token": preview["customer_token"]},
+        json={
+            "product": "AI bookkeeping assistant",
+            "for_whom": "Automates bookkeeping and tax admin.",
+            "likely_customer": "Independent freelancers",
+            "market": "United States",
+            "goal": "Get first users",
+            "budget_usd": 10,
+        },
+    )
+    assert response.status_code == 200
+    project = customer_funnel_service._store.get(
+        CUSTOMER_PROJECT_NAMESPACE, preview["project_id"]
+    )
+    assert project["voice_initial_status"] == "RESERVED"
+    job = VoiceProfileService(customer_funnel_service._store).job(
+        project["voice_initial_job_id"]
+    )
+    assert job.status == "RESERVED"
+    assert str(job.product_id) == project["product_id"]
+    assert not job.version_id
