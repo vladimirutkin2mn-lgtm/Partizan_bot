@@ -1135,7 +1135,7 @@ def test_confirmed_product_queues_unpaid_voice_job_when_enabled(monkeypatch) -> 
     )
 
     async def empty_free_research(_product, _icp):
-        return "NOT_FOUND", "No verified opportunity yet", None
+        return "NEEDS_MORE_RESEARCH", "No verified opportunity yet", None
 
     monkeypatch.setattr(customer_funnel_service, "_run_free_research", empty_free_research)
     response = client.post(
