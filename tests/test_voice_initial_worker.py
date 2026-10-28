@@ -11,7 +11,7 @@ from app.voice_initial_worker import (
     VOICE_BUDGET_SLOT_NAMESPACE,
     VoiceInitialGenerationWorker,
 )
-from app.voice_profiles import VOICE_GENERATION_JOB_NAMESPACE, VoiceProfileService
+from app.voice_profiles import VoiceProfileService
 
 
 def source():
