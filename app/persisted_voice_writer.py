@@ -5,6 +5,8 @@ and conversion permissions are not delegated to this untrusted style object.
 """
 from __future__ import annotations
 
+import re
+
 from app.voice_profiles import VOICE_WRITER_STYLE_VERSION, VoiceProfileVersion
 
 PERSISTED_ACTION_SYSTEM_PROMPT = """You write exactly ONE organic community message.
@@ -53,3 +55,40 @@ def writer_voice_payload(version: VoiceProfileVersion) -> dict:
         "adaptation_rules": p.adaptation_rules,
         "style_instruction": p.style_instruction,
     }
+
+
+# This deterministic check complements, but does not replace, policy review.
+# It applies only when the selected tactic/variant uses profile curiosity
+# without an in-message product link or promotion. Reject and retain the
+# paid draft's failure state; NEVER silently strip/edit or regenerate it.
+_PROMOTIONAL_URL = re.compile(
+    r"(?i)(?:https?://|www\\.|t\\.me/|telegram\\.me/)"
+)
+_EXPLICIT_PROFILE_CTA = re.compile(
+    r"(?iu)(?:"
+    r"\\b(?:check|visit|open|follow|see|view|look at)\\b.{0,35}"
+    r"\\b(?:my|our)\\s+(?:profile|bio)\\b"
+    r"|\\blink\\s+in\\s+(?:my|our|the)\\s+bio\\b"
+    r"|\\b(?:загляни|загляните|перейди|перейдите|переходи|"
+    r"смотри|смотрите|открой|откройте)\\b.{0,40}"
+    r"\\b(?:профил\\w*|био)\\b"
+    r"|\\bссылк\\w*\\s+в\\s+профил\\w*\\b"
+    r")"
+)
+
+
+def validate_profile_click_draft(content_text: str, *, product_name: str) -> None:
+    """Fail closed on obvious in-message promotion for organic profile discovery.
+
+    This deliberately avoids semantic inference, author-identity assumptions,
+    and automatic rewrites of a potentially already billed model response.
+    """
+    if _PROMOTIONAL_URL.search(content_text):
+        raise ValueError("VOICE_PROFILE_CLICK_LINK_NOT_ALLOWED")
+    if _EXPLICIT_PROFILE_CTA.search(content_text):
+        raise ValueError("VOICE_PROFILE_CLICK_CTA_NOT_ALLOWED")
+    normalized_name = product_name.strip()
+    if len(normalized_name) >= 8 and re.search(
+        rf"(?i)(?<!\\w){re.escape(normalized_name)}(?!\\w)", content_text
+    ):
+        raise ValueError("VOICE_PROFILE_CLICK_PRODUCT_MENTION_NOT_ALLOWED")
