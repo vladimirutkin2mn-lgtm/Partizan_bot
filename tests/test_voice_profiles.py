@@ -284,3 +284,74 @@ async def test_writer_rejects_other_tenant_version_even_if_explicitly_supplied(m
             policy=None, project_id=second_pid, voice_version_id=version.id,
         )
     assert writer.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_real_auto_prepare_routes_selected_voice_to_internal_action_provenance(
+    monkeypatch,
+):
+    from app.action_drafting import DistributionActionDraftingService
+    from app.distribution_play_schemas import DistributionPlayStatus
+    from app.project_marketing_memory import ProjectMarketingMemoryService
+
+    store = MemoryRuntimeStateStore()
+    project_id, product_id = setup(store)
+    profiles, _, generated, version = await initial(store, project_id, product_id)
+    monkeypatch.setattr(
+        "app.action_drafting.get_settings",
+        lambda: SimpleNamespace(persisted_voice_writer_enabled=True),
+    )
+    writer = WriterLLM()
+    composer = DistributionActionComposer(
+        provider=writer,
+        voice_profiles=profiles,
+        memory_service=ProjectMarketingMemoryService(store),
+    )
+    selected = SelectedActionTarget(
+        url="https://t.me/community/410", source="saved_latest",
+        context_text="Обсуждают дресс-код на ближайшей тематической встрече.",
+    )
+    drafting = DistributionActionDraftingService(
+        selector=SimpleNamespace(select=lambda *args: selected), composer=composer
+    )
+    monkeypatch.setattr(
+        drafting, "_require_unprocessed_telegram_target",
+        lambda *args: None,
+    )
+    opportunity = SimpleNamespace(
+        platform=DistributionPlatform.TELEGRAM, title="Community",
+        metadata={"about": "Разговоры об интересных событиях"},
+    )
+    monkeypatch.setattr(
+        "app.action_drafting.audience_intelligence_service.find_opportunity",
+        lambda *args: opportunity,
+    )
+    captured = {}
+
+    def capture_prepare(product, play, request, **kwargs):
+        captured["request"] = request
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(action=SimpleNamespace(id=uuid4()))
+
+    monkeypatch.setattr(
+        "app.action_drafting.distribution_execution_service.prepare",
+        capture_prepare,
+    )
+    product = SimpleNamespace(id=product_id, model_dump=lambda mode="json": product_data())
+    play = SimpleNamespace(
+        tactic_id="telegram_channel_comment",
+        action_type=DistributionActionType.COMMENT,
+        platform=DistributionPlatform.TELEGRAM,
+        status=DistributionPlayStatus.READY,
+        opportunity_id=uuid4(),
+        community_policy_required=False,
+    )
+    await drafting.auto_prepare(
+        product=product, play=play,
+        project_id=project_id, voice_version_id=version.id,
+    )
+    assert generated.calls == 1  # no new voice LLM calls per message
+    assert writer.calls == 1
+    assert captured["kwargs"]["voice_profile_version_id"] == version.id
+    assert captured["kwargs"]["voice_profile_content_hash"] == version.content_hash
+    assert "voice_profile_version_id" not in captured["request"].model_dump()
