@@ -495,7 +495,24 @@ class DistributionActionComposer:
                     ),
                     "tactic_allows_product_link": template.has_direct_product_link,
                     "tactic_mentions_product": template.has_product_mention,
-                    "conversion_brief": self._variant_prompt(variant) if variant else None,
+                    "conversion_brief": (
+                        self._variant_prompt(variant)
+                        if variant else (
+                            {
+                                "conversion_mechanism": "PROFILE_CLICK",
+                                "instruction": (
+                                    "Write a useful on-topic message without "
+                                    "product references, advertising, URLs or "
+                                    "an invitation to visit the author profile. "
+                                    "The verified profile CTA is handled separately."
+                                ),
+                            }
+                            if use_persisted_voice
+                            and not template.has_direct_product_link
+                            and not template.has_product_mention
+                            else None
+                        )
+                    ),
                 },
                 ensure_ascii=False,
                 separators=(",", ":"),
