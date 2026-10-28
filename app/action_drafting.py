@@ -65,6 +65,8 @@ class DistributionContentDraft(BaseModel):
     rationale: str = Field(min_length=5, max_length=2000)
     disclosure_included: bool = False
     ai_disclosure_included: bool = False
+    voice_profile_version_id: UUID | None = None
+    voice_profile_content_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,6 +385,8 @@ class DistributionActionComposer:
         voice_version_id: UUID | None = None,
     ) -> DistributionContentDraft:
         self._validate_ai_policy(policy)
+        if voice_version_id is not None and not get_settings().persisted_voice_writer_enabled:
+            raise RuntimeError("VOICE_TRIAL_NOT_ENABLED")
         if self._provider is None:
             return self._mock_draft(
                 product=product,
@@ -540,6 +544,11 @@ class DistributionActionComposer:
             and not draft.ai_disclosure_included
         ):
             raise ValueError("Required AI-content disclosure missing from draft")
+        if use_persisted_voice:
+            return draft.model_copy(update={
+                "voice_profile_version_id": active_version.id,
+                "voice_profile_content_hash": active_version.content_hash,
+            })
         return draft
 
     def _mock_draft(
@@ -712,6 +721,8 @@ class DistributionActionDraftingService:
         product: ProductProfileView,
         play: DistributionPlayView,
         destination_url: HttpUrl | None = None,
+        project_id: UUID | None = None,
+        voice_version_id: UUID | None = None,
     ) -> DistributionExecutionPlanView:
         if play.status != DistributionPlayStatus.READY:
             raise ValueError("Only READY DistributionPlay objects can be auto-prepared")
@@ -719,12 +730,17 @@ class DistributionActionDraftingService:
         target = self._selector.select(play, opportunity)
         self._require_unprocessed_telegram_target(product, play, target)
         policy = self._applied_policy(play, opportunity)
+        selected_project = self._voice_project_for_draft(
+            product.id, play.platform, project_id=project_id
+        )
         draft = await self._composer.compose(
             product=product,
             play=play,
             opportunity=opportunity,
             target=target,
             policy=policy,
+            project_id=selected_project,
+            voice_version_id=voice_version_id,
         )
         return distribution_execution_service.prepare(
             product,
@@ -737,6 +753,8 @@ class DistributionActionDraftingService:
                 content_text=draft.content_text,
                 disclosure_included=draft.disclosure_included,
                 ai_disclosure_included=draft.ai_disclosure_included,
+                voice_profile_version_id=draft.voice_profile_version_id,
+                voice_profile_content_hash=draft.voice_profile_content_hash,
             ),
         )
 
@@ -746,6 +764,8 @@ class DistributionActionDraftingService:
         product: ProductProfileView,
         play: DistributionPlayView,
         destination_url: HttpUrl | None = None,
+        project_id: UUID | None = None,
+        voice_version_id: UUID | None = None,
     ) -> list[PreparedDraftVariant]:
         if play.status != DistributionPlayStatus.READY:
             raise ValueError("Only READY DistributionPlay objects can be auto-prepared")
@@ -769,6 +789,9 @@ class DistributionActionDraftingService:
             }
         ):
             briefs = briefs[:1]
+        selected_project = self._voice_project_for_draft(
+            product.id, play.platform, project_id=project_id
+        )
         prepared: list[PreparedDraftVariant] = []
         for brief in briefs:
             draft = await self._composer.compose(
@@ -778,6 +801,8 @@ class DistributionActionDraftingService:
                 target=target,
                 policy=policy,
                 variant=brief,
+                project_id=selected_project,
+                voice_version_id=voice_version_id,
             )
             plan = distribution_execution_service.prepare(
                 product,
@@ -793,10 +818,28 @@ class DistributionActionDraftingService:
                     conversion_mechanism=brief.conversion_mechanism.value,
                     draft_variant=brief.variant_name,
                     expected_user_next_step=brief.expected_user_next_step,
+                    voice_profile_version_id=draft.voice_profile_version_id,
+                    voice_profile_content_hash=draft.voice_profile_content_hash,
                 ),
             )
             prepared.append(PreparedDraftVariant(brief=brief, plan=plan))
         return prepared
+
+    @staticmethod
+    def _voice_project_for_draft(
+        product_id: UUID, platform: DistributionPlatform,
+        *, project_id: UUID | None,
+    ) -> UUID | None:
+        if not (
+            get_settings().persisted_voice_writer_enabled
+            and platform == DistributionPlatform.TELEGRAM
+        ):
+            return project_id
+        profiles = VoiceProfileService()
+        if project_id is None:
+            return profiles.resolve_unique_project(product_id)
+        profiles._verify_project(project_id, product_id)
+        return project_id
 
     def _applied_policy(
         self,
