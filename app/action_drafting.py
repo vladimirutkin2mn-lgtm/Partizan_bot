@@ -42,6 +42,7 @@ from app.persisted_voice_writer import (
     PERSISTED_COMMUNITY_PROMPT,
     PERSISTED_COMMUNITY_PROMPT_VERSION,
     writer_voice_payload,
+    validate_profile_click_draft,
 )
 from app.project_marketing_memory import (
     ProjectMarketingMemoryService,
@@ -603,6 +604,20 @@ class DistributionActionComposer:
                 and not draft.ai_disclosure_included
             ):
                 raise ValueError("Required AI-content disclosure missing from draft")
+            if use_persisted_voice and (
+                (
+                    variant is not None
+                    and variant.conversion_mechanism.value == "PROFILE_CLICK"
+                )
+                or (
+                    variant is None
+                    and not template.has_direct_product_link
+                    and not template.has_product_mention
+                )
+            ):
+                validate_profile_click_draft(
+                    draft.content_text, product_name=str(product_data.get("name") or "")
+                )
         except Exception:
             if reservation is not None:
                 cache.stop(reservation, status="POLICY_REJECTED")
