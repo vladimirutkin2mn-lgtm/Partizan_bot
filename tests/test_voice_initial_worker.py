@@ -147,9 +147,7 @@ async def test_one_authorized_call_creates_and_activates_voice_without_repeat():
     assert provider.calls == 1
     assert len(store.list_namespace(VOICE_BUDGET_SLOT_NAMESPACE)) == 1
     assert VoiceProfileService(store).job(job.id).status == "CREATED"
-    assert VoiceProfileService(store).active(
-        project_id=project_id, product_id=product_id, product_data=source()
-    ).id == first["voice_profile_version_id"] or str(VoiceProfileService(store).active(
+    assert str(VoiceProfileService(store).active(
         project_id=project_id, product_id=product_id, product_data=source()
     ).id) == first["voice_profile_version_id"]
 
