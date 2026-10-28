@@ -15,11 +15,11 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.customer_funnel import CUSTOMER_PROJECT_NAMESPACE
 from app.llm import LLMMessage, LLMProvider
 from app.openai_usage import openai_usage_context
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
+CUSTOMER_PROJECT_NAMESPACE = "customer_acquisition_projects"  # existing project store
 VOICE_VERSION_NAMESPACE = "voice_profile_versions"
 VOICE_ASSIGNMENT_NAMESPACE = "voice_profile_assignments"
 VOICE_GENERATION_JOB_NAMESPACE = "voice_profile_generation_jobs"
