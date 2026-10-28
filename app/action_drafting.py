@@ -41,8 +41,8 @@ from app.persisted_voice_writer import (
     PERSISTED_ACTION_SYSTEM_PROMPT,
     PERSISTED_COMMUNITY_PROMPT,
     PERSISTED_COMMUNITY_PROMPT_VERSION,
-    writer_voice_payload,
     validate_profile_click_draft,
+    writer_voice_payload,
 )
 from app.project_marketing_memory import (
     ProjectMarketingMemoryService,
