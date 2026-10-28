@@ -151,6 +151,9 @@ class InMemoryDistributionExecutionService:
             content_payload["draft_variant"] = payload.draft_variant.strip()
         if payload.expected_user_next_step is not None:
             content_payload["expected_user_next_step"] = payload.expected_user_next_step.strip()
+        if payload.voice_profile_version_id is not None:
+            content_payload["voice_profile_version_id"] = str(payload.voice_profile_version_id)
+            content_payload["voice_profile_content_hash"] = payload.voice_profile_content_hash
 
         operational_metadata = {
             "distribution_play_id": str(play.id),
