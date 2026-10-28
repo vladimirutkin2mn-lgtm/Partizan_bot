@@ -40,6 +40,7 @@ from app.product_source import (
     read_public_product_source,
 )
 from app.runtime_store import RuntimeStateStore, get_runtime_store
+from app.voice_profiles import VoiceProfileService
 from app.schemas import ClarificationAnswerRequest, ProductCreateRequest
 
 CUSTOMER_PROJECT_NAMESPACE = "customer_acquisition_projects"
@@ -321,8 +322,21 @@ class CustomerFunnelService:
                 else None
             ),
         }
-        self._persist(project)
+        # Reserving the voice job is unpaid and idempotent; an independently
+        # budgeted one-shot worker is required before any actual LLM call.
         settings = get_settings()
+        if settings.voice_initial_reservation_enabled:
+            try:
+                job = VoiceProfileService(self._store).reserve_initial(
+                    project_id=project_id, product_id=product_id,
+                    product_data=product.model_dump(mode="json"),
+                )
+                project["voice_initial_status"] = job.status
+                project["voice_initial_job_id"] = job.id
+            except ValueError as exc:
+                project["voice_initial_status"] = "VOICE_UNAVAILABLE"
+                project["voice_initial_error_code"] = str(exc)[:100]
+        self._persist(project)
         return CustomerPreviewConfirmationResponse(
             project_id=project_id,
             product_id=product_id,
