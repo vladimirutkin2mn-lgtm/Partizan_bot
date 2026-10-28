@@ -1,18 +1,18 @@
 import json
 from dataclasses import dataclass
-from uuid import UUID
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl
 
 from app.audience_intelligence_service import audience_intelligence_service
-from app.config import get_settings
 from app.community_voice import (
     COMMUNITY_CREATIVE_GUIDANCE,
     COMMUNITY_CREATIVE_PROMPT_VERSION,
     VoiceVariantId,
     build_voice_context,
 )
+from app.config import get_settings
 from app.conversion_scenarios import (
     DraftVariantBrief,
     conversion_scenario_planner,
@@ -510,13 +510,17 @@ class DistributionActionComposer:
                 f"Conversion brief: "
                 f"{self._variant_prompt(variant) if variant else None}\n"
             )
+        main_prompt = (
+            PERSISTED_ACTION_SYSTEM_PROMPT if use_persisted_voice
+            else ACTION_DRAFT_SYSTEM_PROMPT
+        )
         with openai_usage_context("action_variant_draft" if variant else "action_auto_prepare", product.id):
             draft = await self._provider.parse(
                 messages=[
                     LLMMessage(
                         role="system",
                         content=(
-                            f"{PERSISTED_ACTION_SYSTEM_PROMPT if use_persisted_voice else ACTION_DRAFT_SYSTEM_PROMPT}\n\n{marketing_guidance}"
+                            f"{main_prompt}\n\n{marketing_guidance}"
                             f"\n\n{community_prompt}"
                         ),
                     ),
