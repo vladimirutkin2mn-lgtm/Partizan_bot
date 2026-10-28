@@ -104,3 +104,12 @@ Rollback: disable writer flag; v16.2 remains the legacy path.
 - Implement dedicated voice challengers through the existing
   AutoResearch policy + evaluator with actually attributable outcomes;
   keep canary/promotion separate and opt-in.
+
+## Follow-up slice: paid writer request idempotency (2026-10-29)
+
+- `app/voice_draft_cache.py`: a persistent, scope-bound and atomic v17 draft request reservation. The digest covers the exact system/user prompt (including voice version, selected native target, product, community, policy, memory and conversion brief), response schema key, project and product IDs, plus immutable voice content hash. The reservation record stores only the digest and generated draft, not raw request text.
+- Identical successful requests reuse the stored `DistributionContentDraft` and its exact voice provenance without a second paid LLM call. Changing the post or input manifest creates a different reservation.
+- Concurrent/in-flight reservations, provider timeouts and cancelled calls are **not retried** by this path. Unknown provider outcomes are recorded as `PROVIDER_OUTCOME_UNKNOWN`. Deterministic missing-disclosure rejection is recorded as `POLICY_REJECTED`. Either state requires separate operator reconciliation rather than automatically billing again.
+- v17 never silently substitutes a mock draft when the LLM provider is missing. Feature OFF retains the legacy path.
+- Added local fake-provider regression cases for replay, distinct target, unknown provider outcome, disclosure rejection, and missing-provider fail closed. No scheduled paid calls or Telegram actions introduced.
+- **Limitations:** this is request-level idempotency within the current composer path, not yet a unified preview/production request builder. A crash after provider success and before cache completion deliberately leaves an unreconciled request. There is not yet a complete generation-run ledger, full billing reconciliation, scheduled worker, true voice AutoResearch challenger evaluation or canary. The feature remains OFF and PR remains draft until CI and full integration checks succeed.
