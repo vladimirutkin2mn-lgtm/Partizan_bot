@@ -1,47 +1,65 @@
-# Connected Telegram account -> existing voice generator
+# Telegram profile is a conversion destination, not a source of message voice
 
-2026-10-27: The customer Telegram account integration already exists; do
-**not** ask the user to reconnect solely to improve comment style.
+Architectural correction: 2026-10-28. Supersedes the per-draft profile
+injection introduced by PR #573 (2026-10-27). The customer account was
+**already connected**; neither re-login nor a new profile integration is
+necessary.
 
-## Existing backend capabilities
+## Decision
 
-- `app/telegram_client_publishing_impl.py` persists an active per-project
-  connected user account, with account ID, username and public display name.
-  Its `profile_internal(project_id)` reads the LIVE public profile
-  (display name / username / bio) from the authorised Telegram session.
-- Connected-account profile edit, avatar handling, and conversion-route
-  verification are implemented separately. They are **not** changed here.
+The direction of dependency is:
 
-## New read-only drafting integration
+Product positioning + audience + community + latest target
+  -> product-derived communication voice
+  -> one message
+  -> reader's existing Telegram profile
+  -> attributable CTA route -> product
+  -> measured outcome for AutoResearch.
 
-- `app/telegram_author_context.py` resolves precisely one ACTIVE
-  customer-owned account for the same product and project. It uses the
-  existing service, never reconnects or changes the Telegram profile.
-- A bounded, read-only profile fetch adds `actual_publisher_profile`
-  to the one-call organic Telegram composition payload. Supply only public
-  fields: username, display name, bio and source/status. Never send a
-  Telegram session, phone number, profile image reference, project ID or
-  API credential to the LLM.
-- If the live profile is inaccessible, use the previously connected public
-  name/username (without invented bio). If account ownership is ambiguous,
-  no account is selected. A project explicitly using
-  `PARTIZAN_MANAGED` is not silently associated with a customer-owned user.
-- The creative prompt is versioned
-  `community_message_v16_1_connected_account_voice`, and explicitly
-  requests a voice consistent with the actual profile the reader sees.
-  It remains one LLM request per target. No Telegram messages are sent.
+**Do not** infer product voice from existing Telegram display name, username,
+bio or avatar. A bad historical bio must not determine all future copy.
+The writing path must not fetch live Telegram profile fields before generating
+a draft. Brand/persona style is inferred in the same LLM call from product
+positioning, target audience and community context. Voice variants remain
+available to AutoResearch as a bounded experimental parameter.
 
-## Limitations and follow-ups
+## Existing conversion path checks — kept unchanged
 
-- This resolver handles the already connected **customer-owned** account.
-  A Partizan-managed identity/assignment needs its own explicit
-  project/assignment binding, not reuse of a customer's account.
-- The current composer has a product ID but no explicit project ID. When
-  multiple active projects refer to the same product, resolution declines
-  instead of guessing. A future context-aware route should pass the exact
-  authorised project ID.
-- The live read adds Telegram profile read time and can time out;
-  an authenticated cached public identity still allows a draft.
-- Existing profile/bio is not used as fabricated product proof; the
-  author identity and product positioning remain separate data fields.
-- No live LLM or real-world quality comparison performed by this PR.
+- `app/customer_telegram_profile_setup.py` explicitly reads
+  `customer_telegram_client_publish_service.profile_internal(project_id)`
+  during profile setup/verification and checks that the stable profile
+  CTA URL actually appears in the Telegram bio. It can detect CTA drift
+  when revalidated. No such read is needed for every new comment.
+- `app/conversion_path.py::ConversionPathValidator` validates
+  `PROFILE_CLICK` and `REPLY_ENGAGEMENT` routes: identity exists, slot
+  exists, tracked destination exists, correct profile route is configured
+  and verified. Failing checks produce `SETUP_REQUIRED`.
+- `app/distribution_execution_service.py` requires conversion route
+  `READY` before approving an action that specifies a conversion
+  mechanism. This enforcement remains separate from creative drafting.
+- `app/telegram_profile_conversion_pack.py` already supports
+  approved and applied profile treatments with their own comparisons.
+- `app/telegram_profile_learning.py` compares attributable downstream
+  metrics by profile treatment. It does not yet prove an automatic
+  end-to-end AutoResearch optimization loop.
+
+## Implementation change
+
+- Remove `ConnectedTelegramAuthorContext` and its per-comment profile
+  call from `app/action_drafting.py`; remove `actual_publisher_profile`
+  from the LLM payload; delete now-unused module and tests.
+- Version the creative message prompt as
+  `community_message_v16_2_product_led_voice`.
+- Keep one LLM call per Telegram opportunity; avoid any additional
+  Telethon read on the draft path.
+- Keep the already connected account, CTA verification, profile pack
+  functionality, conversion-path gate, metrics and publication permissions
+  unchanged.
+
+## Not claimed
+
+This PR does not redesign or automatically rewrite the current profile and
+does not prove better conversion. The next controlled evaluation should compare
+message voice and, separately, profile treatment against attributable
+registrations/activations/payments, without confusing profile effects with
+message effects.
