@@ -494,3 +494,62 @@ async def test_v17_never_falls_back_to_mock_draft_without_llm(monkeypatch):
             play=play, opportunity=opportunity, target=target,
             policy=None, project_id=pid, voice_version_id=version.id,
         )
+
+
+@pytest.mark.parametrize("promotional", [
+    "Попробуйте перейти по https://example.org и всё станет ясно.",
+    "Переходи ко мне в профиль, там больше интересного.",
+    "Ссылка в профиле.",
+    "Check my profile if you want the rest.",
+    "This is Conversation Agent, you should try it.",
+])
+def test_v17_organic_profile_click_guard_rejects_direct_promotion(promotional):
+    from app.persisted_voice_writer import validate_profile_click_draft
+
+    with pytest.raises(ValueError, match="VOICE_PROFILE_CLICK_"):
+        validate_profile_click_draft(
+            promotional, product_name="Conversation Agent",
+        )
+    validate_profile_click_draft(
+        "Профиль мероприятия смешной: в описании одно, а на афише совсем другое.",
+        product_name="Conversation Agent",
+    )
+
+
+@pytest.mark.asyncio
+async def test_v17_profile_click_promotion_is_rejected_after_one_paid_draft(monkeypatch):
+    from app.voice_draft_cache import VOICE_DRAFT_GENERATION_NAMESPACE
+
+    store = MemoryRuntimeStateStore()
+    pid, prod = setup(store)
+    profiles, _, _, version = await initial(store, pid, prod)
+    monkeypatch.setattr(
+        "app.action_drafting.get_settings",
+        lambda: SimpleNamespace(persisted_voice_writer_enabled=True),
+    )
+
+    class PromotionalWriter(WriterLLM):
+        async def parse(self, messages, response_model):
+            self.calls += 1
+            return response_model(
+                context_text="An upcoming community party and dress code",
+                content_text="Отличная тема! Ссылка в профиле, заходите.",
+                rationale="Promotes an account rather than reacting to the post.",
+            )
+
+    writer = PromotionalWriter()
+    composer = DistributionActionComposer(provider=writer, voice_profiles=profiles)
+    play, opportunity, target = _voice_test_target()
+    kwargs = dict(
+        product=SimpleNamespace(id=prod, model_dump=lambda mode="json": product_data()),
+        play=play, opportunity=opportunity, target=target,
+        policy=None, project_id=pid, voice_version_id=version.id,
+    )
+    with pytest.raises(ValueError, match="VOICE_PROFILE_CLICK_CTA_NOT_ALLOWED"):
+        await composer.compose(**kwargs)
+    assert store.list_namespace(VOICE_DRAFT_GENERATION_NAMESPACE)[0]["status"] == (
+        "POLICY_REJECTED"
+    )
+    with pytest.raises(RuntimeError, match="VOICE_DRAFT_ALREADY_RESERVED_OR_UNRECONCILED"):
+        await composer.compose(**kwargs)
+    assert writer.calls == 1
