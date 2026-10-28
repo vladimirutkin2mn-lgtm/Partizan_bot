@@ -16,7 +16,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, field_validator
 
 from app.llm import LLMMessage, LLMProvider
-from app.openai_usage import openai_usage_context
+from app.openai_usage import openai_usage_context, summarize_openai_usage
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 CUSTOMER_PROJECT_NAMESPACE = "customer_acquisition_projects"  # existing project store
@@ -148,6 +148,8 @@ class VoiceGenerationJob(BaseModel):
     completed_at: str | None = None
     version_id: UUID | None = None
     error_code: str | None = None
+    budget_slot_id: str | None = None
+    usage: dict | None = None
 
 
 def source_snapshot(product: dict) -> dict:
@@ -225,6 +227,20 @@ class VoiceProfileService:
             return VoiceGenerationJob.model_validate(existing)
         return new
 
+    def resolve_unique_project(self, product_id: UUID) -> UUID:
+        """Fail closed if ownership of a product is ambiguous."""
+        matching = []
+        for project in self._store.list_namespace(CUSTOMER_PROJECT_NAMESPACE):
+            if (
+                str(project.get("product_id") or "") == str(product_id)
+                and not project.get("deleted_at")
+                and project.get("understanding_confirmed") is True
+            ):
+                matching.append(UUID(str(project["id"])))
+        if len(matching) != 1:
+            raise RuntimeError("VOICE_SCOPE_AMBIGUOUS_OR_MISSING")
+        return matching[0]
+
     def job(self, job_id: str) -> VoiceGenerationJob:
         raw = self._store.get(VOICE_GENERATION_JOB_NAMESPACE, job_id)
         if raw is None:
@@ -234,13 +250,14 @@ class VoiceProfileService:
     async def generate_reserved(
         self, job_id: str, *, provider: LLMProvider, allow_llm_call: bool = False,
         activate_initial: bool = False,
+        usage_rows: list[dict] | None = None,
     ) -> VoiceProfileVersion:
         """Explicit entrypoint only; default blocks paid or fake calls alike."""
         if not allow_llm_call:
             raise PermissionError("VOICE_LLM_CALL_REQUIRES_EXPLICIT_AUTHORIZATION")
         before = self.job(job_id)
         self._verify_project(before.project_id, before.product_id)
-        if before.status != "RESERVED":
+        if before.status not in {"RESERVED", "AUTHORIZED"}:
             raise RuntimeError("VOICE_JOB_NOT_RESERVED")
         running = before.model_copy(update={"status": "IN_PROGRESS"})
         if not self._store.compare_and_swap(
@@ -254,7 +271,10 @@ class VoiceProfileService:
             ensure_ascii=False, sort_keys=True, separators=(",", ":"),
         )
         try:
-            with openai_usage_context("voice_profile_generate", before.product_id):
+            with openai_usage_context(
+                "voice_profile_generate", before.product_id,
+                run_id=job_id, collector=usage_rows,
+            ):
                 result = await provider.parse(
                     messages=[
                         LLMMessage(role="system", content=VOICE_GENERATOR_PROMPT),
@@ -293,6 +313,7 @@ class VoiceProfileService:
             raise RuntimeError("VOICE_VERSION_CONFLICT")
         done = running.model_copy(update={
             "status": "CREATED", "version_id": version.id, "completed_at": utcnow(),
+            "usage": summarize_openai_usage(usage_rows) if usage_rows is not None else None,
         })
         if not self._store.compare_and_swap(
             VOICE_GENERATION_JOB_NAMESPACE, job_id,
