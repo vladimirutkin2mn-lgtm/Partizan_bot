@@ -115,7 +115,7 @@ async def initial(store, project_id, product_id):
 
 def test_voice_content_is_concrete_not_a_placeholder():
     with pytest.raises(ValidationError, match="concrete style"):
-        draft().model_copy(update={"style_instruction": "derive the voice"}).model_dump()
+        VoiceProfileDraft.model_validate({**draft().model_dump(), "style_instruction": "derive the voice"})
     with pytest.raises(ValidationError, match="SYNTHETIC_UNVERIFIED"):
         VoiceExample(surface="CHANNEL_COMMENT", context="Hello there",
                      message="A synthetic example", origin="REAL_CUSTOMER")
