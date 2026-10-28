@@ -1,0 +1,122 @@
+name: One-shot saved Telegram v15.1 vs v16.2 benchmark (NO PUBLISH)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/telegram-v15-v16-saved-offline-once.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-v15-v16-saved-one-shot-20261028
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate read-only production research access
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing research connection ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Verify production SSH host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Wait for matching deployed API image, avoiding deployment race
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 75); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              echo "Matching production release ready for isolated read-only benchmark"
+              exit 0
+            fi
+            sleep 12
+          done
+          echo "::error::Production release not ready; no LLM calls made"
+          exit 1
+      - name: Generate <=6 saved post pairs (<=12 LLM calls, no Telegram I/O)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          # Run checked-out benchmark source via stdin; no production edits.
+          # The Python script reads existing native snapshots and calls only OpenAI.
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python -" \
+            < tools/compare_saved_telegram_v15_v16_once.py \
+            > telegram-v15-v16-review-private.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("telegram-v15-v16-review-private.json").read_text())
+          assert report["mode"] == "OFFLINE_SAVED_SNAPSHOTS_ONLY"
+          for key in (
+              "telegram_api_calls", "global_search_calls", "publication_actions",
+              "profile_reads", "runtime_writes",
+          ):
+              assert report[key] == 0
+          assert report["max_llm_calls"] == 12
+          assert report["llm_calls"] <= 12
+          assert report["selected_cases"] <= 6
+          assert report["paired_results"] <= 6
+          assert report["promotion_approved"] is False
+          print(json.dumps({
+              key: report.get(key)
+              for key in (
+                  "status", "model", "baseline_version", "challenger_version",
+                  "selected_cases", "paired_results", "llm_calls", "input_tokens",
+                  "output_tokens", "conversion_evidence", "skipped",
+              )
+          }, ensure_ascii=False))
+          for case in report["results"]:
+              print(json.dumps({
+                  "handle": case["handle"],
+                  "target_url": case["target_url"],
+                  "surface": case["surface"],
+                  "target_text": case["target_text"],
+                  "baseline": case.get("baseline"),
+                  "challenger": case.get("challenger"),
+                  "error": case.get("error"),
+              }, ensure_ascii=False))
+          if report["status"] != "REVIEW_ONLY":
+              print("::warning::Benchmark did not produce all paired model outputs")
+          PY
+      - name: Retain private post and draft pairs for blind human quality review
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-v15-v16-saved-quality-20261028
+          path: telegram-v15-v16-review-private.json
+          retention-days: 7
+          if-no-files-found: error
