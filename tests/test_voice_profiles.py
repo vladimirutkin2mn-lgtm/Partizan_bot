@@ -358,7 +358,6 @@ async def test_real_auto_prepare_routes_selected_voice_to_internal_action_proven
 
 
 def _voice_test_target(text="Обсуждают дресс-код на ближайшей тематической встрече."):
-    product_id = None  # Product scope is supplied separately by the test.
     return (
         SimpleNamespace(
             tactic_id="telegram_channel_comment",
