@@ -144,6 +144,8 @@ def _validate_existing_preview(
         != expected_memory_fingerprint
     ):
         raise ValueError("Existing preview uses stale project marketing memory")
+    if expected_voice_version_id is None and record.get("voice_profile_version_id"):
+        raise ValueError("Existing preview was created with a now-disabled voice writer")
     if expected_voice_version_id is not None and (
         str(record.get("voice_profile_version_id") or "") != expected_voice_version_id
         or str(record.get("voice_profile_content_hash") or "")
