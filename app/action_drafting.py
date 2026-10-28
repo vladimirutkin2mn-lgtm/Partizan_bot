@@ -835,9 +835,8 @@ class DistributionActionDraftingService:
             prepared.append(PreparedDraftVariant(brief=brief, plan=plan))
         return prepared
 
-    @staticmethod
     def _voice_project_for_draft(
-        product_id: UUID, platform: DistributionPlatform,
+        self, product_id: UUID, platform: DistributionPlatform,
         *, project_id: UUID | None,
     ) -> UUID | None:
         if not (
@@ -845,7 +844,7 @@ class DistributionActionDraftingService:
             and platform == DistributionPlatform.TELEGRAM
         ):
             return project_id
-        profiles = VoiceProfileService()
+        profiles = self._composer._voice_profiles or VoiceProfileService()
         if project_id is None:
             return profiles.resolve_unique_project(product_id)
         profiles._verify_project(project_id, product_id)
