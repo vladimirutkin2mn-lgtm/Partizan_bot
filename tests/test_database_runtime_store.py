@@ -55,3 +55,18 @@ def test_migrations_create_channel_first_runtime_tables() -> None:
     }
 
     assert expected.issubset(table_names)
+
+
+def test_database_runtime_store_compare_and_swap_prevents_lost_updates() -> None:
+    store = DatabaseRuntimeStateStore()
+    namespace = f"ci-voice-cas-{uuid4()}"
+    key = str(uuid4())
+    try:
+        first = {"assignment_revision": 1, "voice": "v1"}
+        second = {"assignment_revision": 2, "voice": "v2"}
+        store.put(namespace, key, first)
+        assert store.compare_and_swap(namespace, key, first, second) is True
+        assert store.compare_and_swap(namespace, key, first, {"voice": "stale"}) is False
+        assert store.get(namespace, key) == second
+    finally:
+        store.clear_namespace(namespace)

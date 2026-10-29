@@ -77,6 +77,8 @@ class GrowthVariantSpec(BaseModel):
     audience: str | None = Field(default=None, max_length=1000)
     message_angle: str | None = Field(default=None, max_length=2000)
     voice_variant_id: VoiceVariantId | None = None
+    # Exact immutable voice version, not a loose style variant label.
+    voice_profile_version_id: UUID | None = None
     offer: str | None = Field(default=None, max_length=2000)
     creative_ref: str | None = Field(default=None, max_length=1000)
     cta: str | None = Field(default=None, max_length=1000)

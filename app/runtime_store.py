@@ -2,7 +2,7 @@ from functools import lru_cache
 from threading import Lock
 from typing import Protocol
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.config import get_settings
@@ -18,6 +18,10 @@ class RuntimeStateStore(Protocol):
     def put(self, namespace: str, entity_key: str, payload: dict) -> None: ...
 
     def put_if_absent(self, namespace: str, entity_key: str, payload: dict) -> bool: ...
+
+    def compare_and_swap(
+        self, namespace: str, entity_key: str, expected: dict, replacement: dict
+    ) -> bool: ...
 
     def delete(self, namespace: str, entity_key: str) -> None: ...
 
@@ -46,6 +50,16 @@ class MemoryRuntimeStateStore:
             if key in self._payloads:
                 return False
             self._payloads[key] = dict(payload)
+            return True
+
+    def compare_and_swap(
+        self, namespace: str, entity_key: str, expected: dict, replacement: dict
+    ) -> bool:
+        key = (namespace, entity_key)
+        with self._reservation_lock:
+            if self._payloads.get(key) != expected:
+                return False
+            self._payloads[key] = dict(replacement)
             return True
 
     def delete(self, namespace: str, entity_key: str) -> None:
@@ -107,6 +121,23 @@ class DatabaseRuntimeStateStore:
         with session_factory.begin() as session:
             inserted_key = session.execute(statement).scalar_one_or_none()
             return inserted_key is not None
+
+    def compare_and_swap(
+        self, namespace: str, entity_key: str, expected: dict, replacement: dict
+    ) -> bool:
+        # PostgreSQL atomic conditional UPDATE, not read/modify/write.
+        statement = (
+            update(RuntimeSnapshot)
+            .where(
+                RuntimeSnapshot.namespace == namespace,
+                RuntimeSnapshot.entity_key == entity_key,
+                RuntimeSnapshot.payload == expected,
+            )
+            .values(payload=replacement)
+        )
+        with get_sync_session_factory().begin() as session:
+            result = session.execute(statement)
+            return result.rowcount == 1
 
     def delete(self, namespace: str, entity_key: str) -> None:
         session_factory = get_sync_session_factory()

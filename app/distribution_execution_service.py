@@ -106,6 +106,8 @@ class InMemoryDistributionExecutionService:
         payload: DistributionExecutionPrepareRequest,
         *,
         customer_execution_request_id: UUID | None = None,
+        voice_profile_version_id: UUID | None = None,
+        voice_profile_content_hash: str | None = None,
     ) -> DistributionExecutionPlanView:
         if play.status != DistributionPlayStatus.READY:
             raise ValueError("Only READY DistributionPlay objects can be prepared")
@@ -151,6 +153,11 @@ class InMemoryDistributionExecutionService:
             content_payload["draft_variant"] = payload.draft_variant.strip()
         if payload.expected_user_next_step is not None:
             content_payload["expected_user_next_step"] = payload.expected_user_next_step.strip()
+        if voice_profile_version_id is not None:
+            if not voice_profile_content_hash or len(voice_profile_content_hash) != 64:
+                raise ValueError("VOICE_PROVENANCE_REQUIRED")
+            content_payload["voice_profile_version_id"] = str(voice_profile_version_id)
+            content_payload["voice_profile_content_hash"] = voice_profile_content_hash
 
         operational_metadata = {
             "distribution_play_id": str(play.id),

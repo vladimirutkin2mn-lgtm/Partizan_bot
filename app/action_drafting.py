@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -11,6 +12,7 @@ from app.community_voice import (
     VoiceVariantId,
     build_voice_context,
 )
+from app.config import get_settings
 from app.conversion_scenarios import (
     DraftVariantBrief,
     conversion_scenario_planner,
@@ -35,6 +37,13 @@ from app.distribution_types import (
 from app.llm import LLMMessage, LLMProvider, get_llm_provider
 from app.marketing_intelligence import marketing_task_for_action, render_marketing_guidance
 from app.openai_usage import openai_usage_context
+from app.persisted_voice_writer import (
+    PERSISTED_ACTION_SYSTEM_PROMPT,
+    PERSISTED_COMMUNITY_PROMPT,
+    PERSISTED_COMMUNITY_PROMPT_VERSION,
+    validate_profile_click_draft,
+    writer_voice_payload,
+)
 from app.project_marketing_memory import (
     ProjectMarketingMemoryService,
     project_marketing_memory_service,
@@ -43,6 +52,8 @@ from app.reddit_research import action_target_is_fresh
 from app.schemas import ProductProfileView
 from app.telegram_message_precheck import precheck_telegram_target
 from app.telegram_target_excerpt import compact_telegram_target
+from app.voice_draft_cache import VoiceDraftCache
+from app.voice_profiles import VoiceProfileService, fingerprint, source_snapshot
 
 
 class DistributionAutoPrepareRequest(BaseModel):
@@ -56,6 +67,8 @@ class DistributionContentDraft(BaseModel):
     rationale: str = Field(min_length=5, max_length=2000)
     disclosure_included: bool = False
     ai_disclosure_included: bool = False
+    voice_profile_version_id: UUID | None = None
+    voice_profile_content_hash: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -354,9 +367,13 @@ class DistributionActionComposer:
         self,
         provider: LLMProvider | None = None,
         memory_service: ProjectMarketingMemoryService | None = None,
+        voice_profiles: VoiceProfileService | None = None,
+        voice_cache: VoiceDraftCache | None = None,
     ) -> None:
         self._provider = provider
         self._memory = memory_service or project_marketing_memory_service
+        self._voice_profiles = voice_profiles
+        self._voice_cache = voice_cache
 
     async def compose(
         self,
@@ -368,9 +385,25 @@ class DistributionActionComposer:
         policy: CommunityPolicyView | None,
         variant: DraftVariantBrief | None = None,
         voice_variant_id: VoiceVariantId = "adaptive",
+        project_id: UUID | None = None,
+        voice_version_id: UUID | None = None,
     ) -> DistributionContentDraft:
         self._validate_ai_policy(policy)
+        if voice_version_id is not None and not get_settings().persisted_voice_writer_enabled:
+            raise RuntimeError("VOICE_TRIAL_NOT_ENABLED")
         if self._provider is None:
+            # A v17 paid/canary request must never silently return a mock
+            # draft without resolving the active, validated voice.
+            if (
+                get_settings().persisted_voice_writer_enabled
+                and opportunity.platform == DistributionPlatform.TELEGRAM
+                and play.action_type in {
+                    DistributionActionType.COMMENT,
+                    DistributionActionType.REPLY,
+                    DistributionActionType.STANDALONE_POST,
+                }
+            ):
+                raise RuntimeError("VOICE_PROVIDER_REQUIRED")
             return self._mock_draft(
                 product=product,
                 play=play,
@@ -403,6 +436,14 @@ class DistributionActionComposer:
             }
             else ""
         )
+        use_persisted_voice = bool(
+            community_prompt and get_settings().persisted_voice_writer_enabled
+        )
+        if use_persisted_voice:
+            community_prompt = (
+                f"Prompt version: {PERSISTED_COMMUNITY_PROMPT_VERSION}\n"
+                + PERSISTED_COMMUNITY_PROMPT
+            )
         marketing_guidance = (
             "" if community_prompt else render_marketing_guidance(marketing_task)
         )
@@ -418,11 +459,32 @@ class DistributionActionComposer:
                 community_about=str(community_metadata.get("about") or ""),
                 variant_id=voice_variant_id,
             )
+            if use_persisted_voice:
+                if project_id is None:
+                    raise RuntimeError("VOICE_SCOPE_REQUIRED")
+                profiles = self._voice_profiles or VoiceProfileService()
+                if voice_version_id is not None:
+                    active_version = profiles.get_version(
+                        project_id=project_id, product_id=product.id,
+                        version_id=voice_version_id,
+                    )
+                    if active_version.source_fingerprint != fingerprint(
+                        source_snapshot(product_data)
+                    ):
+                        raise RuntimeError("VOICE_SOURCE_CHANGED")
+                else:
+                    active_version = profiles.active(
+                        project_id=project_id, product_id=product.id,
+                        product_data=product_data,
+                    )
+                voice_payload = writer_voice_payload(active_version)
+            else:
+                voice_payload = voice_input["voice"]
             compacted = compact_telegram_target(target.context_text)
             user_context = json.dumps(
                 {
                     "product": voice_input["product_positioning"],
-                    "author_voice": voice_input["voice"],
+                    "author_voice": voice_payload,
                     "community_title": opportunity.title,
                     "community_about": str(community_metadata.get("about") or "")[:220],
                     "audience_fit_hint": str(
@@ -449,7 +511,24 @@ class DistributionActionComposer:
                     ),
                     "tactic_allows_product_link": template.has_direct_product_link,
                     "tactic_mentions_product": template.has_product_mention,
-                    "conversion_brief": self._variant_prompt(variant) if variant else None,
+                    "conversion_brief": (
+                        self._variant_prompt(variant)
+                        if variant else (
+                            {
+                                "conversion_mechanism": "PROFILE_CLICK",
+                                "instruction": (
+                                    "Write a useful on-topic message without "
+                                    "product references, advertising, URLs or "
+                                    "an invitation to visit the author profile. "
+                                    "The verified profile CTA is handled separately."
+                                ),
+                            }
+                            if use_persisted_voice
+                            and not template.has_direct_product_link
+                            and not template.has_product_mention
+                            else None
+                        )
+                    ),
                 },
                 ensure_ascii=False,
                 separators=(",", ":"),
@@ -468,32 +547,87 @@ class DistributionActionComposer:
                 f"Conversion brief: "
                 f"{self._variant_prompt(variant) if variant else None}\n"
             )
-        with openai_usage_context("action_variant_draft" if variant else "action_auto_prepare", product.id):
-            draft = await self._provider.parse(
-                messages=[
-                    LLMMessage(
-                        role="system",
-                        content=(
-                            f"{ACTION_DRAFT_SYSTEM_PROMPT}\n\n{marketing_guidance}"
-                            f"\n\n{community_prompt}"
-                        ),
-                    ),
-                    LLMMessage(
-                        role="user",
-                        content=user_context,
-                    ),
-                ],
-                response_model=DistributionContentDraft,
+        main_prompt = (
+            PERSISTED_ACTION_SYSTEM_PROMPT if use_persisted_voice
+            else ACTION_DRAFT_SYSTEM_PROMPT
+        )
+        system_prompt = (
+            f"{main_prompt}\n\n{marketing_guidance}"
+            f"\n\n{community_prompt}"
+        )
+        messages = [
+            LLMMessage(role="system", content=system_prompt),
+            LLMMessage(role="user", content=user_context),
+        ]
+        cache = None
+        reservation = None
+        if use_persisted_voice:
+            # The cache is shared by preview/prepare callers using this
+            # composer. The persisted request manifest includes the EXACT
+            # prompts, selected target, voice, policy and conversion brief.
+            cache = self._voice_cache or VoiceDraftCache(store=profiles._store)
+            reservation = cache.reserve(
+                project_id=project_id, product_id=product.id,
+                voice_version_id=active_version.id,
+                voice_content_hash=active_version.content_hash,
+                system_prompt=system_prompt, user_context=user_context,
             )
-        # Creative guidance does not own compliance. Reject drafts that omit
-        # mandated disclosures before an action can be prepared or approved.
-        if policy is not None and policy.disclosure_required and not draft.disclosure_included:
-            raise ValueError("Required commercial disclosure missing from draft")
-        if (
-            "AI_CONTENT_DISCLOSURE_REQUIRED" in self._constraints(policy)
-            and not draft.ai_disclosure_included
-        ):
-            raise ValueError("Required AI-content disclosure missing from draft")
+            if reservation.cached_draft is not None:
+                cached = DistributionContentDraft.model_validate(
+                    reservation.cached_draft
+                )
+                if (
+                    cached.voice_profile_version_id != active_version.id
+                    or cached.voice_profile_content_hash != active_version.content_hash
+                ):
+                    raise RuntimeError("VOICE_DRAFT_CACHE_PROVENANCE_CONFLICT")
+                return cached
+        try:
+            with openai_usage_context(
+                "action_variant_draft" if variant else "action_auto_prepare", product.id
+            ):
+                draft = await self._provider.parse(
+                    messages=messages, response_model=DistributionContentDraft
+                )
+        except BaseException:
+            # Timeout/cancellation may still be billed. No implicit retry.
+            if reservation is not None:
+                cache.stop(reservation, status="PROVIDER_OUTCOME_UNKNOWN")
+            raise
+        try:
+            # Creative guidance does not own compliance. Reject drafts that
+            # omit mandated disclosures before preparation or approval.
+            if policy is not None and policy.disclosure_required and not draft.disclosure_included:
+                raise ValueError("Required commercial disclosure missing from draft")
+            if (
+                "AI_CONTENT_DISCLOSURE_REQUIRED" in self._constraints(policy)
+                and not draft.ai_disclosure_included
+            ):
+                raise ValueError("Required AI-content disclosure missing from draft")
+            if use_persisted_voice and (
+                (
+                    variant is not None
+                    and variant.conversion_mechanism.value == "PROFILE_CLICK"
+                )
+                or (
+                    variant is None
+                    and not template.has_direct_product_link
+                    and not template.has_product_mention
+                )
+            ):
+                validate_profile_click_draft(
+                    draft.content_text, product_name=str(product_data.get("name") or "")
+                )
+        except Exception:
+            if reservation is not None:
+                cache.stop(reservation, status="POLICY_REJECTED")
+            raise
+        if use_persisted_voice:
+            draft = draft.model_copy(update={
+                "voice_profile_version_id": active_version.id,
+                "voice_profile_content_hash": active_version.content_hash,
+            })
+            cache.complete(reservation, draft.model_dump(mode="json"))
         return draft
 
     def _mock_draft(
@@ -660,25 +794,99 @@ class DistributionActionDraftingService:
                     "action for this identity; reconcile it instead of drafting again"
                 )
 
-    async def auto_prepare(
+    async def _draft_single(
         self,
         *,
         product: ProductProfileView,
         play: DistributionPlayView,
-        destination_url: HttpUrl | None = None,
-    ) -> DistributionExecutionPlanView:
+        project_id: UUID | None = None,
+        voice_version_id: UUID | None = None,
+    ) -> tuple[SelectedActionTarget, DistributionContentDraft]:
+        """One canonical single-message request shared by review and preparation.
+
+        The preview path does not create an Action, Trial or publication permission.
+        It uses the same selected native target, scoped voice, prompts, cache and
+        deterministic policy checks as the real preparation path.
+        """
         if play.status != DistributionPlayStatus.READY:
             raise ValueError("Only READY DistributionPlay objects can be auto-prepared")
         opportunity = audience_intelligence_service.find_opportunity(play.opportunity_id)
         target = self._selector.select(play, opportunity)
         self._require_unprocessed_telegram_target(product, play, target)
         policy = self._applied_policy(play, opportunity)
+        selected_project = self._voice_project_for_draft(
+            product.id, play.platform, project_id=project_id
+        )
         draft = await self._composer.compose(
             product=product,
             play=play,
             opportunity=opportunity,
             target=target,
             policy=policy,
+            project_id=selected_project,
+            voice_version_id=voice_version_id,
+        )
+        return target, draft
+
+    async def preview_persisted_voice(
+        self,
+        *,
+        product: ProductProfileView,
+        play: DistributionPlayView,
+        project_id: UUID,
+        voice_version_id: UUID | None = None,
+    ) -> dict:
+        """Review-only v17: no prepared action, approval or Telegram publication.
+
+        Requires the existing v17 feature flag and LLM provider, and intentionally
+        fails closed on invalidated scope or missing author character.
+        """
+        if not get_settings().persisted_voice_writer_enabled:
+            raise RuntimeError("PERSISTED_VOICE_WRITER_NOT_ENABLED")
+        if (
+            play.platform != DistributionPlatform.TELEGRAM
+            or play.action_type not in {
+                DistributionActionType.COMMENT,
+                DistributionActionType.REPLY,
+                DistributionActionType.STANDALONE_POST,
+            }
+        ):
+            raise ValueError("VOICE_PREVIEW_TELEGRAM_ONLY")
+        target, draft = await self._draft_single(
+            product=product, play=play, project_id=project_id,
+            voice_version_id=voice_version_id,
+        )
+        if draft.voice_profile_version_id is None or not draft.voice_profile_content_hash:
+            raise RuntimeError("VOICE_PREVIEW_PROVENANCE_REQUIRED")
+        return {
+            "status": "REVIEW_ONLY_NOT_SENDABLE",
+            "published": False,
+            "action_sendable": False,
+            "action_created": False,
+            "project_id": str(project_id),
+            "product_id": str(product.id),
+            "target_url": target.url,
+            "target_source": target.source,
+            "context_text": draft.context_text,
+            "content_text": draft.content_text,
+            "rationale": draft.rationale,
+            "voice_profile_version_id": str(draft.voice_profile_version_id),
+            "voice_profile_content_hash": draft.voice_profile_content_hash,
+            "prompt_version": PERSISTED_COMMUNITY_PROMPT_VERSION,
+        }
+
+    async def auto_prepare(
+        self,
+        *,
+        product: ProductProfileView,
+        play: DistributionPlayView,
+        destination_url: HttpUrl | None = None,
+        project_id: UUID | None = None,
+        voice_version_id: UUID | None = None,
+    ) -> DistributionExecutionPlanView:
+        target, draft = await self._draft_single(
+            product=product, play=play, project_id=project_id,
+            voice_version_id=voice_version_id,
         )
         return distribution_execution_service.prepare(
             product,
@@ -692,6 +900,13 @@ class DistributionActionDraftingService:
                 disclosure_included=draft.disclosure_included,
                 ai_disclosure_included=draft.ai_disclosure_included,
             ),
+            **(
+                {
+                    "voice_profile_version_id": draft.voice_profile_version_id,
+                    "voice_profile_content_hash": draft.voice_profile_content_hash,
+                }
+                if draft.voice_profile_version_id is not None else {}
+            ),
         )
 
     async def auto_prepare_variants(
@@ -700,6 +915,8 @@ class DistributionActionDraftingService:
         product: ProductProfileView,
         play: DistributionPlayView,
         destination_url: HttpUrl | None = None,
+        project_id: UUID | None = None,
+        voice_version_id: UUID | None = None,
     ) -> list[PreparedDraftVariant]:
         if play.status != DistributionPlayStatus.READY:
             raise ValueError("Only READY DistributionPlay objects can be auto-prepared")
@@ -723,6 +940,9 @@ class DistributionActionDraftingService:
             }
         ):
             briefs = briefs[:1]
+        selected_project = self._voice_project_for_draft(
+            product.id, play.platform, project_id=project_id
+        )
         prepared: list[PreparedDraftVariant] = []
         for brief in briefs:
             draft = await self._composer.compose(
@@ -732,6 +952,8 @@ class DistributionActionDraftingService:
                 target=target,
                 policy=policy,
                 variant=brief,
+                project_id=selected_project,
+                voice_version_id=voice_version_id,
             )
             plan = distribution_execution_service.prepare(
                 product,
@@ -748,9 +970,31 @@ class DistributionActionDraftingService:
                     draft_variant=brief.variant_name,
                     expected_user_next_step=brief.expected_user_next_step,
                 ),
+                **(
+                    {
+                        "voice_profile_version_id": draft.voice_profile_version_id,
+                        "voice_profile_content_hash": draft.voice_profile_content_hash,
+                    }
+                    if draft.voice_profile_version_id is not None else {}
+                ),
             )
             prepared.append(PreparedDraftVariant(brief=brief, plan=plan))
         return prepared
+
+    def _voice_project_for_draft(
+        self, product_id: UUID, platform: DistributionPlatform,
+        *, project_id: UUID | None,
+    ) -> UUID | None:
+        if not (
+            get_settings().persisted_voice_writer_enabled
+            and platform == DistributionPlatform.TELEGRAM
+        ):
+            return project_id
+        profiles = self._composer._voice_profiles or VoiceProfileService()
+        if project_id is None:
+            return profiles.resolve_unique_project(product_id)
+        profiles._verify_project(project_id, product_id)
+        return project_id
 
     def _applied_policy(
         self,

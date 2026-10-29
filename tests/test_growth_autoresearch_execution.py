@@ -346,3 +346,49 @@ async def test_paid_autoresearch_trial_is_hard_blocked_even_with_paid_mandate() 
     assert "Paid campaigns are hard-blocked" in result.reasons[0]
     assert distribution_execution_service.list_experiments(UUID(product_id)) == []
     assert growth_autoresearch_service.current_champion(UUID(product_id)).id == baseline.id
+
+
+@pytest.mark.asyncio
+async def test_challenger_voice_version_is_forwarded_by_real_execution_bridge(
+    monkeypatch,
+) -> None:
+    """A schema field alone is insufficient; executor must pass exact version."""
+    from app.action_drafting import distribution_action_drafting_service
+
+    product_id = _create_product()
+    _add_tiktok_identity(product_id)
+    _generate_plays(product_id)
+    _set_mandate(product_id, platform="TIKTOK", action="ORGANIC_VIDEO")
+    _, trial = _trial(
+        product_id, platform="TIKTOK",
+        tactic_id="tiktok_partizan_organic_video",
+    )
+    voice_id = uuid4()
+    amended = trial.model_copy(update={
+        "challenger": trial.challenger.model_copy(
+            update={"voice_profile_version_id": voice_id}
+        ),
+    })
+    get_runtime_store().put(
+        GROWTH_AUTORESEARCH_TRIAL_NAMESPACE,
+        str(trial.id), amended.model_dump(mode="json"),
+    )
+    seen = {}
+
+    class RecordingDrafting:
+        async def auto_prepare(self, **kwargs):
+            seen["voice_profile_version_id"] = kwargs.pop("voice_version_id", None)
+            return await distribution_action_drafting_service.auto_prepare(**kwargs)
+
+    adapter_service = DistributionExecutionAdapterService(
+        registry=ExecutionAdapterRegistry([ConfirmedMockExecutionAdapter()]),
+        store=get_runtime_store(),
+    )
+    bridge = GrowthAutoResearchExecutionService(
+        store=get_runtime_store(),
+        drafting_service=RecordingDrafting(),
+        adapter_service=adapter_service,
+    )
+    result = await bridge.execute_trial(trial.id)
+    assert result.status == "EXECUTED"
+    assert seen["voice_profile_version_id"] == voice_id

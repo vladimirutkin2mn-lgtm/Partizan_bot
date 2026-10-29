@@ -14,6 +14,16 @@ class Settings(BaseSettings):
     runtime_storage: str = "memory"
     llm_provider: str = "mock"
     llm_model: str = "gpt-5.6"
+    # Opt-in only: the live Telegram composer retains v16.2 unless explicitly
+    # enabled after scoped project routing and profile creation are ready.
+    persisted_voice_writer_enabled: bool = False
+    # Reservation on confirmed product is free; separate worker + finite budget
+    # flags are needed before any paid initial voice generation.
+    voice_initial_reservation_enabled: bool = False
+    voice_generation_worker_enabled: bool = False
+    voice_generation_monthly_budget_usd: Decimal | None = None
+    voice_generation_call_reservation_usd: Decimal | None = None
+    voice_generation_max_output_tokens: int | None = None
     search_provider: str = "mock"
     search_model: str = "gpt-5.6-terra"
     # Per-task overrides as "task=value,task=value". Unlisted tasks keep LLM_MODEL /

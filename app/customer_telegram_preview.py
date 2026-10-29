@@ -29,6 +29,7 @@ from app.telegram_client_governance import (
     customer_telegram_governance_service,
 )
 from app.telegram_client_publishing import CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE
+from app.voice_profiles import VoiceProfileService
 
 TELEGRAM_PREVIEW_NAMESPACE = "customer_telegram_publish_preview"
 PREVIEW_SCHEMA_VERSION = 5
@@ -91,6 +92,12 @@ def _render_preview(record: dict) -> dict:
                 "context_text": str(action.content_payload.get("context_text") or ""),
                 "content_text": str(action.content_text or ""),
                 "content_sha256": str(item["content_sha256"]),
+                "voice_profile_version_id": action.content_payload.get(
+                    "voice_profile_version_id"
+                ),
+                "voice_profile_content_hash": action.content_payload.get(
+                    "voice_profile_content_hash"
+                ),
                 "conversion_path": action.content_payload.get("conversion_path"),
                 "send_eligible": bool(
                     (action.content_payload.get("conversion_path") or {}).get("send_eligible")
@@ -115,6 +122,8 @@ def _render_preview(record: dict) -> dict:
             record.get("marketing_memory_entry_ids") or []
         ),
         "variant_count": len(rendered_variants),
+        "voice_profile_version_id": record.get("voice_profile_version_id"),
+        "voice_profile_content_hash": record.get("voice_profile_content_hash"),
         "variants": rendered_variants,
         "prepared_at": str(record["prepared_at"]),
         "published": False,
@@ -124,6 +133,8 @@ def _render_preview(record: dict) -> dict:
 def _validate_existing_preview(
     record: dict,
     expected_memory_fingerprint: str | None = None,
+    expected_voice_version_id: str | None = None,
+    expected_voice_content_hash: str | None = None,
 ) -> None:
     if int(record.get("schema_version") or 0) != PREVIEW_SCHEMA_VERSION:
         raise ValueError("Existing preview uses a stale schema version")
@@ -133,6 +144,16 @@ def _validate_existing_preview(
         != expected_memory_fingerprint
     ):
         raise ValueError("Existing preview uses stale project marketing memory")
+    if expected_voice_version_id is None and record.get("voice_profile_version_id"):
+        raise ValueError("Existing preview was created with a now-disabled voice writer")
+    if expected_voice_version_id is not None and (
+        str(record.get("voice_profile_version_id") or "") != expected_voice_version_id
+        or str(record.get("voice_profile_content_hash") or "")
+        != expected_voice_content_hash
+    ):
+        raise ValueError(
+            "Existing preview uses stale voice version; reconcile prepared actions"
+        )
     variants = record.get("variants")
     if not isinstance(variants, list) or not variants:
         raise ValueError("Existing preview has no prepared variants")
@@ -141,6 +162,13 @@ def _validate_existing_preview(
         action = distribution_execution_service.get_action(UUID(str(item["action_id"])))
         if action.status != DistributionActionStatus.PREPARED:
             raise ValueError("Existing preview action is no longer PREPARED")
+        if expected_voice_version_id is not None and (
+            str(action.content_payload.get("voice_profile_version_id") or "")
+            != expected_voice_version_id
+            or str(action.content_payload.get("voice_profile_content_hash") or "")
+            != expected_voice_content_hash
+        ):
+            raise ValueError("Existing preview action uses stale voice provenance")
         expected_hash = _content_hash(
             str(action.target_url or ""),
             str(item["conversion_mechanism"]),
@@ -155,6 +183,14 @@ async def run(args: argparse.Namespace) -> dict:
     store, project, product, distribution, opportunity, target_url = _load_exact_target(args)
     preview_key = _preview_key(args.project_id, args.expected_telegram_entity_id)
     memory_fingerprint, memory_entry_ids = _marketing_memory_state(product.id)
+
+    voice = None
+    if get_settings().persisted_voice_writer_enabled:
+        voice = VoiceProfileService(store).active(
+            project_id=args.project_id,
+            product_id=product.id,
+            product_data=product.model_dump(mode="json"),
+        )
 
     if str((project.get("channel_preferences") or {}).get("TELEGRAM") or "") != "RESEARCH_ONLY":
         raise ValueError("Telegram must remain RESEARCH_ONLY while awaiting human preview approval")
@@ -179,6 +215,8 @@ async def run(args: argparse.Namespace) -> dict:
         _validate_existing_preview(
             existing,
             expected_memory_fingerprint=memory_fingerprint,
+            expected_voice_version_id=str(voice.id) if voice is not None else None,
+            expected_voice_content_hash=voice.content_hash if voice is not None else None,
         )
         return _render_preview(existing)
 
@@ -203,6 +241,8 @@ async def run(args: argparse.Namespace) -> dict:
         prepared_variants = await distribution_action_drafting_service.auto_prepare_variants(
             product=product,
             play=play,
+            project_id=args.project_id if voice is not None else None,
+            voice_version_id=voice.id if voice is not None else None,
         )
         if not prepared_variants:
             raise ValueError("No conversion-oriented Telegram variants were prepared")
@@ -271,6 +311,8 @@ async def run(args: argparse.Namespace) -> dict:
             "profile_route_url": profile_route_url,
             "marketing_memory_fingerprint": memory_fingerprint,
             "marketing_memory_entry_ids": memory_entry_ids,
+            "voice_profile_version_id": str(voice.id) if voice is not None else None,
+            "voice_profile_content_hash": voice.content_hash if voice is not None else None,
             "variants": variant_records,
             "prepared_at": datetime.now(UTC).isoformat(),
         }
