@@ -260,7 +260,7 @@ async def test_invalid_model_schema_records_only_field_and_error_type_no_output(
     assert any(
         row["field"] == "style_instruction" for row in saved.validation_diagnostics
     )
-    assert all("short" not in row.values() for row in saved.validation_diagnostics)
+    assert all(\n        "too short" not in value\n        for row in saved.validation_diagnostics for value in row.values()\n    )
     again = await worker.run_once()
     assert again["provider_calls"] == 0
     assert provider.calls == 1
