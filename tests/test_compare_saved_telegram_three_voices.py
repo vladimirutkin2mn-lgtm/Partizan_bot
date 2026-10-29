@@ -126,6 +126,7 @@ async def test_offline_manifest_has_exact_composer_v17_and_no_remote_or_persiste
     assert manifest["v17_is_exact_composer_request"] is True
     assert manifest["voice_profile_version_id"] == str(voice.id)
     assert manifest["max_calls"] == 3
+    assert manifest["cases"][0]["target_text"]
     arms = manifest["cases"][0]["arms"]
     assert set(arms) == set(benchmark.ARMS)
     assert len({arms[arm]["request_hash"] for arm in benchmark.ARMS}) == 3
