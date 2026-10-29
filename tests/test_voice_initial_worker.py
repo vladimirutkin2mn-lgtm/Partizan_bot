@@ -201,3 +201,23 @@ async def test_budget_slots_exhausted_while_job_is_reserved_for_next_month():
     assert result["status"] == "MONTHLY_VOICE_BUDGET_EXHAUSTED"
     assert provider.calls == 0
     assert VoiceProfileService(store).job(job.id).status == "RESERVED"
+
+
+@pytest.mark.asyncio
+async def test_targeted_paid_voice_worker_disables_provider_auto_retries(monkeypatch):
+    store, _, _, job = setup()
+    provider = StubProvider()
+    kwargs_seen = {}
+
+    def fake_factory(**kwargs):
+        kwargs_seen.update(kwargs)
+        return provider
+
+    monkeypatch.setattr("app.voice_initial_worker.get_llm_provider", fake_factory)
+    worker = VoiceInitialGenerationWorker(
+        store=store, settings=settings(voice_generation_worker_enabled=True),
+    )
+    result = await worker.run_once(expected_job_id=job.id)
+    assert result["status"] == "VOICE_INITIAL_CREATED"
+    assert provider.calls == 1
+    assert kwargs_seen == {"max_output_tokens": 1600, "max_retries": 0}
