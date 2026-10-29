@@ -229,7 +229,7 @@ async def test_inspect_active_returns_real_saved_character_without_new_model_cal
     ), store=store, settings=settings(), provider=provider)
     snapshot = VoiceInitialBootstrap(store).inspect(project_id=pid, product_id=product_id)
     assert snapshot["status"] == "ACTIVE_VOICE_INSPECTED"
-    assert "observant" in snapshot["character"]["style_instruction"].lower()
+    assert "perceptive" in snapshot["character"]["style_instruction"].lower()
     assert snapshot["character"]["examples"][0]["origin"] == "SYNTHETIC_UNVERIFIED"
     assert snapshot["provider_calls"] == 0
     assert snapshot["publication_actions"] == 0
