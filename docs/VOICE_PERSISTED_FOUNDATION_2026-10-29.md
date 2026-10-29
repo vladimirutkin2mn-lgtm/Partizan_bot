@@ -162,3 +162,26 @@ For human inspection of the generated character **without another call**:
 The output contains the actual persisted character and its immutable version/hash and notes that examples are synthetic. This does NOT enable v17 drafting/publishing.
 
 **State/evidence:** production has not been changed, no live voice model has run here, no real voice or actual v17 texts have been produced. This is an operator-only initial generation bridge, not fully automatic onboarding or a scheduled worker. Before any real three-arm pilot, execute and inspect the actual generated voice, then run the *default free preflight* of `tools/compare_saved_telegram_three_voices.py`; a paid pilot still requires its own approval and envelope.
+
+## Legacy confirmation compatibility after first production read-only preflight (2026-10-29)
+
+The first production preflight on the known FemDom project returned
+`VOICE_PRODUCT_UNDERSTANDING_NOT_CONFIRMED` (provider calls = 0). The
+original bootstrap had required a field that predates some older confirmed
+projects. The existing `CustomerFunnelService.continue_preview_research`
+already supports the historical distinction: an **absent** project flag with
+a `CONFIRMED` ProductProfile is legacy-confirmed, whereas an explicitly
+false confirmation must stay rejected.
+
+The updated **read-only** voice plan now reports
+`LEGACY_CONFIRMATION_BACKFILL_REQUIRED` for exactly that legacy case
+without modifying project or product. A separately invoked unpaid
+`--reserve-only` action performs an atomic compare-and-swap of the
+project's confirmation field *only* when the key is absent and the bound
+product is confirmed; it then reserves one exact voice job. Explicit
+`understanding_confirmed=false` or `null`, draft products, mismatched
+project ownership, stale snapshots and conflicting writes remain blocked.
+
+The new one-shot read-only production workflow is re-triggered by its own
+changed YAML only once merged into main. Neither that workflow nor the code
+change executes the unpaid reservation or any paid provider call.
