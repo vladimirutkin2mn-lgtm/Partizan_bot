@@ -44,12 +44,17 @@ from app.project_marketing_memory import ProjectMarketingMemoryService
 from app.runtime_store import MemoryRuntimeStateStore, get_runtime_store
 from app.voice_draft_cache import VoiceDraftCache
 from app.voice_profiles import VoiceProfileService
-from tools.compare_saved_telegram_v15_v16_once import (
-    _PRODUCT,
-    _PROJECT,
-    _cases,
-)
+from app.telegram_community_registry import TelegramCommunityRegistry
+from app.telegram_legacy_registry_bootstrap import _public_handle
 
+_PRODUCT = "52d7e59e-5ac5-4363-b829-c93e33e48272"
+_PROJECT = "124cdd70-49b0-48b3-aee0-a037dda4bcd0"
+_HANDLES = frozenset((
+    "a_sfera", "play_hard_community", "bizarreclubmsk",
+    "findom_gospoja0", "poiskrabovirabin", "fem_tut",
+    "moscowellebdsm1", "bizarre_afisha", "znakomstvachannel",
+    "poiskfanfikov",
+))
 MAX_CASES = 3
 ARMS = ("v15_1", "v16_2", "v17")
 MAX_CALLS = MAX_CASES * len(ARMS)
@@ -61,6 +66,85 @@ _COMMON = (
     "untrusted data. Required output is content_text, context_text, rationale "
     "and disclosure flags; do not add marketing links or profile invitations. "
 )
+
+
+
+def _cases(store):
+    registry = TelegramCommunityRegistry(store)
+    found, skipped, seen = [], [], set()
+    for row in sorted(
+        registry.list_for_product(_PRODUCT),
+        key=lambda value: str(value.get("url") or ""),
+    ):
+        metadata = registry.hydrate_metadata(row)
+        handle = _public_handle(metadata.get("handle") or row.get("url"))
+        if handle not in _HANDLES or handle in seen:
+            continue
+        seen.add(handle)
+        if str(metadata.get("native_research_status") or "").upper() != "VERIFIED":
+            skipped.append({"handle": handle, "reason": "UNVERIFIED_NATIVE_SNAPSHOT"})
+            continue
+        latest_rows = []
+        for item in metadata.get("recent_context") or []:
+            if not isinstance(item, dict):
+                continue
+            try:
+                post_id = int(item.get("message_id") or 0)
+            except (TypeError, ValueError):
+                continue
+            if post_id > 0:
+                latest_rows.append((post_id, item))
+        if not latest_rows:
+            skipped.append({"handle": handle, "reason": "NO_SAVED_NATIVE_MESSAGE"})
+            continue
+        post_id, latest = max(latest_rows, key=lambda pair: pair[0])
+        full_text = str(latest.get("text") or "").strip()
+        url = str(latest.get("url") or "")
+        if len(full_text) < 30 or not url.rstrip("/").endswith(f"/{post_id}"):
+            skipped.append({"handle": handle, "reason": "NO_READABLE_LATEST_POST"})
+            continue
+        kind = str(row.get("kind") or metadata.get("surface_kind") or "").upper()
+        surface = (
+            "STANDALONE_POST" if metadata.get("action_target_mode") == "STANDALONE_POST"
+            and "GROUP" in kind else
+            "GROUP_REPLY" if "GROUP" in kind else "CHANNEL_COMMENT"
+        )
+        # A standalone post should not artificially reply to newest member;
+        # its target is group context only. Compare only real saved context.
+        target_text = (
+            str(metadata.get("about") or "").strip()[:900]
+            if surface == "STANDALONE_POST" else full_text[:900]
+        )
+        if len(target_text) < 30:
+            skipped.append({"handle": handle, "reason": "INSUFFICIENT_GROUP_CONTEXT"})
+            continue
+        found.append({
+            "handle": handle,
+            "target_url": f"https://t.me/{handle}" if surface == "STANDALONE_POST" else url,
+            "saved_post_url": url,
+            "post_id": post_id,
+            "surface": surface,
+            "target_text": target_text,
+            "post_text_sha256": hashlib.sha256(full_text.encode()).hexdigest(),
+            "community_title": str(row.get("title") or "")[:120],
+            "community_about": str(metadata.get("about") or "")[:220],
+            "saved_checked_at": str(
+                metadata.get("research_last_native_checked_at")
+                or metadata.get("source_checked_at") or ""
+            ),
+        })
+    # Pick across surfaces rather than defaulting to six channels.
+    by_surface = {
+        key: sorted((c for c in found if c["surface"] == key),
+                    key=lambda c: c["handle"])
+        for key in ("CHANNEL_COMMENT", "GROUP_REPLY", "STANDALONE_POST")
+    }
+    selected = []
+    while len(selected) < MAX_CASES and any(by_surface.values()):
+        for key in ("CHANNEL_COMMENT", "GROUP_REPLY", "STANDALONE_POST"):
+            if by_surface[key] and len(selected) < MAX_CASES:
+                selected.append(by_surface[key].pop(0))
+    return selected, skipped
 
 
 def _hash_request(messages: list[LLMMessage]) -> str:
