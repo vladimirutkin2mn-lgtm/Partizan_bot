@@ -42,10 +42,10 @@ from app.persisted_voice_writer import PERSISTED_COMMUNITY_PROMPT_VERSION
 from app.product_intake import product_intake_service
 from app.project_marketing_memory import ProjectMarketingMemoryService
 from app.runtime_store import MemoryRuntimeStateStore, get_runtime_store
-from app.voice_draft_cache import VoiceDraftCache
-from app.voice_profiles import VoiceProfileService
 from app.telegram_community_registry import TelegramCommunityRegistry
 from app.telegram_legacy_registry_bootstrap import _public_handle
+from app.voice_draft_cache import VoiceDraftCache
+from app.voice_profiles import VoiceProfileService
 
 _PRODUCT = "52d7e59e-5ac5-4363-b829-c93e33e48272"
 _PROJECT = "124cdd70-49b0-48b3-aee0-a037dda4bcd0"
