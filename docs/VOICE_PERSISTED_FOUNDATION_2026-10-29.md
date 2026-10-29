@@ -214,7 +214,10 @@ revises the initial voice generator instructions to a concrete v2 field-by-
 field schema with bounded field lengths and synthetic-only examples. For
 any **future separately approved** attempt, failed Pydantic validation
 records only the limited field path and error type, with no model response
-text or product payload in diagnostics, and still stops with
+text or product payload in diagnostics. The default zero-cost
+`python -m app.voice_bootstrap --project-id ... --product-id ...` preflight
+also exposes these sanitized diagnostics so an operator need not examine
+production application logs. The operation still stops with
 `PROVIDER_OUTCOME_UNKNOWN`. The original failed job remains untouched.
 An alternative prompt version is a **new** job and requires independent
 approval and budget; the v2 prompt change is not evidence of better
