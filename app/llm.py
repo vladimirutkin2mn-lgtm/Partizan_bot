@@ -30,11 +30,14 @@ class LLMProvider(ABC):
 
 class OpenAIResponsesProvider(LLMProvider):
     def __init__(
-        self, api_key: str, model: str, *, max_output_tokens: int | None = None
+        self, api_key: str, model: str, *,
+        max_output_tokens: int | None = None,
+        max_retries: int | None = None,
     ) -> None:
         from openai import OpenAI
 
-        self._client = OpenAI(api_key=api_key)
+        options = {"max_retries": max_retries} if max_retries is not None else {}
+        self._client = OpenAI(api_key=api_key, **options)
         self._model = model
         self._max_output_tokens = max_output_tokens
 
@@ -67,7 +70,10 @@ class OpenAIResponsesProvider(LLMProvider):
         return parsed
 
 
-def get_llm_provider(*, max_output_tokens: int | None = None) -> LLMProvider | None:
+def get_llm_provider(
+    *, max_output_tokens: int | None = None,
+    max_retries: int | None = None,
+) -> LLMProvider | None:
     settings = get_settings()
     if settings.llm_provider == "mock":
         return None
@@ -78,5 +84,6 @@ def get_llm_provider(*, max_output_tokens: int | None = None) -> LLMProvider | N
             api_key=settings.openai_api_key,
             model=settings.llm_model,
             max_output_tokens=max_output_tokens,
+            max_retries=max_retries,
         )
     raise ValueError(f"Unsupported LLM provider: {settings.llm_provider}")
