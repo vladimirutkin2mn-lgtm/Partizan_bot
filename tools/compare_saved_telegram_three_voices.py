@@ -292,6 +292,8 @@ async def build_manifest(*, store, product, max_cases: int = MAX_CASES) -> dict:
             ).hexdigest()[:24],
             "target_url": case["target_url"],
             "surface": case["surface"],
+            # Kept privately in memory for identical-context blind review.
+            "target_text": case["target_text"],
             "target_text_sha256": hashlib.sha256(
                 case["target_text"].encode()
             ).hexdigest(),
@@ -444,7 +446,8 @@ async def main() -> dict:
             **{k: v for k, v in manifest.items() if k not in {"cases"}},
             "cases": [
                 {
-                    k: v for k, v in case.items() if k != "arms"
+                    k: v for k, v in case.items()
+                    if k not in {"arms", "target_text"}
                 } | {"arm_request_hashes": {
                     arm: item["request_hash"] for arm, item in case["arms"].items()
                 }}
