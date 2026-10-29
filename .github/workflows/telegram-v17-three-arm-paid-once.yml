@@ -87,12 +87,14 @@ jobs:
           # operator-estimated envelope, NOT a guaranteed invoice ceiling.
           ssh -o BatchMode=yes "${DEPLOY_HOST}" \
             "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
-            python -m tools.compare_saved_telegram_three_voices \
+            python - \
             --execute-paid \
             --ack ALLOW_NINE_PAID_DRAFT_CALLS_NO_TELEGRAM \
             --budget-usd 1.80 \
             --reservation-usd 0.20 \
-            --max-cases 3" > v17-three-arm-drafts-private.json
+            --max-cases 3" \
+            < tools/compare_saved_telegram_three_voices.py \
+            > v17-three-arm-drafts-private.json
           python - <<'PY'
           import json
           from pathlib import Path
