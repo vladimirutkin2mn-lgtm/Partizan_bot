@@ -217,3 +217,21 @@ async def test_bootstrap_refuses_unconfirmed_or_changed_product():
             pid, product_id, generate_paid=True,
             expected_job_id=job["job_id"], ack=APPROVAL,
         ), store=store, settings=settings(), provider=VoiceLLM())
+
+
+@pytest.mark.asyncio
+async def test_inspect_active_returns_real_saved_character_without_new_model_call():
+    store, pid, product_id, _ = fixture_data()
+    job = VoiceInitialBootstrap(store).reserve(project_id=pid, product_id=product_id)
+    provider = VoiceLLM()
+    await run(args(
+        pid, product_id, generate_paid=True, ack=APPROVAL,
+        expected_job_id=job["job_id"],
+    ), store=store, settings=settings(), provider=provider)
+    snapshot = VoiceInitialBootstrap(store).inspect(project_id=pid, product_id=product_id)
+    assert snapshot["status"] == "ACTIVE_VOICE_INSPECTED"
+    assert "observant" in snapshot["character"]["style_instruction"].lower()
+    assert snapshot["character"]["examples"][0]["origin"] == "SYNTHETIC_UNVERIFIED"
+    assert snapshot["provider_calls"] == 0
+    assert snapshot["publication_actions"] == 0
+    assert provider.calls == 1
