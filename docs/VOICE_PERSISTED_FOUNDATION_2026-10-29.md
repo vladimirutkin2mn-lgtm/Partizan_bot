@@ -182,6 +182,13 @@ product is confirmed; it then reserves one exact voice job. Explicit
 `understanding_confirmed=false` or `null`, draft products, mismatched
 project ownership, stale snapshots and conflicting writes remain blocked.
 
-The new one-shot read-only production workflow is re-triggered by its own
-changed YAML only once merged into main. Neither that workflow nor the code
-change executes the unpaid reservation or any paid provider call.
+The one-shot read-only production preflight is re-triggered by its changed
+YAML after merge. If it **succeeds** for the exact current production SHA,
+a separate one-shot `.github/workflows/telegram-v17-legacy-voice-reserve-once.yml`
+workflow runs only `app.voice_bootstrap --reserve-only` for the exact known
+FemDom project/product. This action may backfill the missing legacy flag and
+durably reserve the one job, but is unpaid, does not enable v17, and cannot
+call OpenAI or Telegram. Missing or explicitly unconfirmed projects fail
+preflight and never enter this reservation workflow. Unknown paid provider
+outcomes remain untouched; paid voice generation still needs a distinct
+operator budget and consent.
