@@ -204,7 +204,7 @@ async def test_paid_cli_requires_durable_store_explicit_ack_and_budget():
 async def test_bootstrap_refuses_unconfirmed_or_changed_product():
     store, pid, product_id, _ = fixture_data(confirmed=False)
     bootstrap = VoiceInitialBootstrap(store)
-    with pytest.raises(PermissionError, match="NOT_CONFIRMED"):
+    with pytest.raises(PermissionError, match="EXPLICITLY_UNCONFIRMED"):
         bootstrap.plan(project_id=pid, product_id=product_id)
     store, pid, product_id, _ = fixture_data()
     job = VoiceInitialBootstrap(store).reserve(project_id=pid, product_id=product_id)
@@ -234,3 +234,77 @@ async def test_inspect_active_returns_real_saved_character_without_new_model_cal
     assert snapshot["provider_calls"] == 0
     assert snapshot["publication_actions"] == 0
     assert provider.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_legacy_confirmed_project_preflight_is_readonly_and_explicit_reserve_backfills():
+    store, pid, product_id, product = fixture_data()
+    before = store.get("customer_acquisition_projects", str(pid))
+    before.pop("understanding_confirmed")
+    store.put("customer_acquisition_projects", str(pid), before)
+    provider = VoiceLLM()
+
+    planned = await run(args(pid, product_id), store=store, settings=settings())
+    assert planned["status"] == "LEGACY_CONFIRMATION_BACKFILL_REQUIRED"
+    assert planned["provider_calls"] == 0
+    assert "understanding_confirmed" not in store.get(
+        "customer_acquisition_projects", str(pid)
+    )
+    assert not store.list_namespace("voice_profile_generation_jobs")
+
+    reserved = await run(
+        args(pid, product_id, reserve_only=True), store=store,
+        settings=settings(), provider=provider,
+    )
+    assert reserved["status"] == "RESERVED"
+    assert reserved["provider_calls"] == 0
+    project = store.get("customer_acquisition_projects", str(pid))
+    assert project["understanding_confirmed"] is True
+    assert project["voice_legacy_confirmation_source"] == "CONFIRMED_PRODUCT_PROFILE"
+    assert store.list_namespace(VOICE_BUDGET_SLOT_NAMESPACE) == []
+    assert provider.calls == 0
+    complete = await run(args(
+        pid, product_id, generate_paid=True,
+        expected_job_id=reserved["job_id"], ack=APPROVAL,
+    ), store=store, settings=settings(), provider=provider)
+    assert complete["status"] == "VOICE_INITIAL_CREATED"
+    assert provider.calls == 1
+    assert VoiceProfileService(store).active(
+        project_id=pid, product_id=product_id, product_data=product
+    ).id
+
+
+@pytest.mark.asyncio
+async def test_explicitly_unconfirmed_legacy_project_cannot_be_backfilled_or_charged():
+    store, pid, product_id, _ = fixture_data(confirmed=False)
+    before = store.get("customer_acquisition_projects", str(pid))
+    with pytest.raises(PermissionError, match="EXPLICITLY_UNCONFIRMED"):
+        await run(args(pid, product_id), store=store, settings=settings())
+    with pytest.raises(PermissionError, match="EXPLICITLY_UNCONFIRMED"):
+        await run(
+            args(pid, product_id, reserve_only=True),
+            store=store, settings=settings(), provider=VoiceLLM(),
+        )
+    assert store.get("customer_acquisition_projects", str(pid)) == before
+    assert store.list_namespace(VOICE_BUDGET_SLOT_NAMESPACE) == []
+
+
+@pytest.mark.asyncio
+async def test_absent_flag_is_not_confirmation_without_confirmed_product():
+    store, pid, product_id, _ = fixture_data()
+    project = store.get("customer_acquisition_projects", str(pid))
+    project.pop("understanding_confirmed")
+    store.put("customer_acquisition_projects", str(pid), project)
+    record = store.get("product_intake", str(product_id))
+    record["product"]["status"] = "DRAFT"
+    store.put("product_intake", str(product_id), record)
+    with pytest.raises(PermissionError, match="PROFILE_NOT_CONFIRMED"):
+        await run(args(pid, product_id), store=store, settings=settings())
+    with pytest.raises(PermissionError, match="PROFILE_NOT_CONFIRMED"):
+        await run(
+            args(pid, product_id, reserve_only=True),
+            store=store, settings=settings(),
+        )
+    assert "understanding_confirmed" not in store.get(
+        "customer_acquisition_projects", str(pid)
+    )

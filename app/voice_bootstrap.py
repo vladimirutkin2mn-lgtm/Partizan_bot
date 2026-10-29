@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+from datetime import UTC, datetime
 from uuid import UUID
 
 from app.config import get_settings
@@ -36,8 +37,14 @@ class VoiceInitialBootstrap:
     def _validated_source(self, project_id: UUID, product_id: UUID) -> tuple[dict, str]:
         self.profiles._verify_project(project_id, product_id)
         project = self.store.get(PROJECT_NAMESPACE, str(project_id))
-        if project.get("understanding_confirmed") is not True:
-            raise PermissionError("VOICE_PRODUCT_UNDERSTANDING_NOT_CONFIRMED")
+        # As in CustomerFunnelService.continue_preview_research, older
+        # confirmed profiles may predate the project-level confirmation flag.
+        # An explicit False/None is a real veto, not a legacy omission.
+        if (
+            "understanding_confirmed" in project
+            and project["understanding_confirmed"] is not True
+        ):
+            raise PermissionError("VOICE_PRODUCT_UNDERSTANDING_EXPLICITLY_UNCONFIRMED")
         record = self.store.get(PRODUCT_INTAKE_NAMESPACE, str(product_id))
         product = record.get("product") if isinstance(record, dict) else None
         if not isinstance(product, dict):
@@ -56,6 +63,11 @@ class VoiceInitialBootstrap:
             "source_fingerprint": digest,
             "provider_calls": 0, "publication_actions": 0,
         }
+        project = self.store.get(PROJECT_NAMESPACE, str(project_id))
+        if "understanding_confirmed" not in project:
+            # Read-only preflight reports the required free migration.
+            # No automatic project writes or paid model calls.
+            return {**result, "status": "LEGACY_CONFIRMATION_BACKFILL_REQUIRED"}
         assignment = self.store.get(
             "voice_profile_assignments", f"{project_id}:{product_id}"
         )
@@ -109,6 +121,24 @@ class VoiceInitialBootstrap:
 
     def reserve(self, *, project_id: UUID, product_id: UUID) -> dict:
         plan = self.plan(project_id=project_id, product_id=product_id)
+        if plan["status"] == "LEGACY_CONFIRMATION_BACKFILL_REQUIRED":
+            # Reserve-only is an explicit state-mutating operation. Reuse
+            # the existing customer funnel's legacy-confirmed semantics:
+            # missing flag + CONFIRMED ProductProfile. Never override a
+            # project with an explicitly false/unknown confirmation flag.
+            before = self.store.get(PROJECT_NAMESPACE, str(project_id))
+            if "understanding_confirmed" in before:
+                raise RuntimeError("VOICE_LEGACY_CONFIRMATION_CHANGED")
+            updated = {
+                **before, "understanding_confirmed": True,
+                "understanding_confirmed_backfilled_at": datetime.now(UTC).isoformat(),
+                "voice_legacy_confirmation_source": "CONFIRMED_PRODUCT_PROFILE",
+            }
+            if not self.store.compare_and_swap(
+                PROJECT_NAMESPACE, str(project_id), before, updated
+            ):
+                raise RuntimeError("VOICE_LEGACY_CONFIRMATION_CAS_CONFLICT")
+            plan = self.plan(project_id=project_id, product_id=product_id)
         if plan["status"] != "RESERVATION_NEEDED":
             return plan
         product, digest = self._validated_source(project_id, product_id)
@@ -192,7 +222,8 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0 if result.get("status") in {
             "ACTIVE", "ACTIVE_VOICE_INSPECTED", "RESERVATION_NEEDED",
-            "RESERVED", "VOICE_INITIAL_CREATED",
+            "LEGACY_CONFIRMATION_BACKFILL_REQUIRED", "RESERVED",
+            "VOICE_INITIAL_CREATED",
         } else 2
     except Exception as exc:
         print(json.dumps({
