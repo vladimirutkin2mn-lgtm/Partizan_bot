@@ -1,0 +1,119 @@
+name: One-shot v17 three-arm saved-post preflight (ZERO LLM CALLS)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/telegram-v17-three-arm-readonly-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: partizan-v17-three-arm-readonly-20261030
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact current main and production connection
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_PATH DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing offline research connection ${key}"
+              exit 1
+            fi
+          done
+          current_main="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [[ "${current_main}" != "${RELEASE_SHA}" ]]; then
+            echo "::error::Stale release; no production access"
+            exit 1
+          fi
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin production host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Wait for matching deployed release
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 90); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${RELEASE_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Matching deployment unavailable; no provider calls"
+          exit 1
+      - name: Freeze up to three saved verified post cases (read-only)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          # Read existing DB snapshots. Never import Telegram session or
+          # publisher, run live search, create a draft or call LLM.
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+            python -m tools.compare_saved_telegram_three_voices \
+            --max-cases 3" > v17-three-arm-preflight-private.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("v17-three-arm-preflight-private.json").read_text())
+          assert result["status"] == "PREFLIGHT_READY_NO_MODEL_CALLS"
+          assert result["llm_calls"] == 0
+          assert result["telegram_api_calls"] == 0
+          assert result["runtime_writes"] == 0
+          assert result["v17_is_exact_composer_request"] is True
+          assert result["historical_arms_are_controlled_approximations"] is True
+          assert 1 <= len(result["cases"]) <= 3
+          assert result["max_calls"] <= 9
+          print(json.dumps({
+              key: result.get(key) for key in (
+                  "status", "voice_profile_version_id",
+                  "voice_profile_content_hash", "max_calls", "llm_calls",
+                  "telegram_api_calls", "runtime_writes", "skipped",
+              )
+          }, ensure_ascii=False))
+          for case in result["cases"]:
+              print(json.dumps({
+                  "case_id": case["case_id"],
+                  "target_url": case["target_url"],
+                  "surface": case["surface"],
+                  "arm_request_hashes": case["arm_request_hashes"],
+              }, ensure_ascii=False))
+          PY
+      - name: Retain short-lived frozen request hashes (no drafts)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v17-three-arm-saved-post-no-spend-preflight
+          path: v17-three-arm-preflight-private.json
+          retention-days: 2
+          if-no-files-found: ignore
