@@ -1,0 +1,132 @@
+name: One-shot v15.1 v16.2 v17 saved Telegram text quality pilot (NO SEND)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/telegram-v17-three-arm-paid-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: partizan-v17-three-arm-paid-20261030
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require exact current main, first attempt and private research connection
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          # Prevent accidental GitHub job reruns from rebilling the experiment.
+          if [[ "${GITHUB_RUN_ATTEMPT:-1}" != "1" ]]; then
+            echo "::error::Paid one-shot research cannot be rerun"
+            exit 1
+          fi
+          for key in DEPLOY_HOST DEPLOY_PATH DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing private research connection ${key}"
+              exit 1
+            fi
+          done
+          current_main="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [[ "${current_main}" != "${RELEASE_SHA}" ]]; then
+            echo "::error::Refusing paid comparison on stale source"
+            exit 1
+          fi
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin production host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Wait for matching deployed release
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 90); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${RELEASE_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Matching deployed release unavailable; zero LLM calls"
+          exit 1
+      - name: At most nine paid model drafts using previously saved Telegram posts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          # No Telegram API, new discovery, runtime writes or publications.
+          # One generation per arm/post, maximum 900 output tokens each;
+          # retries disabled, stop on first provider error. This is an
+          # operator-estimated envelope, NOT a guaranteed invoice ceiling.
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+            python -m tools.compare_saved_telegram_three_voices \
+            --execute-paid \
+            --ack ALLOW_NINE_PAID_DRAFT_CALLS_NO_TELEGRAM \
+            --budget-usd 1.80 \
+            --reservation-usd 0.20 \
+            --max-cases 3" > v17-three-arm-drafts-private.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("v17-three-arm-drafts-private.json").read_text())
+          assert data["publication_actions"] == 0
+          assert data["telegram_api_calls"] == 0
+          assert data["runtime_writes"] == 0
+          assert data["new_search_calls"] == 0
+          assert data["promotion_approved"] is False
+          assert data["max_calls"] <= 9
+          assert data["provider_calls_attempted"] <= data["max_calls"]
+          assert data["provider_invoice_amount_usd"] is None
+          assert data["status"] in (
+              "AWAITING_BLIND_HUMAN_REVIEW", "INCOMPLETE_PROVIDER_OUTCOME"
+          )
+          print(json.dumps({
+              key: data.get(key) for key in (
+                  "status", "error_type", "provider_calls_attempted",
+                  "max_calls", "budget_operator_estimate_usd",
+                  "reserved_operator_estimate_usd",
+                  "provider_invoice_amount_usd", "publication_actions",
+                  "telegram_api_calls", "runtime_writes",
+              )
+          }, ensure_ascii=False))
+          if data["status"] == "INCOMPLETE_PROVIDER_OUTCOME":
+              print("::warning::Partial outcome; do not rerun or auto-promote")
+          else:
+              print("Drafts retained for human blind scoring; none published")
+          PY
+      - name: Retain private no-send message variants for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v17-v16-v15-saved-telegram-real-drafts-private
+          path: v17-three-arm-drafts-private.json
+          retention-days: 2
+          if-no-files-found: ignore
