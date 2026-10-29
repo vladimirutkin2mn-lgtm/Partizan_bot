@@ -47,3 +47,31 @@ After completing all reviews, reveal labels and compare failures, disagreements,
 ## Next step
 
 Build bounded, LLM-generated challenger voice versions with immutable provenance and a manual evaluation bridge. Add generation-run/version linkage through delivered Telegram events and downstream outcomes; only after evidence and a rollback plan consider canary testing. All production feature flags stay OFF.
+
+## First real product-derived voice saved (2026-10-30)
+
+The separate v2 generation run `40947830031` completed successfully.
+One OpenAI provider request created and activated voice version
+`768f2d13-576b-4311-ab50-629b8ba6e2b6`
+(content hash `b700bb763fd6343eedb7b5f302aa42bd0ffe28c6ba38986be19b99116e3546b7`).
+Recorded API usage: **791 input tokens, 858 output tokens** including
+316 reasoning tokens; **one** provider response, 0 web calls. The system
+reserved **US$0.25 estimated**, but the exact billed amount was not
+available from the provider response. The original failed v1 job remains
+in history; no retries or Telegram sends occurred.
+
+Human editorial review of the saved voice, before any message-generation
+test, identified an important quality concern: it strongly emphasizes
+rules, moderation, boundaries and formal restraint; its two synthetic
+examples resemble moderator corrections instead of organic, playful,
+topic-specific community participation. That is a **qualitative concern,
+not a proven result on live message examples**. Save the voice as the
+unproven baseline and do not infer effective marketing conversion or
+auto-promote it. Do not post the raw product/character to repository docs.
+
+The separate `telegram-v17-three-arm-readonly-once.yml` workflow
+confirms that the saved version and up to 3 verified old native posts can
+be assembled as **one frozen offline request manifest** (0 paid model
+calls, 0 Telegram interactions). Historical v15.1/v16.2 arms remain
+controlled approximations. A paid three-arm quality test requires a
+separate approval and bound, and generated texts require blind review.
