@@ -204,7 +204,7 @@ async def test_paid_cli_requires_durable_store_explicit_ack_and_budget():
 async def test_bootstrap_refuses_unconfirmed_or_changed_product():
     store, pid, product_id, _ = fixture_data(confirmed=False)
     bootstrap = VoiceInitialBootstrap(store)
-    with pytest.raises(PermissionError, match="NOT_CONFIRMED"):
+    with pytest.raises(PermissionError, match="EXPLICITLY_UNCONFIRMED"):
         bootstrap.plan(project_id=pid, product_id=product_id)
     store, pid, product_id, _ = fixture_data()
     job = VoiceInitialBootstrap(store).reserve(project_id=pid, product_id=product_id)
