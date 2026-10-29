@@ -1,4 +1,5 @@
 name: One-shot v17 three-arm saved-post preflight (ZERO LLM CALLS)
+# Replay using self-contained checked-out source piped into the verified API container.
 
 on:
   push:
@@ -80,8 +81,9 @@ jobs:
           # publisher, run live search, create a draft or call LLM.
           ssh -o BatchMode=yes "${DEPLOY_HOST}" \
             "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
-            python -m tools.compare_saved_telegram_three_voices \
-            --max-cases 3" > v17-three-arm-preflight-private.json
+            python - --max-cases 3" \
+            < tools/compare_saved_telegram_three_voices.py \
+            > v17-three-arm-preflight-private.json
           python - <<'PY'
           import json
           from pathlib import Path
