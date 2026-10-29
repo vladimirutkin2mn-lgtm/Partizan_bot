@@ -46,7 +46,7 @@ class VoiceInitialGenerationWorker:
         self._settings = settings if settings is not None else get_settings()
         self._now = now or (lambda: datetime.now(UTC))
 
-    async def run_once(self) -> dict:
+    async def run_once(self, *, expected_job_id: str | None = None) -> dict:
         settings = self._settings
         if not settings.voice_generation_worker_enabled:
             return {"status": "DISABLED", "provider_calls": 0}
@@ -66,6 +66,7 @@ class VoiceInitialGenerationWorker:
             VoiceGenerationJob.model_validate(raw)
             for raw in self._store.list_namespace(VOICE_GENERATION_JOB_NAMESPACE)
             if raw.get("status") == "RESERVED"
+            and (expected_job_id is None or raw.get("id") == expected_job_id)
         ]
         for job in sorted(candidates, key=lambda j: (j.created_at, j.id)):
             try:
@@ -133,7 +134,9 @@ class VoiceInitialGenerationWorker:
                 # when the job state is in doubt.
                 return {"status": "VOICE_JOB_CLAIM_CONFLICT", "provider_calls": 0}
             try:
-                provider = self._provider or get_llm_provider(max_output_tokens=max_tokens)
+                provider = self._provider or get_llm_provider(
+                    max_output_tokens=max_tokens, max_retries=0
+                )
                 if provider is None:
                     raise RuntimeError("VOICE_PROVIDER_NOT_AVAILABLE")
                 usage: list[dict] = []
@@ -157,4 +160,10 @@ class VoiceInitialGenerationWorker:
                 "actual_billed_usd": None,
                 "usage": self._profiles.job(job.id).usage,
             }
-        return {"status": "NO_ELIGIBLE_RESERVED_VOICE_JOBS", "provider_calls": 0}
+        return {
+            "status": (
+                "VOICE_JOB_NOT_ELIGIBLE" if expected_job_id is not None
+                else "NO_ELIGIBLE_RESERVED_VOICE_JOBS"
+            ),
+            "provider_calls": 0,
+        }
