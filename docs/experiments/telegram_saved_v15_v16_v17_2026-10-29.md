@@ -75,3 +75,19 @@ be assembled as **one frozen offline request manifest** (0 paid model
 calls, 0 Telegram interactions). Historical v15.1/v16.2 arms remain
 controlled approximations. A paid three-arm quality test requires a
 separate approval and bound, and generated texts require blind review.
+
+## Production image compatibility (2026-10-30)
+
+The first no-spend three-arm manifest workflow (GitHub run
+`40949168324`) reached the matching production API release but failed
+before generating a manifest: `ModuleNotFoundError: No module named
+'tools'`. Docker deliberately copies and installs `app/` but excludes
+`tools/`. This failure made **zero paid requests and zero Telegram calls**.
+
+To avoid changing the production image's contents, the research-only
+script now includes its own saved Telegram case selector instead of
+importing another `tools/` module. The workflow transmits the exact
+checked-out script as standard input to `python - --max-cases 3`,
+matching the existing v15/v16 research pattern. The paid draft
+workflow must use the same stdin mechanism, and remains a separate
+unmerged PR until a **successful** zero-cost production preflight.
