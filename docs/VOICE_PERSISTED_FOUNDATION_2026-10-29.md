@@ -138,3 +138,27 @@ Rollback: disable writer flag; v16.2 remains the legacy path.
 - Default CLI is preflight-only, zero paid calls. Manual execution requires independent acknowledgement, positive finite full-call cost envelope, at most nine LLM calls and 900 tokens per request, SDK retries OFF, and a fail-stop on unknown provider outcome. Operator envelope is **not** an invoice guarantee.
 - Tests use fake LLM providers to check prompt capture, no production store mutations, group standalone input, preflight rejection, explicit paid gating and error stop. No worker, cron or deployment invokes a paid comparison.
 - **Not yet delivered:** actual three-arm generated draft samples or blind human grades. The branch cannot assume production has an initialized v17 voice. No rollout flag was enabled. See `docs/experiments/telegram_saved_v15_v16_v17_2026-10-29.md`.
+
+## Follow-up slice: manually bootstrap a confirmed existing product (2026-10-29)
+
+The old worker could only process previously RESERVED jobs, and processed the oldest eligible job globally. Existing confirmed products created before the reservation feature was enabled had no supported path to initialize their author character. This slice adds an explicit **scope-bound** bootstrap in `app/voice_bootstrap.py`.
+
+Three separate steps (examples use placeholders, not paid price recommendations):
+
+1. **Read-only, zero-cost preflight** — after this branch is available in a properly configured environment:
+   `python -m app.voice_bootstrap --project-id PROJECT_UUID --product-id PRODUCT_UUID`
+   It verifies project ownership, confirmed understanding, confirmed product intake, product source fingerprint and current assignment/job state. It never reads a Telegram session, changes a writer flag or calls an LLM.
+2. **Unpaid durable reservation** — explicit manual action:
+   `python -m app.voice_bootstrap --project-id PROJECT_UUID --product-id PRODUCT_UUID --reserve-only`
+   Requires the database-backed runtime and is idempotent. It returns one scoped `job_id` to review before authorizing generation.
+3. **One exact paid voice generation** — separately approved manual action, only for the reviewed `job_id`:
+   `python -m app.voice_bootstrap --project-id PROJECT_UUID --product-id PRODUCT_UUID --generate-paid --expected-job-id REVIEWED_JOB_ID --ack GENERATE_ONE_PAID_INITIAL_VOICE_NO_TELEGRAM --monthly-budget-usd APPROVED_MONTHLY_AMOUNT --reservation-usd APPROVED_PER_CALL_ESTIMATE --max-output-tokens 1600`
+   Replace the amounts with an independently verified, finite and positive operator budget. These are **estimated envelopes, not actual billed charges or API guarantees**. No execution is triggered by CI, merge, deployment, cron, or a user channel toggle.
+
+The one-shot paid execution uses the worker's atomic budget/job claims but now supplies an **exact job selector**. The paid provider additionally configures OpenAI SDK `max_retries=0` for this worker only, eliminating hidden automatic retry bills. Other project jobs cannot be selected by the manual command. Conflicting, outdated or partially completed jobs require reconciliation rather than implicit retries.
+
+For human inspection of the generated character **without another call**:
+`python -m app.voice_bootstrap --project-id PROJECT_UUID --product-id PRODUCT_UUID --inspect-active`
+The output contains the actual persisted character and its immutable version/hash and notes that examples are synthetic. This does NOT enable v17 drafting/publishing.
+
+**State/evidence:** production has not been changed, no live voice model has run here, no real voice or actual v17 texts have been produced. This is an operator-only initial generation bridge, not fully automatic onboarding or a scheduled worker. Before any real three-arm pilot, execute and inspect the actual generated voice, then run the *default free preflight* of `tools/compare_saved_telegram_three_voices.py`; a paid pilot still requires its own approval and envelope.
