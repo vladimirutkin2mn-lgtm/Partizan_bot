@@ -1,6 +1,5 @@
 """Existing-product initial voice bootstrap: no-pay default and exact-job paid gate."""
 import argparse
-from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
