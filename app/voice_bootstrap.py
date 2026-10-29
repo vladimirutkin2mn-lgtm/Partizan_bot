@@ -89,6 +89,24 @@ class VoiceInitialBootstrap:
             "job_id": job.id, "version_id": str(job.version_id) if job.version_id else None,
         }
 
+    def inspect(self, *, project_id: UUID, product_id: UUID) -> dict:
+        """Read-only, scoped view of the current author's generated character."""
+        product, _ = self._validated_source(project_id, product_id)
+        version = self.profiles.active(
+            project_id=project_id, product_id=product_id, product_data=product,
+        )
+        return {
+            "status": "ACTIVE_VOICE_INSPECTED",
+            "project_id": str(project_id), "product_id": str(product_id),
+            "voice_profile_version_id": str(version.id),
+            "voice_profile_content_hash": version.content_hash,
+            "source_fingerprint": version.source_fingerprint,
+            "generator_prompt_version": version.generator_prompt_version,
+            "evidence_status": version.evidence_status,
+            "character": version.profile.model_dump(mode="json"),
+            "provider_calls": 0, "publication_actions": 0,
+        }
+
     def reserve(self, *, project_id: UUID, product_id: UUID) -> dict:
         plan = self.plan(project_id=project_id, product_id=product_id)
         if plan["status"] != "RESERVATION_NEEDED":
@@ -121,6 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--product-id", type=UUID, required=True)
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--reserve-only", action="store_true")
+    group.add_argument("--inspect-active", action="store_true")
     group.add_argument("--generate-paid", action="store_true")
     parser.add_argument("--expected-job-id", default="")
     parser.add_argument("--ack", default="")
@@ -135,6 +154,8 @@ async def run(args: argparse.Namespace, *, store: RuntimeStateStore | None = Non
     store = store if store is not None else get_runtime_store()
     settings = settings if settings is not None else get_settings()
     service = VoiceInitialBootstrap(store)
+    if getattr(args, "inspect_active", False):
+        return service.inspect(project_id=args.project_id, product_id=args.product_id)
     if not args.reserve_only and not args.generate_paid:
         return service.plan(project_id=args.project_id, product_id=args.product_id)
     if store.ephemeral:
@@ -170,7 +191,8 @@ def main() -> int:
         result = asyncio.run(run(args))
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0 if result.get("status") in {
-            "ACTIVE", "RESERVATION_NEEDED", "RESERVED", "VOICE_INITIAL_CREATED",
+            "ACTIVE", "ACTIVE_VOICE_INSPECTED", "RESERVATION_NEEDED",
+            "RESERVED", "VOICE_INITIAL_CREATED",
         } else 2
     except Exception as exc:
         print(json.dumps({
