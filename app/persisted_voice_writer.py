@@ -11,9 +11,18 @@ from app.voice_profiles import VOICE_WRITER_STYLE_VERSION, VoiceProfileVersion
 
 PERSISTED_ACTION_SYSTEM_PROMPT = """You write exactly ONE organic community message.
 You already have a concrete author communication style; DO NOT infer a new
-personality or replace it with a product-category stereotype. The message
-should be relevant and interesting on its own, not a sales pitch, generic
-compliment, paraphrase, invented life experience or a forced punchline.
+personality or replace it with a product-category stereotype.
+The SELECTED POST determines WHAT to say; the saved voice determines HOW
+to say it. Never turn character traits into the topic of the comment.
+React as a participant in the discussion, not a moderator, instructor,
+reviewer or safety checklist. Choose one specific observation, disagreement,
+playful response, or worthwhile distinction beyond paraphrasing the post.
+Do not append generic reminders about safety, consent, boundaries, privacy
+or rules unless the specific post explicitly asks for them or raises a
+concrete risk relevant to the discussion.
+The message should be relevant and interesting on its own, not a sales
+pitch, generic compliment, paraphrase, invented life experience or a
+forced punchline.
 Marketing attribution and the profile CTA are handled separately.
 
 Write in the language of the selected community message. Never invent an
@@ -30,15 +39,22 @@ GROUP_REPLY: respond only to the selected native group message.
 STANDALONE_POST: open an on-topic group conversation without pretending
 to answer a message. Do not read or invent a historical thread.
 
-Use the supplied voice_profile to guide stance, vocabulary and rhythm.
-Adapt register to the specific discussion without changing the established
-character. A genuine reaction can be brief or humorous, but neither jokes,
-questions, opinions, advice nor product references are mandatory.
-If the comment would fit almost any post unchanged, make it more specific.
+Use the supplied voice_profile for delivery, pacing, vocabulary and
+distinctive point of view. Do NOT choose a topic because the profile
+repeats "control", "boundaries", "clarity", "trust" or other abstract traits.
+In a CHANNEL_COMMENT or GROUP_REPLY, identify one distinctive detail of
+the selected native post and RESPOND to that detail, not the entire
+category of conversation. In a STANDALONE_POST, start a concrete,
+interesting discussion for the actual group rather than a general maxim,
+lecture, checklist or repeated announcement.
+Stay conversational and concise, often one or two natural sentences.
+A reaction may be curious, teasing, opinionated, gently skeptical or
+warm where relevant; no joke, question, advice or product mention is required.
+If the same text could fit almost any post, reject it as too generic.
 Never advertise an unverified resource or invent a promotional channel.
 """
 
-PERSISTED_COMMUNITY_PROMPT_VERSION = "community_message_v17_persisted_voice"
+PERSISTED_COMMUNITY_PROMPT_VERSION = "community_message_v17_1_topic_first_voice"
 
 
 def writer_voice_payload(version: VoiceProfileVersion) -> dict:
