@@ -126,6 +126,7 @@ async def test_offline_manifest_has_exact_composer_v17_and_no_remote_or_persiste
     assert manifest["v17_is_exact_composer_request"] is True
     assert manifest["voice_profile_version_id"] == str(voice.id)
     assert manifest["max_calls"] == 3
+    assert manifest["cases"][0]["target_text"]
     arms = manifest["cases"][0]["arms"]
     assert set(arms) == set(benchmark.ARMS)
     assert len({arms[arm]["request_hash"] for arm in benchmark.ARMS}) == 3
@@ -180,6 +181,13 @@ async def test_bounded_paid_runner_requires_explicit_approval_and_finite_budget(
     assert result["telegram_api_calls"] == 0
     assert result["provider_invoice_amount_usd"] is None
     assert len(result["results"][0]["arms"]) == 3
+    assert (
+        result["results"][0]["selected_target_text_sha256"]
+        == manifest["cases"][0]["target_text_sha256"]
+    )
+    assert result["results"][0]["selected_target_text"]
+    assert result["voice_profile_version_id"] == manifest["voice_profile_version_id"]
+    assert result["voice_profile_content_hash"] == manifest["voice_profile_content_hash"]
     assert result["promotion_approved"] is False
 
 

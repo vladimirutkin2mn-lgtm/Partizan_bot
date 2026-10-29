@@ -292,6 +292,8 @@ async def build_manifest(*, store, product, max_cases: int = MAX_CASES) -> dict:
             ).hexdigest()[:24],
             "target_url": case["target_url"],
             "surface": case["surface"],
+            # Kept privately in memory for identical-context blind review.
+            "target_text": case["target_text"],
             "target_text_sha256": hashlib.sha256(
                 case["target_text"].encode()
             ).hexdigest(),
@@ -358,7 +360,11 @@ async def run_comparison(
     for case in manifest["cases"]:
         row = {
             "case_id": case["case_id"], "target_url": case["target_url"],
-            "surface": case["surface"], "arms": {},
+            "surface": case["surface"],
+            # For private blind human review: exact frozen post, not just URL.
+            "selected_target_text": case["target_text"],
+            "selected_target_text_sha256": case["target_text_sha256"],
+            "arms": {},
         }
         for arm in ARMS:
             if calls >= max_calls:
@@ -387,6 +393,8 @@ async def run_comparison(
         "status": "INCOMPLETE_PROVIDER_OUTCOME" if error else "AWAITING_BLIND_HUMAN_REVIEW",
         "error_type": error, "provider_calls_attempted": calls,
         "max_calls": max_calls,
+        "voice_profile_version_id": manifest["voice_profile_version_id"],
+        "voice_profile_content_hash": manifest["voice_profile_content_hash"],
         "reserved_operator_estimate_usd": str(per_call * calls),
         "budget_operator_estimate_usd": str(budget),
         "provider_invoice_amount_usd": None,
@@ -438,7 +446,8 @@ async def main() -> dict:
             **{k: v for k, v in manifest.items() if k not in {"cases"}},
             "cases": [
                 {
-                    k: v for k, v in case.items() if k != "arms"
+                    k: v for k, v in case.items()
+                    if k not in {"arms", "target_text"}
                 } | {"arm_request_hashes": {
                     arm: item["request_hash"] for arm, item in case["arms"].items()
                 }}
