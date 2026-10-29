@@ -45,8 +45,8 @@ from app.runtime_store import MemoryRuntimeStateStore, get_runtime_store
 from app.voice_draft_cache import VoiceDraftCache
 from app.voice_profiles import VoiceProfileService
 from tools.compare_saved_telegram_v15_v16_once import (
-    _PROJECT,
     _PRODUCT,
+    _PROJECT,
     _cases,
 )
 
