@@ -85,7 +85,8 @@ jobs:
           result = json.loads(Path("voice-preflight-private.json").read_text())
           assert result.get("provider_calls") == 0
           assert result.get("publication_actions") == 0
-          assert result["status"] in {"RESERVATION_NEEDED", "RESERVED", "ACTIVE",
+          assert result["status"] in {"RESERVATION_NEEDED", "LEGACY_CONFIRMATION_BACKFILL_REQUIRED",
+                                      "RESERVED", "ACTIVE",
                                       "CREATED", "AUTHORIZED", "IN_PROGRESS",
                                       "PROVIDER_OUTCOME_UNKNOWN",
                                       "BUDGET_RESERVING"}
