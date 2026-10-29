@@ -1,4 +1,5 @@
 name: One-shot v17 existing product voice preflight (READ ONLY)
+# Re-run once after v2 prompt-version job selection is released to main.
 
 on:
   push:
