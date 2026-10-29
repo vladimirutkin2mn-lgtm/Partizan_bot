@@ -352,3 +352,43 @@ async def test_readonly_plan_exposes_safe_failed_schema_fields_without_paid_retr
         args(pid, product_id), store=store, settings=settings()
     )) == current
     assert provider.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_old_prompt_job_remains_in_history_but_cannot_block_v2_reserve():
+    store, pid, product_id, _ = fixture_data()
+    seed = VoiceInitialBootstrap(store).reserve(
+        project_id=pid, product_id=product_id
+    )
+    current = store.get("voice_profile_generation_jobs", seed["job_id"])
+    store.clear_namespace("voice_profile_generation_jobs")
+    old = {
+        **current, "id": "historical-failed-voice-v1",
+        "generator_prompt_version": "voice_generator_prompt_v1",
+        "status": "PROVIDER_OUTCOME_UNKNOWN", "error_code": "GENERATION_FAILED",
+    }
+    store.put("voice_profile_generation_jobs", old["id"], old)
+    before = store.get("voice_profile_generation_jobs", old["id"])
+
+    plan = VoiceInitialBootstrap(store).plan(project_id=pid, product_id=product_id)
+    assert plan["status"] == "RESERVATION_NEEDED"
+    assert plan["provider_calls"] == 0
+    assert store.get("voice_profile_generation_jobs", old["id"]) == before
+
+    new = VoiceInitialBootstrap(store).reserve(
+        project_id=pid, product_id=product_id
+    )
+    assert new["status"] == "RESERVED"
+    assert new["job_id"] == seed["job_id"]
+    assert new["job_id"] != old["id"]
+    assert store.get("voice_profile_generation_jobs", old["id"]) == before
+    assert len(store.list_namespace("voice_profile_generation_jobs")) == 2
+    provider = VoiceLLM()
+    paid = await run(args(
+        pid, product_id, generate_paid=True, ack=APPROVAL,
+        expected_job_id=new["job_id"], monthly_budget_usd="0.50",
+        reservation_usd="0.25",
+    ), store=store, settings=settings(), provider=provider)
+    assert paid["status"] == "VOICE_INITIAL_CREATED"
+    assert provider.calls == 1
+    assert store.get("voice_profile_generation_jobs", old["id"]) == before
