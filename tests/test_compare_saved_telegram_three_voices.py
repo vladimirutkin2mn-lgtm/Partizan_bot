@@ -180,6 +180,13 @@ async def test_bounded_paid_runner_requires_explicit_approval_and_finite_budget(
     assert result["telegram_api_calls"] == 0
     assert result["provider_invoice_amount_usd"] is None
     assert len(result["results"][0]["arms"]) == 3
+    assert (
+        result["results"][0]["selected_target_text_sha256"]
+        == manifest["cases"][0]["target_text_sha256"]
+    )
+    assert result["results"][0]["selected_target_text"]
+    assert result["voice_profile_version_id"] == manifest["voice_profile_version_id"]
+    assert result["voice_profile_content_hash"] == manifest["voice_profile_content_hash"]
     assert result["promotion_approved"] is False
 
 
@@ -202,3 +209,20 @@ def test_bounded_cost_preflight_rejects_zero_nan_and_infinite():
     for raw in ("0", "-1", "NaN", "Infinity", "bad"):
         with pytest.raises(ValueError, match="POSITIVE_BUDGET_REQUIRED"):
             benchmark._positive(raw)
+
+
+def test_research_script_has_no_import_from_uninstalled_tools_package():
+    """Production installs app/ but not tools/; stdin must be self-contained."""
+    import ast
+    from pathlib import Path
+
+    script = Path("tools/compare_saved_telegram_three_voices.py").read_text()
+    parsed = ast.parse(script)
+    imported_packages = []
+    for node in ast.walk(parsed):
+        if isinstance(node, ast.Import):
+            imported_packages.extend(part.name.split(".")[0] for part in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported_packages.append(node.module.split(".")[0])
+    assert "tools" not in imported_packages
+    assert "if __name__ == \"__main__\":" in script
