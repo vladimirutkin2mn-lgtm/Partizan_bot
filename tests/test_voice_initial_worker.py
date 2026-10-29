@@ -268,3 +268,22 @@ async def test_invalid_model_schema_records_only_field_and_error_type_no_output(
     assert again["provider_calls"] == 0
     assert provider.calls == 1
     assert len(store.list_namespace(VOICE_BUDGET_SLOT_NAMESPACE)) == 1
+
+
+@pytest.mark.asyncio
+async def test_stale_generator_prompt_job_never_spends_even_with_exact_job_id():
+    store, _, _, job = setup()
+    old = store.get("voice_profile_generation_jobs", job.id)
+    old["generator_prompt_version"] = "voice_generator_prompt_v1"
+    store.put("voice_profile_generation_jobs", job.id, old)
+    provider = StubProvider()
+    worker = VoiceInitialGenerationWorker(
+        store=store, settings=settings(voice_generation_worker_enabled=True),
+        provider=provider,
+    )
+    result = await worker.run_once(expected_job_id=job.id)
+    assert result["status"] == "VOICE_JOB_NOT_ELIGIBLE"
+    assert result["provider_calls"] == 0
+    assert provider.calls == 0
+    assert store.get("voice_profile_generation_jobs", job.id) == old
+    assert store.list_namespace(VOICE_BUDGET_SLOT_NAMESPACE) == []

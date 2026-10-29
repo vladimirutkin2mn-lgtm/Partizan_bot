@@ -272,6 +272,8 @@ class VoiceProfileService:
         self._verify_project(before.project_id, before.product_id)
         if before.status not in {"RESERVED", "AUTHORIZED"}:
             raise RuntimeError("VOICE_JOB_NOT_RESERVED")
+        if before.generator_prompt_version != VOICE_GENERATOR_PROMPT_VERSION:
+            raise RuntimeError("VOICE_JOB_STALE_GENERATOR_PROMPT")
         running = before.model_copy(update={"status": "IN_PROGRESS"})
         if not self._store.compare_and_swap(
             VOICE_GENERATION_JOB_NAMESPACE, job_id,

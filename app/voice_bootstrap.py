@@ -19,6 +19,7 @@ from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.voice_initial_worker import VoiceInitialGenerationWorker, _positive_decimal
 from app.voice_profiles import (
     VOICE_GENERATION_JOB_NAMESPACE,
+    VOICE_GENERATOR_PROMPT_VERSION,
     VoiceGenerationJob,
     VoiceProfileService,
     fingerprint,
@@ -88,6 +89,7 @@ class VoiceInitialBootstrap:
                 if str(row.get("project_id")) == str(project_id)
                 and str(row.get("product_id")) == str(product_id)
                 and row.get("source_fingerprint") == digest
+                and row.get("generator_prompt_version") == VOICE_GENERATOR_PROMPT_VERSION
             ),
             key=lambda job: job.created_at,
         )

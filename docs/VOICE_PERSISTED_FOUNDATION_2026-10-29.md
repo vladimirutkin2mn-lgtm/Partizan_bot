@@ -222,3 +222,24 @@ production application logs. The operation still stops with
 An alternative prompt version is a **new** job and requires independent
 approval and budget; the v2 prompt change is not evidence of better
 generated text until a real test is completed.
+
+## Version-gated recovery after failed v1 request (2026-10-30)
+
+The v1 initial voice provider call was recorded as
+`PROVIDER_OUTCOME_UNKNOWN` and MUST NOT be retried. Changing the generator
+prompt to v2 creates an independent, version-keyed reservation ID; it does
+not authorize a repeat of the v1 job.
+
+Fix the scoped `VoiceInitialBootstrap.plan` selector to match the **current
+`VOICE_GENERATOR_PROMPT_VERSION`** as well as project, product and exact
+source fingerprint. Without the filter, the old failed v1 job incorrectly
+blocked v2 initialization. The worker and the directly invoked
+`VoiceProfileService.generate_reserved` now also refuse stale-version jobs
+before model calls. Historical failed records are never altered or deleted.
+New v2 still needs its own one-time unpaid reservation, finite monthly
+budget slot and separately approved paid operator action.
+
+The read-only one-shot preflight workflow is re-triggered by its own YAML
+change after deployment, and the already-present free reservation workflow
+may then reserve exactly the current v2 job without a provider call.
+The two distinct, versioned attempts have separate usage provenance.
