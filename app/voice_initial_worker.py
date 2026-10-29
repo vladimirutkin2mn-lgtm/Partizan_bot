@@ -17,6 +17,7 @@ from app.product_intake import PRODUCT_INTAKE_NAMESPACE
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.voice_profiles import (
     VOICE_GENERATION_JOB_NAMESPACE,
+    VOICE_GENERATOR_PROMPT_VERSION,
     VoiceGenerationJob,
     VoiceProfileService,
     fingerprint,
@@ -66,6 +67,7 @@ class VoiceInitialGenerationWorker:
             VoiceGenerationJob.model_validate(raw)
             for raw in self._store.list_namespace(VOICE_GENERATION_JOB_NAMESPACE)
             if raw.get("status") == "RESERVED"
+            and raw.get("generator_prompt_version") == VOICE_GENERATOR_PROMPT_VERSION
             and (expected_job_id is None or raw.get("id") == expected_job_id)
         ]
         for job in sorted(candidates, key=lambda j: (j.created_at, j.id)):
