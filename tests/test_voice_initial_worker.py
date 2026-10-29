@@ -221,3 +221,47 @@ async def test_targeted_paid_voice_worker_disables_provider_auto_retries(monkeyp
     assert result["status"] == "VOICE_INITIAL_CREATED"
     assert provider.calls == 1
     assert kwargs_seen == {"max_output_tokens": 1600, "max_retries": 0}
+
+
+@pytest.mark.asyncio
+async def test_invalid_model_schema_records_only_field_and_error_type_no_output():
+    store, _, _, job = setup()
+
+    class InvalidVoiceProvider:
+        calls = 0
+
+        async def parse(self, messages, response_model):
+            self.calls += 1
+            return response_model(
+                character_summary="short",
+                default_tone="short",
+                speech_traits=[],
+                adaptation_rules=[],
+                style_instruction="too short",
+                derivation_summary="short",
+                fact_refs=[],
+                examples=[],
+            )
+
+    provider = InvalidVoiceProvider()
+    worker = VoiceInitialGenerationWorker(
+        store=store,
+        settings=settings(voice_generation_worker_enabled=True),
+        provider=provider,
+    )
+    result = await worker.run_once()
+    assert result["status"] == "VOICE_PROVIDER_OUTCOME_UNKNOWN"
+    assert result["error_type"] == "ValidationError"
+    saved = VoiceProfileService(store).job(job.id)
+    assert saved.status == "PROVIDER_OUTCOME_UNKNOWN"
+    assert saved.error_code == "MODEL_SCHEMA_VALIDATION_FAILED"
+    assert saved.validation_diagnostics
+    assert {"field", "type"} == set(saved.validation_diagnostics[0])
+    assert any(
+        row["field"] == "style_instruction" for row in saved.validation_diagnostics
+    )
+    assert all("short" not in row.values() for row in saved.validation_diagnostics)
+    again = await worker.run_once()
+    assert again["provider_calls"] == 0
+    assert provider.calls == 1
+    assert len(store.list_namespace(VOICE_BUDGET_SLOT_NAMESPACE)) == 1
