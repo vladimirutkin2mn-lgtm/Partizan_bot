@@ -308,3 +308,47 @@ async def test_absent_flag_is_not_confirmation_without_confirmed_product():
     assert "understanding_confirmed" not in store.get(
         "customer_acquisition_projects", str(pid)
     )
+
+
+@pytest.mark.asyncio
+async def test_readonly_plan_exposes_safe_failed_schema_fields_without_paid_retry():
+    store, pid, product_id, _ = fixture_data()
+    reserved = VoiceInitialBootstrap(store).reserve(
+        project_id=pid, product_id=product_id
+    )
+
+    class InvalidProvider:
+        calls = 0
+
+        async def parse(self, messages, response_model):
+            self.calls += 1
+            return response_model(
+                character_summary="invalid",
+                default_tone="invalid",
+                speech_traits=[], adaptation_rules=[],
+                style_instruction="invalid",
+                derivation_summary="invalid",
+                fact_refs=[], examples=[],
+            )
+
+    provider = InvalidProvider()
+    run_result = await run(args(
+        pid, product_id, generate_paid=True, ack=APPROVAL,
+        expected_job_id=reserved["job_id"],
+    ), store=store, settings=settings(), provider=provider)
+    assert run_result["status"] == "VOICE_PROVIDER_OUTCOME_UNKNOWN"
+    assert provider.calls == 1
+
+    current = await run(args(pid, product_id), store=store, settings=settings())
+    assert current["status"] == "PROVIDER_OUTCOME_UNKNOWN"
+    assert current["error_code"] == "MODEL_SCHEMA_VALIDATION_FAILED"
+    assert current["validation_diagnostics"]
+    assert {"field", "type"} == set(current["validation_diagnostics"][0])
+    assert all(
+        "invalid" not in value
+        for error in current["validation_diagnostics"] for value in error.values()
+    )
+    assert (await run(
+        args(pid, product_id), store=store, settings=settings()
+    )) == current
+    assert provider.calls == 1

@@ -99,6 +99,8 @@ class VoiceInitialBootstrap:
         return {
             **result, "status": job.status,
             "job_id": job.id, "version_id": str(job.version_id) if job.version_id else None,
+            "error_code": job.error_code,
+            "validation_diagnostics": job.validation_diagnostics,
         }
 
     def inspect(self, *, project_id: UUID, product_id: UUID) -> dict:
