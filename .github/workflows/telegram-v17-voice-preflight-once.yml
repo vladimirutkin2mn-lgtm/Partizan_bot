@@ -1,0 +1,107 @@
+name: One-shot v17 existing product voice preflight (READ ONLY)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/telegram-v17-voice-preflight-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: partizan-v17-voice-preflight-once
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify read-only production access
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing read-only preflight connection ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin production host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Wait for exact approved release to be deployed
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 90); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              echo "Matching Partizan release deployed"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Exact matching production release not ready; zero model calls"
+          exit 1
+      - name: Inspect confirmed test product voice status (zero paid calls)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          # This invokes ONLY the default, read-only CLI operation.
+          # No --reserve-only, --generate-paid, --ack, output budget or LLM key.
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+            python -m app.voice_bootstrap \
+            --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0 \
+            --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272" \
+            > voice-preflight-private.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("voice-preflight-private.json").read_text())
+          assert result.get("provider_calls") == 0
+          assert result.get("publication_actions") == 0
+          assert result["status"] in {"RESERVATION_NEEDED", "RESERVED", "ACTIVE",
+                                      "CREATED", "AUTHORIZED", "IN_PROGRESS",
+                                      "PROVIDER_OUTCOME_UNKNOWN",
+                                      "BUDGET_RESERVING"}
+          print(json.dumps({
+              k: result.get(k) for k in (
+                  "status", "project_id", "product_id", "job_id",
+                  "voice_profile_version_id", "source_fingerprint",
+                  "provider_calls", "publication_actions",
+              )
+          }, ensure_ascii=False))
+          PY
+      - name: Keep private evidence for the next reviewed step
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-v17-voice-preflight-read-only
+          path: voice-preflight-private.json
+          if-no-files-found: ignore
+          retention-days: 7
