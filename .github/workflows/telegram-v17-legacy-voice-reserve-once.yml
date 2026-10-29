@@ -1,0 +1,100 @@
+name: One-shot v17 confirmed legacy voice reservation (NO MODEL CALLS)
+
+on:
+  workflow_run:
+    workflows: ["One-shot v17 existing product voice preflight (READ ONLY)"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: partizan-v17-legacy-voice-reserve-once
+  cancel-in-progress: false
+
+jobs:
+  reserve:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      - name: Refuse outdated release or missing operator connection
+        env:
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_PATH DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing reservation connection ${key}"
+              exit 1
+            fi
+          done
+          current_main="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [[ "${current_main}" != "${RELEASE_SHA}" ]]; then
+            echo "::error::Stale release: refusing any production mutation"
+            exit 1
+          fi
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin production host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Check exact release and create only the free initial voice reservation
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+            python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${RELEASE_SHA}' else 2)\""
+          # No --generate-paid, approval token, provider budget or SDK request.
+          # This scoped CAS backfills legacy-confirmed understanding ONLY when
+          # the key was absent and the ProductProfile is CONFIRMED.
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+            python -m app.voice_bootstrap \
+            --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0 \
+            --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+            --reserve-only" > voice-reservation-private.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("voice-reservation-private.json").read_text())
+          assert result.get("provider_calls") == 0
+          assert result.get("publication_actions") == 0
+          assert result["status"] in {"RESERVED", "ACTIVE"}
+          print(json.dumps({
+              k: result.get(k) for k in (
+                  "status", "project_id", "product_id", "job_id",
+                  "voice_profile_version_id", "provider_calls",
+                  "publication_actions",
+              )
+          }, ensure_ascii=False))
+          PY
+      - name: Retain private proof; never trigger paid generation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-v17-legacy-free-voice-reservation
+          path: voice-reservation-private.json
+          if-no-files-found: ignore
+          retention-days: 7
