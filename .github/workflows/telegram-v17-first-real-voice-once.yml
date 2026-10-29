@@ -1,0 +1,142 @@
+name: One-shot real v17 author voice (ONE BOUNDED MODEL CALL; NO TELEGRAM)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/telegram-v17-first-real-voice-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: partizan-v17-real-voice-one-shot-20261029
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require current release and production connection
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_PATH DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing one-shot voice connection ${key}"
+              exit 1
+            fi
+          done
+          current_main="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [[ "${current_main}" != "${RELEASE_SHA}" ]]; then
+            echo "::error::Refusing model call on stale main release"
+            exit 1
+          fi
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin SSH host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Wait for exact deployed release
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          EXPECTED_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 90); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${EXPECTED_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Matching release unavailable; zero provider calls made"
+          exit 1
+      - name: Exactly one paid voice generation for reviewed reserved job
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          # Exact project/product/job and positive operator-estimated single-call
+          # envelope. The amount is not a guaranteed invoice cap.
+          # App uses atomic CAS and max_retries=0. No Telegram/publisher action.
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+            python -m app.voice_bootstrap \
+            --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0 \
+            --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+            --generate-paid \
+            --expected-job-id b2e237b2b212e72ad9949c07ec534f843fb1fa5252e08581f370c25384b90d38 \
+            --ack GENERATE_ONE_PAID_INITIAL_VOICE_NO_TELEGRAM \
+            --monthly-budget-usd 0.25 \
+            --reservation-usd 0.25 \
+            --max-output-tokens 3000" > voice-initial-generation.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("voice-initial-generation.json").read_text())
+          assert result["status"] == "VOICE_INITIAL_CREATED"
+          assert result.get("provider_calls") == 1
+          assert result.get("voice_profile_version_id")
+          print(json.dumps({
+              k: result.get(k) for k in (
+                  "status", "voice_profile_version_id", "provider_calls",
+                  "estimated_reserved_usd", "actual_billed_usd", "usage",
+              )
+          }, ensure_ascii=False))
+          PY
+      - name: Read exact saved character without further provider calls
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+            python -m app.voice_bootstrap \
+            --project-id 124cdd70-49b0-48b3-aee0-a037dda4bcd0 \
+            --product-id 52d7e59e-5ac5-4363-b829-c93e33e48272 \
+            --inspect-active" > voice-profile-review.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("voice-profile-review.json").read_text())
+          assert result["status"] == "ACTIVE_VOICE_INSPECTED"
+          assert result["provider_calls"] == 0
+          assert result["publication_actions"] == 0
+          assert result.get("voice_profile_content_hash")
+          print(json.dumps({
+              "status": result["status"],
+              "voice_profile_version_id": result["voice_profile_version_id"],
+              "voice_profile_content_hash": result["voice_profile_content_hash"],
+          }, ensure_ascii=False))
+          PY
+      - name: Retain short-lived research artifacts (no Telegram content)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telegram-v17-first-real-voice-review
+          path: |
+            voice-initial-generation.json
+            voice-profile-review.json
+          if-no-files-found: ignore
+          retention-days: 1
