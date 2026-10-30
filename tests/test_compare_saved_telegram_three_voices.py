@@ -227,3 +227,65 @@ def test_research_script_has_no_import_from_uninstalled_tools_package():
             imported_packages.append(node.module.split(".")[0])
     assert "tools" not in imported_packages
     assert "if __name__ == \"__main__\":" in script
+
+
+@pytest.mark.asyncio
+async def test_private_source_audit_captures_exact_writer_input_without_spend(
+    monkeypatch,
+):
+    from types import SimpleNamespace
+
+    from app.voice_profiles import fingerprint, source_snapshot
+
+    store, product, version = await prepared(monkeypatch)
+    manifest = await benchmark.build_manifest(store=store, product=product)
+    before = {
+        ns: store.list_namespace(ns)
+        for ns in (
+            "voice_profile_versions", "voice_profile_assignments",
+            "voice_draft_generations", "distribution_action",
+        )
+    }
+    audit = benchmark.build_private_source_audit(
+        manifest=manifest, store=store, product=product,
+        settings=SimpleNamespace(
+            llm_model="gpt-5.6", persisted_voice_writer_enabled=False,
+        ),
+    )
+    assert audit["status"] == "VOICE_SOURCE_AUDIT_PRIVATE_NO_MODEL_CALLS"
+    assert audit["source_fingerprint"] == fingerprint(source_snapshot(
+        product.model_dump(mode="json")
+    ))
+    assert audit["stored_source_snapshot"] == audit["current_source_snapshot"]
+    assert audit["saved_voice_version_id"] == str(version.id)
+    assert audit["research_auto_retries"] == 0
+    assert audit["llm_calls"] == audit["runtime_writes"] == 0
+    assert audit["telegram_api_calls"] == 0
+    case = audit["cases"][0]
+    assert len(case["exact_writer_request"]) == 2
+    assert case["writer_payload"]["author_voice"]["voice_profile_content_hash"] == (
+        version.content_hash
+    )
+    assert case["target_text"]
+    assert case["request_hash"] == manifest["cases"][0]["arms"]["v17"]["request_hash"]
+    for ns, rows in before.items():
+        assert store.list_namespace(ns) == rows
+
+
+@pytest.mark.asyncio
+async def test_private_source_audit_rejects_wrong_voice_provenance(monkeypatch):
+    from types import SimpleNamespace
+
+    store, product, _ = await prepared(monkeypatch)
+    manifest = await benchmark.build_manifest(store=store, product=product)
+    manifest["cases"][0]["arms"]["v17"]["messages"][1].content = (
+        '{"author_voice":{"voice_profile_version_id":"other",'
+        '"voice_profile_content_hash":"bad"}}'
+    )
+    with pytest.raises(RuntimeError, match="VOICE_AUDIT_WRITER_VOICE_MISMATCH"):
+        benchmark.build_private_source_audit(
+            manifest=manifest, store=store, product=product,
+            settings=SimpleNamespace(
+                llm_model="gpt-5.6", persisted_voice_writer_enabled=False,
+            ),
+        )
