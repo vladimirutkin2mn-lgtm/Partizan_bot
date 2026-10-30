@@ -41,7 +41,7 @@ from app.product_source import (
 )
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ClarificationAnswerRequest, ProductCreateRequest
-from app.voice_profiles import VoiceProfileService
+from app.voice_profiles import VoiceProfileService, voice_source_readiness_issues
 
 CUSTOMER_PROJECT_NAMESPACE = "customer_acquisition_projects"
 CUSTOMER_TOKEN_HEADER = "X-Partizan-Customer-Token"
@@ -325,7 +325,9 @@ class CustomerFunnelService:
         # Reserving the voice job is unpaid and idempotent; an independently
         # budgeted one-shot worker is required before any actual LLM call.
         settings = get_settings()
-        if settings.voice_initial_reservation_enabled:
+        if settings.voice_initial_reservation_enabled and not voice_source_readiness_issues(
+            product.model_dump(mode="json")
+        ):
             try:
                 job = VoiceProfileService(self._store).reserve_initial(
                     project_id=project_id, product_id=product_id,
@@ -336,6 +338,8 @@ class CustomerFunnelService:
             except ValueError as exc:
                 project["voice_initial_status"] = "VOICE_UNAVAILABLE"
                 project["voice_initial_error_code"] = str(exc)[:100]
+        elif settings.voice_initial_reservation_enabled:
+            project["voice_initial_status"] = "PRODUCT_UNDERSTANDING_INSUFFICIENT"
         self._persist(project)
         return CustomerPreviewConfirmationResponse(
             project_id=project_id,

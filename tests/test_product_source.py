@@ -197,3 +197,45 @@ async def test_product_source_fallback_never_masks_unsafe_or_unresolved_target(m
 
     with pytest.raises(ProductSourceReadError, match="Only public websites"):
         await read_public_product_source("https://t.me/example_bot")
+
+
+@pytest.mark.asyncio
+async def test_sparse_telegram_channel_does_not_get_bot_product_question(
+    monkeypatch,
+) -> None:
+    async def fake_reader(url: str, *, minimum_text_chars: int = 80) -> WebsiteSnapshot:
+        assert minimum_text_chars == 0
+        return WebsiteSnapshot(
+            url=url,
+            title="Telegram: View @community",
+            description="A group for people interested in events.",
+            text="View in Telegram. Meet people in the community.",
+        )
+
+    monkeypatch.setattr("app.product_source.read_public_website", fake_reader)
+    context = await read_public_product_source("https://t.me/community")
+    assert context.source_type == ProductSourceType.TELEGRAM
+    assert context.needs_founder_context is True
+    assert context.clarification_question == (
+        "What do people get from this Telegram channel or community?"
+    )
+
+
+@pytest.mark.asyncio
+async def test_private_telegram_invite_never_masquerades_as_public_product_page(
+    monkeypatch,
+) -> None:
+    async def forbidden_reader(*args, **kwargs):
+        raise AssertionError("Invite pages are not public product evidence")
+
+    monkeypatch.setattr("app.product_source.read_public_website", forbidden_reader)
+    for url in ("https://t.me/+privateInvite", "https://t.me/joinchat/Private"):
+        result = await read_public_product_source(url)
+        assert result.source_type == ProductSourceType.TELEGRAM
+        assert result.needs_founder_context is True
+        assert result.title == "Telegram invitation"
+        assert result.description == result.text == ""
+        assert result.clarification_question == (
+            "What do members get from this Telegram community?"
+        )
+        assert result.link == url

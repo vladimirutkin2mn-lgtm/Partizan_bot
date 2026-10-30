@@ -7,6 +7,11 @@ from pydantic import BaseModel, Field
 from app.llm import LLMMessage, LLMProvider
 from app.marketing_intelligence import MarketingTask, render_marketing_guidance
 from app.openai_usage import openai_usage_context
+from app.product_source_quality import (
+    is_campaign_asset_brief,
+    is_distinct_product_value,
+    needs_product_value_clarification,
+)
 
 
 class ClarificationCandidate(BaseModel):
@@ -140,7 +145,7 @@ class ProductIntakeAgent:
             except Exception:
                 analysis = self._fallback_analysis(brief, answers)
         analysis = self._normalize(analysis, brief)
-        analysis.clarifications = self._select_clarifications(analysis, answered_fields)
+        analysis.clarifications = self._select_clarifications(analysis, answered_fields, brief)
         return analysis
 
     def _build_messages(
@@ -177,6 +182,10 @@ class ProductIntakeAgent:
             updates["name"] = self._fallback_name(brief)
         if not analysis.description:
             updates["description"] = brief.strip()
+        if is_campaign_asset_brief(brief) and not is_distinct_product_value(
+            analysis.description, analysis.value_proposition,
+        ) and not analysis.problem_or_desire:
+            updates["value_proposition"] = None
         if updates:
             return analysis.model_copy(update=updates)
         return analysis
@@ -184,7 +193,7 @@ class ProductIntakeAgent:
     def _select_clarifications(
         self,
         analysis: ProductAnalysis,
-        answered_fields: set[str],
+        answered_fields: set[str], source_brief: str = "",
     ) -> list[ClarificationCandidate]:
         candidates: dict[str, ClarificationCandidate] = {}
 
@@ -210,6 +219,30 @@ class ProductIntakeAgent:
             if current is None or candidate.priority > current.priority:
                 candidates[rule.field_name] = candidate
 
+        if needs_product_value_clarification(
+            description=analysis.description,
+            value_proposition=analysis.value_proposition,
+            problem_or_desire=analysis.problem_or_desire,
+            source_brief=source_brief,
+        ) and "value_proposition" not in answered_fields:
+            candidates["value_proposition"] = ClarificationCandidate(
+                field_name="value_proposition",
+                question="What do users receive from this product?",
+                rationale="Campaign details do not establish customer value.",
+                priority=5,
+            )
+        if (
+            is_campaign_asset_brief(source_brief)
+            and not analysis.known_audience
+            and "known_audience" not in answered_fields
+        ):
+            candidates["known_audience"] = ClarificationCandidate(
+                field_name="known_audience",
+                question="Who needs this product, and why?",
+                rationale="The campaign does not establish the audience.",
+                priority=5,
+            )
+
         for index, contradiction in enumerate(analysis.contradictions):
             field_name = f"contradiction_{index}"
             if field_name in answered_fields:
@@ -223,9 +256,16 @@ class ProductIntakeAgent:
                 priority=5,
             )
 
+        campaign = is_campaign_asset_brief(source_brief)
         return sorted(
             candidates.values(),
-            key=lambda item: (-item.priority, item.field_name),
+            key=lambda item: (
+                -item.priority,
+                0 if campaign and item.field_name in {
+                    "value_proposition", "known_audience",
+                } else 1,
+                item.field_name,
+            ),
         )[:3]
 
     def _is_gap(self, analysis: ProductAnalysis, field_name: str) -> bool:
@@ -252,6 +292,7 @@ class ProductIntakeAgent:
             name=(
                 labeled.get("product")
                 or labeled.get("name")
+                or labeled.get("promoted asset")
                 or source.get("title")
             ),
             product_type=self._fallback_product_type(source_type),
@@ -268,8 +309,13 @@ class ProductIntakeAgent:
             value_proposition=(
                 labeled.get("value proposition")
                 or labeled.get("value_proposition")
-                or source.get("description")
-                or (brief.strip() if not source and len(brief.strip()) >= 20 else None)
+                or (source.get("description") if not is_campaign_asset_brief(brief) else None)
+                or (
+                    brief.strip()
+                    if not source and len(brief.strip()) >= 20
+                    and not is_campaign_asset_brief(brief)
+                    else None
+                )
             ),
             usp=labeled.get("usp"),
             market=labeled.get("market"),
@@ -279,6 +325,8 @@ class ProductIntakeAgent:
             goal=labeled.get("goal"),
             budget=budget,
             max_cac=max_cac,
+            known_audience=[labeled.get("known_audience") or labeled.get("audience")]
+            if labeled.get("known_audience") or labeled.get("audience") else [],
             confidence=0.55 if source else None,
         )
 

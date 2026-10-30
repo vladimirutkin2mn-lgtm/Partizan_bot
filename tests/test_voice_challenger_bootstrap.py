@@ -158,3 +158,23 @@ def test_campaign_label_without_audience_or_distinct_value_blocks_paid_candidate
         svc.reserve_challenger(
             project_id=pid, product_id=prod, product_data=source
         )
+
+
+def test_campaign_type_label_does_not_make_unproven_value_ready():
+    from app.voice_profiles import voice_source_readiness_issues
+
+    snapshot = {
+        "name": "Promoted asset",
+        "description": (
+            "Promoted asset: A Telegram group. Asset type: Telegram community. "
+            "Test budget: 50. Business goal: Get more customers."
+        ),
+        "value_proposition": (
+            "Promoted asset: A Telegram group. Asset type: Telegram community. "
+            "Test budget: 50. Business goal: Get more customers."
+        ),
+        "product_type": "Telegram channel",
+        "known_audience": ["People interested in the category"],
+    }
+    issues = voice_source_readiness_issues(snapshot)
+    assert "PRODUCT_VALUE_NOT_DISTINGUISHED_FROM_CAMPAIGN_BRIEF" in issues

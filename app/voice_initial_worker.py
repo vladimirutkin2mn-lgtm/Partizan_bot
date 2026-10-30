@@ -22,6 +22,7 @@ from app.voice_profiles import (
     VoiceProfileService,
     fingerprint,
     source_snapshot,
+    voice_source_readiness_issues,
 )
 
 VOICE_BUDGET_SLOT_NAMESPACE = "voice_profile_monthly_budget_slots"
@@ -86,6 +87,8 @@ class VoiceInitialGenerationWorker:
             except ValueError:
                 continue
             if latest != job.source_fingerprint:
+                continue
+            if voice_source_readiness_issues(product_record["product"]):
                 continue
             # Claim before spending. A competing worker sees the changed
             # status and cannot start the same charge, even across processes.

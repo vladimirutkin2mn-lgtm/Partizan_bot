@@ -306,3 +306,35 @@ async def test_initial_worker_claims_pre_challenger_schema_reservation_without_e
     assert result["provider_calls"] == 1
     assert provider.calls == 1
     assert len(store.list_namespace(VOICE_BUDGET_SLOT_NAMESPACE)) == 1
+
+
+@pytest.mark.asyncio
+async def test_campaign_only_reserved_initial_job_is_rejected_before_billing():
+    store, _, product_id, job = setup()
+    row = store.get("product_intake", str(product_id))
+    description = (
+        "Promoted asset: Community. Asset type: Telegram channel. "
+        "Campaign budget: 50. Goal: Acquire users."
+    )
+    row["product"]["description"] = description
+    row["product"]["value_proposition"] = description
+    row["product"]["product_type"] = "Telegram channel"
+    store.put("product_intake", str(product_id), row)
+    # Match the old reserved job to the bad source so this tests the
+    # quality gate rather than stale-fingerprint detection.
+    from app.voice_profiles import fingerprint, source_snapshot
+
+    stored_job = store.get("voice_profile_generation_jobs", job.id)
+    stored_job["source_fingerprint"] = fingerprint(
+        source_snapshot(row["product"])
+    )
+    store.put("voice_profile_generation_jobs", job.id, stored_job)
+    provider = StubProvider()
+    result = await VoiceInitialGenerationWorker(
+        store=store,
+        settings=settings(voice_generation_worker_enabled=True),
+        provider=provider,
+    ).run_once(expected_job_id=job.id)
+    assert result["provider_calls"] == 0
+    assert provider.calls == 0
+    assert store.list_namespace(VOICE_BUDGET_SLOT_NAMESPACE) == []
