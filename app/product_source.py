@@ -126,6 +126,17 @@ def description_source_context(brief: str) -> ProductSourceContext:
 async def read_public_product_source(raw_link: str) -> ProductSourceContext:
     normalized = normalize_product_link(raw_link)
     source_type = detect_product_source_type(normalized)
+    if source_type == ProductSourceType.TELEGRAM:
+        path = urlsplit(normalized).path.lstrip("/").casefold()
+        if path.startswith("+") or path.startswith("joinchat/"):
+            return ProductSourceContext(
+                source_type=source_type, source_label=_SOURCE_LABELS[source_type],
+                link=normalized, title="Telegram invitation",
+                description="", text="", needs_founder_context=True,
+                clarification_question=(
+                    "What do members get from this Telegram community?"
+                ),
+            )
     try:
         snapshot = await read_public_website(normalized, minimum_text_chars=0)
     except WebsiteReadError as exc:
