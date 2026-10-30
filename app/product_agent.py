@@ -236,7 +236,12 @@ class ProductIntakeAgent:
             and not analysis.known_audience
             and "known_audience" not in answered_fields
         ):
-            candidates["known_audience"] = ClarificationCandidate(field_name="known_audience", question="Who needs this product, and why?", rationale="The campaign does not establish the audience.", priority=5)
+            candidates["known_audience"] = ClarificationCandidate(
+                field_name="known_audience",
+                question="Who needs this product, and why?",
+                rationale="The campaign does not establish the audience.",
+                priority=5,
+            )
 
         for index, contradiction in enumerate(analysis.contradictions):
             field_name = f"contradiction_{index}"
