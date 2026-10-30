@@ -309,7 +309,7 @@ class ProductIntakeAgent:
             value_proposition=(
                 labeled.get("value proposition")
                 or labeled.get("value_proposition")
-                or source.get("description")
+                or (source.get("description") if not is_campaign_asset_brief(brief) else None)
                 or (brief.strip() if not source and len(brief.strip()) >= 20 else None)
             ),
             usp=labeled.get("usp"),
