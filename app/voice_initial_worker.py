@@ -21,6 +21,7 @@ from app.voice_profiles import (
     VoiceGenerationJob,
     VoiceProfileService,
     fingerprint,
+    voice_source_readiness_issues,
     source_snapshot,
 )
 
@@ -86,6 +87,8 @@ class VoiceInitialGenerationWorker:
             except ValueError:
                 continue
             if latest != job.source_fingerprint:
+                continue
+            if voice_source_readiness_issues(product_record["product"]):
                 continue
             # Claim before spending. A competing worker sees the changed
             # status and cannot start the same charge, even across processes.
