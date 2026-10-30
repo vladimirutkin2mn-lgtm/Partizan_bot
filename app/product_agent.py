@@ -219,6 +219,8 @@ class ProductIntakeAgent:
             if current is None or candidate.priority > current.priority:
                 candidates[rule.field_name] = candidate
 
+        if needs_product_value_clarification(description=analysis.description, value_proposition=analysis.value_proposition, problem_or_desire=analysis.problem_or_desire, source_brief=source_brief) and "value_proposition" not in answered_fields:
+            candidates["value_proposition"] = ClarificationCandidate(field_name="value_proposition", question="What do users receive from this product?", rationale="A campaign brief is not evidence of customer value.", priority=5)
         for index, contradiction in enumerate(analysis.contradictions):
             field_name = f"contradiction_{index}"
             if field_name in answered_fields:
