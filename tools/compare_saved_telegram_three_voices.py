@@ -376,9 +376,14 @@ def build_private_source_audit(*, manifest: dict, store, product, settings) -> d
         })
     # This is an operator-only audit. Product source and rendered memory can
     # contain confidential descriptions; do not print this object to CI logs.
-    from app.openai_usage import openai_task_options
+    from app.openai_usage import openai_task_options, openai_usage_context
 
-    resolved = openai_task_options(settings.llm_model)
+    with openai_usage_context("action_auto_prepare", product_id):
+        production_auto = openai_task_options(settings.llm_model)
+    with openai_usage_context("action_variant_draft", product_id):
+        production_variant = openai_task_options(settings.llm_model)
+    with openai_usage_context("voice_profile_generate", product_id):
+        generator_options = openai_task_options(settings.llm_model)
     return {
         "status": "VOICE_SOURCE_AUDIT_PRIVATE_NO_MODEL_CALLS",
         "source_fingerprint": version.source_fingerprint,
@@ -391,7 +396,9 @@ def build_private_source_audit(*, manifest: dict, store, product, settings) -> d
         "current_source_snapshot": current,
         "stored_voice_profile": version.profile.model_dump(mode="json"),
         "live_writer_enabled_in_config": settings.persisted_voice_writer_enabled,
-        "production_task_options": resolved,
+        "production_auto_prepare_task_options": production_auto,
+        "production_variant_task_options": production_variant,
+        "initial_voice_generator_task_options": generator_options,
         "research_model": settings.llm_model,
         "research_max_output_tokens": MAX_OUTPUT_TOKENS,
         "research_auto_retries": 0,
