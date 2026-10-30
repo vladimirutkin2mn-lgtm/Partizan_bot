@@ -41,7 +41,7 @@ from app.product_source import (
 )
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 from app.schemas import ClarificationAnswerRequest, ProductCreateRequest
-from app.voice_profiles import VoiceProfileService
+from app.voice_profiles import VoiceProfileService, voice_source_readiness_issues
 
 CUSTOMER_PROJECT_NAMESPACE = "customer_acquisition_projects"
 CUSTOMER_TOKEN_HEADER = "X-Partizan-Customer-Token"
