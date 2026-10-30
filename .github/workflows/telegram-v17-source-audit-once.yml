@@ -1,0 +1,121 @@
+name: One-shot private v17 source and exact writer audit (ZERO LLM)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/telegram-v17-source-audit-once.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: partizan-v17-source-audit-private-20261031
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require current main and production connection
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_PATH DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing diagnostic connection ${key}"
+              exit 1
+            fi
+          done
+          current_main="$(git ls-remote origin refs/heads/main | awk 'NR == 1 {print $1}')"
+          if [[ "${current_main}" != "${RELEASE_SHA}" ]]; then
+            echo "::error::Main ref changed; refuse access to different release"
+            exit 1
+          fi
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin production SSH key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Wait for exact deployed release
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          for attempt in $(seq 1 90); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${RELEASE_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Matching deployed release unavailable; zero provider calls"
+          exit 1
+      - name: Read source, memory, character and exact model prompts without generating
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          # Exact checked-out standalone source is passed by stdin. The
+          # production image deliberately excludes the tools/ package.
+          # Raw payload and memory remain in private local artifact ONLY.
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+            python - --inspect-private-sources --max-cases 3" \
+            < tools/compare_saved_telegram_three_voices.py \
+            > v17-voice-source-private.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("v17-voice-source-private.json").read_text())
+          assert report["status"] == "VOICE_SOURCE_AUDIT_PRIVATE_NO_MODEL_CALLS"
+          assert report["llm_calls"] == 0
+          assert report["telegram_api_calls"] == 0
+          assert report["runtime_writes"] == 0
+          assert len(report["cases"]) in (1, 2, 3)
+          assert all(
+              len(item["exact_writer_request"]) == 2
+              for item in report["cases"]
+          )
+          # Never log source snapshots, character, memory or original texts.
+          print(json.dumps({
+              "status": report["status"],
+              "saved_voice_version_id": report["saved_voice_version_id"],
+              "source_fingerprint": report["source_fingerprint"],
+              "research_model": report["research_model"],
+              "case_count": len(report["cases"]),
+              "negative_policy_cases": sum(
+                  not c["eligible_as_positive_profile_click"]
+                  for c in report["cases"]
+              ),
+              "llm_calls": report["llm_calls"],
+          }))
+          PY
+      - name: Keep sensitive audit only in short-lived private artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: partizan-v17-product-and-writer-private-audit
+          path: v17-voice-source-private.json
+          if-no-files-found: ignore
+          retention-days: 1
