@@ -30,6 +30,7 @@ def existing_voice(*, store=None):
         "id": str(prod), "status": "CONFIRMED", "name": "Conversational Agent",
         "description": "Interactive AI fictional conversational character for adults.",
         "known_audience": ["Adults who enjoy vivid, character-driven talk"],
+        "value_proposition": "A playful and distinctive fictional conversation partner",
     }
     store.put("customer_acquisition_projects", str(pid), {
         "id": str(pid), "product_id": str(prod), "understanding_confirmed": True,
