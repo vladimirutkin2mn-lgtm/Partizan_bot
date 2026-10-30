@@ -320,6 +320,8 @@ class ProductIntakeAgent:
             goal=labeled.get("goal"),
             budget=budget,
             max_cac=max_cac,
+            known_audience=[labeled.get("known_audience") or labeled.get("audience")]
+            if labeled.get("known_audience") or labeled.get("audience") else [],
             confidence=0.55 if source else None,
         )
 
