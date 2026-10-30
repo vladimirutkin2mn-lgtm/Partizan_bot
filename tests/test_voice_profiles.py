@@ -782,8 +782,8 @@ async def test_challenger_is_llm_generated_but_stays_inactive_until_review():
     assert challenger.version == baseline.version + 1
     assert challenger.evidence_status == "CHALLENGER_UNREVIEWED"
     assert challenger.generator_prompt_version.endswith("topic_first_challenger")
-    assert "VOICE" not in str(challenger.profile.character_summary)
-    assert "selected" not in provider.messages[0].content.lower()
+    assert "moderator" in provider.messages[0].content.lower()
+    assert "FUTURE community post" in provider.messages[0].content
     assert store.get(VOICE_ASSIGNMENT_NAMESPACE, f"{pid}:{product_id}") == (
         original_assignment
     )
