@@ -17,6 +17,7 @@ from app.voice_profiles import (
     VoiceGenerationJob,
     VoiceOrigin,
     VoiceProfileService,
+    voice_source_readiness_issues,
 )
 
 
@@ -33,6 +34,7 @@ class VoiceChallengerBootstrap:
         active = self.profiles.active(
             project_id=project_id, product_id=product_id, product_data=product,
         )
+        issues = voice_source_readiness_issues(product)
         result = {
             "project_id": str(project_id), "product_id": str(product_id),
             "status": "CHALLENGER_RESERVATION_NEEDED",
@@ -41,6 +43,11 @@ class VoiceChallengerBootstrap:
             "challenger_prompt_version": VOICE_CHALLENGER_PROMPT_VERSION,
             "provider_calls": 0, "publication_actions": 0,
         }
+        if issues:
+            return {
+                **result, "status": "PRODUCT_UNDERSTANDING_INSUFFICIENT",
+                "missing_dimensions": issues,
+            }
         jobs = [
             VoiceGenerationJob.model_validate(row)
             for row in self.store.list_namespace(VOICE_GENERATION_JOB_NAMESPACE)
