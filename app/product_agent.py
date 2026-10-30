@@ -219,8 +219,18 @@ class ProductIntakeAgent:
             if current is None or candidate.priority > current.priority:
                 candidates[rule.field_name] = candidate
 
-        if needs_product_value_clarification(description=analysis.description, value_proposition=analysis.value_proposition, problem_or_desire=analysis.problem_or_desire, source_brief=source_brief) and "value_proposition" not in answered_fields:
-            candidates["value_proposition"] = ClarificationCandidate(field_name="value_proposition", question="What do users receive from this product?", rationale="A campaign brief is not evidence of customer value.", priority=5)
+        if needs_product_value_clarification(
+            description=analysis.description,
+            value_proposition=analysis.value_proposition,
+            problem_or_desire=analysis.problem_or_desire,
+            source_brief=source_brief,
+        ) and "value_proposition" not in answered_fields:
+            candidates["value_proposition"] = ClarificationCandidate(
+                field_name="value_proposition",
+                question="What do users receive from this product?",
+                rationale="Campaign details do not establish customer value.",
+                priority=5,
+            )
         if is_campaign_asset_brief(source_brief) and not analysis.known_audience and "known_audience" not in answered_fields:
             candidates["known_audience"] = ClarificationCandidate(field_name="known_audience", question="Who needs this product, and why?", rationale="The campaign does not establish the audience.", priority=5)
 
