@@ -325,7 +325,9 @@ class CustomerFunnelService:
         # Reserving the voice job is unpaid and idempotent; an independently
         # budgeted one-shot worker is required before any actual LLM call.
         settings = get_settings()
-        if settings.voice_initial_reservation_enabled:
+        if settings.voice_initial_reservation_enabled and not voice_source_readiness_issues(
+            product.model_dump(mode="json")
+        ):
             try:
                 job = VoiceProfileService(self._store).reserve_initial(
                     project_id=project_id, product_id=product_id,
