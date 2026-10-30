@@ -790,6 +790,12 @@ async def test_challenger_is_llm_generated_but_stays_inactive_until_review():
     assert svc.active(
         project_id=pid, product_id=product_id, product_data=product_data()
     ).id == baseline.id
+    with pytest.raises(PermissionError, match="REQUIRES_INDEPENDENT_REVIEW"):
+        svc.promote(
+            project_id=pid, product_id=product_id,
+            version_id=challenger.id, expected_revision=1,
+            reason="not reviewed",
+        )
     assert {row["id"] for row in store.list_namespace("voice_profile_versions")} == (
         before_version_ids | {str(challenger.id)}
     )
