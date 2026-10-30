@@ -7,6 +7,27 @@
 экспериментом должен быть **новый характер на неизменном v17 writer**,
 а не изменение всех промптов сразу.
 
+## Бесплатный запуск для существующего проекта
+
+На уже подтверждённом продукте, после проверки PR #586:
+
+```bash
+python -m app.voice_challenger_bootstrap \\
+  --project-id PROJECT_UUID --product-id PRODUCT_UUID
+```
+
+Без параметров выполняется только чтение. Отдельная команда:
+
+```bash
+python -m app.voice_challenger_bootstrap \\
+  --project-id PROJECT_UUID --product-id PRODUCT_UUID --reserve-only
+```
+
+создаёт одну идемпотентную **неоплачиваемую** задачу в durable DB.
+Она не генерирует текст, не переключает активный характер и не
+инициирует AutoResearch без отдельного budgeted runner. CLI ещё не
+зарегистрирована в cron и не включена в production workflow.
+
 ## Новый внутренний API
 
 `VoiceProfileService.reserve_challenger(project_id, product_id, product_data)`:
