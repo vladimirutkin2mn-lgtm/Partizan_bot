@@ -417,7 +417,7 @@ class VoiceProfileService:
                 if any(example.surface not in allowed for example in profile.examples):
                     raise ValueError("VOICE_CHALLENGER_INVALID_EXAMPLE_SURFACE")
                 if re.search(
-                    r"(?i)synthetic example\\s*\\d|surface\\s*:",
+                    r"(?i)synthetic example\s*\d|surface\s*:",
                     profile.style_instruction,
                 ):
                     raise ValueError("VOICE_CHALLENGER_EMBEDDED_EXAMPLES")
