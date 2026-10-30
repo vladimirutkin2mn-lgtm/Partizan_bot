@@ -237,9 +237,16 @@ class ProductIntakeAgent:
                 priority=5,
             )
 
+        campaign = is_campaign_asset_brief(source_brief)
         return sorted(
             candidates.values(),
-            key=lambda item: (-item.priority, item.field_name),
+            key=lambda item: (
+                -item.priority,
+                0 if campaign and item.field_name in {
+                    "value_proposition", "known_audience",
+                } else 1,
+                item.field_name,
+            ),
         )[:3]
 
     def _is_gap(self, analysis: ProductAnalysis, field_name: str) -> bool:
