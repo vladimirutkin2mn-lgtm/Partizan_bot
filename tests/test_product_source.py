@@ -197,3 +197,25 @@ async def test_product_source_fallback_never_masks_unsafe_or_unresolved_target(m
 
     with pytest.raises(ProductSourceReadError, match="Only public websites"):
         await read_public_product_source("https://t.me/example_bot")
+
+
+@pytest.mark.asyncio
+async def test_sparse_telegram_channel_does_not_get_bot_product_question(
+    monkeypatch,
+) -> None:
+    async def fake_reader(url: str, *, minimum_text_chars: int = 80) -> WebsiteSnapshot:
+        assert minimum_text_chars == 0
+        return WebsiteSnapshot(
+            url=url,
+            title="Telegram: View @community",
+            description="A group for people interested in events.",
+            text="View in Telegram. Meet people in the community.",
+        )
+
+    monkeypatch.setattr("app.product_source.read_public_website", fake_reader)
+    context = await read_public_product_source("https://t.me/community")
+    assert context.source_type == ProductSourceType.TELEGRAM
+    assert context.needs_founder_context is True
+    assert context.clarification_question == (
+        "What do people get from this Telegram channel or community?"
+    )
