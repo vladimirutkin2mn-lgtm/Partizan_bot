@@ -45,7 +45,7 @@ from app.runtime_store import MemoryRuntimeStateStore, get_runtime_store
 from app.telegram_community_registry import TelegramCommunityRegistry
 from app.telegram_legacy_registry_bootstrap import _public_handle
 from app.voice_draft_cache import VoiceDraftCache
-from app.voice_profiles import VoiceProfileService
+from app.voice_profiles import VoiceProfileService, fingerprint, source_snapshot
 
 _PRODUCT = "52d7e59e-5ac5-4363-b829-c93e33e48272"
 _PROJECT = "124cdd70-49b0-48b3-aee0-a037dda4bcd0"
@@ -326,6 +326,80 @@ async def build_manifest(*, store, product, max_cases: int = MAX_CASES) -> dict:
     }
 
 
+
+def build_private_source_audit(*, manifest: dict, store, product, settings) -> dict:
+    """Export REAL saved inputs and exact writer messages; zero model calls.
+
+    Intended ONLY for an access-controlled, short-lived artifact, never logs or
+    an API response. No connection secrets or account profile are exported.
+    """
+    if manifest.get("status") != "PREFLIGHT_READY_NO_MODEL_CALLS":
+        raise RuntimeError("VOICE_AUDIT_MANIFEST_NOT_READY")
+    project_id, product_id = UUID(_PROJECT), UUID(_PRODUCT)
+    profiles = VoiceProfileService(store)
+    version = profiles.get_version(
+        project_id=project_id, product_id=product_id,
+        version_id=UUID(manifest["voice_profile_version_id"]),
+    )
+    current = source_snapshot(product.model_dump(mode="json"))
+    if version.source_fingerprint != fingerprint(current):
+        raise RuntimeError("VOICE_AUDIT_SOURCE_FINGERPRINT_MISMATCH")
+    cases = []
+    for case in manifest["cases"]:
+        messages = case["arms"]["v17"]["messages"]
+        if len(messages) != 2:
+            raise RuntimeError("VOICE_AUDIT_INCOMPLETE_WRITER_REQUEST")
+        payload = json.loads(messages[1].content)
+        if (
+            str(payload["author_voice"]["voice_profile_version_id"])
+            != str(version.id)
+            or payload["author_voice"]["voice_profile_content_hash"]
+            != version.content_hash
+        ):
+            raise RuntimeError("VOICE_AUDIT_WRITER_VOICE_MISMATCH")
+        cases.append({
+            "case_id": case["case_id"],
+            "target_url": case["target_url"],
+            "surface": case["surface"],
+            "target_text": case["target_text"],
+            "request_hash": case["arms"]["v17"]["request_hash"],
+            "exact_writer_request": [
+                {"role": m.role, "content": m.content} for m in messages
+            ],
+            "writer_payload": payload,
+            "community_policy": payload.get("applied_community_policy"),
+            # A recorded ban on profile-based promotion is a policy-negative
+            # test, NOT a valid positive-profile-click acquisition target.
+            "eligible_as_positive_profile_click": (
+                not case["target_url"].startswith("https://t.me/bizarreclubmsk/")
+            ),
+        })
+    # This is an operator-only audit. Product source and rendered memory can
+    # contain confidential descriptions; do not print this object to CI logs.
+    from app.openai_usage import openai_task_options
+
+    resolved = openai_task_options(settings.llm_model)
+    return {
+        "status": "VOICE_SOURCE_AUDIT_PRIVATE_NO_MODEL_CALLS",
+        "source_fingerprint": version.source_fingerprint,
+        "project_id": _PROJECT, "product_id": _PRODUCT,
+        "saved_voice_version_id": str(version.id),
+        "saved_voice_content_hash": version.content_hash,
+        "generator_prompt_version": version.generator_prompt_version,
+        "generator_config_id": version.generation_config_id,
+        "stored_source_snapshot": version.source_snapshot,
+        "current_source_snapshot": current,
+        "stored_voice_profile": version.profile.model_dump(mode="json"),
+        "live_writer_enabled_in_config": settings.persisted_voice_writer_enabled,
+        "production_task_options": resolved,
+        "research_model": settings.llm_model,
+        "research_max_output_tokens": MAX_OUTPUT_TOKENS,
+        "research_auto_retries": 0,
+        "cases": cases,
+        "llm_calls": 0, "telegram_api_calls": 0, "runtime_writes": 0,
+    }
+
+
 def _positive(raw: str | Decimal) -> Decimal:
     try:
         value = Decimal(str(raw))
@@ -430,17 +504,25 @@ class _LiveProvider:
 async def main() -> dict:
     parser = argparse.ArgumentParser()
     parser.add_argument("--execute-paid", action="store_true")
+    parser.add_argument("--inspect-private-sources", action="store_true")
     parser.add_argument("--ack", default="")
     parser.add_argument("--budget-usd", default="0")
     parser.add_argument("--reservation-usd", default="0")
     parser.add_argument("--max-cases", type=int, default=MAX_CASES)
     args = parser.parse_args()
     # Safety: all gates checked before inspecting data or contacting OpenAI.
+    if args.execute_paid and args.inspect_private_sources:
+        raise ValueError("VOICE_AUDIT_CANNOT_MIX_WITH_PAID_EXPERIMENT")
     if args.execute_paid and args.ack != ACKNOWLEDGEMENT:
         raise PermissionError("VOICE_BENCHMARK_PAID_ACKNOWLEDGEMENT_REQUIRED")
     store = get_runtime_store()
     product = product_intake_service.get_product(UUID(_PRODUCT))
     manifest = await build_manifest(store=store, product=product, max_cases=args.max_cases)
+    if args.inspect_private_sources:
+        return build_private_source_audit(
+            manifest=manifest, store=store, product=product,
+            settings=get_settings(),
+        )
     if not args.execute_paid:
         return {
             **{k: v for k, v in manifest.items() if k not in {"cases"}},
