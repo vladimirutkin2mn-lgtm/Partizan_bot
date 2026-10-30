@@ -229,6 +229,30 @@ def fingerprint(snapshot: dict) -> str:
     return hashlib.sha256(data.encode()).hexdigest()
 
 
+def voice_source_readiness_issues(product: dict) -> list[str]:
+    """Check whether a voice can be inferred beyond an asset/campaign label.
+
+    Do not mistake a long campaign brief with a pasted URL or budget for a
+    differentiated product description. Readiness is separate from validity:
+    historical baseline versions must remain readable.
+    """
+    source = source_snapshot(product)
+    issues: list[str] = []
+    if not (source["known_audience"] or source["use_cases"]):
+        issues.append("STRUCTURED_AUDIENCE_MISSING")
+    if not (
+        source["product_type"]
+        or source["problem_or_desire"]
+        or (
+            source["value_proposition"]
+            and source["value_proposition"].casefold()
+            != source["description"].casefold()
+        )
+    ):
+        issues.append("PRODUCT_VALUE_NOT_DISTINGUISHED_FROM_CAMPAIGN_BRIEF")
+    return issues
+
+
 class VoiceProfileService:
     """Stable storage and an explicit, non-scheduled LLM generation operation."""
 
@@ -283,6 +307,9 @@ class VoiceProfileService:
         """Idempotent unpaid candidate reservation; never changes active voice."""
         self._verify_project(project_id, product_id)
         source = source_snapshot(product_data)
+        issues = voice_source_readiness_issues(product_data)
+        if issues:
+            raise RuntimeError("VOICE_CHALLENGER_PRODUCT_UNDERSTANDING_REQUIRED")
         digest = fingerprint(source)
         parent = self.active(
             project_id=project_id, product_id=product_id, product_data=product_data,
@@ -384,6 +411,8 @@ class VoiceProfileService:
                 != before.source_fingerprint
             ):
                 raise RuntimeError("VOICE_CHALLENGER_PRODUCT_SOURCE_CHANGED")
+            if voice_source_readiness_issues(live_product):
+                raise RuntimeError("VOICE_CHALLENGER_PRODUCT_UNDERSTANDING_REQUIRED")
             prompt = VOICE_CHALLENGER_PROMPT
             version_number = parent.version + 1
         else:
