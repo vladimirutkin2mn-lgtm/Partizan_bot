@@ -8,7 +8,6 @@ from app.product_source_quality import (
     needs_product_value_clarification,
 )
 
-
 CAMPAIGN_BRIEF = (
     "Promoted asset: FemDom\n"
     "Asset type: Telegram channel\n"
