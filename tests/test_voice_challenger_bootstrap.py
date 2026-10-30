@@ -114,3 +114,46 @@ def test_challenger_reservation_refuses_changed_product_without_call():
     with pytest.raises(RuntimeError, match="VOICE_SOURCE_CHANGED"):
         VoiceChallengerBootstrap(store).reserve(project_id=pid, product_id=prod)
     assert store.list_namespace(VOICE_GENERATION_JOB_NAMESPACE) == []
+
+
+def test_campaign_label_without_audience_or_distinct_value_blocks_paid_candidate():
+    store, pid, prod, _ = existing_voice()
+    record = store.get("product_intake", str(prod))
+    source = record["product"]
+    source["name"] = "Promoted asset: example"
+    source["description"] = (
+        "Promoted asset: Example. Asset type: Telegram channel or group. "
+        "Market: any. Test budget: $50. Goal: Get paying customers."
+    )
+    source["value_proposition"] = source["description"]
+    source["known_audience"] = []
+    source["use_cases"] = []
+    source["product_type"] = ""
+    source["problem_or_desire"] = ""
+    store.put("product_intake", str(prod), record)
+
+    # Update the fixture's original version to this changed source: an old
+    # source check is not enough; we must also catch semantic thinness.
+    version_row = store.list_namespace(VOICE_VERSION_NAMESPACE)[0]
+    from app.voice_profiles import VoiceProfileService
+
+    svc = VoiceProfileService(store)
+    raw = store.get(VOICE_VERSION_NAMESPACE, version_row["id"])
+    raw["source_snapshot"] = source_snapshot(source)
+    raw["source_fingerprint"] = fingerprint(source_snapshot(source))
+    store.put(VOICE_VERSION_NAMESPACE, version_row["id"], raw)
+
+    bootstrap = VoiceChallengerBootstrap(store)
+    report = bootstrap.plan(project_id=pid, product_id=prod)
+    assert report["status"] == "PRODUCT_UNDERSTANDING_INSUFFICIENT"
+    assert "STRUCTURED_AUDIENCE_MISSING" in report["missing_dimensions"]
+    assert "PRODUCT_VALUE_NOT_DISTINGUISHED_FROM_CAMPAIGN_BRIEF" in (
+        report["missing_dimensions"]
+    )
+    assert report["provider_calls"] == 0
+    assert bootstrap.reserve(project_id=pid, product_id=prod) == report
+    assert store.list_namespace(VOICE_GENERATION_JOB_NAMESPACE) == []
+    with pytest.raises(RuntimeError, match="PRODUCT_UNDERSTANDING_REQUIRED"):
+        svc.reserve_challenger(
+            project_id=pid, product_id=prod, product_data=source
+        )
