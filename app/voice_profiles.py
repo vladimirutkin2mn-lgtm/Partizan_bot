@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from app.llm import LLMMessage, LLMProvider
 from app.openai_usage import openai_usage_context, summarize_openai_usage
+from app.product_source_quality import is_campaign_asset_brief, is_distinct_product_value
 from app.runtime_store import RuntimeStateStore, get_runtime_store
 
 CUSTOMER_PROJECT_NAMESPACE = "customer_acquisition_projects"  # existing project store
@@ -248,6 +249,16 @@ def voice_source_readiness_issues(product: dict) -> list[str]:
             and source["value_proposition"].casefold()
             != source["description"].casefold()
         )
+    ):
+        issues.append("PRODUCT_VALUE_NOT_DISTINGUISHED_FROM_CAMPAIGN_BRIEF")
+    if (
+        is_campaign_asset_brief(source["description"])
+        and not is_distinct_product_value(
+            source["description"], source["value_proposition"]
+        )
+        and not source["problem_or_desire"]
+        and not source["use_cases"]
+        and "PRODUCT_VALUE_NOT_DISTINGUISHED_FROM_CAMPAIGN_BRIEF" not in issues
     ):
         issues.append("PRODUCT_VALUE_NOT_DISTINGUISHED_FROM_CAMPAIGN_BRIEF")
     return issues
