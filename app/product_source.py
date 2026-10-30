@@ -160,7 +160,7 @@ async def read_public_product_source(raw_link: str) -> ProductSourceContext:
             description="",
             text="",
             needs_founder_context=True,
-            clarification_question=_clarification_question(source_type),
+            clarification_question=_clarification_question(source_type, normalized),
         )
     return _context_from_snapshot(source_type, snapshot)
 
@@ -181,7 +181,7 @@ def _context_from_snapshot(
         text=snapshot.text,
         needs_founder_context=needs_context,
         clarification_question=(
-            _clarification_question(source_type) if needs_context else None
+            _clarification_question(source_type, snapshot.url) if needs_context else None
         ),
     )
 
@@ -243,9 +243,14 @@ def _minimum_context_chars(source_type: ProductSourceType) -> int:
     return 100
 
 
-def _clarification_question(source_type: ProductSourceType) -> str:
+def _clarification_question(
+    source_type: ProductSourceType, source_link: str | None = None,
+) -> str:
     if source_type == ProductSourceType.TELEGRAM:
-        return "What does this bot help users do?"
+        handle = (urlsplit(source_link or "").path or "").strip("/").casefold()
+        if handle.endswith("bot"):
+            return "What does this bot help users do?"
+        return "What do people get from this Telegram channel or community?"
     if source_type in {ProductSourceType.IOS_APP, ProductSourceType.ANDROID_APP}:
         return "What is the main thing users do with this app?"
     if source_type == ProductSourceType.GITHUB:
