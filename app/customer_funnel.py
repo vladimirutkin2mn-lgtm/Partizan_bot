@@ -338,6 +338,8 @@ class CustomerFunnelService:
             except ValueError as exc:
                 project["voice_initial_status"] = "VOICE_UNAVAILABLE"
                 project["voice_initial_error_code"] = str(exc)[:100]
+        elif settings.voice_initial_reservation_enabled:
+            project["voice_initial_status"] = "PRODUCT_UNDERSTANDING_INSUFFICIENT"
         self._persist(project)
         return CustomerPreviewConfirmationResponse(
             project_id=project_id,
