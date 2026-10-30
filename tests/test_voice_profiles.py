@@ -743,3 +743,131 @@ def test_customer_telegram_preview_renders_exact_action_voice_provenance(monkeyp
     assert result["voice_profile_content_hash"] == content_hash
     assert result["variants"][0]["voice_profile_version_id"] == version_id
     assert result["variants"][0]["voice_profile_content_hash"] == content_hash
+
+
+@pytest.mark.asyncio
+async def test_challenger_is_llm_generated_but_stays_inactive_until_review():
+    store = MemoryRuntimeStateStore()
+    pid, product_id = setup(store)
+    store.put("product_intake", str(product_id), {
+        "product": {**product_data(), "id": str(product_id), "status": "CONFIRMED"}
+    })
+    svc, _, _, baseline = await initial(store, pid, product_id)
+    original_assignment = store.get(
+        VOICE_ASSIGNMENT_NAMESPACE, f"{pid}:{product_id}"
+    )
+    before_version_ids = {
+        row["id"] for row in store.list_namespace("voice_profile_versions")
+    }
+    job1 = svc.reserve_challenger(
+        project_id=pid, product_id=product_id, product_data=product_data()
+    )
+    job2 = svc.reserve_challenger(
+        project_id=pid, product_id=product_id, product_data=product_data()
+    )
+    assert job1.id == job2.id
+    assert job1.origin.value == "AUTORESEARCH"
+    assert job1.parent_version_id == baseline.id
+    assert job1.status == "RESERVED"
+    assert store.get(VOICE_ASSIGNMENT_NAMESPACE, f"{pid}:{product_id}") == (
+        original_assignment
+    )
+    provider = VoiceLLM()
+    challenger = await svc.generate_reserved(
+        job1.id, provider=provider, allow_llm_call=True,
+    )
+    assert provider.calls == 1
+    assert challenger.origin.value == "AUTORESEARCH"
+    assert challenger.parent_version_id == baseline.id
+    assert challenger.version == baseline.version + 1
+    assert challenger.evidence_status == "CHALLENGER_UNREVIEWED"
+    assert challenger.generator_prompt_version.endswith("topic_first_challenger")
+    assert "VOICE" not in str(challenger.profile.character_summary)
+    assert "selected" not in provider.messages[0].content.lower()
+    assert store.get(VOICE_ASSIGNMENT_NAMESPACE, f"{pid}:{product_id}") == (
+        original_assignment
+    )
+    assert svc.active(
+        project_id=pid, product_id=product_id, product_data=product_data()
+    ).id == baseline.id
+    assert {row["id"] for row in store.list_namespace("voice_profile_versions")} == (
+        before_version_ids | {str(challenger.id)}
+    )
+    with pytest.raises(RuntimeError, match="VOICE_JOB_NOT_RESERVED"):
+        await svc.generate_reserved(
+            job1.id, provider=provider, allow_llm_call=True,
+        )
+    assert provider.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_challenger_stale_parent_and_source_do_not_cost_model_call():
+    store = MemoryRuntimeStateStore()
+    pid, product_id = setup(store)
+    confirmed = {**product_data(), "id": str(product_id), "status": "CONFIRMED"}
+    store.put("product_intake", str(product_id), {"product": confirmed})
+    svc, _, _, baseline = await initial(store, pid, product_id)
+    job = svc.reserve_challenger(
+        project_id=pid, product_id=product_id, product_data=product_data()
+    )
+    original = store.get(VOICE_GENERATION_JOB_NAMESPACE, job.id)
+    provider = VoiceLLM()
+
+    assignment = store.get(VOICE_ASSIGNMENT_NAMESPACE, f"{pid}:{product_id}")
+    assignment["assignment_revision"] += 1
+    store.put(VOICE_ASSIGNMENT_NAMESPACE, f"{pid}:{product_id}", assignment)
+    with pytest.raises(RuntimeError, match="VOICE_CHALLENGER_PARENT_CHANGED"):
+        await svc.generate_reserved(
+            job.id, provider=provider, allow_llm_call=True,
+        )
+    assert provider.calls == 0
+    assert store.get(VOICE_GENERATION_JOB_NAMESPACE, job.id) == original
+
+    assignment["assignment_revision"] -= 1
+    store.put(VOICE_ASSIGNMENT_NAMESPACE, f"{pid}:{product_id}", assignment)
+    confirmed["description"] = "A different product positioning no longer matching."
+    store.put("product_intake", str(product_id), {"product": confirmed})
+    with pytest.raises(RuntimeError, match="VOICE_CHALLENGER_PRODUCT_SOURCE_CHANGED"):
+        await svc.generate_reserved(
+            job.id, provider=provider, allow_llm_call=True,
+        )
+    assert provider.calls == 0
+    assert store.get(VOICE_GENERATION_JOB_NAMESPACE, job.id) == original
+    assert svc.get_version(
+        project_id=pid, product_id=product_id, version_id=baseline.id
+    )
+
+
+@pytest.mark.asyncio
+async def test_challenger_bad_examples_fail_closed_without_retry_or_activation():
+    store = MemoryRuntimeStateStore()
+    pid, product_id = setup(store)
+    store.put("product_intake", str(product_id), {
+        "product": {**product_data(), "id": str(product_id), "status": "CONFIRMED"}
+    })
+    svc, _, _, baseline = await initial(store, pid, product_id)
+    job = svc.reserve_challenger(
+        project_id=pid, product_id=product_id, product_data=product_data()
+    )
+
+    class BadExamples:
+        calls = 0
+
+        async def parse(self, messages, response_model):
+            self.calls += 1
+            example = draft().model_dump()
+            example["examples"][1]["surface"] = "Moderation note"
+            return response_model.model_validate(example)
+
+    provider = BadExamples()
+    with pytest.raises(ValueError, match="INVALID_EXAMPLE_SURFACE"):
+        await svc.generate_reserved(job.id, provider=provider, allow_llm_call=True)
+    assert provider.calls == 1
+    failed = svc.job(job.id)
+    assert failed.status == "PROVIDER_OUTCOME_UNKNOWN"
+    assert svc.active(
+        project_id=pid, product_id=product_id, product_data=product_data()
+    ).id == baseline.id
+    with pytest.raises(RuntimeError, match="VOICE_JOB_NOT_RESERVED"):
+        await svc.generate_reserved(job.id, provider=provider, allow_llm_call=True)
+    assert provider.calls == 1
