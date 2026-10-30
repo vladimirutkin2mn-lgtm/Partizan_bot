@@ -401,8 +401,12 @@ class VoiceProfileService:
         )
         try:
             with openai_usage_context(
-                "voice_profile_generate", before.product_id,
-                run_id=job_id, collector=usage_rows,
+                (
+                    "voice_profile_challenger"
+                    if before.origin == VoiceOrigin.AUTORESEARCH
+                    else "voice_profile_generate"
+                ),
+                before.product_id, run_id=job_id, collector=usage_rows,
             ):
                 result = await provider.parse(
                     messages=[
