@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import re
 
-
 _CAMPAIGN_ASSET_LABEL = re.compile(
     r"(?i)\b(?:promoted\s+asset|asset\s+type)\s*:"
 )
