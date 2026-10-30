@@ -287,3 +287,22 @@ async def test_stale_generator_prompt_job_never_spends_even_with_exact_job_id():
     assert provider.calls == 0
     assert store.get("voice_profile_generation_jobs", job.id) == old
     assert store.list_namespace(VOICE_BUDGET_SLOT_NAMESPACE) == []
+
+
+@pytest.mark.asyncio
+async def test_initial_worker_claims_pre_challenger_schema_reservation_without_extra_spend():
+    store, _, _, job = setup()
+    original = store.get("voice_profile_generation_jobs", job.id)
+    for key in ("origin", "parent_version_id", "expected_assignment_revision"):
+        original.pop(key, None)
+    store.put("voice_profile_generation_jobs", job.id, original)
+    provider = StubProvider()
+    worker = VoiceInitialGenerationWorker(
+        store=store, settings=settings(voice_generation_worker_enabled=True),
+        provider=provider,
+    )
+    result = await worker.run_once(expected_job_id=job.id)
+    assert result["status"] == "VOICE_INITIAL_CREATED"
+    assert result["provider_calls"] == 1
+    assert provider.calls == 1
+    assert len(store.list_namespace(VOICE_BUDGET_SLOT_NAMESPACE)) == 1

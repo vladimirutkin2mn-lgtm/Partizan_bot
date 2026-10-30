@@ -89,10 +89,16 @@ class VoiceInitialGenerationWorker:
                 continue
             # Claim before spending. A competing worker sees the changed
             # status and cannot start the same charge, even across processes.
+            raw_job = self._store.get(VOICE_GENERATION_JOB_NAMESPACE, job.id)
+            if raw_job is None or raw_job.get("status") != "RESERVED":
+                continue
+            # Pre-v3 initial jobs lack the newly optional challenger fields.
+            # CAS must compare the exact stored row, not the Pydantic
+            # normalized representation that adds default values.
             claimed = job.model_copy(update={"status": "BUDGET_RESERVING"})
             if not self._store.compare_and_swap(
                 VOICE_GENERATION_JOB_NAMESPACE, job.id,
-                job.model_dump(mode="json"), claimed.model_dump(mode="json"),
+                raw_job, claimed.model_dump(mode="json"),
             ):
                 continue
             now = self._now()
