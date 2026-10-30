@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.llm import LLMMessage, LLMProvider
 from app.marketing_intelligence import MarketingTask, render_marketing_guidance
 from app.openai_usage import openai_usage_context
+from app.product_source_quality import is_campaign_asset_brief, is_distinct_product_value
 
 
 class ClarificationCandidate(BaseModel):
@@ -177,6 +178,10 @@ class ProductIntakeAgent:
             updates["name"] = self._fallback_name(brief)
         if not analysis.description:
             updates["description"] = brief.strip()
+        if is_campaign_asset_brief(brief) and not is_distinct_product_value(
+            analysis.description, analysis.value_proposition,
+        ) and not analysis.problem_or_desire:
+            updates["value_proposition"] = None
         if updates:
             return analysis.model_copy(update=updates)
         return analysis
