@@ -7,7 +7,11 @@ from pydantic import BaseModel, Field
 from app.llm import LLMMessage, LLMProvider
 from app.marketing_intelligence import MarketingTask, render_marketing_guidance
 from app.openai_usage import openai_usage_context
-from app.product_source_quality import is_campaign_asset_brief, is_distinct_product_value
+from app.product_source_quality import (
+    is_campaign_asset_brief,
+    is_distinct_product_value,
+    needs_product_value_clarification,
+)
 
 
 class ClarificationCandidate(BaseModel):
