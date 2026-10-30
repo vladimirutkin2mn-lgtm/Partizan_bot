@@ -145,7 +145,7 @@ class ProductIntakeAgent:
             except Exception:
                 analysis = self._fallback_analysis(brief, answers)
         analysis = self._normalize(analysis, brief)
-        analysis.clarifications = self._select_clarifications(analysis, answered_fields)
+        analysis.clarifications = self._select_clarifications(analysis, answered_fields, brief)
         return analysis
 
     def _build_messages(
