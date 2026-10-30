@@ -21,8 +21,8 @@ from app.voice_profiles import (
     VoiceGenerationJob,
     VoiceProfileService,
     fingerprint,
-    voice_source_readiness_issues,
     source_snapshot,
+    voice_source_readiness_issues,
 )
 
 VOICE_BUDGET_SLOT_NAMESPACE = "voice_profile_monthly_budget_slots"
