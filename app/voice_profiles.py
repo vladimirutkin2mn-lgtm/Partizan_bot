@@ -548,7 +548,11 @@ class VoiceProfileService:
         expected_revision: int, reason: str,
     ) -> VoiceAssignment:
         """Manual primitive; no AutoResearch-triggered promotion is wired."""
-        self.get_version(project_id=project_id, product_id=product_id, version_id=version_id)
+        proposed = self.get_version(
+            project_id=project_id, product_id=product_id, version_id=version_id,
+        )
+        if proposed.evidence_status == "CHALLENGER_UNREVIEWED":
+            raise PermissionError("VOICE_CHALLENGER_REQUIRES_INDEPENDENT_REVIEW")
         scope = self._scope(project_id, product_id)
         before_raw = self._store.get(VOICE_ASSIGNMENT_NAMESPACE, scope)
         if before_raw is None:
