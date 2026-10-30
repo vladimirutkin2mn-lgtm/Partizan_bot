@@ -292,6 +292,7 @@ class ProductIntakeAgent:
             name=(
                 labeled.get("product")
                 or labeled.get("name")
+                or labeled.get("promoted asset")
                 or source.get("title")
             ),
             product_type=self._fallback_product_type(source_type),
