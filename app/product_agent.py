@@ -193,7 +193,7 @@ class ProductIntakeAgent:
     def _select_clarifications(
         self,
         analysis: ProductAnalysis,
-        answered_fields: set[str],
+        answered_fields: set[str], source_brief: str = "",
     ) -> list[ClarificationCandidate]:
         candidates: dict[str, ClarificationCandidate] = {}
 
