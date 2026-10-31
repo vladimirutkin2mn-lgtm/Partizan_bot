@@ -182,8 +182,6 @@ def test_campaign_type_label_does_not_make_unproven_value_ready():
 
 def reviewed_rescan_existing_voice():
     """Simulate a completed #590 founder confirmation, without live calls."""
-    from app.voice_profiles import VoiceProfileService
-
     store, pid, prod, old_version = existing_voice()
     old_product = dict(store.get("product_intake", str(prod))["product"])
     new_product = {
@@ -258,7 +256,6 @@ async def test_confirmed_rescan_can_generate_inactive_challenger_but_not_publish
 
 def test_review_required_flag_alone_does_not_authorize_stale_source():
     store, pid, prod, _, scan_id = reviewed_rescan_existing_voice()
-    project = store.get("customer_acquisition_projects", str(pid))
     before = store.get("customer_product_revision_history", f"{pid}:{scan_id}")
     before["new_product"]["value_proposition"] = "Tampered revision that does not match live facts."
     store.put("customer_product_revision_history", f"{pid}:{scan_id}", before)
