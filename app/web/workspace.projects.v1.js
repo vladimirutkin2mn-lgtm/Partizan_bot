@@ -361,6 +361,28 @@
         <div><span>Test budget</span><strong id="project-details-budget">—</strong></div>
       </div>
       <div class="project-description-block"><span>Description</span><p id="project-details-brief">—</p></div>
+      <div class="project-description-block" id="product-rescan-panel">
+        <div class="project-details-head">
+          <div><strong>Product understanding</strong><p>Review what Partizan knows about your product, not its advertising budget.</p></div>
+          <button id="product-rescan-start" class="button button-secondary" type="button">Rescan product</button>
+        </div>
+        <p id="product-rescan-status" aria-live="polite"></p>
+        <form id="product-rescan-form" class="project-form hidden">
+          <p id="product-rescan-source" class="project-description-block"></p>
+          <p id="product-rescan-evidence" class="project-description-block"></p>
+          <input type="hidden" id="product-rescan-scan-id">
+          <label><span>Product name</span><input id="product-rescan-name" minlength="2" maxlength="120" required></label>
+          <label><span>What is the product or community?</span><textarea id="product-rescan-description" minlength="20" maxlength="2000" required></textarea></label>
+          <label><span>What do people actually get?</span><textarea id="product-rescan-value" minlength="20" maxlength="1600" required></textarea></label>
+          <label><span>Who is this for?</span><input id="product-rescan-audience" minlength="8" maxlength="500" required></label>
+          <p>No changes are applied until you confirm. Existing voice and publications are not changed automatically.</p>
+          <div id="product-rescan-error" class="project-form-error hidden" role="alert"></div>
+          <div class="project-modal-actions">
+            <button id="product-rescan-cancel" class="button button-secondary" type="button">Cancel</button>
+            <button id="product-rescan-confirm" class="button button-primary" type="submit">Confirm product details</button>
+          </div>
+        </form>
+      </div>
       <div class="project-danger-zone">
         <div><strong>Delete project</strong><span>Remove this project from your workspace. Financial and experiment records are retained for audit integrity.</span></div>
         <button id="delete-project-button" class="project-delete-button" type="button">Delete project</button>
@@ -370,6 +392,82 @@
         <div><button id="project-delete-cancel" class="button button-secondary" type="button">Cancel</button><button id="project-delete-confirm-button" class="project-delete-confirm-button" type="button">Yes, delete project</button></div>
       </div>`;
     settings.appendChild(card);
+
+    const rescanStart = document.getElementById('product-rescan-start');
+    const rescanForm = document.getElementById('product-rescan-form');
+    const rescanStatus = document.getElementById('product-rescan-status');
+    const rescanError = document.getElementById('product-rescan-error');
+    const showRescan = (draft) => {
+      if (!draft || draft.status !== 'PENDING') return;
+      document.getElementById('product-rescan-scan-id').value = draft.scan_id;
+      document.getElementById('product-rescan-name').value = draft.proposed.name || '';
+      document.getElementById('product-rescan-description').value = draft.proposed.description || '';
+      document.getElementById('product-rescan-value').value = draft.proposed.value_proposition || '';
+      document.getElementById('product-rescan-audience').value = draft.proposed.known_audience || '';
+      const sourceStatus = draft.source_status || '';
+      document.getElementById('product-rescan-source').textContent = sourceStatus === 'PUBLIC_SOURCE_READ'
+        ? 'Public source checked. Review these details before confirming.'
+        : 'The public source does not establish the product value. Add only facts you can verify.';
+      document.getElementById('product-rescan-evidence').textContent = draft.source_excerpt
+        ? 'Source evidence: ' + draft.source_excerpt : '';
+      rescanForm.classList.remove('hidden');
+      rescanStatus.textContent = 'Draft only — current product details remain unchanged.';
+      rescanError.classList.add('hidden');
+    };
+
+    rescanStart.addEventListener('click', async () => {
+      const projectId = document.getElementById('project-details-card').dataset.projectId;
+      if (!projectId) return;
+      rescanStart.disabled = true;
+      rescanStart.textContent = 'Scanning…';
+      rescanError.classList.add('hidden');
+      try {
+        const draft = await api(
+          `/customer/account/projects/${encodeURIComponent(projectId)}/product/rescan`,
+          { method: 'POST' },
+        );
+        showRescan(draft);
+      } catch (error) {
+        rescanStatus.textContent = error.message;
+      } finally {
+        rescanStart.disabled = false;
+        rescanStart.textContent = 'Rescan product';
+      }
+    });
+    document.getElementById('product-rescan-cancel').addEventListener('click', () => {
+      rescanForm.classList.add('hidden');
+      rescanStatus.textContent = 'No product changes applied.';
+    });
+    rescanForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const projectId = document.getElementById('project-details-card').dataset.projectId;
+      const confirm = document.getElementById('product-rescan-confirm');
+      if (!projectId || confirm.disabled) return;
+      confirm.disabled = true;
+      confirm.textContent = 'Saving…';
+      rescanError.classList.add('hidden');
+      try {
+        await api(
+          `/customer/account/projects/${encodeURIComponent(projectId)}/product/rescan/confirm`,
+          { method: 'POST', body: JSON.stringify({
+            scan_id: document.getElementById('product-rescan-scan-id').value,
+            name: document.getElementById('product-rescan-name').value.trim(),
+            description: document.getElementById('product-rescan-description').value.trim(),
+            value_proposition: document.getElementById('product-rescan-value').value.trim(),
+            known_audience: document.getElementById('product-rescan-audience').value.trim(),
+          }) },
+        );
+        rescanForm.classList.add('hidden');
+        rescanStatus.textContent = 'Saved. Your previous character remains unchanged until evaluated separately.';
+        await refreshProjectLabels();
+      } catch (error) {
+        rescanError.textContent = error.message;
+        rescanError.classList.remove('hidden');
+      } finally {
+        confirm.disabled = false;
+        confirm.textContent = 'Confirm product details';
+      }
+    });
 
     document.getElementById('delete-project-button').addEventListener('click', () => {
       const confirm = document.getElementById('project-delete-confirm');
@@ -423,6 +521,30 @@
     document.getElementById('project-details-goal').textContent = project.goal || '—';
     document.getElementById('project-details-budget').textContent = `$${Number(project.budget_usd || 0).toLocaleString('en-US')}`;
     document.getElementById('project-details-brief').textContent = project.brief || 'No description added.';
+    if (card.dataset.rescanLoadedFor !== String(project.project_id)) {
+      card.dataset.rescanLoadedFor = String(project.project_id);
+      document.getElementById('product-rescan-form').classList.add('hidden');
+      document.getElementById('product-rescan-status').textContent = '';
+      void api(`/customer/account/projects/${encodeURIComponent(project.project_id)}/product/rescan`)
+        .then((result) => {
+          if (card.dataset.projectId !== String(project.project_id)) return;
+          if (result.pending && result.pending.status === 'PENDING') {
+            const pending = result.pending;
+            document.getElementById('product-rescan-scan-id').value = pending.scan_id;
+            document.getElementById('product-rescan-name').value = pending.proposed.name || '';
+            document.getElementById('product-rescan-description').value = pending.proposed.description || '';
+            document.getElementById('product-rescan-value').value = pending.proposed.value_proposition || '';
+            document.getElementById('product-rescan-audience').value = pending.proposed.known_audience || '';
+            document.getElementById('product-rescan-source').textContent =
+              pending.source_status === 'PUBLIC_SOURCE_READ'
+                ? 'Public source checked. Review suggested details.'
+                : 'Source is incomplete. Please add verified product facts.';
+            document.getElementById('product-rescan-evidence').textContent = pending.source_excerpt || '';
+            document.getElementById('product-rescan-form').classList.remove('hidden');
+            document.getElementById('product-rescan-status').textContent = 'Unconfirmed rescan draft.';
+          }
+        }).catch(() => {});
+    }
     document.getElementById('project-delete-confirm').classList.add('hidden');
     document.getElementById('delete-project-button').classList.remove('hidden');
   };
