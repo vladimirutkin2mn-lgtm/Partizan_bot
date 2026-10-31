@@ -24,8 +24,10 @@ from app.customer_project_schemas import (
     CustomerAccountCreateProjectRequest,
     CustomerAccountCreateProjectResponse,
     CustomerAccountProjectNavView,
+    CustomerProductRescanConfirmRequest,
 )
 from app.customer_schemas import CustomerPreviewRequest
+from app.customer_product_rescan import ProductRescanService
 from app.runtime_store import get_runtime_store
 
 router = APIRouter(tags=["customer-account-projects"])
@@ -189,3 +191,62 @@ def delete_customer_account_project(
     store.put(CUSTOMER_ACCOUNT_NAMESPACE, account_id, account)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/customer/account/projects/{project_id}/product/rescan")
+def get_product_rescan(
+    project_id: UUID,
+    session_token: Annotated[str | None, Cookie(alias=CUSTOMER_ACCOUNT_SESSION_COOKIE)] = None,
+) -> dict:
+    account = _require_account(session_token)
+    try:
+        return ProductRescanService(get_runtime_store()).current(
+            project_id, str(account["id"])
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/customer/account/projects/{project_id}/product/rescan")
+async def scan_account_product(
+    project_id: UUID,
+    session_token: Annotated[str | None, Cookie(alias=CUSTOMER_ACCOUNT_SESSION_COOKIE)] = None,
+) -> dict:
+    account = _require_account(session_token)
+    try:
+        return await ProductRescanService(get_runtime_store()).scan(
+            project_id, str(account["id"])
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/customer/account/projects/{project_id}/product/rescan/confirm")
+def confirm_account_product_rescan(
+    project_id: UUID,
+    payload: CustomerProductRescanConfirmRequest,
+    session_token: Annotated[str | None, Cookie(alias=CUSTOMER_ACCOUNT_SESSION_COOKIE)] = None,
+) -> dict:
+    account = _require_account(session_token)
+    try:
+        return ProductRescanService(get_runtime_store()).confirm(
+            project_id, str(account["id"]),
+            scan_id=payload.scan_id, name=payload.name,
+            description=payload.description,
+            value_proposition=payload.value_proposition,
+            known_audience=payload.known_audience,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
