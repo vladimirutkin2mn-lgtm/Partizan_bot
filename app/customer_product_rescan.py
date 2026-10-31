@@ -18,6 +18,15 @@ from app.product_source_quality import is_campaign_asset_brief, is_distinct_prod
 from app.product_understanding_autofill import infer_telegram_channel
 from app.runtime_store import RuntimeStateStore
 from app.schemas import ProductProfileView
+from app.voice_profiles import (
+    VOICE_ASSIGNMENT_NAMESPACE,
+    VOICE_VERSION_NAMESPACE,
+    VoiceAssignment,
+    VoiceProfileService,
+    fingerprint,
+    source_snapshot,
+    voice_source_readiness_issues,
+)
 
 PROJECT_NAMESPACE = "customer_acquisition_projects"
 PROPOSAL_NAMESPACE = "customer_product_rescan_proposals"
@@ -55,6 +64,82 @@ class ProductRescanService:
             raise RuntimeError("PROJECT_PRODUCT_RECORD_MISSING")
         return row, row.get("product") or None
 
+    def _generated_voice(self, project_id: UUID, project: dict, product: dict | None) -> dict:
+        """Read-only, owner-scoped view of every stored author-voice version.
+
+        The prior voice remains visible for audit after a product revision, but
+        is never described as safe to use when its product fingerprint is stale.
+        No provider call, voice promotion, or publication is performed.
+        """
+        product_id = str(project.get("product_id") or "")
+        if not product_id:
+            return {"status": "NOT_GENERATED", "versions": [], "active_version_id": None}
+        assignment_raw = self.store.get(
+            VOICE_ASSIGNMENT_NAMESPACE, f"{project_id}:{product_id}",
+        )
+        assignment = (
+            VoiceAssignment.model_validate(assignment_raw)
+            if assignment_raw else None
+        )
+        if assignment and (
+            str(assignment.project_id) != str(project_id)
+            or str(assignment.product_id) != product_id
+        ):
+            raise PermissionError("VOICE_SCOPE_NOT_AUTHORIZED")
+
+        service = VoiceProfileService(self.store)
+        rows = sorted(
+            (
+                row for row in self.store.list_namespace(VOICE_VERSION_NAMESPACE)
+                if str(row.get("project_id")) == str(project_id)
+                and str(row.get("product_id")) == product_id
+            ),
+            key=lambda row: str(row.get("created_at") or ""),
+            reverse=True,
+        )
+        current_fingerprint = fingerprint(source_snapshot(product)) if product else None
+        needs_review = (
+            project.get("voice_refresh_status") == "REVIEW_REQUIRED"
+            or (bool(product) and bool(voice_source_readiness_issues(product)))
+        )
+        versions = []
+        for row in rows:
+            version = service.get_version(
+                project_id=project_id, product_id=UUID(product_id),
+                version_id=UUID(str(row["id"])),
+            )
+            is_assigned = bool(assignment and assignment.active_version_id == version.id)
+            source_matches = version.source_fingerprint == current_fingerprint
+            status = (
+                "PREVIOUS_VOICE_REVIEW_REQUIRED"
+                if is_assigned and (needs_review or not source_matches)
+                else "ASSIGNED_VOICE"
+                if is_assigned
+                else "UNREVIEWED_CANDIDATE"
+                if version.evidence_status == "CHALLENGER_UNREVIEWED"
+                else "SAVED_NOT_ASSIGNED"
+            )
+            versions.append({
+                "version_id": str(version.id),
+                "version": version.version,
+                "origin": version.origin.value,
+                "created_at": version.created_at,
+                "generator_prompt_version": version.generator_prompt_version,
+                "source_matches_current_product": source_matches,
+                "evidence_status": version.evidence_status,
+                "status": status,
+                "character": version.profile.model_dump(mode="json"),
+            })
+        return {
+            "status": "REVIEW_REQUIRED" if needs_review or (
+                assignment and not any(
+                    row["status"] == "ASSIGNED_VOICE" for row in versions
+                )
+            ) else "SAVED" if versions else "NOT_GENERATED",
+            "active_version_id": str(assignment.active_version_id) if assignment else None,
+            "versions": versions,
+        }
+
     def current(self, project_id: UUID, account_id: str) -> dict:
         project = self._project(project_id, account_id)
         row, product = self._source_product(project)
@@ -64,6 +149,7 @@ class ProductRescanService:
             "product": product,
             "product_revision_id": project.get("product_revision_scan_id"),
             "pending": existing if existing and existing.get("status") == "PENDING" else None,
+            "voice": self._generated_voice(project_id, project, product),
         }
 
     async def scan(self, project_id: UUID, account_id: str) -> dict:
