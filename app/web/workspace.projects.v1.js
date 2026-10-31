@@ -361,28 +361,39 @@
         <div><span>Test budget</span><strong id="project-details-budget">—</strong></div>
       </div>
       <div class="project-description-block"><span>Description</span><p id="project-details-brief">—</p></div>
-      <div class="project-description-block" id="product-rescan-panel">
-        <div class="project-details-head">
-          <div><strong>Product understanding</strong><p>Review what Partizan knows about your product, not its advertising budget.</p></div>
+      <section class="product-rescan-panel" id="product-rescan-panel">
+        <div class="product-rescan-head">
+          <div><strong>Product understanding</strong><p>Partizan uses your product link and a short description. No marketing brief needed.</p></div>
           <button id="product-rescan-start" class="button button-secondary" type="button">Rescan product</button>
         </div>
-        <p id="product-rescan-status" aria-live="polite"></p>
-        <form id="product-rescan-form" class="project-form hidden">
-          <p id="product-rescan-source" class="project-description-block"></p>
-          <p id="product-rescan-evidence" class="project-description-block"></p>
+        <p id="product-rescan-status" class="product-rescan-status" aria-live="polite"></p>
+        <form id="product-rescan-form" class="product-rescan-form hidden">
           <input type="hidden" id="product-rescan-scan-id">
-          <label><span>Product name</span><input id="product-rescan-name" minlength="2" maxlength="120" required></label>
-          <label><span>What is the product or community?</span><textarea id="product-rescan-description" minlength="20" maxlength="2000" required></textarea></label>
-          <label><span>What do people actually get?</span><textarea id="product-rescan-value" minlength="20" maxlength="1600" required></textarea></label>
-          <label><span>Who is this for?</span><input id="product-rescan-audience" minlength="8" maxlength="500" required></label>
-          <p>No changes are applied until you confirm. Existing voice and publications are not changed automatically.</p>
+          <p id="product-rescan-source" class="product-rescan-source"></p>
+          <p id="product-rescan-evidence" class="product-rescan-evidence hidden"></p>
+          <label class="product-rescan-main-field"><span>What are you promoting?</span><textarea id="product-rescan-description" minlength="3" maxlength="2000" rows="2" required placeholder="Example: Telegram channel about FemDom"></textarea><small>One sentence is enough. Partizan will infer the audience and the basic value.</small></label>
+          <div class="product-rescan-inference">
+            <span class="product-rescan-overline">What Partizan understood</span>
+            <div><b>For whom</b><p id="product-rescan-inferred-audience"></p></div>
+            <div><b>What they get</b><p id="product-rescan-inferred-value"></p></div>
+            <p id="product-rescan-inference-notice" class="product-rescan-inference-notice"></p>
+          </div>
+          <details id="product-rescan-advanced" class="product-rescan-advanced">
+            <summary>Adjust additional details (optional)</summary>
+            <div class="product-rescan-advanced-fields">
+              <label><span>Product name</span><input id="product-rescan-name" minlength="2" maxlength="120" required></label>
+              <label><span>What people get</span><textarea id="product-rescan-value" maxlength="1600" rows="2"></textarea></label>
+              <label><span>Who it is for</span><input id="product-rescan-audience" maxlength="500"></label>
+            </div>
+          </details>
+          <p class="product-rescan-disclaimer">No changes are applied until you confirm. Existing voice and publications are not changed automatically.</p>
           <div id="product-rescan-error" class="project-form-error hidden" role="alert"></div>
-          <div class="project-modal-actions">
+          <div class="product-rescan-actions">
             <button id="product-rescan-cancel" class="button button-secondary" type="button">Cancel</button>
             <button id="product-rescan-confirm" class="button button-primary" type="submit">Confirm product details</button>
           </div>
         </form>
-      </div>
+      </section>
       <div class="project-danger-zone">
         <div><strong>Delete project</strong><span>Remove this project from your workspace. Financial and experiment records are retained for audit integrity.</span></div>
         <button id="delete-project-button" class="project-delete-button" type="button">Delete project</button>
@@ -397,23 +408,36 @@
     const rescanForm = document.getElementById('product-rescan-form');
     const rescanStatus = document.getElementById('product-rescan-status');
     const rescanError = document.getElementById('product-rescan-error');
+    let rescanInitial = {};
     const showRescan = (draft) => {
       if (!draft || draft.status !== 'PENDING') return;
+      rescanInitial = { ...draft.proposed };
       document.getElementById('product-rescan-scan-id').value = draft.scan_id;
       document.getElementById('product-rescan-name').value = draft.proposed.name || '';
       document.getElementById('product-rescan-description').value = draft.proposed.description || '';
       document.getElementById('product-rescan-value').value = draft.proposed.value_proposition || '';
       document.getElementById('product-rescan-audience').value = draft.proposed.known_audience || '';
+      document.getElementById('product-rescan-inferred-value').textContent =
+        draft.proposed.value_proposition || 'Not enough source information yet.';
+      document.getElementById('product-rescan-inferred-audience').textContent =
+        draft.proposed.known_audience || 'Not enough source information yet.';
       const sourceStatus = draft.source_status || '';
-      document.getElementById('product-rescan-source').textContent = sourceStatus === 'PUBLIC_SOURCE_READ'
-        ? 'Public source checked. Review these details before confirming.'
-        : 'The public source does not establish the product value. Add only facts you can verify.';
-      document.getElementById('product-rescan-evidence').textContent = draft.source_excerpt
-        ? 'Source evidence: ' + draft.source_excerpt : '';
+      document.getElementById('product-rescan-source').textContent = draft.inference_basis
+        ? 'Based on the saved name and description. The channel\'s private posts were not read.'
+        : sourceStatus === 'PUBLIC_SOURCE_READ'
+          ? 'Public product page checked. Review Partizan\'s interpretation.'
+          : 'Public source incomplete. A short description is enough to continue.';
+      const evidence = document.getElementById('product-rescan-evidence');
+      evidence.textContent = draft.source_excerpt ? 'Public evidence: ' + draft.source_excerpt : '';
+      evidence.classList.toggle('hidden', !draft.source_excerpt);
+      document.getElementById('product-rescan-inference-notice').textContent =
+        draft.inference_notice || 'Partizan only uses confirmed or clearly inferred facts.';
+      document.getElementById('product-rescan-advanced').open = !draft.can_confirm;
       rescanForm.classList.remove('hidden');
-      rescanStatus.textContent = 'Draft only — current product details remain unchanged.';
+      rescanStatus.textContent = 'Review the short description and confirm when ready.';
       rescanError.classList.add('hidden');
     };
+    card.showProductRescan = showRescan;
 
     rescanStart.addEventListener('click', async () => {
       const projectId = document.getElementById('project-details-card').dataset.projectId;
@@ -447,21 +471,34 @@
       confirm.textContent = 'Saving…';
       rescanError.classList.add('hidden');
       try {
+        const payload = {
+          scan_id: document.getElementById('product-rescan-scan-id').value,
+          name: document.getElementById('product-rescan-name').value.trim(),
+          description: document.getElementById('product-rescan-description').value.trim(),
+        };
+        const customValue = document.getElementById('product-rescan-value').value.trim();
+        const customAudience = document.getElementById('product-rescan-audience').value.trim();
+        // If the short brief was updated, let the server infer again from it
+        // rather than sending stale automatic suggestions.
+        if (customValue && customValue !== (rescanInitial.value_proposition || '')) {
+          payload.value_proposition = customValue;
+        }
+        if (customAudience && customAudience !== (rescanInitial.known_audience || '')) {
+          payload.known_audience = customAudience;
+        }
         await api(
           `/customer/account/projects/${encodeURIComponent(projectId)}/product/rescan/confirm`,
-          { method: 'POST', body: JSON.stringify({
-            scan_id: document.getElementById('product-rescan-scan-id').value,
-            name: document.getElementById('product-rescan-name').value.trim(),
-            description: document.getElementById('product-rescan-description').value.trim(),
-            value_proposition: document.getElementById('product-rescan-value').value.trim(),
-            known_audience: document.getElementById('product-rescan-audience').value.trim(),
-          }) },
+          { method: 'POST', body: JSON.stringify(payload) },
         );
         rescanForm.classList.add('hidden');
         rescanStatus.textContent = 'Saved. Your previous character remains unchanged until evaluated separately.';
         await refreshProjectLabels();
       } catch (error) {
-        rescanError.textContent = error.message;
+        const needsFact = String(error.message).includes('PRODUCT_FACTS_NOT_INFERABLE');
+        rescanError.textContent = needsFact
+          ? 'Please add one sentence about your product or who it helps. You can also open optional details.'
+          : error.message;
+        if (needsFact) document.getElementById('product-rescan-advanced').open = true;
         rescanError.classList.remove('hidden');
       } finally {
         confirm.disabled = false;
@@ -529,19 +566,7 @@
         .then((result) => {
           if (card.dataset.projectId !== String(project.project_id)) return;
           if (result.pending && result.pending.status === 'PENDING') {
-            const pending = result.pending;
-            document.getElementById('product-rescan-scan-id').value = pending.scan_id;
-            document.getElementById('product-rescan-name').value = pending.proposed.name || '';
-            document.getElementById('product-rescan-description').value = pending.proposed.description || '';
-            document.getElementById('product-rescan-value').value = pending.proposed.value_proposition || '';
-            document.getElementById('product-rescan-audience').value = pending.proposed.known_audience || '';
-            document.getElementById('product-rescan-source').textContent =
-              pending.source_status === 'PUBLIC_SOURCE_READ'
-                ? 'Public source checked. Review suggested details.'
-                : 'Source is incomplete. Please add verified product facts.';
-            document.getElementById('product-rescan-evidence').textContent = pending.source_excerpt || '';
-            document.getElementById('product-rescan-form').classList.remove('hidden');
-            document.getElementById('product-rescan-status').textContent = 'Unconfirmed rescan draft.';
+            card.showProductRescan(result.pending);
           }
         }).catch(() => {});
     }
