@@ -71,7 +71,8 @@ def infer_telegram_channel(
         if russian else f"Telegram channel about {topic}."
     )
     return ProductAutofill(
-        name=(project_name or saved_name or topic).strip()[:120],
+        name=(project_name.strip() if project_name and not is_campaign_asset_brief(project_name)
+              else topic)[:120],
         description=(brief or inferred_description)[:2000],
         value_proposition=(
             f"Подписчики могут получать публикации канала на тему {topic}."
