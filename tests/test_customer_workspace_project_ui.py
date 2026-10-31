@@ -96,3 +96,23 @@ def test_recommended_move_step_still_contains_real_research_evidence() -> None:
     assert "previewOpportunity.recommended_action" in js
     assert "previewOpportunity.signal_to_watch" in js
     assert "data.preview_opportunity" in js
+
+
+def test_existing_project_settings_exposes_reviewable_product_rescan() -> None:
+    js = Path("app/web/workspace.projects.v1.js").read_text()
+    for expected in (
+        "Rescan product",
+        "product-rescan-form",
+        "product-rescan-start",
+        "product-rescan-scan-id",
+        "product-rescan-value",
+        "product-rescan-audience",
+        "Confirm product details",
+        "/product/rescan/confirm",
+        "No changes are applied until you confirm",
+        "Existing voice and publications are not changed automatically",
+    ):
+        assert expected in js
+    assert 'method: \'POST\'' in js
+    assert "scan_id:" in js
+    assert "customer_token" not in js
