@@ -286,7 +286,7 @@ async def test_rescan_challenger_aborts_before_provider_if_revision_changes_afte
             raise AssertionError("Provider must never run on stale source")
 
     provider = NoCallProvider()
-    with pytest.raises(RuntimeError, match="VOICE_CHALLENGER_PRODUCT_SOURCE_CHANGED"):
+    with pytest.raises(RuntimeError, match="VOICE_CHALLENGER_SOURCE_CHANGED"):
         await VoiceProfileService(store).generate_reserved(
             reserved["job_id"], provider=provider, allow_llm_call=True,
         )
