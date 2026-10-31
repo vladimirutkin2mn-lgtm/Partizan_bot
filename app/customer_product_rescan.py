@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
-from uuid import UUID, NAMESPACE_URL, uuid4, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from app.models import ProductProfileStatus
 from app.product_intake import PRODUCT_INTAKE_NAMESPACE, product_intake_service
