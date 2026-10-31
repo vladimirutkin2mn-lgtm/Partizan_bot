@@ -214,6 +214,7 @@ class ProductRescanService:
             raise ValueError("PRODUCT_FACTS_NOT_INFERABLE_ADD_ONE_SENTENCE")
         if old_product:
             profile = ProductProfileView.model_validate(old_product).model_copy(update={
+                "input_brief": description,
                 "name": name,
                 "description": description,
                 "value_proposition": value_proposition,
@@ -239,6 +240,7 @@ class ProductRescanService:
             "brief": description, "reference_links": profile.reference_links,
             "questions": [], "answers": [], "answered_fields": [],
         }
+        new_row["brief"] = description
         new_row["product"] = profile.model_dump(mode="json")
         history_key = f"{project_id}:{scan_id}"
         history = {
