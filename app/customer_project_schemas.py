@@ -53,13 +53,15 @@ class CustomerAccountProjectNavView(BaseModel):
 class CustomerProductRescanConfirmRequest(BaseModel):
     scan_id: UUID
     name: str = Field(min_length=2, max_length=120)
-    description: str = Field(min_length=20, max_length=2000)
-    value_proposition: str = Field(min_length=20, max_length=1600)
-    known_audience: str = Field(min_length=8, max_length=500)
+    description: str = Field(min_length=3, max_length=2000)
+    value_proposition: str | None = Field(default=None, min_length=12, max_length=1600)
+    known_audience: str | None = Field(default=None, min_length=8, max_length=500)
 
     @field_validator("name", "description", "value_proposition", "known_audience")
     @classmethod
-    def normalize_value(cls, value: str) -> str:
+    def normalize_value(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         normalized = value.strip()
         if not normalized:
             raise ValueError("A concrete product fact is required")
