@@ -116,3 +116,22 @@ def test_existing_project_settings_exposes_reviewable_product_rescan() -> None:
     assert 'method: \'POST\'' in js
     assert "scan_id:" in js
     assert "customer_token" not in js
+
+
+
+def test_rescan_is_compact_and_does_not_require_marketing_facts_from_founder() -> None:
+    js = Path("app/web/workspace.projects.v1.js").read_text()
+    css = Path("app/web/workspace.projects.v1.css").read_text()
+    assert 'class="product-rescan-panel"' in js
+    assert "What are you promoting?" in js
+    assert "One sentence is enough" in js
+    assert "Adjust additional details (optional)" in js
+    assert 'id="product-rescan-inferred-audience"' in js
+    assert 'id="product-rescan-inferred-value"' in js
+    assert 'class="project-description-block" id="product-rescan-panel"' not in js
+    assert 'id="product-rescan-evidence" class="product-rescan-evidence hidden"' in js
+    assert ".product-rescan-form.hidden" in css
+    assert ".product-rescan-evidence.hidden" in css
+    assert "@media(max-width:640px)" in css
+    assert "payload.value_proposition = customValue" in js
+    assert "payload.known_audience = customAudience" in js

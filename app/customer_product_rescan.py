@@ -15,6 +15,7 @@ from app.models import ProductProfileStatus
 from app.product_intake import PRODUCT_INTAKE_NAMESPACE, product_intake_service
 from app.product_source import ProductSourceReadError, read_public_product_source
 from app.product_source_quality import is_campaign_asset_brief, is_distinct_product_value
+from app.product_understanding_autofill import infer_telegram_channel
 from app.runtime_store import RuntimeStateStore
 from app.schemas import ProductProfileView
 
@@ -104,6 +105,25 @@ class ProductRescanService:
             if is_distinct_product_value(saved_description, previous_value) else ""
         )
         audience = (product or {}).get("known_audience") or []
+        suggested_name = str((product or {}).get("name") or project.get("project_name") or "")
+        inferred = infer_telegram_channel(
+            project_name=str(project.get("project_name") or ""),
+            saved_name=suggested_name,
+            description=description,
+            project_type=str(project.get("project_type") or ""),
+            source_url=link,
+        )
+        if inferred:
+            suggested_name = (
+                inferred.name if is_campaign_asset_brief(suggested_name)
+                else suggested_name
+            )
+            description = inferred.description
+            if not value:
+                value = inferred.value_proposition
+            if not audience:
+                audience = [inferred.known_audience]
+        audience_text = _trim(str(audience[0]) if audience else "", 500)
         proposal = {
             "status": "PENDING",
             "scan_id": str(uuid4()),
@@ -119,11 +139,19 @@ class ProductRescanService:
                 "What do people get from this product or community?"
             ),
             "proposed": {
-                "name": _trim(str((product or {}).get("name") or project.get("project_name") or ""), 120),
+                "name": _trim(suggested_name, 120),
                 "description": description,
                 "value_proposition": value,
-                "known_audience": _trim(str(audience[0]) if audience else "", 500),
+                "known_audience": audience_text,
             },
+            "can_confirm": bool(
+                len(suggested_name.strip()) >= 2
+                and len(description.strip()) >= 20
+                and len(value.strip()) >= 12
+                and len(audience_text.strip()) >= 8
+            ),
+            "inference_basis": inferred.inference_basis if inferred else None,
+            "inference_notice": inferred.inference_notice if inferred else None,
             "product_baseline_hash": _digest(row),
             "project_baseline_hash": _digest(project),
             "scanned_at": datetime.now(UTC).isoformat(),
@@ -135,7 +163,8 @@ class ProductRescanService:
     def confirm(
         self, project_id: UUID, account_id: str, *,
         scan_id: UUID, name: str, description: str,
-        value_proposition: str, known_audience: str,
+        value_proposition: str | None = None,
+        known_audience: str | None = None,
     ) -> dict:
         project = self._project(project_id, account_id)
         pending = self.store.get(PROPOSAL_NAMESPACE, str(project_id))
@@ -155,13 +184,42 @@ class ProductRescanService:
             uuid5(NAMESPACE_URL, f"partizan-rescan:{project_id}:{scan_id}")
         )
         name, description = name.strip(), description.strip()
-        value_proposition, known_audience = value_proposition.strip(), known_audience.strip()
+        inferred = infer_telegram_channel(
+            project_name=name,
+            saved_name=str((old_product or {}).get("name") or ""),
+            description=description,
+            project_type=str(project.get("project_type") or ""),
+            source_url=str(pending.get("source_url") or ""),
+        )
+        # Optional advanced edits override inference. When the founder edits
+        # the single-line brief, recompute rather than reuse a stale proposal.
+        same_brief = (
+            name == pending["proposed"]["name"]
+            and description == pending["proposed"]["description"]
+        )
+        auto_value = (
+            pending["proposed"]["value_proposition"] if same_brief
+            else inferred.value_proposition if inferred else ""
+        )
+        auto_audience = (
+            pending["proposed"]["known_audience"] if same_brief
+            else inferred.known_audience if inferred else ""
+        )
+        value_proposition = (value_proposition if value_proposition is not None else auto_value).strip()
+        known_audience = (known_audience if known_audience is not None else auto_audience).strip()
+        if (
+            len(name) < 2 or len(description) < 20
+            or len(value_proposition) < 12 or len(known_audience) < 8
+        ):
+            raise ValueError("PRODUCT_FACTS_NOT_INFERABLE_ADD_ONE_SENTENCE")
         if old_product:
             profile = ProductProfileView.model_validate(old_product).model_copy(update={
+                "input_brief": description,
                 "name": name,
                 "description": description,
                 "value_proposition": value_proposition,
                 "known_audience": [known_audience],
+                "product_type": inferred.product_type if inferred else old_product.get("product_type"),
                 "status": ProductProfileStatus.CONFIRMED,
             })
         else:
@@ -176,11 +234,13 @@ class ProductRescanService:
                 known_competitors=[],
                 reference_links=[pending["source_url"]] if pending["source_url"] else [],
                 assumptions=[], contradictions=[], status=ProductProfileStatus.CONFIRMED,
+                product_type=inferred.product_type if inferred else None,
             )
         new_row = dict(old_row) if old_row else {
             "brief": description, "reference_links": profile.reference_links,
             "questions": [], "answers": [], "answered_fields": [],
         }
+        new_row["brief"] = description
         new_row["product"] = profile.model_dump(mode="json")
         history_key = f"{project_id}:{scan_id}"
         history = {
@@ -189,6 +249,8 @@ class ProductRescanService:
             "new_product": new_row["product"],
             "source_status": pending["source_status"],
             "source_url": pending["source_url"],
+            "inference_basis": pending.get("inference_basis"),
+            "inference_notice": pending.get("inference_notice"),
             "confirmed_at": datetime.now(UTC).isoformat(),
         }
         if not self.store.put_if_absent(HISTORY_NAMESPACE, history_key, history):
