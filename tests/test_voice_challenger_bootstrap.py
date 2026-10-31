@@ -182,6 +182,8 @@ def test_campaign_type_label_does_not_make_unproven_value_ready():
 
 def reviewed_rescan_existing_voice():
     """Simulate a completed #590 founder confirmation, without live calls."""
+    from copy import deepcopy
+
     store, pid, prod, old_version = existing_voice()
     old_product = dict(store.get("product_intake", str(prod))["product"])
     new_product = {
@@ -191,7 +193,7 @@ def reviewed_rescan_existing_voice():
         "known_audience": ["Adults interested in character-led interactive discussions"],
     }
     record = store.get("product_intake", str(prod))
-    record["product"] = new_product
+    record["product"] = deepcopy(new_product)
     store.put("product_intake", str(prod), record)
     scan_id = str(uuid4())
     project = store.get("customer_acquisition_projects", str(pid))
@@ -204,8 +206,8 @@ def reviewed_rescan_existing_voice():
         "project_id": str(pid),
         "product_id": str(prod),
         "scan_id": scan_id,
-        "old_product": old_product,
-        "new_product": new_product,
+        "old_product": deepcopy(old_product),
+        "new_product": deepcopy(new_product),
     })
     return store, pid, prod, old_version, scan_id
 
