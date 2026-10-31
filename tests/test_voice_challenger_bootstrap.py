@@ -178,3 +178,115 @@ def test_campaign_type_label_does_not_make_unproven_value_ready():
     }
     issues = voice_source_readiness_issues(snapshot)
     assert "PRODUCT_VALUE_NOT_DISTINGUISHED_FROM_CAMPAIGN_BRIEF" in issues
+
+
+def reviewed_rescan_existing_voice():
+    """Simulate a completed #590 founder confirmation, without live calls."""
+    from copy import deepcopy
+
+    store, pid, prod, old_version = existing_voice()
+    old_product = dict(store.get("product_intake", str(prod))["product"])
+    new_product = {
+        **old_product,
+        "description": "An adult character-led discussion community with original interactive prompts.",
+        "value_proposition": "Members can discuss fictional scenarios and share creative responses.",
+        "known_audience": ["Adults interested in character-led interactive discussions"],
+    }
+    record = store.get("product_intake", str(prod))
+    record["product"] = deepcopy(new_product)
+    store.put("product_intake", str(prod), record)
+    scan_id = str(uuid4())
+    project = store.get("customer_acquisition_projects", str(pid))
+    project.update({
+        "voice_refresh_status": "REVIEW_REQUIRED",
+        "product_revision_scan_id": scan_id,
+    })
+    store.put("customer_acquisition_projects", str(pid), project)
+    store.put("customer_product_revision_history", f"{pid}:{scan_id}", {
+        "project_id": str(pid),
+        "product_id": str(prod),
+        "scan_id": scan_id,
+        "old_product": deepcopy(old_product),
+        "new_product": deepcopy(new_product),
+    })
+    return store, pid, prod, old_version, scan_id
+
+
+@pytest.mark.asyncio
+async def test_confirmed_rescan_can_generate_inactive_challenger_but_not_publish_old_voice():
+    from app.voice_profiles import VoiceProfileService
+
+    store, pid, prod, old_version, scan_id = reviewed_rescan_existing_voice()
+    svc = VoiceProfileService(store)
+    original_assignment = store.get(VOICE_ASSIGNMENT_NAMESPACE, f"{pid}:{prod}")
+    new_product = store.get("product_intake", str(prod))["product"]
+
+    # Old v17 stays immutable, but cannot be reused against revised facts.
+    with pytest.raises(RuntimeError, match="VOICE_SOURCE_CHANGED"):
+        svc.active(project_id=pid, product_id=prod, product_data=new_product)
+
+    bootstrap = VoiceChallengerBootstrap(store)
+    report = bootstrap.plan(project_id=pid, product_id=prod)
+    assert report["status"] == "CHALLENGER_RESERVATION_NEEDED"
+    assert report["parent_voice_version_id"] == str(old_version)
+    reserved = bootstrap.reserve(project_id=pid, product_id=prod)
+    assert reserved["status"] == "RESERVED"
+    assert bootstrap.reserve(project_id=pid, product_id=prod) == reserved
+
+    class FakeProvider:
+        calls = 0
+
+        async def parse(self, messages, response_model):
+            self.calls += 1
+            assert "source_snapshot" in messages[1].content
+            old = store.get(VOICE_VERSION_NAMESPACE, str(old_version))
+            return VoiceProfileDraft.model_validate(old["profile"])
+
+    provider = FakeProvider()
+    candidate = await svc.generate_reserved(
+        reserved["job_id"], provider=provider, allow_llm_call=True,
+    )
+    assert provider.calls == 1
+    assert candidate.parent_version_id == old_version
+    assert candidate.source_fingerprint == fingerprint(source_snapshot(new_product))
+    assert candidate.evidence_status == "CHALLENGER_UNREVIEWED"
+    assert store.get(VOICE_ASSIGNMENT_NAMESPACE, f"{pid}:{prod}") == original_assignment
+    assert store.get("customer_acquisition_projects", str(pid))["voice_refresh_status"] == "REVIEW_REQUIRED"
+    with pytest.raises(RuntimeError, match="VOICE_SOURCE_CHANGED"):
+        svc.active(project_id=pid, product_id=prod, product_data=new_product)
+
+
+def test_review_required_flag_alone_does_not_authorize_stale_source():
+    store, pid, prod, _, scan_id = reviewed_rescan_existing_voice()
+    before = store.get("customer_product_revision_history", f"{pid}:{scan_id}")
+    before["new_product"]["value_proposition"] = "Tampered revision that does not match live facts."
+    store.put("customer_product_revision_history", f"{pid}:{scan_id}", before)
+    with pytest.raises(RuntimeError, match="VOICE_SOURCE_CHANGED"):
+        VoiceChallengerBootstrap(store).reserve(project_id=pid, product_id=prod)
+    assert store.list_namespace(VOICE_GENERATION_JOB_NAMESPACE) == []
+
+
+@pytest.mark.asyncio
+async def test_rescan_challenger_aborts_before_provider_if_revision_changes_after_reservation():
+    from app.voice_profiles import VoiceProfileService
+
+    store, pid, prod, _, _ = reviewed_rescan_existing_voice()
+    bootstrap = VoiceChallengerBootstrap(store)
+    reserved = bootstrap.reserve(project_id=pid, product_id=prod)
+    live = store.get("product_intake", str(prod))
+    live["product"]["description"] = "The product source has changed outside the confirmed rescan."
+    store.put("product_intake", str(prod), live)
+
+    class NoCallProvider:
+        calls = 0
+
+        async def parse(self, messages, response_model):
+            self.calls += 1
+            raise AssertionError("Provider must never run on stale source")
+
+    provider = NoCallProvider()
+    with pytest.raises(RuntimeError, match="VOICE_CHALLENGER_SOURCE_CHANGED"):
+        await VoiceProfileService(store).generate_reserved(
+            reserved["job_id"], provider=provider, allow_llm_call=True,
+        )
+    assert provider.calls == 0

@@ -312,6 +312,74 @@ class VoiceProfileService:
             return VoiceGenerationJob.model_validate(existing)
         return new
 
+    def _reviewed_rescan_matches(
+        self, *, project_id: UUID, product_id: UUID, source_fingerprint: str,
+    ) -> bool:
+        """Only a founder-confirmed product revision can replace a stale voice source.
+
+        This permits generating a *candidate*, never using the old voice to
+        publish or silently switching the active assignment.
+        """
+        project = self._store.get(CUSTOMER_PROJECT_NAMESPACE, str(project_id))
+        if not isinstance(project, dict) or (
+            project.get("understanding_confirmed") is not True
+            or project.get("voice_refresh_status") != "REVIEW_REQUIRED"
+            or str(project.get("product_id") or "") != str(product_id)
+        ):
+            return False
+        scan_id = project.get("product_revision_scan_id")
+        if not scan_id:
+            return False
+        history = self._store.get(
+            "customer_product_revision_history", f"{project_id}:{scan_id}",
+        )
+        if not isinstance(history, dict) or (
+            str(history.get("project_id")) != str(project_id)
+            or str(history.get("product_id")) != str(product_id)
+            or str(history.get("scan_id")) != str(scan_id)
+        ):
+            return False
+        live = self._store.get("product_intake", str(product_id))
+        product = live.get("product") if isinstance(live, dict) else None
+        reviewed = history.get("new_product")
+        if not isinstance(product, dict) or not isinstance(reviewed, dict):
+            return False
+        if str(product.get("status") or "").upper() != "CONFIRMED":
+            return False
+        try:
+            return (
+                fingerprint(source_snapshot(product)) == source_fingerprint
+                and fingerprint(source_snapshot(reviewed)) == source_fingerprint
+            )
+        except (TypeError, ValueError):
+            return False
+
+    def challenger_parent(
+        self, *, project_id: UUID, product_id: UUID, product_data: dict,
+    ) -> VoiceProfileVersion:
+        """Read assigned immutable parent even after an explicit product rescan.
+
+        Active writing continues to reject stale voices via active().
+        """
+        self._verify_project(project_id, product_id)
+        record = self._store.get(
+            VOICE_ASSIGNMENT_NAMESPACE, self._scope(project_id, product_id),
+        )
+        if record is None:
+            raise RuntimeError("VOICE_INITIALIZING")
+        assigned = VoiceAssignment.model_validate(record)
+        parent = self.get_version(
+            project_id=project_id, product_id=product_id,
+            version_id=assigned.active_version_id,
+        )
+        digest = fingerprint(source_snapshot(product_data))
+        if parent.source_fingerprint != digest and not self._reviewed_rescan_matches(
+            project_id=project_id, product_id=product_id,
+            source_fingerprint=digest,
+        ):
+            raise RuntimeError("VOICE_SOURCE_CHANGED")
+        return parent
+
     def reserve_challenger(
         self, *, project_id: UUID, product_id: UUID, product_data: dict,
     ) -> VoiceGenerationJob:
@@ -322,7 +390,7 @@ class VoiceProfileService:
         if issues:
             raise RuntimeError("VOICE_CHALLENGER_PRODUCT_UNDERSTANDING_REQUIRED")
         digest = fingerprint(source)
-        parent = self.active(
+        parent = self.challenger_parent(
             project_id=project_id, product_id=product_id, product_data=product_data,
         )
         scope = self._scope(project_id, product_id)
@@ -410,7 +478,13 @@ class VoiceProfileService:
                 project_id=before.project_id, product_id=before.product_id,
                 version_id=before.parent_version_id,
             )
-            if parent.source_fingerprint != before.source_fingerprint:
+            if (
+                parent.source_fingerprint != before.source_fingerprint
+                and not self._reviewed_rescan_matches(
+                    project_id=before.project_id, product_id=before.product_id,
+                    source_fingerprint=before.source_fingerprint,
+                )
+            ):
                 raise RuntimeError("VOICE_CHALLENGER_SOURCE_CHANGED")
             # A snapshot may become stale between unpaid reservation and call.
             intake = self._store.get("product_intake", str(before.product_id))

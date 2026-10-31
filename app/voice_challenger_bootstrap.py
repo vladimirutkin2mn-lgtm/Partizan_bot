@@ -31,7 +31,9 @@ class VoiceChallengerBootstrap:
         product, source_fingerprint = self.initial._validated_source(
             project_id, product_id
         )
-        active = self.profiles.active(
+        # A founder-approved rescan may invalidate the old voice for writing,
+        # but it must not prevent researching a new, inactive voice candidate.
+        active = self.profiles.challenger_parent(
             project_id=project_id, product_id=product_id, product_data=product,
         )
         issues = voice_source_readiness_issues(product)
