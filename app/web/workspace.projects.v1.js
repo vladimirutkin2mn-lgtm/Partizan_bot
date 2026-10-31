@@ -481,6 +481,7 @@
         container.appendChild(item);
       });
     };
+    card.renderSavedVoices = renderSavedVoices;
     const refreshSavedVoices = async (projectId) => {
       const card = document.getElementById('project-details-card');
       if (!projectId || !card || card.dataset.projectId !== String(projectId)) return;
@@ -651,7 +652,7 @@
       void api(`/customer/account/projects/${encodeURIComponent(project.project_id)}/product/rescan`)
         .then((result) => {
           if (card.dataset.projectId !== String(project.project_id)) return;
-          renderSavedVoices(result.voice);
+          card.renderSavedVoices(result.voice);
           if (result.pending && result.pending.status === 'PENDING') {
             card.showProductRescan(result.pending);
           }
