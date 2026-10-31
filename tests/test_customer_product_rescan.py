@@ -139,7 +139,19 @@ def test_rescan_cross_account_and_anonymous_are_rejected():
     project_id = new_project(client)
     client.post("/customer/account/logout")
     assert client.post(f"/customer/account/projects/{project_id}/product/rescan").status_code == 401
-    other = account_client(email="other-rescan@example.com")
+    from app.customer_schemas import CustomerPreviewRequest
+
+    second_preview = customer_funnel_service.create_preview(CustomerPreviewRequest(
+        brief="Independent product for a different owner's registered account.",
+        market="US", goal="Grow subscribers", budget_usd=10,
+    ))
+    other = TestClient(app)
+    registered = other.post("/customer/account/register", json={
+        "email": "other-rescan@example.com", "password": "other-password-42",
+        "project_id": str(second_preview.project_id),
+        "customer_token": second_preview.customer_token,
+    })
+    assert registered.status_code == 200
     assert other.get(f"/customer/account/projects/{project_id}/product/rescan").status_code == 403
     assert other.post(f"/customer/account/projects/{project_id}/product/rescan").status_code == 403
 
