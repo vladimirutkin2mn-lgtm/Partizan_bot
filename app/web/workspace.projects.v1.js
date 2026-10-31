@@ -394,6 +394,14 @@
           </div>
         </form>
       </section>
+      <section class="product-voice-panel" aria-labelledby="product-voice-title">
+        <div class="product-voice-head">
+          <strong id="product-voice-title">Generated character &amp; tone</strong>
+          <span id="product-voice-status" role="status">Loading saved voice…</span>
+        </div>
+        <p class="product-voice-hint">Saved writing style, not the wording of your Telegram messages. Previous versions remain visible for review.</p>
+        <div id="product-voice-versions"></div>
+      </section>
       <div class="project-danger-zone">
         <div><strong>Delete project</strong><span>Remove this project from your workspace. Financial and experiment records are retained for audit integrity.</span></div>
         <button id="delete-project-button" class="project-delete-button" type="button">Delete project</button>
@@ -404,6 +412,83 @@
       </div>`;
     settings.appendChild(card);
 
+    const renderSavedVoices = (voice) => {
+      const container = document.getElementById('product-voice-versions');
+      const status = document.getElementById('product-voice-status');
+      if (!container || !status) return;
+      container.replaceChildren();
+      const versions = voice && Array.isArray(voice.versions) ? voice.versions : [];
+      if (!versions.length) {
+        status.textContent = 'Not generated yet';
+        const note = document.createElement('p');
+        note.className = 'product-voice-hint';
+        note.textContent = 'Rescan creates a product draft; it does not generate a new character. No author voice is saved for this product yet.';
+        container.appendChild(note);
+        return;
+      }
+      status.textContent = voice.status === 'REVIEW_REQUIRED'
+        ? 'Review needed · previous voice saved' : 'Saved voice versions: ' + versions.length;
+      const addDetail = (parent, label, value) => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'product-voice-detail';
+        const heading = document.createElement('b');
+        heading.textContent = label;
+        const content = document.createElement('p');
+        content.textContent = value || '—';
+        wrapper.append(heading, content);
+        parent.appendChild(wrapper);
+      };
+      versions.forEach((version) => {
+        const profile = version.character || {};
+        const item = document.createElement('details');
+        item.className = 'product-voice-version';
+        item.open = version.version_id === voice.active_version_id;
+        const summary = document.createElement('summary');
+        const heading = document.createElement('strong');
+        heading.textContent = 'Version ' + version.version + ' · ' +
+          (version.status === 'PREVIOUS_VOICE_REVIEW_REQUIRED' ? 'Previous, needs review'
+            : version.status === 'ASSIGNED_VOICE' ? 'Saved assigned voice'
+              : version.status === 'UNREVIEWED_CANDIDATE' ? 'Candidate, not selected'
+                : 'Previous candidate');
+        const tone = document.createElement('span');
+        tone.textContent = profile.default_tone || 'No tone in this profile';
+        summary.append(heading, tone);
+        item.appendChild(summary);
+        const body = document.createElement('div');
+        body.className = 'product-voice-body';
+        addDetail(body, 'Character', profile.character_summary);
+        addDetail(body, 'Default tone', profile.default_tone);
+        addDetail(body, 'Speaking traits', (profile.speech_traits || []).join('\n'));
+        addDetail(body, 'Adaptation', (profile.adaptation_rules || []).join('\n'));
+        addDetail(body, 'Complete style instruction', profile.style_instruction);
+        addDetail(body, 'Why Partizan derived this voice', profile.derivation_summary);
+        addDetail(body, 'Source fields', (profile.fact_refs || []).join(', '));
+        const examples = Array.isArray(profile.examples) ? profile.examples : [];
+        examples.forEach((sample, index) => addDetail(
+          body,
+          'Generated example ' + (index + 1) + ' · ' + (sample.surface || 'sample') +
+            ' (not a published message)',
+          (sample.context || '') + '\n' + (sample.message || ''),
+        ));
+        const metadata = document.createElement('p');
+        metadata.className = 'product-voice-metadata';
+        metadata.textContent = 'Version ID: ' + version.version_id +
+          ' · ' + version.generator_prompt_version +
+          ' · ' + (version.source_matches_current_product
+            ? 'Product source matches' : 'Product source has changed');
+        body.appendChild(metadata);
+        item.appendChild(body);
+        container.appendChild(item);
+      });
+    };
+    const refreshSavedVoices = async (projectId) => {
+      const card = document.getElementById('project-details-card');
+      if (!projectId || !card || card.dataset.projectId !== String(projectId)) return;
+      const current = await api(
+        `/customer/account/projects/${encodeURIComponent(projectId)}/product/rescan`,
+      );
+      if (card.dataset.projectId === String(projectId)) renderSavedVoices(current.voice);
+    };
     const rescanStart = document.getElementById('product-rescan-start');
     const rescanForm = document.getElementById('product-rescan-form');
     const rescanStatus = document.getElementById('product-rescan-status');
@@ -493,6 +578,7 @@
         rescanForm.classList.add('hidden');
         rescanStatus.textContent = 'Saved. Your previous character remains unchanged until evaluated separately.';
         await refreshProjectLabels();
+        await refreshSavedVoices(projectId);
       } catch (error) {
         const needsFact = String(error.message).includes('PRODUCT_FACTS_NOT_INFERABLE');
         rescanError.textContent = needsFact
@@ -565,10 +651,14 @@
       void api(`/customer/account/projects/${encodeURIComponent(project.project_id)}/product/rescan`)
         .then((result) => {
           if (card.dataset.projectId !== String(project.project_id)) return;
+          renderSavedVoices(result.voice);
           if (result.pending && result.pending.status === 'PENDING') {
             card.showProductRescan(result.pending);
           }
-        }).catch(() => {});
+        }).catch(() => {
+          const status = document.getElementById('product-voice-status');
+          if (status) status.textContent = 'Could not load saved voice';
+        });
     }
     document.getElementById('project-delete-confirm').classList.add('hidden');
     document.getElementById('delete-project-button').classList.remove('hidden');
