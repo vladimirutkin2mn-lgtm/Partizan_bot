@@ -20,6 +20,7 @@ from app.customer_funnel import (
     CustomerProjectNotFoundError,
     customer_funnel_service,
 )
+from app.customer_product_rescan import ProductRescanService
 from app.customer_project_schemas import (
     CustomerAccountCreateProjectRequest,
     CustomerAccountCreateProjectResponse,
@@ -27,7 +28,6 @@ from app.customer_project_schemas import (
     CustomerProductRescanConfirmRequest,
 )
 from app.customer_schemas import CustomerPreviewRequest
-from app.customer_product_rescan import ProductRescanService
 from app.runtime_store import get_runtime_store
 
 router = APIRouter(tags=["customer-account-projects"])
