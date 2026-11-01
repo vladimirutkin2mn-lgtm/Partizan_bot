@@ -1,0 +1,130 @@
+name: Manual Product Intake real-LLM smoke test (zero product writes)
+
+on:
+  workflow_dispatch:
+    inputs:
+      live_llm:
+        description: "Actually call the production Product Intake model ONCE (paid)"
+        required: true
+        type: boolean
+        default: false
+      confirmation_phrase:
+        description: "For paid mode type RUN_ONE_PRODUCT_INTAKE_LLM_CALL; dry-run leaves blank"
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: product-intake-single-llm-probe-20261101
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require explicit one-call approval for a paid run
+        env:
+          LIVE: ${{ inputs.live_llm }}
+          ACK: ${{ inputs.confirmation_phrase }}
+        run: |
+          if [[ "${LIVE}" == "true" && "${ACK}" != "RUN_ONE_PRODUCT_INTAKE_LLM_CALL" ]]; then
+            echo "::error::Paid model probe requires explicit one-call acknowledgement."
+            exit 1
+          fi
+      - name: Check SSH diagnostic access
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          for key in DEPLOY_HOST DEPLOY_PATH DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Production read-only diagnostic access is missing"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin production SSH host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Wait for matching deployed code, no model calls
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          for attempt in $(seq 1 60); do
+            if ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+              "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api \
+              python -c \"import os,sys; sys.exit(0 if os.environ.get('PARTIZAN_RELEASE_SHA') == '${RELEASE_SHA}' else 2)\"" \
+              >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Matching production release unavailable; no LLM called."
+          exit 1
+      - name: Run isolated Product Intake probe (one call maximum)
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          LIVE: ${{ inputs.live_llm }}
+        shell: bash
+        run: |
+          mode=""
+          if [[ "${LIVE}" == "true" ]]; then
+            mode="--live"
+          fi
+          # Source comes from this checked-out commit. It executes inside
+          # the existing app image to reuse exactly the configured real model
+          # and API credential; no runtime storage, web or Telegram calls.
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python - ${mode}" \
+            < tools/product_intake_live_probe.py > product-intake-probe.json
+      - name: Print status (do not log full prompt or private analysis)
+        if: always()
+        run: |
+          if [[ ! -s product-intake-probe.json ]]; then
+            echo "::error::No product-intake result generated"
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("product-intake-probe.json").read_text())
+          print(json.dumps({
+              "status": r.get("status"),
+              "model_configuration": r.get("model_configuration"),
+              "llm_calls_attempted": r.get("llm_calls_attempted"),
+              "llm_success": r.get("llm_success"),
+              "missing_fields": r.get("raw_missing_or_empty_fields"),
+              "raw_name": (r.get("raw_llm_analysis") or {}).get("name"),
+              "raw_product_type": (r.get("raw_llm_analysis") or {}).get("product_type"),
+              "error_type": r.get("error_type"),
+              "usage": r.get("usage"),
+              "runtime_writes": r.get("runtime_writes"),
+              "telegram_calls": r.get("telegram_calls"),
+          }, ensure_ascii=False))
+          PY
+      - name: Save exact input, raw LLM result, normalized result and fallback comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-intake-femdom-isolated-llm-probe
+          path: product-intake-probe.json
+          retention-days: 1
+          if-no-files-found: ignore
