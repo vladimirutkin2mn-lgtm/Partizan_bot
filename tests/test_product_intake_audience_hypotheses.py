@@ -2,7 +2,6 @@
 from uuid import uuid4
 
 import pytest
-from pydantic import BaseModel
 
 from app.llm import LLMProvider
 from app.models import ProductProfileStatus
@@ -25,10 +24,30 @@ class AudienceHypothesisProvider(LLMProvider):
             value_proposition=None,
             known_audience=["People who like FemDom"],
             customer_hypotheses=[
-                "Potential segment: adult observers of female-dominant aesthetics; motivation: visual interest; discovery clues: public topic discussions; unverified: channel offers visuals.",
-                "Potential segment: adult submissive-identified enthusiasts; motivation: interest in role dynamics; discovery clues: adult topic communities; unverified: channel caters to this role.",
-                "Potential segment: adult newcomers to kink culture; motivation: exploration; discovery clues: introductory discussions; unverified: introductory content exists.",
-                "Potential segment: adult experienced community participants; motivation: culturally authentic discussions; discovery clues: public niche groups; unverified: discussion is enabled.",
+                (
+                    "Potential segment: adult observers of female-dominant aesthetics;"
+                    "motivation: visual interest;"
+                    "discovery clues: public topic discussions;"
+                    "unverified: channel offers visuals."
+                ),
+                (
+                    "Potential segment: adult submissive-identified enthusiasts;"
+                    "motivation: interest in role dynamics;"
+                    "discovery clues: adult topic communities;"
+                    "unverified: channel caters to this role."
+                ),
+                (
+                    "Potential segment: adult newcomers to kink culture;"
+                    "motivation: exploration;"
+                    "discovery clues: introductory discussions;"
+                    "unverified: introductory content exists."
+                ),
+                (
+                    "Potential segment: adult experienced community participants;"
+                    "motivation: culturally authentic discussions;"
+                    "discovery clues: public niche groups;"
+                    "unverified: discussion is enabled."
+                ),
             ],
             missing_information=[
                 "Actual channel posts and formats not accessible",
