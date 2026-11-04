@@ -1,4 +1,4 @@
-name: One-off Telethon read-only benchmark for five known peers
+name: One-off Telethon read-only PlayHard album-aware benchmark
 
 on:
   push:
@@ -62,11 +62,7 @@ jobs:
           from app.runtime_store import get_runtime_store
 
           HANDLES = (
-              "a_sfera",
               "play_hard_community",
-              "bizarreclubmsk",
-              "findom_gospoja0",
-              "poiskrabovirabin",
           )
 
           async def read():
@@ -85,10 +81,10 @@ jobs:
               if native is None:
                   return {"status": "RESEARCH_UNAVAILABLE", "communities": []}
               connector = TelegramResearchConnector(
-                  native._transport, known_handle_limit=3, recent_message_limit=2
+                  native._transport, known_handle_limit=3, recent_message_limit=16
               )
               communities = []
-              for offset in (0, 3):
+              for offset in (0,):
                   selected = list(HANDLES[offset:offset+3])
                   for inspected in await connector.inspect_known(selected):
                       snapshot = inspected.snapshot
@@ -96,7 +92,17 @@ jobs:
                           communities.append({"handle": inspected.handle, "status": inspected.status, "posts": []})
                           continue
                       posts = []
-                      for item in snapshot.recent_context[:2]:
+                      unique_posts = []
+                      seen_logical = set()
+                      for item in snapshot.recent_context:
+                          key = ("album", item.album_group_id) if item.album_group_id else ("message", item.message_id)
+                          if key in seen_logical:
+                              continue
+                          seen_logical.add(key)
+                          unique_posts.append(item)
+                          if len(unique_posts) >= 2:
+                              break
+                      for item in unique_posts:
                           posts.append({
                               "id": item.message_id,
                               "date_utc": item.published_at.isoformat() if item.published_at else None,
