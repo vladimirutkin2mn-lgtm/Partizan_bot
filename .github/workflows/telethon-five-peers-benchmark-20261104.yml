@@ -1,0 +1,149 @@
+name: One-off Telethon read-only benchmark for five known peers
+
+on:
+  push:
+    branches:
+      - research/telethon-five-peers-two-latest-20261104
+    paths:
+      - .github/workflows/telethon-five-peers-benchmark-20261104.yml
+
+permissions:
+  contents: read
+
+jobs:
+  latest-two:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify read-only research SSH access
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing read-only research requirement ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin production host key
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Read two latest native messages per previously confirmed public peer
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python -" <<'PY' > telegram-five-latest-two.json
+          import asyncio
+          import json
+          from datetime import UTC, datetime
+
+          from app.telegram_research import (
+              TelegramResearchConnector,
+              TelegramFloodWaitError,
+              get_telegram_research_connector,
+          )
+          from app.runtime_store import get_runtime_store
+
+          HANDLES = (
+              "a_sfera",
+              "play_hard_community",
+              "bizarreclubmsk",
+              "findom_gospoja0",
+              "poiskrabovirabin",
+          )
+
+          async def read():
+              store = get_runtime_store()
+              now = datetime.now(UTC)
+              for row in store.list_namespace("telegram_research_flood_wait"):
+                  try:
+                      until = datetime.fromisoformat(str(row.get("blocked_until", "")))
+                      if until.tzinfo is None:
+                          until = until.replace(tzinfo=UTC)
+                      if until > now:
+                          return {"status": "FLOOD_WAIT_ACTIVE", "until": until.isoformat(), "communities": []}
+                  except ValueError:
+                      continue
+              native = get_telegram_research_connector()
+              if native is None:
+                  return {"status": "RESEARCH_UNAVAILABLE", "communities": []}
+              connector = TelegramResearchConnector(
+                  native._transport, known_handle_limit=3, recent_message_limit=2
+              )
+              communities = []
+              for offset in (0, 3):
+                  selected = list(HANDLES[offset:offset+3])
+                  for inspected in await connector.inspect_known(selected):
+                      snapshot = inspected.snapshot
+                      if snapshot is None:
+                          communities.append({"handle": inspected.handle, "status": inspected.status, "posts": []})
+                          continue
+                      posts = []
+                      for item in snapshot.recent_context[:2]:
+                          posts.append({
+                              "id": item.message_id,
+                              "date_utc": item.published_at.isoformat() if item.published_at else None,
+                              "url": item.url,
+                              "text": item.text,
+                              "media_present": item.media_present,
+                              "media_kind": item.media_kind,
+                              "text_truncated": item.text_truncated,
+                              "album_group_id": item.album_group_id,
+                          })
+                      communities.append({
+                          "handle": inspected.handle,
+                          "status": inspected.status,
+                          "kind": snapshot.kind.value,
+                          "comment_surface": snapshot.comment_surface.value,
+                          "standalone_post_surface": snapshot.standalone_post_surface.value,
+                          "posts": posts,
+                      })
+              return {
+                  "status": "READ_ONLY_COMPLETE",
+                  "checked_at": datetime.now(UTC).isoformat(),
+                  "communities": communities,
+                  "effects": {"search": 0, "llm": 0, "join": 0, "send": 0, "writes": 0},
+              }
+
+          try:
+              result = asyncio.run(read())
+          except TelegramFloodWaitError as exc:
+              result = {"status": "FLOOD_WAIT_ACTIVE", "seconds": exc.seconds, "communities": []}
+          print(json.dumps(result, ensure_ascii=False))
+          PY
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("telegram-five-latest-two.json").read_text())
+          assert data["status"] in {"READ_ONLY_COMPLETE", "FLOOD_WAIT_ACTIVE", "RESEARCH_UNAVAILABLE"}
+          for item in data.get("communities", []):
+              assert len(item.get("posts", [])) <= 2
+          print("BENCHMARK_RESULTS_START")
+          print(json.dumps(data, ensure_ascii=False))
+          print("BENCHMARK_RESULTS_END")
+          PY
+      - name: Store short-lived source evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: telethon-five-peers-two-latest-read-only-20261104
+          path: telegram-five-latest-two.json
+          retention-days: 2
+          if-no-files-found: error
