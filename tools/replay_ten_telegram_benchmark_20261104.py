@@ -5,6 +5,7 @@ Calls actual provider one time per benchmark case, without publishing. Never
 persists a DistributionAction, draft cache, workflow execution, or Telegram action.
 """
 import asyncio
+import base64
 import hashlib
 import json
 import sys
@@ -36,8 +37,8 @@ EXPECTED = [
 MAX_CALLS = 10
 
 def load_cases():
-    a = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-    b = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+    a = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
+    b = json.loads(base64.b64decode(sys.argv[2]).decode("utf-8"))
     if a.get("status") != "READ_ONLY_COMPLETE" or b.get("status") != "READ_ONLY_COMPLETE":
         raise RuntimeError("TELETHON_INPUT_INCOMPLETE")
     peers = {c["handle"]: c for c in a["communities"]}
