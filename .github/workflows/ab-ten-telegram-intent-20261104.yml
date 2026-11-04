@@ -1,0 +1,96 @@
+name: One-off Partizan A-B on ten frozen Telegram posts (no publishing)
+on:
+  push:
+    branches: [research/telethon-five-peers-two-latest-20261104]
+    paths: [.github/workflows/ab-ten-telegram-intent-20261104.yml]
+
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: partizan-ab-ten-20261104-no-publish
+  cancel-in-progress: false
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Retrieve frozen Telethon benchmark inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p /tmp/snapshot_a /tmp/snapshot_b
+          gh run download 41840368919 -n telethon-five-peers-two-latest-read-only-20261104 -D /tmp/snapshot_a
+          gh run download 41840675392 -n telethon-five-peers-two-latest-read-only-20261104 -D /tmp/snapshot_b
+          python - <<'PY'
+          import json
+          for letter in ("a","b"):
+              with open(f"/tmp/snapshot_{letter}/telegram-five-latest-two.json",encoding="utf-8") as f:
+                  d=json.load(f)
+              assert d["status"]=="READ_ONLY_COMPLETE"
+          print("Reused read-only source posts; zero new Telegram reads")
+          PY
+      - name: Check scope of SSH research runner
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing research SSH precondition ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Trust only pinned deployment host
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Execute up to twenty real LLM calls with equal pair contexts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          SOURCE_A="$(base64 -w0 /tmp/snapshot_a/telegram-five-latest-two.json)"
+          SOURCE_B="$(base64 -w0 /tmp/snapshot_b/telegram-five-latest-two.json)"
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python - '${SOURCE_A}' '${SOURCE_B}'" \
+            < tools/ab_ten_telegram_intent_20261104.py > partizan-ab-ten.json
+          python - <<'PY'
+          import json
+          with open("partizan-ab-ten.json",encoding="utf-8") as f:
+              d=json.load(f)
+          assert d["status"]=="COMPLETED"
+          assert len(d["cases"])==10
+          assert d["actual_provider_calls_attempted"] <= 20
+          assert all(n==0 for n in d["effects"].values())
+          assert d["all_pairs_same_user_context"] is True
+          print(json.dumps({
+              "status": d["status"],"model":d["model"],
+              "calls":d["actual_provider_calls_attempted"],
+              "generated_pairs":sum(all(v["status"]=="GENERATED" for v in p["results"].values()) for p in d["cases"]),
+              "failed_arms":sum(v["status"]!="GENERATED" for p in d["cases"] for v in p["results"].values()),
+              "no_telegram_actions":True,
+          },ensure_ascii=False))
+          PY
+      - name: Preserve blinded results in private short-lived artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: partizan-ab-ten-20261104
+          path: partizan-ab-ten.json
+          retention-days: 3
+          if-no-files-found: error
