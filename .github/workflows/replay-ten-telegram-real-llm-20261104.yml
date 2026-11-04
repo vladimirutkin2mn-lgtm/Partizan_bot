@@ -1,0 +1,91 @@
+name: One-off Partizan real composer replay ten frozen Telegram cases
+on:
+  push:
+    branches: [research/telethon-five-peers-two-latest-20261104]
+    paths: [.github/workflows/replay-ten-telegram-real-llm-20261104.yml]
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: oneoff-20261104-real-composer-benchmark
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download frozen successful read-only Telethon snapshots
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          mkdir -p /tmp/snapshot_a /tmp/snapshot_b
+          gh run download 41840368919 -n telethon-five-peers-two-latest-read-only-20261104 -D /tmp/snapshot_a
+          gh run download 41840675392 -n telethon-five-peers-two-latest-read-only-20261104 -D /tmp/snapshot_b
+          python - <<'PY'
+          import json
+          for label in ("a", "b"):
+              path = f"/tmp/snapshot_{label}/telegram-five-latest-two.json"
+              source = json.load(open(path))
+              assert source["status"] == "READ_ONLY_COMPLETE"
+          print("Frozen public post sources recovered; no Telegram API used")
+          PY
+      - name: Verify read-only research SSH access
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          for key in DEPLOY_HOST DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS DEPLOY_PATH; do
+            if [[ -z "${!key}" ]]; then
+              echo "::error::Missing research access: ${key}"
+              exit 1
+            fi
+          done
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin SSH known host
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${HOST_KEYS}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Run real LLM composer on ten frozen cases, no posting or writes
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        shell: bash
+        run: |
+          SOURCE_A="$(base64 -w0 /tmp/snapshot_a/telegram-five-latest-two.json)"
+          SOURCE_B="$(base64 -w0 /tmp/snapshot_b/telegram-five-latest-two.json)"
+          ssh -o BatchMode=yes "${DEPLOY_HOST}" \
+            "cd '${DEPLOY_PATH}' && bash tools/compose_shared_host.sh exec -T api python - '${SOURCE_A}' '${SOURCE_B}'" \
+            < tools/replay_ten_telegram_benchmark_20261104.py > real-composer-ten-cases.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("real-composer-ten-cases.json").read_text())
+          assert data["status"] == "BENCHMARK_COMPLETE"
+          assert data["benchmark_size"] == 10
+          assert len(data["cases"]) == 10
+          assert all(x == 0 for x in data["effects"].values())
+          print("REAL_COMPOSER_REPLAY_START")
+          print(json.dumps(data, ensure_ascii=False))
+          print("REAL_COMPOSER_REPLAY_END")
+          PY
+      - name: Save short-lived private real generated responses
+        uses: actions/upload-artifact@v4
+        with:
+          name: partizan-real-composer-ten-cases-20261104
+          path: real-composer-ten-cases.json
+          retention-days: 3
+          if-no-files-found: error
