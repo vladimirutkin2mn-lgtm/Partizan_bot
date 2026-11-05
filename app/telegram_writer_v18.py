@@ -105,4 +105,3 @@ def writer_prompt(action: DistributionActionType, *, persisted_voice: bool) -> s
         f"Prompt version: {writer_version(action)}\n{_MESSAGE}\n\n{character}"
         f"\n\n{_SURFACE[action]}\n\n{_CREATIVE_PLAN}"
     )
-
