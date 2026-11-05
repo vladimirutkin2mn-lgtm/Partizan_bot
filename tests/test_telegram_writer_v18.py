@@ -8,11 +8,16 @@ from uuid import uuid4
 import pytest
 from PIL import Image
 
-from app.action_drafting import ActionTargetSelector, DistributionActionComposer
+from app.action_drafting import (
+    ActionTargetSelector,
+    DistributionActionComposer,
+    DistributionActionDraftingService,
+)
 from app.config import get_settings
 from app.conversion_scenarios import TELEGRAM_PROFILE_INTEREST, conversion_scenario_planner
 from app.distribution_execution_service import InMemoryDistributionExecutionService
 from app.distribution_play_planner import TACTIC_CATALOG
+from app.distribution_play_schemas import DistributionPlayStatus
 from app.distribution_types import DistributionActionStatus, DistributionPlatform
 from app.distribution_types import DistributionActionType as Action
 from app.llm import LLMMessage
@@ -70,6 +75,10 @@ class Recorder:
             content_text="I'd love to see the next entry.",
             context_text="The photo contest.",
             rationale="Direct response to the entry.",
+            creative_plan={
+                "intent": "Curiosity about the author's taste",
+                "attention_technique": "A warm direct reaction",
+            },
         )
 
 
@@ -103,6 +112,54 @@ async def test_canonical_one_call_with_surface_specific_context(action, enabled,
     else:
         assert payload["selected_native_target"]["text"] == "The most recent public contribution."
         assert "member_excerpt_for_register_only" not in payload and "previous_own_openers" not in payload
+
+
+@pytest.mark.parametrize("variants", [False, True])
+async def test_selected_intent_and_attention_reach_both_preparation_paths(variants, enabled, monkeypatch):
+    play, opportunity, target = case(Action.COMMENT, "A public invitation to discuss a new event.")
+    play.platform = DistributionPlatform.TELEGRAM
+    play.status = DistributionPlayStatus.READY
+    play.opportunity_id = uuid4()
+    play.community_policy_required = False
+    product = SimpleNamespace(id=uuid4(), model_dump=lambda mode: {"name": "Example product"})
+    provider = Recorder()
+    service = DistributionActionDraftingService(
+        composer=DistributionActionComposer(provider=provider),
+        selector=SimpleNamespace(select=lambda *args: target),
+    )
+    monkeypatch.setattr(
+        "app.action_drafting.audience_intelligence_service.find_opportunity", lambda *args: opportunity,
+    )
+    prepared = []
+
+    def prepare(product, play, request, **kwargs):
+        prepared.append(request)
+        return SimpleNamespace()
+
+    monkeypatch.setattr("app.action_drafting.distribution_execution_service.prepare", prepare)
+    operation = service.auto_prepare_variants if variants else service.auto_prepare
+    await operation(product=product, play=play)
+    assert len(provider.calls) == len(prepared) == 1
+    assert prepared[0].creative_plan.model_dump() == {
+        "intent": "Curiosity about the author's taste",
+        "attention_technique": "A warm direct reaction",
+    }
+
+
+async def test_missing_creative_plan_is_rejected_after_one_call(enabled):
+    class MissingPlan(Recorder):
+        async def parse(self, messages, response_model):
+            draft = await super().parse(messages, response_model)
+            return draft.model_copy(update={"creative_plan": None})
+
+    play, opportunity, target = case(Action.COMMENT, "A public invitation to discuss a new event.")
+    product = SimpleNamespace(id=uuid4(), model_dump=lambda mode: {"name": "Example"})
+    provider = MissingPlan()
+    with pytest.raises(ValueError, match="TELEGRAM_CREATIVE_PLAN_REQUIRED"):
+        await DistributionActionComposer(provider=provider).compose(
+            product=product, play=play, opportunity=opportunity, target=target, policy=None,
+        )
+    assert len(provider.calls) == 1
 
 
 async def test_photo_supplied_in_same_request_and_unseen_photo_has_no_visual_claims(enabled, monkeypatch):

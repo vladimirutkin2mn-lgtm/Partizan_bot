@@ -93,6 +93,7 @@ def _render_preview(record: dict) -> dict:
                 "target_url": str(action.target_url or ""),
                 "context_text": str(action.content_payload.get("context_text") or ""),
                 "content_text": str(action.content_text or ""),
+                "creative_plan": action.content_payload.get("creative_plan"),
                 "content_sha256": str(item["content_sha256"]),
                 "voice_profile_version_id": action.content_payload.get(
                     "voice_profile_version_id"

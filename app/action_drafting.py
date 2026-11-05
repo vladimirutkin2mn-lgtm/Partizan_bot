@@ -22,6 +22,7 @@ from app.distribution_control_plane_service import distribution_control_plane_se
 from app.distribution_execution_schemas import (
     DistributionExecutionPlanView,
     DistributionExecutionPrepareRequest,
+    MessageCreativePlan,
 )
 from app.distribution_execution_service import (
     InMemoryDistributionExecutionService,
@@ -75,6 +76,7 @@ class DistributionContentDraft(BaseModel):
     ai_disclosure_included: bool = False
     voice_profile_version_id: UUID | None = None
     voice_profile_content_hash: str | None = None
+    creative_plan: MessageCreativePlan | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -645,6 +647,8 @@ class DistributionActionComposer:
                 cache.stop(reservation, status="PROVIDER_OUTCOME_UNKNOWN")
             raise
         try:
+            if use_v18 and draft.creative_plan is None:
+                raise ValueError("TELEGRAM_CREATIVE_PLAN_REQUIRED")
             # Creative guidance does not own compliance. Reject drafts that
             # omit mandated disclosures before preparation or approval.
             if policy is not None and policy.disclosure_required and not draft.disclosure_included:
@@ -920,6 +924,7 @@ class DistributionActionDraftingService:
             "context_text": draft.context_text,
             "content_text": draft.content_text,
             "rationale": draft.rationale,
+            "creative_plan": draft.creative_plan.model_dump(mode="json") if draft.creative_plan else None,
             "voice_profile_version_id": str(draft.voice_profile_version_id),
             "voice_profile_content_hash": draft.voice_profile_content_hash,
             "prompt_version": (
@@ -952,6 +957,7 @@ class DistributionActionDraftingService:
                 content_text=draft.content_text,
                 disclosure_included=draft.disclosure_included,
                 ai_disclosure_included=draft.ai_disclosure_included,
+                creative_plan=draft.creative_plan,
             ),
             **(
                 {
@@ -1017,6 +1023,7 @@ class DistributionActionDraftingService:
                     content_text=draft.content_text,
                     disclosure_included=draft.disclosure_included,
                     ai_disclosure_included=draft.ai_disclosure_included,
+                    creative_plan=draft.creative_plan,
                     conversion_mechanism=brief.conversion_mechanism.value,
                     draft_variant=brief.variant_name,
                     expected_user_next_step=brief.expected_user_next_step,

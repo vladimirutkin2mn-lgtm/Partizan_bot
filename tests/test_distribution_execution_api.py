@@ -1,9 +1,14 @@
+from uuid import UUID
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.audience_intelligence_service import audience_intelligence_service
 from app.distribution_control_plane_service import distribution_control_plane_service
-from app.distribution_execution_service import distribution_execution_service
+from app.distribution_execution_service import (
+    InMemoryDistributionExecutionService,
+    distribution_execution_service,
+)
 from app.distribution_play_service import distribution_play_service
 from app.icp_service import icp_service
 from app.main import app
@@ -78,6 +83,45 @@ def _activate_slot(product_id: str, identity_id: str, route: str | None = None) 
     )
     assert response.status_code == 201
     return response.json()
+
+
+def test_creative_plan_persists_with_the_text_and_is_invalidated_on_edit() -> None:
+    product_id = _product()
+    identity = _create_identity("TELEGRAM", "GROUP", "STANDALONE_POST")
+    _activate_slot(product_id, identity["id"], "https://example.com/profile")
+    play = next(
+        item for item in _generate_plays(product_id)
+        if item["tactic_id"] == "telegram_group_post" and item["status"] == "READY"
+    )
+    strategy = {
+        "intent": "Curiosity about the author's personality",
+        "attention_technique": "Playful challenge",
+    }
+    prepared = client.post(
+        f"/v1/products/{product_id}/distribution-plays/{play['id']}/actions/prepare",
+        json={
+            "destination_url": "https://example.com/product",
+            "content_text": "A concrete invitation to talk.",
+            "creative_plan": strategy,
+        },
+    )
+    assert prepared.status_code == 200
+    action_id = UUID(prepared.json()["action"]["id"])
+
+    def stored():
+        fresh = InMemoryDistributionExecutionService(distribution_execution_service._store)
+        return fresh.get_action(action_id)
+
+    assert stored().content_payload["creative_plan"] == strategy
+    assert client.patch(
+        f"/v1/distribution-actions/{action_id}", json={"title": "Title only"},
+    ).status_code == 200
+    assert stored().content_payload["creative_plan"] == strategy
+    assert client.patch(
+        f"/v1/distribution-actions/{action_id}",
+        json={"content_text": "A different invitation after manual review."},
+    ).status_code == 200
+    assert "creative_plan" not in stored().content_payload
 
 
 def test_paid_play_has_explicit_approval_and_execution_lifecycle() -> None:

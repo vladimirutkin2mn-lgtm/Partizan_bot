@@ -153,6 +153,8 @@ class InMemoryDistributionExecutionService:
             content_payload["draft_variant"] = payload.draft_variant.strip()
         if payload.expected_user_next_step is not None:
             content_payload["expected_user_next_step"] = payload.expected_user_next_step.strip()
+        if payload.creative_plan is not None:
+            content_payload["creative_plan"] = payload.creative_plan.model_dump(mode="json")
         if voice_profile_version_id is not None:
             if not voice_profile_content_hash or len(voice_profile_content_hash) != 64:
                 raise ValueError("VOICE_PROVENANCE_REQUIRED")
@@ -229,6 +231,8 @@ class InMemoryDistributionExecutionService:
             content_payload["context_text"] = payload.context_text
         if payload.title is not None:
             content_payload["title"] = payload.title.strip()
+        if payload.content_text is not None and payload.content_text != action.content_text:
+            content_payload.pop("creative_plan", None)
         for key in (
             "disclosure_included",
             "ai_disclosure_included",
