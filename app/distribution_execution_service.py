@@ -231,7 +231,11 @@ class InMemoryDistributionExecutionService:
             content_payload["context_text"] = payload.context_text
         if payload.title is not None:
             content_payload["title"] = payload.title.strip()
-        if payload.content_text is not None and payload.content_text != action.content_text:
+        if (
+            payload.content_text is not None and payload.content_text != action.content_text
+        ) or (
+            payload.target_url is not None and str(payload.target_url) != str(action.target_url)
+        ):
             content_payload.pop("creative_plan", None)
         for key in (
             "disclosure_included",

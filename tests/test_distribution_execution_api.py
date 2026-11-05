@@ -85,7 +85,11 @@ def _activate_slot(product_id: str, identity_id: str, route: str | None = None) 
     return response.json()
 
 
-def test_creative_plan_persists_with_the_text_and_is_invalidated_on_edit() -> None:
+@pytest.mark.parametrize("change", [
+    {"content_text": "A different invitation after manual review."},
+    {"target_url": "https://t.me/another_community"},
+])
+def test_creative_plan_persists_and_is_invalidated_when_text_or_target_changes(change) -> None:
     product_id = _product()
     identity = _create_identity("TELEGRAM", "GROUP", "STANDALONE_POST")
     _activate_slot(product_id, identity["id"], "https://example.com/profile")
@@ -119,7 +123,7 @@ def test_creative_plan_persists_with_the_text_and_is_invalidated_on_edit() -> No
     assert stored().content_payload["creative_plan"] == strategy
     assert client.patch(
         f"/v1/distribution-actions/{action_id}",
-        json={"content_text": "A different invitation after manual review."},
+        json=change,
     ).status_code == 200
     assert "creative_plan" not in stored().content_payload
 
