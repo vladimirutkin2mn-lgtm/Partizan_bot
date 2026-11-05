@@ -3,8 +3,8 @@
 from app.config import get_settings
 from app.distribution_types import DistributionActionType
 
-PROMPT_VERSION = "telegram_message_v18_5"
-STANDALONE_PROMPT_VERSION = "telegram_standalone_v18_5"
+PROMPT_VERSION = "telegram_message_v18_6"
+STANDALONE_PROMPT_VERSION = "telegram_standalone_v18_6"
 
 _MESSAGE = """Write one message in the community's language. Give the reader a reason
 to be curious about the author through something the author notices, likes or wants.
@@ -35,8 +35,8 @@ or flirtatious interest, sympathy or affinity, wanting more of the author's pers
 or interest in relevant expertise. Ground it in what the message lets the reader notice
 about the author. The reader's interest in the author is the goal; asking the reader to
 earn the author's attention does not by itself create that interest.
-Keep the intent implicit in the reaction when that is enough. Choosing it does not
-require a statement about the author's personality or an explanation of their taste.
+Keep the intent implicit when the reaction already carries it. Choosing an intent does
+not require a statement about the author's personality or an explanation of their taste.
 
 ATTENTION TECHNIQUE: how will the message evoke that response?
 Choose a fitting expression: a warm direct reaction, shared enthusiasm, humour, an
@@ -52,16 +52,15 @@ creative_plan in this same call. Keep the plan outside the public message."""
 _SURFACE = {
     DistributionActionType.COMMENT: """CHANNEL_COMMENT: speak to the author or readers about
 the selected channel post. Follow the social occasion. At a meetup that can mean who you
-might get talking to. When a community welcomes people into a chat, respond to the prospect
-of talking, joking or meeting someone there, with a reaction to this invitation rather
-than an abstract description of the author's preferred kind of socializing.
-Leave logistics and boilerplate about rules or
+might get talking to. When a community welcomes people into a chat, respond to that invitation and the
+prospect of talking, joking or meeting someone there. Leave logistics and boilerplate about rules or
 boundaries in the background unless those are the subject or there is a concrete risk.
-When organizers introduce a new format, lead with a direct reaction to their initiative,
-in words you might say to them. Add what appeals to you only if that earns another sentence.
-In a calendar, choose the date or event that catches the author's interest and let the
-short reaction stand. Stop before explaining the author's personal tastes.
-Distinguish an invitation to enter a contest from an entry already
+When a post explains why a new event format exists, respond directly to the organizers
+about what this format makes possible for its audience. Stay with that reason for the
+event; do not replace it with a general wish for an interesting person to chat with.
+In a calendar, a short reaction to the date or event can be complete. Let it stand
+without explaining the author's personal tastes. Distinguish an invitation to enter a
+contest from an entry already
 being shown for votes. React to the entry or the anticipation it creates. Any linked rules
 are background. Use visual details only from an attached photo. Without it, stick to what
 the caption and explicitly linked text establish.""",
@@ -71,11 +70,9 @@ redirect the conversation to a new introduction or repeat their point as a gener
     DistributionActionType.STANDALONE_POST: """STANDALONE_POST: start your own conversation
 at the group root. Use the description and, if present, one member excerpt to recognize the
 local genre. The excerpt is not addressed to you. Do not answer, quote or imitate that person.
-In a themed introductions group, introduce yourself to one possible reader. A concrete
-desire, one or two preferred qualities, or a playful line can be the entire introduction;
-choose one social move. Speak from the author's role instead of describing that role or
-explaining the style of conversation you would provide. Let the group interest be
-recognizable through what you want or say to the reader.
+In a themed introductions group, speak to one possible reader. Let them recognize the
+author's role and something appealing about talking to this person. A concrete desire,
+one or two preferred qualities, or a line of dialogue can do that; choose one social move.
 An introduction need not set a task. If inviting a reply, give the reader something
 to respond to beyond a demand to impress the author. Avoid a checklist of partner traits
 and reminders about communication or boundaries unless they are actually the topic.
@@ -108,3 +105,4 @@ def writer_prompt(action: DistributionActionType, *, persisted_voice: bool) -> s
         f"Prompt version: {writer_version(action)}\n{_MESSAGE}\n\n{character}"
         f"\n\n{_SURFACE[action]}\n\n{_CREATIVE_PLAN}"
     )
+
