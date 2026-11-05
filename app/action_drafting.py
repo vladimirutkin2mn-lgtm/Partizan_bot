@@ -14,6 +14,7 @@ from app.community_voice import (
 )
 from app.config import get_settings
 from app.conversion_scenarios import (
+    TELEGRAM_PROFILE_INTEREST,
     DraftVariantBrief,
     conversion_scenario_planner,
 )
@@ -21,8 +22,12 @@ from app.distribution_control_plane_service import distribution_control_plane_se
 from app.distribution_execution_schemas import (
     DistributionExecutionPlanView,
     DistributionExecutionPrepareRequest,
+    MessageCreativePlan,
 )
-from app.distribution_execution_service import distribution_execution_service
+from app.distribution_execution_service import (
+    InMemoryDistributionExecutionService,
+    distribution_execution_service,
+)
 from app.distribution_play_planner import TACTIC_CATALOG
 from app.distribution_play_schemas import DistributionPlayStatus, DistributionPlayView
 from app.distribution_schemas import (
@@ -52,6 +57,8 @@ from app.reddit_research import action_target_is_fresh
 from app.schemas import ProductProfileView
 from app.telegram_message_precheck import precheck_telegram_target
 from app.telegram_target_excerpt import compact_telegram_target
+from app.telegram_writer_media import SelectedPhoto, read_selected_photo
+from app.telegram_writer_v18 import telegram_v18_enabled, writer_prompt, writer_version
 from app.voice_draft_cache import VoiceDraftCache
 from app.voice_profiles import VoiceProfileService, fingerprint, source_snapshot
 
@@ -69,6 +76,7 @@ class DistributionContentDraft(BaseModel):
     ai_disclosure_included: bool = False
     voice_profile_version_id: UUID | None = None
     voice_profile_content_hash: str | None = None
+    creative_plan: MessageCreativePlan | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +90,8 @@ class SelectedActionTarget:
     url: str | None
     context_text: str
     source: str
+    photo: bool = False
+    group_register_excerpt: str = ""
 
 
 class ActionTargetSelector:
@@ -105,13 +115,18 @@ class ActionTargetSelector:
                 )
             candidate = candidates[0]
             context = self._target_context(candidate, opportunity)
-            if len(context.strip()) < 10:
+            selected_photo = (
+                opportunity.platform == DistributionPlatform.TELEGRAM
+                and candidate.get("media_kind") == "MessageMediaPhoto"
+            )
+            visual_target = selected_photo and telegram_v18_enabled()
+            if len(context.strip()) < 10 and not visual_target:
                 raise ValueError(
                     "ActionTarget has insufficient local context; enrich the opportunity before drafting"
                 )
             if opportunity.platform == DistributionPlatform.TELEGRAM:
                 precheck = precheck_telegram_target(context)
-                if not precheck.eligible:
+                if not precheck.eligible and not visual_target:
                     raise ValueError(
                         f"Telegram ActionTarget precheck blocked: {precheck.reason}"
                     )
@@ -119,6 +134,7 @@ class ActionTargetSelector:
                 url=str(candidate["url"]),
                 context_text=context,
                 source=str(candidate.get("source") or "enrichment"),
+                photo=selected_photo,
             )
 
         if play.action_type == DistributionActionType.STANDALONE_POST:
@@ -145,9 +161,19 @@ class ActionTargetSelector:
                 about = str(metadata.get("about") or "").strip()
                 if about:
                     context += "\nGroup description: " + about[:1000]
+                excerpt = ""
+                if telegram_v18_enabled():
+                    recent = [
+                        item for item in (metadata.get("recent_context") or [])
+                        if isinstance(item, dict) and self._telegram_message_id(item)
+                        and str(item.get("url") or "").casefold().startswith(community_url.casefold() + "/")
+                    ]
+                    latest = max(recent, key=self._telegram_message_id, default={})
+                    excerpt = str(latest.get("text") or "")[:220]
                 return SelectedActionTarget(
                     url=target_url, context_text=context,
                     source="telegram_native.group_description",
+                    group_register_excerpt=excerpt,
                 )
             return SelectedActionTarget(
                 url=str(opportunity.url),
@@ -206,7 +232,9 @@ class ActionTargetSelector:
         # A verified audience alone cannot justify an unrelated canned reply.
         # If the newest post is media-only and we have no usable context,
         # do not silently fall back to the community title or older posts.
-        if not str(latest.get("text") or "").strip():
+        if not str(latest.get("text") or "").strip() and not (
+            telegram_v18_enabled() and latest.get("media_kind") == "MessageMediaPhoto"
+        ):
             raise ValueError(
                 "Telegram latest native post has no readable context for a relevant draft"
             )
@@ -216,6 +244,7 @@ class ActionTargetSelector:
                 "title": opportunity.title,
                 "snippet": str(latest.get("text") or ""),
                 "source": "telegram_native.latest_message",
+                "media_kind": latest.get("media_kind"),
             }
         ]
 
@@ -369,11 +398,13 @@ class DistributionActionComposer:
         memory_service: ProjectMarketingMemoryService | None = None,
         voice_profiles: VoiceProfileService | None = None,
         voice_cache: VoiceDraftCache | None = None,
+        execution_service: InMemoryDistributionExecutionService | None = None,
     ) -> None:
         self._provider = provider
         self._memory = memory_service or project_marketing_memory_service
         self._voice_profiles = voice_profiles
         self._voice_cache = voice_cache
+        self._execution = execution_service or distribution_execution_service
 
     async def compose(
         self,
@@ -391,17 +422,22 @@ class DistributionActionComposer:
         self._validate_ai_policy(policy)
         if voice_version_id is not None and not get_settings().persisted_voice_writer_enabled:
             raise RuntimeError("VOICE_TRIAL_NOT_ENABLED")
+        telegram_organic = (
+            opportunity.platform == DistributionPlatform.TELEGRAM
+            and play.action_type in {
+                DistributionActionType.COMMENT, DistributionActionType.REPLY,
+                DistributionActionType.STANDALONE_POST,
+            }
+        )
+        use_v18 = telegram_organic and telegram_v18_enabled()
         if self._provider is None:
+            if use_v18:
+                raise RuntimeError("TELEGRAM_V18_PROVIDER_REQUIRED")
             # A v17 paid/canary request must never silently return a mock
             # draft without resolving the active, validated voice.
             if (
                 get_settings().persisted_voice_writer_enabled
-                and opportunity.platform == DistributionPlatform.TELEGRAM
-                and play.action_type in {
-                    DistributionActionType.COMMENT,
-                    DistributionActionType.REPLY,
-                    DistributionActionType.STANDALONE_POST,
-                }
+                and telegram_organic
             ):
                 raise RuntimeError("VOICE_PROVIDER_REQUIRED")
             return self._mock_draft(
@@ -428,18 +464,15 @@ class DistributionActionComposer:
         community_prompt = (
             f"Prompt version: {COMMUNITY_CREATIVE_PROMPT_VERSION}\n"
             + COMMUNITY_CREATIVE_GUIDANCE
-            if opportunity.platform == DistributionPlatform.TELEGRAM
-            and play.action_type in {
-                DistributionActionType.COMMENT,
-                DistributionActionType.REPLY,
-                DistributionActionType.STANDALONE_POST,
-            }
+            if telegram_organic
             else ""
         )
         use_persisted_voice = bool(
             community_prompt and get_settings().persisted_voice_writer_enabled
         )
-        if use_persisted_voice:
+        if use_v18:
+            community_prompt = writer_prompt(play.action_type, persisted_voice=use_persisted_voice)
+        elif use_persisted_voice:
             community_prompt = (
                 f"Prompt version: {PERSISTED_COMMUNITY_PROMPT_VERSION}\n"
                 + PERSISTED_COMMUNITY_PROMPT
@@ -447,6 +480,7 @@ class DistributionActionComposer:
         marketing_guidance = (
             "" if community_prompt else render_marketing_guidance(marketing_task)
         )
+        photo = SelectedPhoto()
         if community_prompt:
             # The generic opportunity payload can include dozens of older
             # Telegram messages and full discovery history. Keep only product
@@ -481,8 +515,27 @@ class DistributionActionComposer:
             else:
                 voice_payload = voice_input["voice"]
             compacted = compact_telegram_target(target.context_text)
+            conversion_variant = variant or (TELEGRAM_PROFILE_INTEREST if use_v18 else None)
+            writer_context = {}
+            if use_v18 and play.action_type == DistributionActionType.STANDALONE_POST:
+                writer_context["member_excerpt_for_register_only"] = target.group_register_excerpt
+                writer_context["previous_own_openers"] = self._execution.recent_telegram_group_posts(
+                    product.id, getattr(play, "selected_identity_id", None), target.url or "",
+                )
+            elif use_v18 and target.photo:
+                # A full announcement usually stands on its text. A short photo caption
+                # can rely on the image and on instructions linked by the author.
+                if len(target.context_text.strip()) <= 400 and target.url:
+                    photo = await read_selected_photo(target.url, target.context_text)
+                if not photo.jpeg and (
+                    len(target.context_text.strip()) < 10
+                    or not precheck_telegram_target(target.context_text).eligible
+                ):
+                    raise ValueError("Telegram photo has no readable caption or available image")
+                writer_context["selected_media"] = photo.prompt_context()
             user_context = json.dumps(
                 {
+                    **writer_context,
                     "product": voice_input["product_positioning"],
                     "author_voice": voice_payload,
                     "community_title": opportunity.title,
@@ -512,8 +565,8 @@ class DistributionActionComposer:
                     "tactic_allows_product_link": template.has_direct_product_link,
                     "tactic_mentions_product": template.has_product_mention,
                     "conversion_brief": (
-                        self._variant_prompt(variant)
-                        if variant else (
+                        self._variant_prompt(conversion_variant)
+                        if conversion_variant else (
                             {
                                 "conversion_mechanism": "PROFILE_CLICK",
                                 "instruction": (
@@ -552,12 +605,11 @@ class DistributionActionComposer:
             else ACTION_DRAFT_SYSTEM_PROMPT
         )
         system_prompt = (
-            f"{main_prompt}\n\n{marketing_guidance}"
-            f"\n\n{community_prompt}"
+            community_prompt if use_v18 else f"{main_prompt}\n\n{marketing_guidance}\n\n{community_prompt}"
         )
         messages = [
             LLMMessage(role="system", content=system_prompt),
-            LLMMessage(role="user", content=user_context),
+            LLMMessage(role="user", content=user_context, image_jpeg=photo.jpeg),
         ]
         cache = None
         reservation = None
@@ -595,6 +647,8 @@ class DistributionActionComposer:
                 cache.stop(reservation, status="PROVIDER_OUTCOME_UNKNOWN")
             raise
         try:
+            if use_v18 and draft.creative_plan is None:
+                raise ValueError("TELEGRAM_CREATIVE_PLAN_REQUIRED")
             # Creative guidance does not own compliance. Reject drafts that
             # omit mandated disclosures before preparation or approval.
             if policy is not None and policy.disclosure_required and not draft.disclosure_included:
@@ -604,7 +658,7 @@ class DistributionActionComposer:
                 and not draft.ai_disclosure_included
             ):
                 raise ValueError("Required AI-content disclosure missing from draft")
-            if use_persisted_voice and (
+            if (use_persisted_voice or use_v18) and (
                 (
                     variant is not None
                     and variant.conversion_mechanism.value == "PROFILE_CLICK"
@@ -870,9 +924,13 @@ class DistributionActionDraftingService:
             "context_text": draft.context_text,
             "content_text": draft.content_text,
             "rationale": draft.rationale,
+            "creative_plan": draft.creative_plan.model_dump(mode="json") if draft.creative_plan else None,
             "voice_profile_version_id": str(draft.voice_profile_version_id),
             "voice_profile_content_hash": draft.voice_profile_content_hash,
-            "prompt_version": PERSISTED_COMMUNITY_PROMPT_VERSION,
+            "prompt_version": (
+                writer_version(play.action_type) if telegram_v18_enabled()
+                else PERSISTED_COMMUNITY_PROMPT_VERSION
+            ),
         }
 
     async def auto_prepare(
@@ -899,6 +957,7 @@ class DistributionActionDraftingService:
                 content_text=draft.content_text,
                 disclosure_included=draft.disclosure_included,
                 ai_disclosure_included=draft.ai_disclosure_included,
+                creative_plan=draft.creative_plan,
             ),
             **(
                 {
@@ -935,9 +994,7 @@ class DistributionActionDraftingService:
         # even if the generic conversion planner suggests alternatives.
         if (
             play.platform == DistributionPlatform.TELEGRAM
-            and play.action_type in {
-                DistributionActionType.COMMENT, DistributionActionType.REPLY
-            }
+            and play.action_type in {DistributionActionType.COMMENT, DistributionActionType.REPLY}
         ):
             briefs = briefs[:1]
         selected_project = self._voice_project_for_draft(
@@ -966,6 +1023,7 @@ class DistributionActionDraftingService:
                     content_text=draft.content_text,
                     disclosure_included=draft.disclosure_included,
                     ai_disclosure_included=draft.ai_disclosure_included,
+                    creative_plan=draft.creative_plan,
                     conversion_mechanism=brief.conversion_mechanism.value,
                     draft_variant=brief.variant_name,
                     expected_user_next_step=brief.expected_user_next_step,

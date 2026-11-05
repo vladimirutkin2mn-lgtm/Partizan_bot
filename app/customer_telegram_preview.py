@@ -29,6 +29,8 @@ from app.telegram_client_governance import (
     customer_telegram_governance_service,
 )
 from app.telegram_client_publishing import CUSTOMER_TELEGRAM_CONNECTION_NAMESPACE
+from app.telegram_writer_v18 import PROMPT_VERSION as TELEGRAM_V18
+from app.telegram_writer_v18 import telegram_v18_enabled
 from app.voice_profiles import VoiceProfileService
 
 TELEGRAM_PREVIEW_NAMESPACE = "customer_telegram_publish_preview"
@@ -91,6 +93,7 @@ def _render_preview(record: dict) -> dict:
                 "target_url": str(action.target_url or ""),
                 "context_text": str(action.content_payload.get("context_text") or ""),
                 "content_text": str(action.content_text or ""),
+                "creative_plan": action.content_payload.get("creative_plan"),
                 "content_sha256": str(item["content_sha256"]),
                 "voice_profile_version_id": action.content_payload.get(
                     "voice_profile_version_id"
@@ -122,6 +125,7 @@ def _render_preview(record: dict) -> dict:
             record.get("marketing_memory_entry_ids") or []
         ),
         "variant_count": len(rendered_variants),
+        "writer_prompt_version": record.get("writer_prompt_version"),
         "voice_profile_version_id": record.get("voice_profile_version_id"),
         "voice_profile_content_hash": record.get("voice_profile_content_hash"),
         "variants": rendered_variants,
@@ -138,6 +142,8 @@ def _validate_existing_preview(
 ) -> None:
     if int(record.get("schema_version") or 0) != PREVIEW_SCHEMA_VERSION:
         raise ValueError("Existing preview uses a stale schema version")
+    if record.get("writer_prompt_version") != (TELEGRAM_V18 if telegram_v18_enabled() else None):
+        raise ValueError("Existing preview uses a different Telegram writer; reconcile prepared actions")
     if (
         expected_memory_fingerprint is not None
         and str(record.get("marketing_memory_fingerprint") or "")
@@ -302,6 +308,7 @@ async def run(args: argparse.Namespace) -> dict:
 
         record = {
             "schema_version": PREVIEW_SCHEMA_VERSION,
+            "writer_prompt_version": TELEGRAM_V18 if telegram_v18_enabled() else None,
             "status": "AWAITING_USER_APPROVAL",
             "project_id": str(args.project_id),
             "product_id": str(product.id),

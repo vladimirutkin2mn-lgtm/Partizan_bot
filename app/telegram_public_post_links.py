@@ -16,7 +16,7 @@ _HANDLE = re.compile(r"[a-z][a-z0-9_]{4,31}")
 _ID = re.compile(r"[0-9]{1,15}")
 
 
-def _canonical_post(raw: object, *, exclude_handle: str) -> str | None:
+def canonical_public_post(raw: object, *, exclude_handle: str = "") -> str | None:
     text = str(raw or "").strip().rstrip(".,!;:)]}>")
     if not text:
         return None
@@ -24,11 +24,12 @@ def _canonical_post(raw: object, *, exclude_handle: str) -> str | None:
         text = "https://" + text
     try:
         parsed = urlsplit(text)
+        port = parsed.port
     except ValueError:
         return None
     if parsed.scheme != "https" or parsed.hostname not in {
         "t.me", "telegram.me",
-    } or parsed.username or parsed.password or parsed.port:
+    } or parsed.username or parsed.password or port:
         return None
     parts = [x for x in parsed.path.split("/") if x]
     if (
@@ -58,7 +59,7 @@ def referenced_public_posts(
                 candidates.append(str(button.url))
     found: list[str] = []
     for raw in candidates:
-        normalized = _canonical_post(raw, exclude_handle=own_handle)
+        normalized = canonical_public_post(raw, exclude_handle=own_handle)
         if normalized and normalized not in found:
             found.append(normalized)
             if len(found) >= max_refs:

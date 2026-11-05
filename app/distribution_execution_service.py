@@ -153,6 +153,8 @@ class InMemoryDistributionExecutionService:
             content_payload["draft_variant"] = payload.draft_variant.strip()
         if payload.expected_user_next_step is not None:
             content_payload["expected_user_next_step"] = payload.expected_user_next_step.strip()
+        if payload.creative_plan is not None:
+            content_payload["creative_plan"] = payload.creative_plan.model_dump(mode="json")
         if voice_profile_version_id is not None:
             if not voice_profile_content_hash or len(voice_profile_content_hash) != 64:
                 raise ValueError("VOICE_PROVENANCE_REQUIRED")
@@ -229,6 +231,12 @@ class InMemoryDistributionExecutionService:
             content_payload["context_text"] = payload.context_text
         if payload.title is not None:
             content_payload["title"] = payload.title.strip()
+        if (
+            payload.content_text is not None and payload.content_text != action.content_text
+        ) or (
+            payload.target_url is not None and str(payload.target_url) != str(action.target_url)
+        ):
+            content_payload.pop("creative_plan", None)
         for key in (
             "disclosure_included",
             "ai_disclosure_included",
@@ -471,6 +479,30 @@ class InMemoryDistributionExecutionService:
                 experiment for experiment in experiments if experiment.product_id == product_id
             ]
         return sorted(experiments, key=lambda experiment: str(experiment.id))
+
+    def recent_telegram_group_posts(
+        self, product_id: UUID, identity_id: UUID | None, group_url: str,
+    ) -> list[str]:
+        """Use only our own sent introductions in this product, identity and group."""
+        if identity_id is None:
+            return []
+        target = group_url.rstrip("/").casefold()
+        own_posts = []
+        for experiment in self.list_experiments(product_id):
+            try:
+                action = self.get_action(experiment.action_id)
+            except KeyError:
+                continue
+            if (
+                action.distribution_identity_id == identity_id
+                and action.platform == DistributionPlatform.TELEGRAM
+                and action.action_type == DistributionActionType.STANDALONE_POST
+                and action.status == DistributionActionStatus.EXECUTED
+                and str(action.target_url or "").rstrip("/").casefold() == target
+                and action.content_text and action.executed_at
+            ):
+                own_posts.append((action.executed_at.timestamp(), str(action.id), action.content_text[:220]))
+        return [text for _, _, text in sorted(own_posts, reverse=True)[:2]]
 
     def resolve_experiment(
         self,

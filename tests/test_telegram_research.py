@@ -315,7 +315,7 @@ def test_telegram_native_snapshot_preserves_full_text_and_truncation_signal() ->
 @pytest.mark.asyncio
 async def test_last_photo_of_latest_album_reads_only_its_own_caption():
     """A Play.Hard-style multi-photo publication has one logical post."""
-    checked = datetime(2026, 10, 22, 14, 0, tzinfo=UTC)
+    checked = datetime.now(UTC) - timedelta(minutes=5)
     media = SimpleNamespace(kind="photo")
     newest = SimpleNamespace(
         id=406, grouped_id=99188, message="", media=media, date=checked

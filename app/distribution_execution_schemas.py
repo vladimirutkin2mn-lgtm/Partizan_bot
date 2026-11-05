@@ -15,6 +15,11 @@ class DistributionExperimentStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class MessageCreativePlan(BaseModel):
+    intent: str = Field(min_length=3, max_length=200)
+    attention_technique: str = Field(min_length=3, max_length=200)
+
+
 class DistributionExecutionPrepareRequest(BaseModel):
     destination_url: HttpUrl | None = None
     target_url: HttpUrl | None = None
@@ -27,6 +32,7 @@ class DistributionExecutionPrepareRequest(BaseModel):
     conversion_mechanism: str | None = Field(default=None, max_length=64)
     draft_variant: str | None = Field(default=None, max_length=80)
     expected_user_next_step: str | None = Field(default=None, max_length=500)
+    creative_plan: MessageCreativePlan | None = None
 
 
 class DistributionActionEditRequest(BaseModel):
