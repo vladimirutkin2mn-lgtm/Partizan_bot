@@ -32,7 +32,7 @@ TELEGRAM_PROFILE_INTEREST = DraftVariantBrief(
     objective="Give a relevant reader a reason to be curious about the author.",
     expected_user_next_step="Open the author profile out of curiosity.",
     instructions=(
-        "Write one on-topic message using the selected intent and attention technique. "
+        "Let an on-topic personal reaction or preference carry the selected intent. "
         "No links, promotion or profile CTA."
     ),
 )
