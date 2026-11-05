@@ -6,7 +6,8 @@ from enum import StrEnum
 from app.distribution_play_planner import DistributionTacticTemplate
 from app.distribution_play_schemas import DistributionPlayView
 from app.distribution_schemas import CommunityPolicyView, DistributionOpportunityView
-from app.distribution_types import DistributionActionType
+from app.distribution_types import DistributionActionType, DistributionPlatform
+from app.telegram_writer_v18 import telegram_v18_enabled
 
 
 class ConversionMechanism(StrEnum):
@@ -25,6 +26,15 @@ class DraftVariantBrief:
     instructions: str
 
 
+TELEGRAM_PROFILE_INTEREST = DraftVariantBrief(
+    conversion_mechanism=ConversionMechanism.PROFILE_CLICK,
+    variant_name="situational_interest",
+    objective="Give a relevant reader a reason to be curious about the author.",
+    expected_user_next_step="Open the author profile out of curiosity.",
+    instructions="Let a personal reaction carry the message. No links, promotion or profile CTA.",
+)
+
+
 class ConversionScenarioPlanner:
     """Choose measurable conversion paths before copy is drafted."""
 
@@ -36,7 +46,14 @@ class ConversionScenarioPlanner:
         policy: CommunityPolicyView | None,
         template: DistributionTacticTemplate,
     ) -> tuple[DraftVariantBrief, ...]:
-        del opportunity
+        if (
+            template.platform == DistributionPlatform.TELEGRAM and telegram_v18_enabled()
+            and play.action_type in {
+                DistributionActionType.COMMENT, DistributionActionType.REPLY,
+                DistributionActionType.STANDALONE_POST,
+            }
+        ):
+            return (TELEGRAM_PROFILE_INTEREST,)
         variants: list[DraftVariantBrief] = []
 
         if self._direct_link_allowed(template, policy):

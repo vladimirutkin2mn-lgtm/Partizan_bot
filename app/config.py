@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Opt-in only: the live Telegram composer retains v16.2 unless explicitly
     # enabled after scoped project routing and profile creation are ready.
     persisted_voice_writer_enabled: bool = False
+    telegram_writer_v18_enabled: bool = False
     # Reservation on confirmed product is free; separate worker + finite budget
     # flags are needed before any paid initial voice generation.
     voice_initial_reservation_enabled: bool = False

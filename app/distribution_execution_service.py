@@ -472,6 +472,30 @@ class InMemoryDistributionExecutionService:
             ]
         return sorted(experiments, key=lambda experiment: str(experiment.id))
 
+    def recent_telegram_group_posts(
+        self, product_id: UUID, identity_id: UUID | None, group_url: str,
+    ) -> list[str]:
+        """Use only our own sent introductions in this product, identity and group."""
+        if identity_id is None:
+            return []
+        target = group_url.rstrip("/").casefold()
+        own_posts = []
+        for experiment in self.list_experiments(product_id):
+            try:
+                action = self.get_action(experiment.action_id)
+            except KeyError:
+                continue
+            if (
+                action.distribution_identity_id == identity_id
+                and action.platform == DistributionPlatform.TELEGRAM
+                and action.action_type == DistributionActionType.STANDALONE_POST
+                and action.status == DistributionActionStatus.EXECUTED
+                and str(action.target_url or "").rstrip("/").casefold() == target
+                and action.content_text and action.executed_at
+            ):
+                own_posts.append((action.executed_at.timestamp(), str(action.id), action.content_text[:220]))
+        return [text for _, _, text in sorted(own_posts, reverse=True)[:2]]
+
     def resolve_experiment(
         self,
         *,

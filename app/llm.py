@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -16,6 +17,19 @@ StructuredModelT = TypeVar("StructuredModelT", bound=BaseModel)
 class LLMMessage:
     role: str
     content: str
+    image_jpeg: bytes | None = None
+
+    def response_input(self) -> dict:
+        if self.image_jpeg is None:
+            return {"role": self.role, "content": self.content}
+        encoded = base64.b64encode(self.image_jpeg).decode("ascii")
+        return {
+            "role": self.role,
+            "content": [
+                {"type": "input_text", "text": self.content},
+                {"type": "input_image", "image_url": f"data:image/jpeg;base64,{encoded}", "detail": "low"},
+            ],
+        }
 
 
 class LLMProvider(ABC):
@@ -53,10 +67,7 @@ class OpenAIResponsesProvider(LLMProvider):
         response = await asyncio.to_thread(
             self._client.responses.parse,
             **options,
-            input=[
-                {"role": message.role, "content": message.content}
-                for message in messages
-            ],
+            input=[message.response_input() for message in messages],
             text_format=response_model,
         )
         log_openai_usage(
