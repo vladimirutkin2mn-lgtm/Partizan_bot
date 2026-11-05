@@ -17,7 +17,7 @@ from app.distribution_types import DistributionActionStatus, DistributionPlatfor
 from app.distribution_types import DistributionActionType as Action
 from app.llm import LLMMessage
 from app.telegram_writer_media import SelectedPhoto, _read_photo
-from app.telegram_writer_v18 import PROMPT_VERSION, writer_prompt
+from app.telegram_writer_v18 import PROMPT_VERSION, STANDALONE_PROMPT_VERSION, writer_prompt, writer_version
 
 
 @pytest.fixture
@@ -85,7 +85,7 @@ async def test_canonical_one_call_with_surface_specific_context(action, enabled,
     await composer.compose(product=product, play=play, opportunity=opportunity, target=target, policy=None)
     [messages] = provider.calls
     system, user = messages
-    assert PROMPT_VERSION in system.content
+    assert writer_version(action) in system.content
     assert opportunity.metadata["action_target_mode"] in system.content
     assert system.content == writer_prompt(action, persisted_voice=False)
     assert "Older unrelated post" not in user.content
@@ -169,6 +169,8 @@ def test_legacy_plain_text_input_and_persisted_character_contract():
     assert LLMMessage("user", "test").response_input() == {"role": "user", "content": "test"}
     prompt = writer_prompt(Action.COMMENT, persisted_voice=True)
     assert "Keep its established character" in prompt and "Infer the author's voice" not in prompt
+    assert writer_version(Action.COMMENT) == writer_version(Action.REPLY) == PROMPT_VERSION
+    assert writer_version(Action.STANDALONE_POST) == STANDALONE_PROMPT_VERSION
 
 
 def test_recent_openers_are_scoped_to_the_product_identity_and_group(monkeypatch):

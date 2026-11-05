@@ -57,8 +57,7 @@ from app.schemas import ProductProfileView
 from app.telegram_message_precheck import precheck_telegram_target
 from app.telegram_target_excerpt import compact_telegram_target
 from app.telegram_writer_media import SelectedPhoto, read_selected_photo
-from app.telegram_writer_v18 import PROMPT_VERSION as TELEGRAM_V18
-from app.telegram_writer_v18 import telegram_v18_enabled, writer_prompt
+from app.telegram_writer_v18 import telegram_v18_enabled, writer_prompt, writer_version
 from app.voice_draft_cache import VoiceDraftCache
 from app.voice_profiles import VoiceProfileService, fingerprint, source_snapshot
 
@@ -924,7 +923,8 @@ class DistributionActionDraftingService:
             "voice_profile_version_id": str(draft.voice_profile_version_id),
             "voice_profile_content_hash": draft.voice_profile_content_hash,
             "prompt_version": (
-                TELEGRAM_V18 if telegram_v18_enabled() else PERSISTED_COMMUNITY_PROMPT_VERSION
+                writer_version(play.action_type) if telegram_v18_enabled()
+                else PERSISTED_COMMUNITY_PROMPT_VERSION
             ),
         }
 

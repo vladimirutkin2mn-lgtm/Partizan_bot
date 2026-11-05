@@ -4,6 +4,7 @@ from app.config import get_settings
 from app.distribution_types import DistributionActionType
 
 PROMPT_VERSION = "telegram_message_v18_1"
+STANDALONE_PROMPT_VERSION = "telegram_standalone_v18_2"
 
 _MESSAGE = """Write one message in the community's language. Give the reader a reason
 to be curious about the author through something the author notices, likes or wants.
@@ -42,21 +43,27 @@ redirect the conversation to a new introduction or repeat their point as a gener
     DistributionActionType.STANDALONE_POST: """STANDALONE_POST: start your own conversation
 at the group root. Use the description and, if present, one member excerpt to recognize the
 local genre. The excerpt is not addressed to you. Do not answer, quote or imitate that person.
-In a themed introductions group, write the author's own short introduction. Someone from
-this particular group should recognize what the author wants to explore with them. If the
-community centers on a role or relationship, show the author's side through what she or he
-would enjoy doing or what the other person could bring to that exchange. Let a fitting
-preference or a little teasing carry the invitation. A statement can work without a question.
-If it would work just as well in an unrelated dating chat, replace the topic. Avoid
-generic tests of charm and unrelated hobbies picked merely to sound original. In a group
-with a different purpose, start a conversation that serves that purpose instead.
-When earlier openers are supplied, vary the move within the group's subject. Change who
-takes the initiative or what you offer; do not leave the subject just to find novelty.""",
+In a themed introductions group, speak to one possible reader. Give them one small,
+appealing way to interact with the author right here. Show a role or preference in how
+the author addresses them: who gets to choose, what would catch the author's attention,
+or who makes the first move? Pick one; leave the rest unsaid. A line of dialogue often
+does more than announcing the role and describing an ideal partner. Skip lists of traits
+and reminders about communication or boundaries unless they are actually the topic.
+Keep invitations within the author's real scope. For a virtual character, the invitation
+is to talk or play in chat; never suggest a physical date, a place to meet, or an offline
+experience the author cannot provide. Do not adopt the last member's offers.
+If the opener belongs just as easily in an unrelated dating chat, refocus on this group's
+interest. In groups serving a different purpose, start an exchange that serves that purpose.
+Vary the social move within the group's subject when earlier openers are supplied.""",
 }
 
 
 def telegram_v18_enabled() -> bool:
     return get_settings().telegram_writer_v18_enabled
+
+
+def writer_version(action: DistributionActionType) -> str:
+    return STANDALONE_PROMPT_VERSION if action == DistributionActionType.STANDALONE_POST else PROMPT_VERSION
 
 
 def writer_prompt(action: DistributionActionType, *, persisted_voice: bool) -> str:
@@ -67,4 +74,4 @@ def writer_prompt(action: DistributionActionType, *, persisted_voice: bool) -> s
         "Infer the author's voice from the product's positioning, audience and the supplied "
         "voice variant. Use it as a point of view, not as a fictional biography."
     )
-    return f"Prompt version: {PROMPT_VERSION}\n{_MESSAGE}\n\n{character}\n\n{_SURFACE[action]}"
+    return f"Prompt version: {writer_version(action)}\n{_MESSAGE}\n\n{character}\n\n{_SURFACE[action]}"
