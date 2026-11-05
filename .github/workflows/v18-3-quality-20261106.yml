@@ -1,0 +1,57 @@
+name: One-time paired v18.3 quality check and blinded assessment
+on:
+  push:
+    branches: [research/v18-3-quality-20261106]
+    paths: [.github/workflows/v18-3-quality-20261106.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: telegram-v18-3-quality-20261106
+  cancel-in-progress: false
+jobs:
+  compare:
+    if: github.run_attempt == '1'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated writer on runner
+        run: python -m pip install --quiet -e .
+      - name: Retrieve frozen public inputs and prior machine outputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 41840368919 -n telethon-five-peers-two-latest-read-only-20261104 -D /tmp/q-main
+          gh run download 41840675392 -n telethon-five-peers-two-latest-read-only-20261104 -D /tmp/q-albums
+          gh run download 41897025713 -n partizan-ab-ten-20261104 -D /tmp/q-ab
+          gh run download 42101739571 -n v18-2-four-group-drafts-review -D /tmp/q-groups
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin existing research connection
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: At most twenty writer and ten judge calls, no retries or publishing
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          TELEGRAM_WRITER_V18_ENABLED: 'true'
+          RUNTIME_STORAGE: memory
+        run: python tools/v18_quality_replay.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v18-3-paired-quality-review
+          path: v18-3-quality.json
+          retention-days: 3
+          if-no-files-found: ignore
