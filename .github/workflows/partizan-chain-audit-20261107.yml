@@ -1,0 +1,40 @@
+name: One-time read-only Partizan chain audit
+on:
+  push:
+    branches: [research/chain-audit-20261107]
+    paths: [.github/workflows/partizan-chain-audit-20261107.yml]
+permissions:
+  contents: read
+concurrency:
+  group: partizan-chain-audit-20261107
+  cancel-in-progress: false
+jobs:
+  snapshot:
+    if: github.run_attempt == '1'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin the existing audit connection
+        env:
+          HOST_KEYS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$HOST_KEYS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Read one project's stored chain; writes and paid calls disabled
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: python tools/partizan_chain_snapshot_bridge.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: partizan-chain-read-only-20261107
+          path: partizan-chain-runtime-20261107.json
+          retention-days: 3
+          if-no-files-found: error
