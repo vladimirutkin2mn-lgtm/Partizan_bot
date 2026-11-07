@@ -128,7 +128,7 @@ def main():
         }))
     memory = ProjectMarketingMemoryService(store)
     contexts = {kind: clean(memory.prompt_context_for_product(
-        PRODUCT, platform="TELEGRAM", action_type=kind).rendered or "")[:700]
+        PRODUCT, platform="TELEGRAM", action_type=kind).rendered or "")[:6000]
         for kind in ("COMMENT", "STANDALONE_POST")}
     namespaces = ("customer_telegram_profile_snapshot", "customer_telegram_profile_mutation",
                   "customer_telegram_profile_conversion_setup", "reviewed_customer_telegram_profile_hq",
@@ -137,7 +137,9 @@ def main():
                   "telegram_profile_conversion_pack", "managed_telegram_profile_strategy")
     profile_records = {ns: [record(r) for r in store.list_namespace(ns) if scoped(r)] for ns in namespaces}
     learning = {}
-    for ns in ("growth_autoresearch_execution", "growth_autoresearch_execution_trial", "community_message_autoresearch"):
+    for ns in ("growth_autoresearch_execution", "growth_autoresearch_execution_trial", "growth_autoresearch_policy",
+               "growth_autoresearch_trial", "growth_autoresearch_evaluation", "growth_autoresearch_run",
+               "growth_autoresearch_message_prompt_evaluation", "growth_autoresearch_current_champion"):
         rows = [r for r in store.list_namespace(ns) if scoped(r)]
         learning[ns] = {"count": len(rows), "records": [record(r) for r in rows[:12]]}
     revisions = [r for r in store.list_namespace("customer_product_revision_history") if scoped(r)]
@@ -173,6 +175,8 @@ def main():
         "registry": {"count": len(communities), "confirmed": sum(r["community_fit_pass"] is True for r in communities),
                      "rows": communities}, "marketing_memory": contexts,
         "profile_records": profile_records, "autoresearch": learning,
+        "memory_inventory": [clean(subset(r, ("key", "category", "source", "status", "statement", "platform", "action_type")))
+                             for r in store.list_namespace("project_marketing_memory") if scoped(r)],
         "read_counts": counts, "paid_llm_calls": 0, "telegram_api_calls": 0, "publication_actions": 0,
     }
     assert counts["write_attempts"] == 0

@@ -1,4 +1,4 @@
-name: One-time read-only Partizan chain audit
+name: Read-only chain audit including full scoped memory and learning records
 on:
   push:
     branches: [research/chain-audit-20261107]
